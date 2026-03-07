@@ -81,7 +81,8 @@
 - [x] Supplier list management (add, remove, rename in-place)
 - [x] API integration fields (Auphan POS, Weather, Gas price) — ready for keys
 - [x] Export: CSV, PDF (print dialog), JSON backup
-- [x] Restore from JSON backup — file dialog, validation, confirmation, SQLite write, reload
+- [x] Restore from JSON backup — file dialog, validation, confirmation, SQLite write, reload (handles both manual + auto-backup formats including P&L)
+- [x] Auto-backup — on launch, 1 JSON per day to Documents/BalanceIQ Backups/, 30-day rotation, cross-platform; Config tab shows last backup date + file count + folder path with "Ouvrir le dossier" button
 - [x] Light / dark theme toggle — "Warm" light theme + persistent preference (SQLite)
 
 ### ✅ DONE — Electron + Infrastructure

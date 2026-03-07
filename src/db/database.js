@@ -28,4 +28,13 @@ function storageSet(key, value) {
   return true;
 }
 
-module.exports = { storageGet, storageSet };
+function storageGetAll() {
+  const rows = getDb().prepare('SELECT key, value FROM kv_store').all();
+  const result = {};
+  rows.forEach(row => {
+    try { result[row.key] = JSON.parse(row.value); } catch { result[row.key] = row.value; }
+  });
+  return result;
+}
+
+module.exports = { storageGet, storageSet, storageGetAll };

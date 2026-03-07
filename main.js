@@ -1,8 +1,52 @@
-const { app, BrowserWindow, ipcMain, net, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, net, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
-const { storageGet, storageSet } = require('./src/db/database.js');
+const { storageGet, storageSet, storageGetAll } = require('./src/db/database.js');
+
+const BACKUP_DIR = () => path.join(app.getPath('documents'), 'BalanceIQ Backups');
+const BACKUP_KEEP_DAYS = 30;
+
+async function performAutoBackup() {
+  const dir = BACKUP_DIR();
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+  const today = new Date().toISOString().slice(0, 10);
+  const filepath = path.join(dir, `balanceiq-${today}.json`);
+  if (fs.existsSync(filepath)) return; // already backed up today
+
+  const all = storageGetAll();
+
+  // Build in same format as manual backup so restore button handles both
+  const data = {
+    liveData:  all['dicann-v7']          || {},
+    roster:    all['dicann-roster']       || [],
+    empRoster: all['dicann-emp-roster']   || [],
+    suppliers: all['dicann-suppliers-v2'] || [],
+    apiConfig: all['dicann-api-config']   || {},
+    plData: {},
+  };
+
+  // Include all monthly P&L keys
+  Object.entries(all).forEach(([key, val]) => {
+    if (key.startsWith('dicann-pl-')) {
+      data.plData[key.replace('dicann-pl-', '')] = val;
+    }
+  });
+
+  fs.writeFileSync(filepath, JSON.stringify(data, null, 2), 'utf-8');
+
+  // Delete backups older than BACKUP_KEEP_DAYS
+  try {
+    fs.readdirSync(dir)
+      .filter(f => /^balanceiq-\d{4}-\d{2}-\d{2}\.json$/.test(f))
+      .forEach(f => {
+        const d = new Date(f.slice(10, 20));
+        const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - BACKUP_KEEP_DAYS);
+        if (d < cutoff) fs.unlinkSync(path.join(dir, f));
+      });
+  } catch (_) {}
+}
 
 // IPC handlers for storage
 ipcMain.handle('storage:get', (event, key) => {
@@ -54,6 +98,11 @@ ipcMain.handle('backup:restore', async () => {
   storageSet('dicann-emp-roster', JSON.stringify(data.empRoster));
   storageSet('dicann-suppliers-v2', JSON.stringify(data.suppliers));
   if (data.apiConfig) storageSet('dicann-api-config', JSON.stringify(data.apiConfig));
+  if (data.plData) {
+    Object.entries(data.plData).forEach(([month, val]) => {
+      storageSet(`dicann-pl-${month}`, JSON.stringify(val));
+    });
+  }
 
   await dialog.showMessageBox(win, {
     type: 'info',
@@ -64,6 +113,27 @@ ipcMain.handle('backup:restore', async () => {
 
   win.webContents.reload();
   return { success: true };
+});
+
+// IPC handlers — auto-backup info + open folder
+ipcMain.handle('backup:getInfo', () => {
+  const dir = BACKUP_DIR();
+  let lastBackup = null;
+  let count = 0;
+  try {
+    const files = fs.existsSync(dir)
+      ? fs.readdirSync(dir).filter(f => /^balanceiq-\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort()
+      : [];
+    count = files.length;
+    if (files.length) lastBackup = files[files.length - 1].slice(10, 20);
+  } catch (_) {}
+  return { dir, lastBackup, count };
+});
+
+ipcMain.handle('backup:openDir', () => {
+  const dir = BACKUP_DIR();
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  shell.openPath(dir);
 });
 
 // IPC handler — gas price scraper (CAA Canada — prix moyen national, source statique)
@@ -164,6 +234,9 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+
+  // Auto-backup — runs on every launch, one file per day
+  setTimeout(() => { performAutoBackup().catch(() => {}); }, 3000);
 
   // Auto-updater — only runs in packaged app (not dev)
   if (app.isPackaged) {

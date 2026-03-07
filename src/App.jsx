@@ -621,6 +621,7 @@ export default function App(){
   const [suppliers,setSuppliers]=useState(DEFAULT_SUPPLIERS);
   const [apiConfig,setApiConfig]=useState({auphanKey:"",weatherKey:"",gasKey:""});
   const [restoreMsg,setRestoreMsg]=useState('');
+  const [backupInfo,setBackupInfo]=useState(null);
   const [updateAvailable,setUpdateAvailable]=useState(false);
   const [updating,setUpdating]=useState(false);
   const [themeName,setThemeName]=useState('dark');
@@ -651,6 +652,8 @@ export default function App(){
     try{const r4=await window.api.storage.get("dicann-api-config");if(r4?.value)setApiConfig(JSON.parse(r4.value))}catch(e){}
     try{const r5=await window.api.storage.get("balanceiq-theme");if(r5?.value==='light'||r5?.value==='dark')setThemeName(r5.value)}catch(e){}
     setLoading(false);
+    // Load auto-backup info after a short delay (backup runs at t+3s)
+    setTimeout(async()=>{try{const info=await window.api.backup.getInfo();setBackupInfo(info)}catch(_){}},4000);
   })()},[]);
 
   useEffect(()=>{
@@ -1100,6 +1103,19 @@ export default function App(){
                 <button onClick={async()=>{setRestoreMsg('');const r=await window.api.backup.restore();if(r?.error)setRestoreMsg(r.error);}} style={{padding:"7px 14px",borderRadius:6,border:"1px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontWeight:600,fontSize:12}}>Restaurer depuis backup</button>
               </div>
               {restoreMsg&&<div style={{marginTop:6,fontSize:12,color:"#ef4444"}}>{restoreMsg}</div>}
+            </div>
+
+            {/* Auto-backup info */}
+            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Sauvegardes automatiques</span>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>1 fichier par jour · 30 jours conservés · dossier Documents</div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}>
+                <span style={{fontSize:11.5,color:t.textSub}}>
+                  {backupInfo==null?"Chargement...":backupInfo.lastBackup?`✓ Dernière: ${backupInfo.lastBackup} · ${backupInfo.count} fichier${backupInfo.count!==1?"s":""}`:"Aucune sauvegarde encore"}
+                </span>
+                <button onClick={()=>window.api.backup.openDir()} style={{padding:"5px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>📁 Ouvrir le dossier</button>
+              </div>
+              {backupInfo?.dir&&<div style={{marginTop:5,fontSize:9.5,color:t.textMuted,fontFamily:"'DM Mono',monospace",wordBreak:"break-all"}}>{backupInfo.dir}</div>}
             </div>
 
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
