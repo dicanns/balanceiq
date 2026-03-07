@@ -252,49 +252,251 @@ function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,ro
   </div>);
 }
 
+// ── CSV PARSING UTILS ──
+const PLATFORM_COLUMN_HINTS={
+  doordash:{dateHints:['payment date','deposit date','date'],amountHints:['amount','total payout','payout amount','net payout','payout']},
+  ubereats:{dateHints:['date','payment date','payout date'],amountHints:['payout','total','net payout','amount']},
+  skip:{dateHints:['date','payment date','payout date'],amountHints:['net payout','payout','amount','total']},
+};
+function parseCSVText(text){
+  const lines=text.split(/\r?\n/).filter(l=>l.trim());
+  if(lines.length<2)return{headers:[],rows:[]};
+  const parseRow=line=>{const r=[];let cur='',inQ=false;for(const ch of line){if(ch==='"'){inQ=!inQ;}else if(ch===','&&!inQ){r.push(cur.trim());cur='';}else cur+=ch;}r.push(cur.trim());return r;};
+  const headers=parseRow(lines[0]).map(h=>h.replace(/^"|"$/g,'').trim());
+  const rows=lines.slice(1).map(l=>{const vals=parseRow(l);const obj={};headers.forEach((h,i)=>{obj[h]=(vals[i]??'').replace(/^"|"$/g,'').trim();});return obj;});
+  return{headers,rows};
+}
+function autoDetectCols(headers,pid){
+  const hints=PLATFORM_COLUMN_HINTS[pid]||PLATFORM_COLUMN_HINTS.doordash;
+  const lh=headers.map(h=>h.toLowerCase().trim());
+  const find=hs=>{for(const h of hs){const i=lh.findIndex(x=>x.includes(h));if(i!==-1)return headers[i];}return null;};
+  return{dateCol:find(hints.dateHints),amountCol:find(hints.amountHints)};
+}
+function parseDateStr(s){
+  if(!s)return null;
+  if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);
+  const m1=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m1)return`${m1[3]}-${m1[1].padStart(2,'0')}-${m1[2].padStart(2,'0')}`;
+  const m2=s.match(/^(\d{4})\/(\d{2})\/(\d{2})/);if(m2)return`${m2[1]}-${m2[2]}-${m2[3]}`;
+  const MONS={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12,janv:1,mars:3,avri:4,mai:5,juin:6,juil:7,sept:9,octo:10,nove:11};
+  const m3=s.match(/([a-záàâéèêëîïôùûüç]+)[.\s-]+(\d{1,2})[,.\s-]*(\d{4})/i);
+  if(m3){const mn=MONS[m3[1].toLowerCase().slice(0,4)];if(mn)return`${m3[3]}-${String(mn).padStart(2,'0')}-${m3[2].padStart(2,'0')}`;}
+  const m4=s.match(/(\d{1,2})[.\s-]+([a-záàâéèêëîïôùûüç]+)[.\s-]+(\d{4})/i);
+  if(m4){const mn=MONS[m4[2].toLowerCase().slice(0,4)];if(mn)return`${m4[3]}-${String(mn).padStart(2,'0')}-${m4[1].padStart(2,'0')}`;}
+  return null;
+}
+function parseAmountStr(s){
+  if(!s)return null;
+  const neg=/^\(/.test(s.trim());
+  const n=parseFloat(s.replace(/[$€£,\s]/g,'').replace(/[()]/g,''));
+  if(isNaN(n)||n===0)return null;
+  const v=Math.round(Math.abs(n)*100)/100;
+  return neg?-v:v;
+}
+
 // ── LIVRAISONS SECTION ──
-function LivraisonsSection({platforms,selectedDate,raw,upd}){
+function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,saveApiCfg}){
   const t=useT();
+  const [collapsed,setCollapsed]=useState(false);
+  const [importPid,setImportPid]=useState(null);
+  const [importStep,setImportStep]=useState('idle'); // idle|mapping|preview|conflict|done
+  const [csvData,setCsvData]=useState(null);
+  const [colMap,setColMap]=useState({dateCol:null,amountCol:null});
+  const [preview,setPreview]=useState([]);
+  const [conflictItems,setConflictItems]=useState([]);
+  const [importMsg,setImportMsg]=useState(null);
+  const fileRef=useRef(null);
+  const pidRef=useRef(null);
+  const csvMaps=apiConfig?.csvColumnMaps||{};
   const platData=raw.platformLivraisons||{};
   const getPD=pid=>platData[pid]||{ventes:null,depot:null};
-  const updPD=(pid,field,val)=>{
-    const cur=platData[pid]||{ventes:null,depot:null};
-    upd(selectedDate,"platformLivraisons",{...platData,[pid]:{...cur,[field]:val}});
-  };
+  const updPD=(pid,field,val)=>{const cur=platData[pid]||{ventes:null,depot:null};upd(selectedDate,"platformLivraisons",{...platData,[pid]:{...cur,[field]:val}});};
   const totalVentes=platforms.reduce((s,p)=>s+(getPD(p.id).ventes||0),0);
   const totalDepots=platforms.reduce((s,p)=>s+(getPD(p.id).depot||0),0);
   const totalComm=totalVentes-totalDepots;
   const totalCommPct=totalVentes>0?(totalComm/totalVentes*100):0;
-  return(<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-    <div style={{marginBottom:8}}>
-      <div style={{fontSize:13,fontWeight:700,color:t.text}}>📱 Livraisons — suivi des plateformes</div>
-      <div style={{fontSize:10,color:t.textMuted,marginTop:2,fontStyle:"italic"}}>Informatif seulement — n'affecte pas la réconciliation des caisses</div>
+
+  const openImport=pid=>{
+    pidRef.current=pid;
+    setImportPid(pid);setCsvData(null);setPreview([]);setConflictItems([]);setImportMsg(null);setImportStep('idle');
+    setTimeout(()=>fileRef.current?.click(),0);
+  };
+  const handleFile=e=>{
+    const file=e.target.files[0];if(!file)return;e.target.value='';
+    const pid=pidRef.current;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      const {headers,rows}=parseCSVText(ev.target.result);
+      if(!headers.length){setImportMsg('Fichier CSV invalide ou vide.');return;}
+      setCsvData({headers,rows});
+      const saved=csvMaps[pid];const auto=autoDetectCols(headers,pid);
+      const dc=saved?.dateCol&&headers.includes(saved.dateCol)?saved.dateCol:auto.dateCol;
+      const ac=saved?.amountCol&&headers.includes(saved.amountCol)?saved.amountCol:auto.amountCol;
+      setColMap({dateCol:dc,amountCol:ac});
+      if(dc&&ac){doBuildPreview({headers,rows},dc,ac);}else{setImportStep('mapping');}
+    };
+    reader.readAsText(file);
+  };
+  const doBuildPreview=(data,dc,ac)=>{
+    const src=data||csvData;const byDate={};
+    src.rows.forEach(row=>{const date=parseDateStr(row[dc]);const amount=parseAmountStr(row[ac]);if(date&&amount&&amount>0)byDate[date]=Math.round(((byDate[date]||0)+amount)*100)/100;});
+    const list=Object.entries(byDate).map(([date,amount])=>({date,amount})).sort((a,b)=>a.date.localeCompare(b.date));
+    setPreview(list);setImportStep('preview');
+  };
+  const confirmMapping=()=>{
+    if(!colMap.dateCol||!colMap.amountCol)return;
+    const nc={...apiConfig,csvColumnMaps:{...csvMaps,[pidRef.current]:colMap}};
+    saveApiCfg(nc);doBuildPreview(csvData,colMap.dateCol,colMap.amountCol);
+  };
+  const doFinish=items=>{
+    const pid=pidRef.current;const pName=platforms.find(p=>p.id===pid)?.name||'';
+    items.forEach(({date,amount})=>{const dp=liveData[date]?.platformLivraisons||{};const pd=dp[pid]||{ventes:null,depot:null};upd(date,"platformLivraisons",{...dp,[pid]:{...pd,depot:amount}});});
+    const n=items.length;
+    setImportMsg(`✓ ${n} dépôt${n!==1?'s':''} importé${n!==1?'s':''} pour ${pName}`);
+    setImportStep('done');setTimeout(()=>{setImportStep('idle');setImportPid(null);setImportMsg(null);},4000);
+  };
+  const startImport=()=>{
+    const pid=pidRef.current;
+    const conflicts=preview.filter(({date})=>(liveData[date]?.platformLivraisons||{})[pid]?.depot!=null);
+    if(conflicts.length){setConflictItems(conflicts);setImportStep('conflict');return;}
+    doFinish(preview);
+  };
+  const handleConflict=override=>{
+    const conflictDates=new Set(conflictItems.map(c=>c.date));
+    doFinish(override?preview:preview.filter(({date})=>!conflictDates.has(date)));
+  };
+  const cancelImport=()=>{setImportStep('idle');setImportPid(null);setCsvData(null);setPreview([]);setConflictItems([]);setImportMsg(null);};
+  const importPlatform=platforms.find(p=>p.id===importPid);
+  const showPanel=importStep!=='idle'&&importStep!=='done'&&importPlatform;
+  const selStyle={width:'100%',background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.text,fontSize:11,padding:'4px 6px',outline:'none'};
+  const btnP={padding:'4px 12px',borderRadius:5,border:'none',cursor:'pointer',fontWeight:600,fontSize:11,background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff'};
+  const btnS={padding:'4px 10px',borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:'pointer',fontSize:11};
+
+  return(<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,overflow:'hidden'}}>
+    <input ref={fileRef} type="file" accept=".csv" style={{display:'none'}} onChange={handleFile}/>
+    {/* Header */}
+    <div onClick={()=>setCollapsed(!collapsed)} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'9px 11px',cursor:'pointer',background:t.cashHeaderBg,borderBottom:collapsed?'none':`1px solid ${t.innerBorder}`,userSelect:'none'}}>
+      <div style={{display:'flex',alignItems:'center',gap:6}}>
+        <span style={{fontSize:12,color:collapsed?t.textMuted:'#f97316',transform:collapsed?'rotate(-90deg)':'rotate(0deg)',display:'inline-block'}}>▾</span>
+        <span style={{fontSize:13,fontWeight:700,color:t.text}}>📱 Livraisons — suivi des plateformes</span>
+      </div>
+      <span style={{fontSize:10,color:t.textMuted,fontStyle:'italic'}}>Informatif seulement</span>
     </div>
-    {platforms.length===0&&(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>Aucune plateforme configurée — ajouter dans Config</div>)}
-    {platforms.map(platform=>{
-      const pd=getPD(platform.id);
-      const hasV=pd.ventes!=null;
-      const hasD=pd.depot!=null;
-      const ecart=(hasV&&hasD)?pd.depot-pd.ventes:null;
-      const ecartPct=(ecart!=null&&pd.ventes>0)?(Math.abs(ecart)/pd.ventes*100):null;
-      return(<div key={platform.id} style={{marginBottom:8,padding:10,borderRadius:7,background:t.section,border:`1px solid ${t.sectionBorder}`}}>
-        <div style={{fontSize:12,fontWeight:700,color:t.text,marginBottom:6}}>{platform.emoji} {platform.name}</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-          <F label="Ventes plateforme" value={pd.ventes} onChange={v=>updPD(platform.id,"ventes",v)} prefix="$"/>
-          <F label="Dépôt reçu" value={pd.depot} onChange={v=>updPD(platform.id,"depot",v)} prefix="$"/>
-        </div>
-        <div style={{marginTop:5,fontSize:11}}>
-          {ecart!=null?(<span style={{color:"#f97316",fontWeight:600,fontFamily:"'DM Mono',monospace"}}>Écart: {fmt(ecart)}{ecartPct!=null?` (${ecartPct.toFixed(1)}%)`:""}</span>):hasV?(<span style={{color:t.textMuted}}>⏳ En attente du dépôt</span>):null}
-        </div>
-      </div>);
-    })}
-    {platforms.length>0&&(<div style={{marginTop:4,padding:"8px 10px",borderRadius:7,background:t.reconNeutralBg,border:`1px solid ${t.reconNeutralBorder}`}}>
-      <div style={{fontSize:9.5,color:t.textMuted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.7,marginBottom:4}}>Sommaire du jour — informatif</div>
-      <RR label="Total ventes plateformes" value={totalVentes>0?totalVentes:null}/>
-      <RR label="Total dépôts reçus" value={totalDepots>0?totalDepots:null}/>
-      {totalVentes>0&&totalDepots>0&&(<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3.5px 0",borderTop:`1px solid ${t.divider}`,marginTop:2}}>
-        <span style={{fontSize:11.5,color:t.textSub,fontWeight:500}}>Commission totale</span>
-        <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:"#f97316",fontWeight:700}}>{fmt(totalComm)} ({totalCommPct.toFixed(1)}%)</span>
+    {!collapsed&&(<div style={{padding:11}}>
+      <div style={{fontSize:10,color:t.textMuted,marginBottom:8,fontStyle:'italic'}}>N'affecte pas la réconciliation des caisses</div>
+
+      {/* Import done message */}
+      {importStep==='done'&&importMsg&&(<div style={{marginBottom:10,padding:'6px 10px',borderRadius:6,background:'rgba(34,197,94,0.06)',border:'1px solid rgba(34,197,94,0.2)',fontSize:12,color:'#16a34a',fontWeight:600}}>{importMsg}</div>)}
+
+      {/* Import panel */}
+      {showPanel&&(<div style={{marginBottom:10,padding:10,borderRadius:7,background:'rgba(56,189,248,0.05)',border:'1px solid rgba(56,189,248,0.18)'}}>
+        <div style={{fontSize:11,fontWeight:700,color:'#38bdf8',marginBottom:8}}>{importPlatform.emoji} {importPlatform.name} — Import CSV</div>
+
+        {/* Step: column mapping */}
+        {importStep==='mapping'&&csvData&&(<div>
+          <div style={{fontSize:11,color:t.textSub,marginBottom:6}}>Colonnes non détectées automatiquement. Sélectionner :</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:8}}>
+            <div>
+              <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Colonne date</div>
+              <select value={colMap.dateCol||''} onChange={e=>setColMap(m=>({...m,dateCol:e.target.value||null}))} style={selStyle}>
+                <option value="">— Choisir —</option>
+                {csvData.headers.map(h=>(<option key={h} value={h}>{h}</option>))}
+              </select>
+            </div>
+            <div>
+              <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Colonne montant</div>
+              <select value={colMap.amountCol||''} onChange={e=>setColMap(m=>({...m,amountCol:e.target.value||null}))} style={selStyle}>
+                <option value="">— Choisir —</option>
+                {csvData.headers.map(h=>(<option key={h} value={h}>{h}</option>))}
+              </select>
+            </div>
+          </div>
+          {colMap.dateCol&&colMap.amountCol&&<div style={{fontSize:10,color:t.textMuted,marginBottom:6}}>Ce mappage sera mémorisé pour {importPlatform.name}.</div>}
+          <div style={{display:'flex',gap:6}}>
+            <button onClick={confirmMapping} disabled={!colMap.dateCol||!colMap.amountCol} style={{...btnP,opacity:(!colMap.dateCol||!colMap.amountCol)?0.4:1}}>Continuer</button>
+            <button onClick={cancelImport} style={btnS}>Annuler</button>
+          </div>
+        </div>)}
+
+        {/* Step: preview */}
+        {importStep==='preview'&&(<div>
+          <div style={{fontSize:11,color:t.textSub,marginBottom:6}}>{importPlatform.name} — {preview.length} dépôt{preview.length!==1?'s':''} trouvé{preview.length!==1?'s':''} :</div>
+          {preview.length===0
+            ?(<div style={{fontSize:11,color:'#f97316',marginBottom:8}}>Aucune donnée valide détectée. Vérifier les colonnes.</div>)
+            :(<div>
+              <div style={{maxHeight:160,overflowY:'auto',marginBottom:6}}>
+                {preview.map(({date,amount},i)=>{
+                  const dd=new Date(date+'T12:00:00');const lbl=`${dd.getDate()} ${MONTHS_FR[dd.getMonth()]}`;
+                  const existing=(liveData[date]?.platformLivraisons||{})[importPid]?.depot;
+                  return(<div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'2px 0',borderBottom:`1px solid ${t.divider}`,fontSize:11}}>
+                    <span style={{color:t.textSub}}>{lbl}</span>
+                    <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                      {existing!=null&&<span style={{fontSize:9.5,color:'#f97316'}}>⚠ existant</span>}
+                      <span style={{fontFamily:"'DM Mono',monospace",color:t.text,fontWeight:600}}>{fmt(amount)}</span>
+                    </div>
+                  </div>);
+                })}
+              </div>
+              <div style={{display:'flex',justifyContent:'flex-end',padding:'3px 0',marginBottom:8,borderTop:`1px solid rgba(249,115,22,0.2)`}}>
+                <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,fontWeight:700,color:'#f97316'}}>Total: {fmt(preview.reduce((s,x)=>s+x.amount,0))}</span>
+              </div>
+            </div>)}
+          <div style={{display:'flex',gap:6}}>
+            {preview.length>0&&<button onClick={startImport} style={btnP}>Importer {preview.length} dépôt{preview.length!==1?'s':''}</button>}
+            <button onClick={cancelImport} style={btnS}>Annuler</button>
+          </div>
+        </div>)}
+
+        {/* Step: conflict */}
+        {importStep==='conflict'&&(<div>
+          <div style={{fontSize:11,color:'#f97316',marginBottom:6}}>Des dépôts existent déjà pour {conflictItems.length} date{conflictItems.length!==1?'s':''} :</div>
+          <div style={{marginBottom:8}}>
+            {conflictItems.map(({date,amount},i)=>{
+              const dd=new Date(date+'T12:00:00');
+              const existing=(liveData[date]?.platformLivraisons||{})[importPid]?.depot;
+              return(<div key={i} style={{fontSize:11,color:t.textSub,padding:'2px 0',borderBottom:`1px solid ${t.divider}`}}>
+                {dd.getDate()} {MONTHS_FR[dd.getMonth()]} — existant: {fmt(existing)} → nouveau: {fmt(amount)}
+              </div>);
+            })}
+          </div>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+            <button onClick={()=>handleConflict(true)} style={btnP}>Remplacer tout</button>
+            <button onClick={()=>handleConflict(false)} style={{...btnS,border:'1px solid rgba(249,115,22,0.2)',background:'rgba(249,115,22,0.06)',color:'#f97316'}}>Ignorer les conflits</button>
+            <button onClick={cancelImport} style={btnS}>Annuler</button>
+          </div>
+        </div>)}
+      </div>)}
+
+      {platforms.length===0&&<div style={{fontSize:12,color:t.textMuted,textAlign:'center',padding:8}}>Aucune plateforme configurée — ajouter dans Config</div>}
+
+      {platforms.map(platform=>{
+        const pd=getPD(platform.id);const hasV=pd.ventes!=null;const hasD=pd.depot!=null;
+        const ecart=(hasV&&hasD)?pd.depot-pd.ventes:null;
+        const ecartPct=(ecart!=null&&pd.ventes>0)?(Math.abs(ecart)/pd.ventes*100):null;
+        const active=importPid===platform.id&&importStep!=='idle'&&importStep!=='done';
+        return(<div key={platform.id} style={{marginBottom:8,padding:10,borderRadius:7,background:t.section,border:`1px solid ${active?'rgba(56,189,248,0.35)':t.sectionBorder}`}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+            <span style={{fontSize:12,fontWeight:700,color:t.text}}>{platform.emoji} {platform.name}</span>
+            <button onClick={e=>{e.stopPropagation();openImport(platform.id);}} style={{fontSize:9.5,padding:'2px 8px',borderRadius:4,border:'1px solid rgba(56,189,248,0.2)',background:'rgba(56,189,248,0.06)',color:'#38bdf8',cursor:'pointer',fontWeight:600,whiteSpace:'nowrap'}}>📥 Importer relevé</button>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+            <F label="Ventes plateforme" value={pd.ventes} onChange={v=>updPD(platform.id,'ventes',v)} prefix="$"/>
+            <F label="Dépôt reçu" value={pd.depot} onChange={v=>updPD(platform.id,'depot',v)} prefix="$"/>
+          </div>
+          <div style={{marginTop:5,fontSize:11}}>
+            {ecart!=null?(<span style={{color:'#f97316',fontWeight:600,fontFamily:"'DM Mono',monospace"}}>Écart: {fmt(ecart)}{ecartPct!=null?` (${ecartPct.toFixed(1)}%)`:''}
+            </span>):hasV?(<span style={{color:t.textMuted}}>⏳ En attente du dépôt</span>):null}
+          </div>
+        </div>);
+      })}
+
+      {platforms.length>0&&(<div style={{marginTop:4,padding:'8px 10px',borderRadius:7,background:t.reconNeutralBg,border:`1px solid ${t.reconNeutralBorder}`}}>
+        <div style={{fontSize:9.5,color:t.textMuted,fontWeight:700,textTransform:'uppercase',letterSpacing:0.7,marginBottom:4}}>Sommaire du jour — informatif</div>
+        <RR label="Total ventes plateformes" value={totalVentes>0?totalVentes:null}/>
+        <RR label="Total dépôts reçus" value={totalDepots>0?totalDepots:null}/>
+        {totalVentes>0&&totalDepots>0&&(<div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'3.5px 0',borderTop:`1px solid ${t.divider}`,marginTop:2}}>
+          <span style={{fontSize:11.5,color:t.textSub,fontWeight:500}}>Commission totale</span>
+          <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:'#f97316',fontWeight:700}}>{fmt(totalComm)} ({totalCommPct.toFixed(1)}%)</span>
+        </div>)}
       </div>)}
     </div>)}
   </div>);
@@ -1066,7 +1268,7 @@ export default function App(){
                 :<span style={{fontSize:12,color:t.warnText,fontWeight:600}}>Vérifier les caisses</span>}
             </div>)}
 
-            <LivraisonsSection platforms={platforms} selectedDate={selectedDate} raw={raw} upd={upd}/>
+            <LivraisonsSection platforms={platforms} selectedDate={selectedDate} raw={raw} upd={upd} liveData={liveData} apiConfig={apiConfig} saveApiCfg={nc=>{setApiConfig(nc);saveApiCfg(nc);}}/>
 
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
               {/* Inventory */}
