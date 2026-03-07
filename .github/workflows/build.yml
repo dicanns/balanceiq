@@ -1,9 +1,14 @@
-name: Build Installers
+name: Build & Release
 
 on:
   push:
     branches: [main]
+    tags: ['v*']
   workflow_dispatch:
+
+# Required for electron-builder to create GitHub Releases and upload assets
+permissions:
+  contents: write
 
 jobs:
   build-mac-arm64:
@@ -23,9 +28,10 @@ jobs:
         run: npx vite build
 
       - name: Build macOS Apple Silicon installer
-        run: npx electron-builder --mac --publish never
+        run: npx electron-builder --mac --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload macOS Apple Silicon artifact
         uses: actions/upload-artifact@v4
@@ -51,9 +57,10 @@ jobs:
         run: npx vite build
 
       - name: Build macOS Intel installer
-        run: npx electron-builder --mac --publish never
+        run: npx electron-builder --mac --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload macOS Intel artifact
         uses: actions/upload-artifact@v4
@@ -79,7 +86,9 @@ jobs:
         run: npx vite build
 
       - name: Build Windows installer
-        run: npx electron-builder --win --publish never
+        run: npx electron-builder --win --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
