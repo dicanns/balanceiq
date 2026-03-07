@@ -111,6 +111,7 @@ const BLANK_CASH={cashierId:"",posVentes:null,posTPS:null,posTVQ:null,posLivrais
 const BLANK_EMP={name:"",hours:null,wage:null};
 const BLANK_DAY={cashes:[{...BLANK_CASH}],employees:[],hamEnd:null,hamReceived:null,hamStartOverride:null,hotEnd:null,hotReceived:null,hotStartOverride:null,weather:"",tempC:null,gas:null,notes:"",events:""};
 const OWNER_EMAIL="info@dicanns.ca";
+const WMO_FR=code=>{if(code===0)return"Ensoleillé";if(code<=2)return"Peu nuageux";if(code===3)return"Couvert";if(code<=48)return"Brouillard";if(code<=55)return"Bruine";if(code<=65)return"Pluie";if(code<=75)return"Neige";if(code<=82)return"Averses";if(code<=86)return"Averses de neige";if(code<=99)return"Orageux";return"Variable"};
 
 function genDemo(){const data={};const base=new Date(2024,0,1);for(let i=0;i<366;i++){const d=new Date(base);d.setDate(d.getDate()+i);const dow=d.getDay(),isWe=dow===0||dow===6;const total=Math.max(800,Math.round((isWe?2800:1900)+Math.sin((d.getMonth()/12)*Math.PI)*400+(Math.random()-0.5)*600));data[dk(d)]={venteNet:total,hamUsed:Math.round((18+Math.random()*12)*(0.7+Math.random()*0.25)),hotUsed:Math.round((12+Math.random()*8)*(0.7+Math.random()*0.25))}}return data}
 
@@ -717,6 +718,23 @@ export default function App(){
       window.api.updater.onAvailable(()=>setUpdateAvailable(true));
     }
   },[]);
+
+  useEffect(()=>{
+    if(loading)return;
+    const today=dk(new Date());
+    if(selectedDate!==today)return;
+    if(!apiConfig.weatherLat||!apiConfig.weatherLng)return;
+    const r=getLR(selectedDate);
+    if(r.weather||r.tempC!=null)return;
+    (async()=>{try{
+      const res=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${apiConfig.weatherLat}&longitude=${apiConfig.weatherLng}&current=temperature_2m,weather_code`);
+      const data=await res.json();
+      const code=data?.current?.weather_code;
+      const temp=data?.current?.temperature_2m;
+      if(code!=null)upd(today,"weather",WMO_FR(code));
+      if(temp!=null)upd(today,"tempC",Math.round(temp));
+    }catch(e){}})();
+  },[loading,selectedDate,apiConfig.weatherLat,apiConfig.weatherLng]);
 
   const toggleTheme=useCallback(()=>{
     const next=themeName==='dark'?'light':'dark';
