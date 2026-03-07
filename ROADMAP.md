@@ -135,7 +135,7 @@
 | Feature | Effort | Impact | Description |
 |---------|--------|--------|-------------|
 | ~~**Restore from JSON backup**~~ | ~~Low~~ | ~~High~~ | ✅ Done — "Restaurer depuis backup" button in Config/Export; file dialog + validation + confirmation + SQLite write + reload |
-| **Data validation on save** | Low | Medium | Warn if numbers look unusual (e.g., float > $500, negative deposits) |
+| ~~**Data validation on save**~~ | ~~Low~~ | ~~Medium~~ | ✅ Done — on-blur warnings for all daily tab fields (float, cash, POS, inventory, employees) and P&L tab (bills, overrides) |
 
 ---
 
