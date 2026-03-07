@@ -1,6 +1,6 @@
 # BalanceIQ — Product Roadmap
 ### L'intelligence derrière vos chiffres.
-### Last updated: March 7, 2026 (session 4)
+### Last updated: March 7, 2026 (session 5)
 
 ---
 
@@ -74,11 +74,25 @@
 - [x] Predictive ordering with external factors — multi-factor model (dow + weather category + temp range + Quebec holidays); shows ham/hot/sales estimate for tomorrow with contextual adjustments
 - [x] Intra-day projection on daily tab — once any bread checkpoint is entered, linearly extrapolates end-of-day usage for ham and hot
 
+### ✅ DONE — Livraisons (delivery platform tracking)
+
+- [x] **Livraisons section in daily tab** — placed between Caisses and Inventory; purely informational, zero effect on reconciliation
+- [x] Per-platform fields: "Ventes plateforme" (what the dashboard shows) + "Dépôt reçu" (what landed in the bank)
+- [x] Dépôt can be entered on any date retroactively — common since platforms pay out days later
+- [x] When both fields filled: shows `Écart: -$68,00 (14.2%)` in orange = platform commission
+- [x] When ventes filled but no dépôt: shows "⏳ En attente du dépôt"
+- [x] Daily summary at bottom: total ventes, total dépôts, commission totale
+- [x] Section header subtitle: "Informatif seulement — n'affecte pas la réconciliation des caisses"
+- [x] **P&L tab** — "📱 Plateformes de livraison" informational section showing per-platform monthly ventes/dépôts/commission/%; grand total across all platforms; labeled as informational, not added to P&L expense calculation
+- [x] **Intelligence tab** — "📱 Livraisons — analyse des plateformes" card: average commission % per platform, total ventes, and overdue deposit alerts (7+ days since ventes entered with no dépôt)
+- [x] **Config tab** — "Plateformes de livraison" section: DoorDash 🔴, Uber Eats 🟢, Skip The Dishes 🟠 pre-configured; add custom platforms (📦), remove any; persisted to `dicann-platforms`
+
 ### ✅ DONE — Config tab
 
 - [x] Cashier roster management (add, remove)
 - [x] Employee roster management (add, remove, with saved hourly wage)
 - [x] Supplier list management (add, remove, rename in-place)
+- [x] Delivery platform list management (add, remove) — see Livraisons above
 - [x] API integration fields (Auphan POS, Gas price) — ready for keys
 - [x] Coordonnées météo — GeoSearch component using Open-Meteo geocoding API; type city name → dropdown of results → saves lat/lng/label to apiConfig; shows "📍 Ville — météo configurée"; defaults to Montréal if unconfigured
 - [x] Export: CSV, PDF (print dialog), JSON backup
@@ -192,11 +206,58 @@
 
 ---
 
+## 🔜 READY TO BUILD — Livraisons CSV Import
+
+Per-platform "📥 Importer relevé" button to auto-fill dépôt fields from payout CSV exports.
+
+### Flow
+1. One import button per platform in the Livraisons section (not a global button)
+2. Click → file dialog filtered to `.csv`
+3. Parse based on which platform was clicked
+4. Show preview: dates, amounts, totals
+5. User confirms → auto-fills "Dépôt reçu" on the correct dates
+
+### Platform parsers (auto-detect, flexible mapping)
+
+| Platform | Key columns to detect |
+|----------|----------------------|
+| DoorDash | "Payment Date" / "Deposit Date", "Amount" / "Total Payout", "Period Start" / "Period End" |
+| Uber Eats | "Date", "Payout" / "Total" |
+| Skip The Dishes | "Date", "Net Payout" |
+
+**Flexible column mapping (resilient to format changes):**
+- When a CSV is loaded, show detected column headers to the user
+- If auto-detection fails, show dropdowns: "Quelle colonne contient le montant du dépôt?" / "Quelle colonne contient la date?"
+- Save the column mapping per platform to `dicann-api-config` — so the franchisee only maps once even if the format changes later
+
+### Preview screen (before import)
+```
+DoorDash — 4 dépôts trouvés:
+  3 mars: 412,38 $
+  5 mars: 389,22 $
+  7 mars: 445,60 $
+  10 mars: 401,15 $
+Total: 1 648,35 $
+[Importer]  [Annuler]
+```
+
+### Conflict handling
+- If a dépôt already exists for that date/platform, ask: "Un dépôt existe déjà pour DoorDash le 3 mars (412,38 $). Remplacer?"
+- After import: "✓ 4 dépôts importés pour DoorDash" (green confirmation)
+
+### Scope constraint
+- Only fills "Dépôt reçu" fields
+- Never touches caisses or reconciliation
+- All text in French
+
+---
+
 ## Immediate Next Steps
 
-1. **Contact Auphan** for POS API documentation
-2. **Apple code signing** — $99/year Apple Developer account eliminates "damaged app" warning for Mac users
-3. **Distribute to franchisees** — share Apple Silicon or Intel DMG based on their Mac model
+1. **Livraisons CSV Import** — see section above
+2. **Contact Auphan** for POS API documentation
+3. **Apple code signing** — $99/year Apple Developer account eliminates "damaged app" warning for Mac users
+4. **Distribute to franchisees** — share Apple Silicon or Intel DMG based on their Mac model
 
 ---
 
