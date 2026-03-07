@@ -1,6 +1,6 @@
 # BalanceIQ — Product Roadmap
 ### L'intelligence derrière vos chiffres.
-### Last updated: March 7, 2026 (session 5)
+### Last updated: March 7, 2026 (session 6)
 
 ---
 
@@ -86,6 +86,8 @@
 - [x] **P&L tab** — "📱 Plateformes de livraison" informational section showing per-platform monthly ventes/dépôts/commission/%; grand total across all platforms; labeled as informational, not added to P&L expense calculation
 - [x] **Intelligence tab** — "📱 Livraisons — analyse des plateformes" card: average commission % per platform, total ventes, and overdue deposit alerts (7+ days since ventes entered with no dépôt)
 - [x] **Config tab** — "Plateformes de livraison" section: DoorDash 🔴, Uber Eats 🟢, Skip The Dishes 🟠 pre-configured; add custom platforms (📦), remove any; persisted to `dicann-platforms`
+- [x] **Livraisons section collapsible** — click header to collapse/expand, same pattern as employees section
+- [x] **CSV import per platform** — "📥 Importer relevé" button per platform; file dialog filtered to .csv; auto-detects date/amount columns per platform (with known column hints for DoorDash/Uber Eats/Skip); if auto-detect fails, shows dropdown column mapper that saves the mapping to `dicann-api-config.csvColumnMaps` (persisted per platform); preview screen shows all found dates + amounts + total before import; conflict handling when a dépôt already exists (Remplacer tout / Ignorer les conflits / Annuler); success confirmation message auto-dismisses after 4s; aggregates multiple rows per date; handles ISO, MM/DD/YYYY, YYYY/MM/DD, and named-month date formats
 
 ### ✅ DONE — Config tab
 
@@ -206,58 +208,11 @@
 
 ---
 
-## 🔜 READY TO BUILD — Livraisons CSV Import
-
-Per-platform "📥 Importer relevé" button to auto-fill dépôt fields from payout CSV exports.
-
-### Flow
-1. One import button per platform in the Livraisons section (not a global button)
-2. Click → file dialog filtered to `.csv`
-3. Parse based on which platform was clicked
-4. Show preview: dates, amounts, totals
-5. User confirms → auto-fills "Dépôt reçu" on the correct dates
-
-### Platform parsers (auto-detect, flexible mapping)
-
-| Platform | Key columns to detect |
-|----------|----------------------|
-| DoorDash | "Payment Date" / "Deposit Date", "Amount" / "Total Payout", "Period Start" / "Period End" |
-| Uber Eats | "Date", "Payout" / "Total" |
-| Skip The Dishes | "Date", "Net Payout" |
-
-**Flexible column mapping (resilient to format changes):**
-- When a CSV is loaded, show detected column headers to the user
-- If auto-detection fails, show dropdowns: "Quelle colonne contient le montant du dépôt?" / "Quelle colonne contient la date?"
-- Save the column mapping per platform to `dicann-api-config` — so the franchisee only maps once even if the format changes later
-
-### Preview screen (before import)
-```
-DoorDash — 4 dépôts trouvés:
-  3 mars: 412,38 $
-  5 mars: 389,22 $
-  7 mars: 445,60 $
-  10 mars: 401,15 $
-Total: 1 648,35 $
-[Importer]  [Annuler]
-```
-
-### Conflict handling
-- If a dépôt already exists for that date/platform, ask: "Un dépôt existe déjà pour DoorDash le 3 mars (412,38 $). Remplacer?"
-- After import: "✓ 4 dépôts importés pour DoorDash" (green confirmation)
-
-### Scope constraint
-- Only fills "Dépôt reçu" fields
-- Never touches caisses or reconciliation
-- All text in French
-
----
-
 ## Immediate Next Steps
 
-1. **Livraisons CSV Import** — see section above
-2. **Contact Auphan** for POS API documentation
-3. **Apple code signing** — $99/year Apple Developer account eliminates "damaged app" warning for Mac users
-4. **Distribute to franchisees** — share Apple Silicon or Intel DMG based on their Mac model
+1. **Contact Auphan** for POS API documentation
+2. **Apple code signing** — $99/year Apple Developer account eliminates "damaged app" warning for Mac users
+3. **Distribute to franchisees** — share Apple Silicon or Intel DMG based on their Mac model
 
 ---
 
