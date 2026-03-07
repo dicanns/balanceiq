@@ -12,8 +12,8 @@
 | Desktop wrapper | Electron.js | ✅ Built |
 | Database | SQLite (replaces browser storage) | ✅ Built |
 | Gas price fetch | CAA Canada scraper (cheerio) | ✅ Wired |
-| Weather API | Open-Meteo (free, no key) | 🔲 Next |
-| Packaging | electron-builder (.exe + .dmg) | 🔲 Next |
+| Weather API | Open-Meteo (free, no key) | ✅ Built |
+| Packaging | electron-builder (.exe + .dmg) | ✅ Built |
 
 ---
 
@@ -149,17 +149,17 @@
 2. ✅ Migrate current code, rebrand to BalanceIQ
 3. ✅ Replace `window.storage` with SQLite
 4. ✅ Wire gas price scraper (CAA Canada — fallback since Régie is JS-rendered)
-5. 🔲 Wire Open-Meteo weather API (free, no key needed)
-6. 🔲 Configure electron-builder
-7. 🔲 Build .exe (Windows) and .dmg (Mac)
-8. 🔲 Test on both platforms
+5. ✅ Wire Open-Meteo weather API — auto-fills Météo + Temp on daily report
+6. ✅ Configure electron-builder
+7. ✅ Build .exe (Windows) and .dmg (Mac — Apple Silicon + Intel)
+8. ✅ Test on both platforms
 
 ### Phase 3 — API Integrations
 
 | Integration | Status | Next step |
 |-------------|--------|-----------|
 | Auphan POS | Config field ready | Contact Auphan for API docs |
-| Weather (Open-Meteo) | 🔲 Not wired | Wire in Electron — free, no key |
+| Weather (Open-Meteo) | ✅ Done | Auto-fills weather + temp from current conditions |
 | Gas (CAA scraper) | ✅ Done | Working — fetches daily average from CAA Canada |
 | Holidays QC | ✅ Done | — |
 
@@ -194,10 +194,9 @@
 
 ## Immediate Next Steps
 
-1. **Wire Open-Meteo weather API** — auto-fill Météo and Temp fields on daily report
-2. **Configure electron-builder** — `npm run build` → .dmg (Mac) + .exe (Windows)
-3. **Test installers** on both platforms
-4. **Contact Auphan** for POS API documentation
+1. **Contact Auphan** for POS API documentation
+2. **Apple code signing** — $99/year Apple Developer account eliminates "damaged app" warning for Mac users
+3. **Distribute to franchisees** — share Apple Silicon or Intel DMG based on their Mac model
 
 ---
 
