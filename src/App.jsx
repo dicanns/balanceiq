@@ -848,7 +848,6 @@ export default function App(){
   return(
     <ThemeCtx.Provider value={theme}>
       <div style={{minHeight:"100vh",background:t.bg,fontFamily:"'Outfit','Helvetica Neue',sans-serif",color:t.text,transition:"background 0.2s,color 0.2s"}}>
-        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 
         {/* ── HEADER ── */}
         <div style={{background:t.headerBg,borderBottom:`1px solid ${t.headerBorder}`,padding:"9px 15px"}}>
