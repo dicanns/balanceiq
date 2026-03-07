@@ -46,15 +46,7 @@
     "mac": {
       "category": "public.app-category.business",
       "icon": "build/icon.icns",
-      "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        }
-      ]
+      "target": "dmg"
     },
     "dmg": {
       "title": "BalanceIQ ${version}",
