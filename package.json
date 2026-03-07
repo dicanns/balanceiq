@@ -15,6 +15,7 @@
   "dependencies": {
     "better-sqlite3": "^12.6.2",
     "cheerio": "^1.2.0",
+    "electron-updater": "^6.8.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -46,24 +47,49 @@
       "category": "public.app-category.business",
       "icon": "build/icon.icns",
       "target": [
-        { "target": "dmg", "arch": ["x64", "arm64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ]
     },
     "dmg": {
       "title": "BalanceIQ ${version}",
       "backgroundColor": "#0c0e14",
-      "window": { "width": 540, "height": 380 },
+      "window": {
+        "width": 540,
+        "height": 380
+      },
       "contents": [
-        { "x": 130, "y": 220, "type": "file" },
-        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+        {
+          "x": 130,
+          "y": 220,
+          "type": "file"
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
       ]
     },
     "win": {
       "icon": "build/icon.ico",
       "target": [
-        { "target": "nsis", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
-      "asarUnpack": ["**/*.node"]
+      "asarUnpack": [
+        "**/*.node"
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -72,6 +98,11 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "BalanceIQ"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "dicanns",
+      "repo": "balanceiq"
     }
   }
 }
