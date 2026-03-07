@@ -201,6 +201,20 @@ ipcMain.handle('gas:getPrice', async () => {
 });
 
 function createWindow() {
+  // Verify SQLite loads before creating the window — show a clear error if it fails
+  try {
+    const { storageGet } = require('./src/db/database.js');
+    storageGet('__init_check__');
+  } catch (err) {
+    const { dialog: d } = require('electron');
+    d.showErrorBox(
+      'Erreur base de données — BalanceIQ',
+      `Impossible d'initialiser la base de données SQLite.\n\n${err.message}\n\nSur Mac: exécutez dans Terminal:\n  xattr -cr /Applications/BalanceIQ.app\n\npuis relancez l'application.`
+    );
+    app.quit();
+    return;
+  }
+
   const win = new BrowserWindow({
     width: 1280,
     height: 860,
