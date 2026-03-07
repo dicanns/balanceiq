@@ -115,39 +115,48 @@ const OWNER_EMAIL="info@dicanns.ca";
 function genDemo(){const data={};const base=new Date(2024,0,1);for(let i=0;i<366;i++){const d=new Date(base);d.setDate(d.getDate()+i);const dow=d.getDay(),isWe=dow===0||dow===6;const total=Math.max(800,Math.round((isWe?2800:1900)+Math.sin((d.getMonth()/12)*Math.PI)*400+(Math.random()-0.5)*600));data[dk(d)]={venteNet:total,hamUsed:Math.round((18+Math.random()*12)*(0.7+Math.random()*0.25)),hotUsed:Math.round((12+Math.random()*8)*(0.7+Math.random()*0.25))}}return data}
 
 // ── ATOMS ──
-function F({label,value,onChange,disabled,prefix,suffix,type="number",placeholder,wide,accent:ac,tabIndex:ti}){
+function F({label,value,onChange,disabled,prefix,suffix,type="number",placeholder,wide,accent:ac,tabIndex:ti,warn}){
   const t=useT();
+  const [touched,setTouched]=useState(false);
   const border=disabled?`1px solid ${t.disabledBorder}`:ac?`1px solid rgba(${ac},0.25)`:`1px solid rgba(249,115,22,${value!=null&&value!==""?0.25:0.1})`;
-  return(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"3.5px 0",borderBottom:`1px solid ${t.divider}`,gap:4}}>
-    <span style={{fontSize:11.5,color:disabled?t.textDisabled:t.textSub,fontWeight:500,whiteSpace:"nowrap"}}>{label}</span>
-    <div style={{display:"flex",alignItems:"center",gap:2}}>
-      {prefix&&<span style={{fontSize:10.5,color:t.textDisabled}}>{prefix}</span>}
-      <input type={type} inputMode={type==="number"?"decimal":"text"} placeholder={placeholder||""} value={value??""}
-        onChange={e=>{if(type==="number")onChange(e.target.value===""?null:parseFloat(e.target.value));else onChange(e.target.value)}}
-        onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();const all=Array.from(document.querySelectorAll('input[type="number"]:not([disabled]),input[type="text"]:not([disabled])'));const idx=all.indexOf(e.target);const next=all.slice(idx+1).find(i=>i.value==='');if(next)next.focus();else e.target.blur();}}}
-        disabled={disabled} tabIndex={ti}
-        style={{width:wide?125:80,padding:"3.5px 6px",borderRadius:4,border,background:disabled?t.disabledBg:t.inputBg,color:disabled?t.disabledText:t.inputText,fontFamily:"'DM Mono',monospace",fontSize:12,textAlign:"right",outline:"none"}}/>
-      {suffix&&<span style={{fontSize:10,color:t.textDisabled}}>{suffix}</span>}
+  return(<div>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"3.5px 0",borderBottom:`1px solid ${t.divider}`,gap:4}}>
+      <span style={{fontSize:11.5,color:disabled?t.textDisabled:t.textSub,fontWeight:500,whiteSpace:"nowrap"}}>{label}</span>
+      <div style={{display:"flex",alignItems:"center",gap:2}}>
+        {prefix&&<span style={{fontSize:10.5,color:t.textDisabled}}>{prefix}</span>}
+        <input type={type} inputMode={type==="number"?"decimal":"text"} placeholder={placeholder||""} value={value??""}
+          onChange={e=>{if(type==="number")onChange(e.target.value===""?null:parseFloat(e.target.value));else onChange(e.target.value)}}
+          onBlur={()=>setTouched(true)}
+          onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();const all=Array.from(document.querySelectorAll('input[type="number"]:not([disabled]),input[type="text"]:not([disabled])'));const idx=all.indexOf(e.target);const next=all.slice(idx+1).find(i=>i.value==='');if(next)next.focus();else e.target.blur();}}}
+          disabled={disabled} tabIndex={ti}
+          style={{width:wide?125:80,padding:"3.5px 6px",borderRadius:4,border,background:disabled?t.disabledBg:t.inputBg,color:disabled?t.disabledText:t.inputText,fontFamily:"'DM Mono',monospace",fontSize:12,textAlign:"right",outline:"none"}}/>
+        {suffix&&<span style={{fontSize:10,color:t.textDisabled}}>{suffix}</span>}
+      </div>
     </div>
+    {touched&&warn&&<div style={{fontSize:10,color:"#f97316",padding:"1px 0 2px"}}>{warn}</div>}
   </div>);
 }
 
-function PL({label,value,onChange,prefix}){
+function PL({label,value,onChange,prefix,warn}){
   const t=useT();
   const [local,setLocal]=useState(value??"");
   const [focused,setFocused]=useState(false);
+  const [blurred,setBlurred]=useState(false);
   useEffect(()=>{if(!focused)setLocal(value??"")},[value,focused]);
-  return(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"3.5px 0",borderBottom:`1px solid ${t.divider}`,gap:4}}>
-    <span style={{fontSize:11.5,color:t.textSub,fontWeight:500,whiteSpace:"nowrap"}}>{label}</span>
-    <div style={{display:"flex",alignItems:"center",gap:2}}>
-      {prefix&&<span style={{fontSize:10.5,color:t.textDisabled}}>{prefix}</span>}
-      <input type="number" inputMode="decimal" value={local}
-        onChange={e=>setLocal(e.target.value)}
-        onFocus={()=>setFocused(true)}
-        onBlur={()=>{setFocused(false);const n=local===""?null:parseFloat(local);if(n!==value)onChange(n)}}
-        onKeyDown={e=>{if(e.key==="Enter"){const tgt=e.target;tgt.blur();setTimeout(()=>{const all=Array.from(document.querySelectorAll('input[type="number"]:not([disabled])'));const idx=all.indexOf(tgt);const next=all.slice(idx+1).find(i=>i.value==='');if(next)next.focus();},50);}}}
-        style={{width:80,padding:"3.5px 6px",borderRadius:4,border:`1px solid rgba(249,115,22,${local!==""?0.25:0.1})`,background:t.inputBg,color:t.inputText,fontFamily:"'DM Mono',monospace",fontSize:12,textAlign:"right",outline:"none"}}/>
+  return(<div>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"3.5px 0",borderBottom:`1px solid ${t.divider}`,gap:4}}>
+      <span style={{fontSize:11.5,color:t.textSub,fontWeight:500,whiteSpace:"nowrap"}}>{label}</span>
+      <div style={{display:"flex",alignItems:"center",gap:2}}>
+        {prefix&&<span style={{fontSize:10.5,color:t.textDisabled}}>{prefix}</span>}
+        <input type="number" inputMode="decimal" value={local}
+          onChange={e=>setLocal(e.target.value)}
+          onFocus={()=>setFocused(true)}
+          onBlur={()=>{setFocused(false);setBlurred(true);const n=local===""?null:parseFloat(local);if(n!==value)onChange(n)}}
+          onKeyDown={e=>{if(e.key==="Enter"){const tgt=e.target;tgt.blur();setTimeout(()=>{const all=Array.from(document.querySelectorAll('input[type="number"]:not([disabled])'));const idx=all.indexOf(tgt);const next=all.slice(idx+1).find(i=>i.value==='');if(next)next.focus();},50);}}}
+          style={{width:80,padding:"3.5px 6px",borderRadius:4,border:`1px solid rgba(249,115,22,${local!==""?0.25:0.1})`,background:t.inputBg,color:t.inputText,fontFamily:"'DM Mono',monospace",fontSize:12,textAlign:"right",outline:"none"}}/>
+      </div>
     </div>
+    {blurred&&!focused&&warn&&<div style={{fontSize:10,color:"#f97316",padding:"1px 0 2px"}}>{warn}</div>}
   </div>);
 }
 
@@ -210,21 +219,21 @@ function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,ro
         <div>
           <div style={{fontSize:9.5,color:t.posColor,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,marginBottom:4}}><span style={{width:8,height:8,borderRadius:2,background:t.posColor,display:"inline-block",marginRight:4}}/> Lecture POS</div>
           <div style={{background:`rgba(${t.posRgb},0.05)`,borderRadius:7,padding:8,border:`1px solid rgba(${t.posRgb},0.12)`}}>
-            <F label="Ventes av. taxes" value={cash.posVentes} onChange={v=>onChange({...cash,posVentes:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+1}/>
-            <F label="TPS" value={cash.posTPS} onChange={v=>onChange({...cash,posTPS:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+2}/>
-            <F label="TVQ" value={cash.posTVQ} onChange={v=>onChange({...cash,posTVQ:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+3}/>
-            <F label="Livraisons" value={cash.posLivraisons} onChange={v=>onChange({...cash,posLivraisons:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+4}/>
+            <F label="Ventes av. taxes" value={cash.posVentes} onChange={v=>onChange({...cash,posVentes:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+1} warn={cash.posVentes!=null&&cash.posVentes<0?"⚠️ Le montant ne peut pas être négatif":cash.posVentes!=null&&cash.posVentes>15000?"⚠️ Montant inhabituellement élevé — vérifier":null}/>
+            <F label="TPS" value={cash.posTPS} onChange={v=>onChange({...cash,posTPS:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+2} warn={cash.posTPS!=null&&cash.posTPS<0?"⚠️ Le montant ne peut pas être négatif":null}/>
+            <F label="TVQ" value={cash.posTVQ} onChange={v=>onChange({...cash,posTVQ:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+3} warn={cash.posTVQ!=null&&cash.posTVQ<0?"⚠️ Le montant ne peut pas être négatif":null}/>
+            <F label="Livraisons" value={cash.posLivraisons} onChange={v=>onChange({...cash,posLivraisons:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+4} warn={cash.posLivraisons!=null&&cash.posLivraisons<0?"⚠️ Le montant ne peut pas être négatif":null}/>
             <div style={{marginTop:4,paddingTop:4,borderTop:`1px solid rgba(${t.posRgb},0.15)`}}><RR label="Total POS" value={posOk?posT:null} accent={t.posColor} bold/></div>
           </div>
         </div>
         <div>
           <div style={{fontSize:9.5,color:"#f97316",fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,marginBottom:4}}><span style={{width:8,height:8,borderRadius:2,background:"#f97316",display:"inline-block",marginRight:4}}/> Décompte</div>
           <div style={{background:"rgba(249,115,22,0.04)",borderRadius:7,padding:8,border:"1px solid rgba(249,115,22,0.1)"}}>
-            <F label="Float" value={cash.float} onChange={v=>onChange({...cash,float:v})} prefix="$" tabIndex={index*20+5}/>
-            <F label="Interac" value={cash.interac} onChange={v=>onChange({...cash,interac:v})} prefix="$" tabIndex={index*20+6}/>
-            <F label="Livraisons" value={cash.livraisons} onChange={v=>onChange({...cash,livraisons:v})} prefix="$" tabIndex={index*20+7}/>
-            <F label="Dépôts" value={cash.deposits} onChange={v=>onChange({...cash,deposits:v})} prefix="$" tabIndex={index*20+8}/>
-            <F label="Cash final" value={cash.finalCash} onChange={v=>onChange({...cash,finalCash:v})} prefix="$" tabIndex={index*20+9}/>
+            <F label="Float" value={cash.float} onChange={v=>onChange({...cash,float:v})} prefix="$" tabIndex={index*20+5} warn={cash.float!=null&&cash.float>500?"⚠️ Float inhabituellement élevé":cash.float!=null&&cash.float<0?"⚠️ Le float ne peut pas être négatif":null}/>
+            <F label="Interac" value={cash.interac} onChange={v=>onChange({...cash,interac:v})} prefix="$" tabIndex={index*20+6} warn={cash.interac!=null&&cash.interac<0?"⚠️ Le montant ne peut pas être négatif":null}/>
+            <F label="Livraisons" value={cash.livraisons} onChange={v=>onChange({...cash,livraisons:v})} prefix="$" tabIndex={index*20+7} warn={cash.livraisons!=null&&cash.livraisons<0?"⚠️ Le montant ne peut pas être négatif":null}/>
+            <F label="Dépôts" value={cash.deposits} onChange={v=>onChange({...cash,deposits:v})} prefix="$" tabIndex={index*20+8} warn={cash.deposits!=null&&cash.deposits<0?"⚠️ Les dépôts ne peuvent pas être négatifs":null}/>
+            <F label="Cash final" value={cash.finalCash} onChange={v=>onChange({...cash,finalCash:v})} prefix="$" tabIndex={index*20+9} warn={cash.finalCash!=null&&cash.finalCash<0?"⚠️ Le montant ne peut pas être négatif":null}/>
           </div>
         </div>
       </div>
@@ -248,6 +257,7 @@ function BillEntry({label,baseKey,plData,updPL,accent="249,115,22"}){
   const [newDate,setNewDate]=useState('');
   const [newAmt,setNewAmt]=useState('');
   const [newNote,setNewNote]=useState('');
+  const [amtBlurred,setAmtBlurred]=useState(false);
   const bills=plData[`${baseKey}_bills`]||[];
   const total=bills.length?bills.reduce((s,b)=>s+(b.amount||0),0):(plData[baseKey]||0);
   const addBill=()=>{
@@ -291,11 +301,12 @@ function BillEntry({label,baseKey,plData,updPL,accent="249,115,22"}){
         <input type="text" value={newNote} onChange={e=>setNewNote(e.target.value)} placeholder="Note / N° facture..."
           onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();const amt=document.activeElement.closest('div')?.querySelector('input[type="number"]');if(amt)amt.focus();}}}
           style={{padding:"3px 5px",borderRadius:3,border:`1px solid ${accentRgb+"0.15)"}`,background:t.inputBg,color:t.inputText,fontSize:10,outline:"none"}}/>
-        <input type="number" inputMode="decimal" value={newAmt} onChange={e=>setNewAmt(e.target.value)} placeholder="Montant HT"
+        <input type="number" inputMode="decimal" value={newAmt} onChange={e=>{setNewAmt(e.target.value);setAmtBlurred(false);}} onBlur={()=>setAmtBlurred(true)} placeholder="Montant HT"
           onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addBill();}}}
           style={{padding:"3px 5px",borderRadius:3,border:`1px solid ${accentRgb+"0.25)"}`,background:t.inputBg,color:t.inputText,fontFamily:"'DM Mono',monospace",fontSize:10,textAlign:"right",outline:"none"}}/>
         <button onClick={addBill} style={{fontSize:10,padding:"3px 8px",borderRadius:3,border:`1px solid ${accentRgb+"0.25)"}`,background:accentRgb+"0.08)",color:`rgb(${accent})`,cursor:"pointer",fontWeight:700}}>+</button>
       </div>
+      {amtBlurred&&newAmt!==""&&(()=>{const n=parseFloat(newAmt);return n<0?<div style={{fontSize:10,color:"#f97316",padding:"1px 0 2px"}}>⚠️ Le montant ne peut pas être négatif</div>:n>50000?<div style={{fontSize:10,color:"#f97316",padding:"1px 0 2px"}}>⚠️ Montant inhabituellement élevé</div>:null})()}
       <div style={{fontSize:9,color:t.textDim,marginTop:3}}>Tous les montants avant taxes (HT)</div>
     </div>)}
   </div>);
@@ -307,11 +318,35 @@ function openPDF(html){
   if(w){w.document.write(html);w.document.close();setTimeout(()=>w.print(),400)}
 }
 
+// ── EMPLOYEE ROW (daily tab) ──
+function EmpRow({emp,index,empRoster,selectedDate,updEmp,rmEmp}){
+  const t=useT();
+  const [hTouched,setHTouched]=useState(false);
+  const cost=(emp.hours||0)*(emp.wage||0);
+  const hoursWarn=hTouched?(emp.hours!=null&&emp.hours>16?"⚠️ Plus de 16 heures — vérifier":emp.hours!=null&&emp.hours<0?"⚠️ Ne peut pas être négatif":null):null;
+  const wageWarn=emp.wage!=null&&emp.wage<15?"⚠️ Sous le salaire minimum":null;
+  return(<div>
+    <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr auto",gap:6,padding:"3px 0",borderBottom:`1px solid ${t.divider}`,alignItems:"center"}}>
+      <select value={emp.empId||""} onChange={e=>{const eid=e.target.value;const re=empRoster.find(r=>r.id===eid);updEmp(selectedDate,index,{...emp,empId:eid,name:re?.name||"",wage:re?.wage||emp.wage})}} style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.text,fontSize:12,padding:"4px 6px",outline:"none"}}>
+        <option value="" style={{background:t.optionBg}}>— Choisir —</option>
+        {empRoster.map(r=>(<option key={r.id} value={r.id} style={{background:t.optionBg}}>{r.name} ({fmt(r.wage)}/h)</option>))}
+      </select>
+      <input type="number" value={emp.hours??""} onChange={e=>updEmp(selectedDate,index,{...emp,hours:e.target.value===""?null:parseFloat(e.target.value)})} onBlur={()=>setHTouched(true)} placeholder="hrs" style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.inputText,fontSize:12,padding:"3px 5px",textAlign:"right",outline:"none",fontFamily:"'DM Mono',monospace"}}/>
+      <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:t.textMuted,textAlign:"right"}}>{emp.wage?`${emp.wage.toFixed(2)}`:""}</span>
+      <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:t.textSub,textAlign:"right"}}>{cost>0?fmt(cost):"—"}</span>
+      <button onClick={()=>rmEmp(selectedDate,index)} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:4,color:"#ef4444",fontSize:10,padding:"2px 5px",cursor:"pointer"}}>✕</button>
+    </div>
+    {hoursWarn&&<div style={{fontSize:10,color:"#f97316",padding:"1px 0 2px"}}>{hoursWarn}</div>}
+    {wageWarn&&<div style={{fontSize:10,color:"#f97316",padding:"1px 0 2px"}}>{wageWarn}</div>}
+  </div>);
+}
+
 // ── P&L MONTHLY ──
 function MonthlyPL({computeDay,suppliers}){
   const t=useT();
   const [month,setMonth]=useState(()=>{const n=new Date();return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`});
   const [plData,setPlData]=useState({});const [saved,setSaved]=useState(false);const [loaded,setLoaded]=useState(false);const saveRef=useRef(null);
+  const [revTouched,setRevTouched]=useState(false);
 
   useEffect(()=>{setLoaded(false);setSaved(false);(async()=>{try{const r=await window.api.storage.get(`dicann-pl-${month}`);if(r?.value)setPlData(JSON.parse(r.value));else setPlData({})}catch(e){setPlData({})}setLoaded(true)})()},[month]);
 
@@ -380,7 +415,7 @@ function MonthlyPL({computeDay,suppliers}){
         <span style={{fontSize:12,color:t.textSub}}>Ventes nettes <span style={{fontSize:10,color:t.textMuted}}>(auto: {fmt(autoRev)})</span></span>
         {plData._revenueOverride==null
           ?(<div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontFamily:"'DM Mono',monospace",fontSize:14,fontWeight:700,color:"#22c55e"}}>{fmt(autoRev)}</span><button onClick={()=>updPL("_revenueOverride",autoRev)} style={{fontSize:9,padding:"1px 5px",borderRadius:3,border:"1px solid rgba(251,191,36,0.2)",background:"rgba(251,191,36,0.08)",color:t.warnText,cursor:"pointer"}}>✎</button></div>)
-          :(<div style={{display:"flex",gap:4,alignItems:"center"}}><input type="number" value={plData._revenueOverride??""} onChange={e=>updPL("_revenueOverride",e.target.value===""?null:parseFloat(e.target.value))} style={{width:100,padding:"3px 6px",borderRadius:4,border:"1px solid rgba(251,191,36,0.25)",background:"rgba(251,191,36,0.06)",color:t.warnText,fontFamily:"'DM Mono',monospace",fontSize:13,textAlign:"right",outline:"none"}}/><button onClick={()=>updPL("_revenueOverride",null)} style={{fontSize:9,padding:"1px 4px",borderRadius:3,border:"none",background:"rgba(239,68,68,0.1)",color:"#ef4444",cursor:"pointer"}}>✕</button></div>)}
+          :(<div><div style={{display:"flex",gap:4,alignItems:"center"}}><input type="number" value={plData._revenueOverride??""} onChange={e=>updPL("_revenueOverride",e.target.value===""?null:parseFloat(e.target.value))} onBlur={()=>setRevTouched(true)} style={{width:100,padding:"3px 6px",borderRadius:4,border:"1px solid rgba(251,191,36,0.25)",background:"rgba(251,191,36,0.06)",color:t.warnText,fontFamily:"'DM Mono',monospace",fontSize:13,textAlign:"right",outline:"none"}}/><button onClick={()=>{updPL("_revenueOverride",null);setRevTouched(false)}} style={{fontSize:9,padding:"1px 4px",borderRadius:3,border:"none",background:"rgba(239,68,68,0.1)",color:"#ef4444",cursor:"pointer"}}>✕</button></div>{revTouched&&plData._revenueOverride!=null&&plData._revenueOverride<0&&<div style={{fontSize:10,color:"#f97316",padding:"1px 0 2px"}}>⚠️ Le montant ne peut pas être négatif</div>}</div>)}
       </div>
     </Sec>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
@@ -397,7 +432,7 @@ function MonthlyPL({computeDay,suppliers}){
     </div>
     <Sec title="Main d'œuvre" color="56,189,248">
       <div style={{fontSize:11,color:t.textMuted,marginBottom:4}}>Auto (rapports quotidiens): {fmt(autoLab)}</div>
-      <PL label="Override mensuel" value={plData.labourOverride} onChange={v=>updPL("labourOverride",v)} prefix="$"/>
+      <PL label="Override mensuel" value={plData.labourOverride} onChange={v=>updPL("labourOverride",v)} prefix="$" warn={plData.labourOverride!=null&&plData.labourOverride<0?"⚠️ Le montant ne peut pas être négatif":null}/>
       <RR label="Total" value={labC} accent="#38bdf8" bold/>{revenue>0&&<RR label="%" value={`${labP.toFixed(1)}%`} unit="" accent={labP>35?"#ef4444":labP>28?t.warnText:"#22c55e"}/>}
     </Sec>
     <div style={{background:np>=0?t.reconBalBg:t.reconErrBg,border:`1px solid ${np>=0?t.reconBalBorder:t.reconErrBorder}`,borderRadius:10,padding:14}}>
@@ -845,8 +880,8 @@ export default function App(){
                     {!hasOv
                       ?(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"3.5px 0",borderBottom:`1px solid ${t.divider}`}}><span style={{fontSize:11.5,color:t.textSub}}>Début</span><div style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:t.text,fontWeight:600}}>{startV??"-"}</span><button onClick={()=>upd(selectedDate,`${pre}StartOverride`,startV??0)} style={{fontSize:9,padding:"1px 5px",borderRadius:3,border:"1px solid rgba(251,191,36,0.2)",background:"rgba(251,191,36,0.08)",color:t.warnText,cursor:"pointer"}}>✎</button></div></div>)
                       :(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"3.5px 0",borderBottom:"1px solid rgba(251,191,36,0.2)"}}><span style={{fontSize:11.5,color:t.warnText}}>Ajusté</span><div style={{display:"flex",alignItems:"center",gap:3}}><input type="number" value={raw[`${pre}StartOverride`]??""} onChange={e=>upd(selectedDate,`${pre}StartOverride`,e.target.value===""?null:parseFloat(e.target.value))} style={{width:50,padding:"2px 5px",borderRadius:4,border:"1px solid rgba(251,191,36,0.25)",background:"rgba(251,191,36,0.06)",color:t.warnText,fontFamily:"'DM Mono',monospace",fontSize:12,textAlign:"right",outline:"none"}}/><button onClick={()=>upd(selectedDate,`${pre}StartOverride`,null)} style={{fontSize:9,padding:"1px 4px",borderRadius:3,border:"none",background:"rgba(239,68,68,0.1)",color:"#ef4444",cursor:"pointer"}}>✕</button></div></div>)}
-                    <F label="+ Reçu" value={raw[`${pre}Received`]} onChange={v=>upd(selectedDate,`${pre}Received`,v)}/>
-                    <F label="Fin journée" value={raw[`${pre}End`]} onChange={v=>upd(selectedDate,`${pre}End`,v)}/>
+                    <F label="+ Reçu" value={raw[`${pre}Received`]} onChange={v=>upd(selectedDate,`${pre}Received`,v)} warn={raw[`${pre}Received`]!=null&&raw[`${pre}Received`]<0?"⚠️ Ne peut pas être négatif":null}/>
+                    <F label="Fin journée" value={raw[`${pre}End`]} onChange={v=>upd(selectedDate,`${pre}End`,v)} warn={endV!=null&&endV<0?"⚠️ Ne peut pas être négatif":startV!=null&&endV!=null&&endV>(startV+(raw[`${pre}Received`]||0))?"⚠️ Fin > Début + Reçu — vérifier":null}/>
                     <div style={{marginTop:3,paddingTop:3,borderTop:`1px solid ${t.divider}`}}><RR label="Utilisé" value={usedV} unit=""/></div>
                     {endV!=null&&endV<5&&endV>=0&&<div style={{fontSize:9.5,color:t.warnText,marginTop:2}}>Stock faible</div>}
                   </div>))}
@@ -949,16 +984,7 @@ export default function App(){
                 <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr auto",gap:6,padding:"4px 0",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:4}}>
                   {["Employé","Heures","$/h","Coût",""].map((h,i)=>(<span key={i} style={{fontSize:10,color:t.textMuted,fontWeight:600,textAlign:i>0&&i<4?"right":"left"}}>{h}</span>))}
                 </div>
-                {emps.map((emp,i)=>{const cost=(emp.hours||0)*(emp.wage||0);return(<div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr auto",gap:6,padding:"3px 0",borderBottom:`1px solid ${t.divider}`,alignItems:"center"}}>
-                  <select value={emp.empId||""} onChange={e=>{const eid=e.target.value;const re=empRoster.find(r=>r.id===eid);updEmp(selectedDate,i,{...emp,empId:eid,name:re?.name||"",wage:re?.wage||emp.wage})}} style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.text,fontSize:12,padding:"4px 6px",outline:"none"}}>
-                    <option value="" style={{background:t.optionBg}}>— Choisir —</option>
-                    {empRoster.map(r=>(<option key={r.id} value={r.id} style={{background:t.optionBg}}>{r.name} ({fmt(r.wage)}/h)</option>))}
-                  </select>
-                  <input type="number" value={emp.hours??""} onChange={e=>updEmp(selectedDate,i,{...emp,hours:e.target.value===""?null:parseFloat(e.target.value)})} placeholder="hrs" style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.inputText,fontSize:12,padding:"3px 5px",textAlign:"right",outline:"none",fontFamily:"'DM Mono',monospace"}}/>
-                  <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:t.textMuted,textAlign:"right"}}>{emp.wage?`${emp.wage.toFixed(2)}`:""}</span>
-                  <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:t.textSub,textAlign:"right"}}>{cost>0?fmt(cost):"—"}</span>
-                  <button onClick={()=>rmEmp(selectedDate,i)} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:4,color:"#ef4444",fontSize:10,padding:"2px 5px",cursor:"pointer"}}>✕</button>
-                </div>)})}
+                {emps.map((emp,i)=>(<EmpRow key={i} emp={emp} index={i} empRoster={empRoster} selectedDate={selectedDate} updEmp={updEmp} rmEmp={rmEmp}/>))}
                 <div style={{display:"flex",gap:6,marginTop:6,flexWrap:"wrap"}}>
                   <select id="addEmpSelect" style={{background:t.inputBg,border:`1px solid rgba(249,115,22,0.18)`,borderRadius:5,color:t.text,fontSize:12,padding:"4px 8px",outline:"none"}}>
                     <option value="" style={{background:t.optionBg}}>— Ajouter un employé —</option>
