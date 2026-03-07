@@ -450,6 +450,12 @@ function MonthlyPL({computeDay,suppliers}){
     window.open(`mailto:${OWNER_EMAIL}?subject=${subj}&body=${body}`);
   };
 
+  const handleReset=()=>{
+    if(!window.confirm(`Réinitialiser toutes les données P&L pour ${MONTHS_FR[m-1]} ${y} ?\n\nCette action est irréversible.`))return;
+    setPlData({});
+    window.api.storage.set(`dicann-pl-${month}`,JSON.stringify({})).catch(()=>{});
+  };
+
   // P&L section — light theme uses left border instead of tinted bg
   const Sec=({title,color,children})=>{
     const isLight=t.name==='light';
@@ -501,6 +507,7 @@ function MonthlyPL({computeDay,suppliers}){
       <button onClick={handleSave} style={{padding:"9px 20px",borderRadius:7,border:"none",cursor:"pointer",fontWeight:700,fontSize:13,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>Sauvegarder & Imprimer PDF</button>
       <button onClick={handleEmail} style={{padding:"9px 16px",borderRadius:7,border:"1px solid rgba(34,197,94,0.2)",background:"rgba(34,197,94,0.08)",color:"#16a34a",cursor:"pointer",fontWeight:600,fontSize:12}}>Envoyer à {OWNER_EMAIL}</button>
       {saved&&<span style={{fontSize:12,color:"#16a34a",fontWeight:600}}>✓ Sauvegardé</span>}
+      <button onClick={handleReset} style={{padding:"9px 16px",borderRadius:7,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.08)",color:"#ef4444",cursor:"pointer",fontWeight:600,fontSize:12,marginLeft:"auto"}}>Réinitialiser le mois</button>
     </div>
   </div>);
 }
