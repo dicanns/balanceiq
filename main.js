@@ -1,5 +1,7 @@
-const { app, BrowserWindow, ipcMain, net } = require('electron');
+const { app, BrowserWindow, ipcMain, net, dialog } = require('electron');
 const path = require('path');
+const fs = require('fs');
+const { autoUpdater } = require('electron-updater');
 const { storageGet, storageSet } = require('./src/db/database.js');
 
 // IPC handlers for storage
@@ -9,6 +11,59 @@ ipcMain.handle('storage:get', (event, key) => {
 
 ipcMain.handle('storage:set', (event, key, value) => {
   return storageSet(key, value);
+});
+
+// IPC handler — restore from backup
+ipcMain.handle('backup:restore', async () => {
+  const win = BrowserWindow.getFocusedWindow();
+
+  const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+    title: 'Restaurer depuis backup',
+    filters: [{ name: 'BalanceIQ Backup', extensions: ['json'] }],
+    properties: ['openFile'],
+  });
+
+  if (canceled || filePaths.length === 0) return { cancelled: true };
+
+  let data;
+  try {
+    const content = fs.readFileSync(filePaths[0], 'utf-8');
+    data = JSON.parse(content);
+  } catch {
+    return { error: "Fichier invalide — vérifier que c'est un backup BalanceIQ" };
+  }
+
+  const required = ['liveData', 'roster', 'empRoster', 'suppliers'];
+  if (!required.every(k => k in data)) {
+    return { error: "Fichier invalide — vérifier que c'est un backup BalanceIQ" };
+  }
+
+  const { response } = await dialog.showMessageBox(win, {
+    type: 'warning',
+    buttons: ['Annuler', 'Restaurer'],
+    defaultId: 1,
+    cancelId: 0,
+    title: 'Restaurer backup',
+    message: 'Ceci va remplacer toutes vos données actuelles. Êtes-vous sûr?',
+  });
+
+  if (response === 0) return { cancelled: true };
+
+  storageSet('dicann-v7', JSON.stringify(data.liveData));
+  storageSet('dicann-roster', JSON.stringify(data.roster));
+  storageSet('dicann-emp-roster', JSON.stringify(data.empRoster));
+  storageSet('dicann-suppliers-v2', JSON.stringify(data.suppliers));
+  if (data.apiConfig) storageSet('dicann-api-config', JSON.stringify(data.apiConfig));
+
+  await dialog.showMessageBox(win, {
+    type: 'info',
+    buttons: ['OK'],
+    title: 'BalanceIQ',
+    message: '✓ Données restaurées avec succès',
+  });
+
+  win.webContents.reload();
+  return { success: true };
 });
 
 // IPC handler — gas price scraper (CAA Canada — prix moyen national, source statique)
@@ -98,12 +153,35 @@ function createWindow() {
   }
 }
 
+// IPC handler — trigger update download + install
+ipcMain.handle('updater:downloadAndInstall', () => {
+  autoUpdater.downloadUpdate().catch(() => {});
+});
+
 app.whenReady().then(() => {
   createWindow();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+
+  // Auto-updater — only runs in packaged app (not dev)
+  if (app.isPackaged) {
+    autoUpdater.autoDownload = false;
+    autoUpdater.autoInstallOnAppQuit = true;
+
+    autoUpdater.on('update-available', () => {
+      BrowserWindow.getAllWindows().forEach(w =>
+        w.webContents.send('update:available')
+      );
+    });
+
+    autoUpdater.on('update-downloaded', () => {
+      autoUpdater.quitAndInstall(false, true);
+    });
+
+    autoUpdater.checkForUpdates().catch(() => {});
+  }
 });
 
 app.on('window-all-closed', () => {

@@ -81,13 +81,15 @@
 - [x] Supplier list management (add, remove, rename in-place)
 - [x] API integration fields (Auphan POS, Weather, Gas price) — ready for keys
 - [x] Export: CSV, PDF (print dialog), JSON backup
+- [x] Restore from JSON backup — file dialog, validation, confirmation, SQLite write, reload
 - [x] Light / dark theme toggle — "Warm" light theme + persistent preference (SQLite)
 
 ### ✅ DONE — Electron + Infrastructure
 
 - [x] Electron main process (`main.js`) with IPC handlers
 - [x] SQLite via `better-sqlite3` — key-value store replacing `window.storage`
-- [x] `preload.js` contextBridge — exposes `window.api.storage` and `window.api.gas`
+- [x] `preload.js` contextBridge — exposes `window.api.storage`, `window.api.gas`, `window.api.backup`, `window.api.updater`
+- [x] Auto-updater — `electron-updater` wired; checks GitHub Releases on launch (production only); orange notification bar with "Installer" button; `autoDownload=false` until user confirms
 - [x] Vite dev server + Electron concurrently for development
 - [x] `cheerio` installed for HTML parsing
 - [x] Gas price IPC handler (`gas:getPrice`) — fetches CAA Canada, parses `national_single_price`
@@ -132,7 +134,7 @@
 
 | Feature | Effort | Impact | Description |
 |---------|--------|--------|-------------|
-| **Restore from JSON backup** | Low | High | Upload a backup file to restore all data |
+| ~~**Restore from JSON backup**~~ | ~~Low~~ | ~~High~~ | ✅ Done — "Restaurer depuis backup" button in Config/Export; file dialog + validation + confirmation + SQLite write + reload |
 | **Data validation on save** | Low | Medium | Warn if numbers look unusual (e.g., float > $500, negative deposits) |
 
 ---

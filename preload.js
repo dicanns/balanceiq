@@ -8,4 +8,11 @@ contextBridge.exposeInMainWorld('api', {
   gas: {
     getPrice: () => ipcRenderer.invoke('gas:getPrice'),
   },
+  backup: {
+    restore: () => ipcRenderer.invoke('backup:restore'),
+  },
+  updater: {
+    onAvailable: (cb) => ipcRenderer.on('update:available', () => cb()),
+    downloadAndInstall: () => ipcRenderer.invoke('updater:downloadAndInstall'),
+  },
 });

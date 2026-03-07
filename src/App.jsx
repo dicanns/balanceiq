@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useContext, createContext } from "react";
+import { version as appVersion } from "../package.json";
 
 // ── THEME ──
 const DARK = {
@@ -584,6 +585,9 @@ export default function App(){
   const [empRoster,setEmpRoster]=useState([]);
   const [suppliers,setSuppliers]=useState(DEFAULT_SUPPLIERS);
   const [apiConfig,setApiConfig]=useState({auphanKey:"",weatherKey:"",gasKey:""});
+  const [restoreMsg,setRestoreMsg]=useState('');
+  const [updateAvailable,setUpdateAvailable]=useState(false);
+  const [updating,setUpdating]=useState(false);
   const [themeName,setThemeName]=useState('dark');
   const theme=themeName==='light'?LIGHT:DARK;
 
@@ -613,6 +617,12 @@ export default function App(){
     try{const r5=await window.api.storage.get("balanceiq-theme");if(r5?.value==='light'||r5?.value==='dark')setThemeName(r5.value)}catch(e){}
     setLoading(false);
   })()},[]);
+
+  useEffect(()=>{
+    if(window.api?.updater){
+      window.api.updater.onAvailable(()=>setUpdateAvailable(true));
+    }
+  },[]);
 
   const toggleTheme=useCallback(()=>{
     const next=themeName==='dark'?'light':'dark';
@@ -762,6 +772,14 @@ export default function App(){
             </div>
           </div>
         </div>
+
+        {/* ── UPDATE BAR ── */}
+        {updateAvailable&&<div style={{background:"linear-gradient(90deg,rgba(249,115,22,0.15),rgba(234,88,12,0.1))",borderBottom:"1px solid rgba(249,115,22,0.3)",padding:"7px 15px",display:"flex",alignItems:"center",justifyContent:"center",gap:12}}>
+          <span style={{fontSize:12,color:"#f97316",fontWeight:600}}>
+            {updating?"Téléchargement en cours...":"Nouvelle version disponible — Cliquer pour mettre à jour"}
+          </span>
+          {!updating&&<button onClick={async()=>{setUpdating(true);await window.api.updater.downloadAndInstall();}} style={{padding:"3px 12px",borderRadius:5,border:"1px solid rgba(249,115,22,0.5)",background:"rgba(249,115,22,0.2)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11}}>Installer</button>}
+        </div>}
 
         {/* ── DATE NAV + TABS ── */}
         <div style={{maxWidth:1120,margin:"0 auto",padding:"8px 15px 0"}}>
@@ -1053,11 +1071,16 @@ export default function App(){
                 <button onClick={()=>{const h="Date,Vente Nette,Total Brut,TPS,TVQ\n";let r="";Object.keys(liveData).sort().forEach(k=>{const c=computeDay(k);if(c.venteNet>0)r+=`${k},${c.venteNet},${c.total},${c.tps},${c.tvq}\n`});const b=new Blob([h+r],{type:"text/csv"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="balanceiq.csv";document.body.appendChild(a);a.click();document.body.removeChild(a)}} style={{padding:"7px 14px",borderRadius:6,border:"1px solid rgba(34,197,94,0.2)",background:"rgba(34,197,94,0.08)",color:"#16a34a",cursor:"pointer",fontWeight:600,fontSize:12}}>CSV</button>
                 <button onClick={()=>{let h=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>BalanceIQ</title><style>body{font:12px Arial;margin:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:3px 6px;text-align:right}th{background:#f5f5f5}td:first-child{text-align:left}h1{color:#ea580c}</style></head><body><h1>Rapport BalanceIQ</h1><table><tr><th>Date</th><th>Vente Nette</th><th>Total</th></tr>`;Object.keys(liveData).sort().forEach(k=>{const c=computeDay(k);if(c.venteNet>0)h+=`<tr><td>${k}</td><td>${c.venteNet.toFixed(2)}</td><td>${c.total.toFixed(2)}</td></tr>`});h+=`</table></body></html>`;openPDF(h)}} style={{padding:"7px 14px",borderRadius:6,border:`1px solid rgba(${t.posRgb},0.2)`,background:`rgba(${t.posRgb},0.08)`,color:t.posColor,cursor:"pointer",fontWeight:600,fontSize:12}}>PDF</button>
                 <button onClick={()=>{const b=new Blob([JSON.stringify({liveData,roster,empRoster,suppliers,apiConfig},null,2)],{type:"application/json"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="balanceiq-backup.json";document.body.appendChild(a);a.click();document.body.removeChild(a)}} style={{padding:"7px 14px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12}}>Backup JSON</button>
+                <button onClick={async()=>{setRestoreMsg('');const r=await window.api.backup.restore();if(r?.error)setRestoreMsg(r.error);}} style={{padding:"7px 14px",borderRadius:6,border:"1px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontWeight:600,fontSize:12}}>Restaurer depuis backup</button>
               </div>
+              {restoreMsg&&<div style={{marginTop:6,fontSize:12,color:"#ef4444"}}>{restoreMsg}</div>}
             </div>
 
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
               <span style={{fontSize:11.5,color:t.textSub}}>Jours: <strong style={{color:"#f97316"}}>{Object.keys(liveData).length}</strong> · Caissiers: <strong style={{color:"#f97316"}}>{roster.length}</strong> · Employés: <strong style={{color:"#f97316"}}>{empRoster.length}</strong> · Fournisseurs: <strong style={{color:"#f97316"}}>{suppliers.length}</strong></span>
+            </div>
+            <div style={{textAlign:"center",padding:"4px 0 2px"}}>
+              <span style={{fontSize:10.5,color:t.textSub,fontFamily:"'DM Mono',monospace"}}>BalanceIQ v{appVersion}</span>
             </div>
           </div>)}
 
