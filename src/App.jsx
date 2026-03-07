@@ -106,6 +106,7 @@ const dk=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${Stri
 const prevDk=s=>{const d=new Date(s+"T12:00:00");d.setDate(d.getDate()-1);return dk(d)};
 const getHol=d=>{const k=`${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;return QC_HOL[k]||null};
 const DEFAULT_SUPPLIERS=[{id:"1",name:"Dubord"},{id:"2",name:"Carrousel"},{id:"3",name:"St. Sylvain"},{id:"4",name:"Pepsi"},{id:"5",name:"Pain"},{id:"6",name:"Sauce"},{id:"7",name:"Costco"}];
+const DEFAULT_PLATFORMS=[{id:"doordash",name:"DoorDash",emoji:"🔴"},{id:"ubereats",name:"Uber Eats",emoji:"🟢"},{id:"skip",name:"Skip The Dishes",emoji:"🟠"}];
 const EXPENSE_ITEMS=[["hydro","Hydro"],["gazNat","Gaz Nat/Prop"],["allocAuto","Alloc. d'auto"],["depenseAuto","Dépense Auto"],["cell","Cell"],["telInternet","Tel/Internet"],["fraisProf","Frais Prof"],["assurances","Assurances"],["adPromo","Ad & Promo"],["dons","Dons"],["taxMuni","Tax Muni"],["permisGov","Permis Gov't"],["loyer","Loyer"],["csst","CSST"],["reparations","Réparations"],["equipDecor","Équipement/Décor"]];
 const BLANK_CASH={cashierId:"",posVentes:null,posTPS:null,posTVQ:null,posLivraisons:null,float:null,interac:null,livraisons:null,deposits:null,finalCash:null};
 const BLANK_EMP={name:"",hours:null,wage:null};
@@ -247,6 +248,54 @@ function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,ro
         </div>
         {canR?(<div style={{marginTop:8,padding:"7px 10px",borderRadius:6,textAlign:"center",background:bal?"rgba(34,197,94,0.08)":"rgba(239,68,68,0.08)"}}>{bal?<span style={{fontSize:13,fontWeight:700,color:"#16a34a"}}>✓ BALANCÉ — {fmt(manT)}</span>:<div><span style={{fontSize:13,fontWeight:700,color:"#dc2626"}}>✗ ÉCART {fmt(Math.abs(ecart))}</span><div style={{fontSize:11,color:"#dc2626",marginTop:1}}>{ecart>0?"Surplus":"Manque"} de {fmt(Math.abs(ecart))}</div></div>}</div>):(<div style={{marginTop:8,padding:"7px 10px",borderRadius:6,textAlign:"center",background:t.reconNeutralBg,border:`1px solid ${t.reconNeutralBorder}`}}><span style={{fontSize:11.5,color:t.textMuted}}>{fc===0?"Remplir pour réconcilier":!posOk?"⬅ Remplir POS":"➡ Compléter décompte"}</span></div>)}
       </div>
+    </div>)}
+  </div>);
+}
+
+// ── LIVRAISONS SECTION ──
+function LivraisonsSection({platforms,selectedDate,raw,upd}){
+  const t=useT();
+  const platData=raw.platformLivraisons||{};
+  const getPD=pid=>platData[pid]||{ventes:null,depot:null};
+  const updPD=(pid,field,val)=>{
+    const cur=platData[pid]||{ventes:null,depot:null};
+    upd(selectedDate,"platformLivraisons",{...platData,[pid]:{...cur,[field]:val}});
+  };
+  const totalVentes=platforms.reduce((s,p)=>s+(getPD(p.id).ventes||0),0);
+  const totalDepots=platforms.reduce((s,p)=>s+(getPD(p.id).depot||0),0);
+  const totalComm=totalVentes-totalDepots;
+  const totalCommPct=totalVentes>0?(totalComm/totalVentes*100):0;
+  return(<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+    <div style={{marginBottom:8}}>
+      <div style={{fontSize:13,fontWeight:700,color:t.text}}>📱 Livraisons — suivi des plateformes</div>
+      <div style={{fontSize:10,color:t.textMuted,marginTop:2,fontStyle:"italic"}}>Informatif seulement — n'affecte pas la réconciliation des caisses</div>
+    </div>
+    {platforms.length===0&&(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>Aucune plateforme configurée — ajouter dans Config</div>)}
+    {platforms.map(platform=>{
+      const pd=getPD(platform.id);
+      const hasV=pd.ventes!=null;
+      const hasD=pd.depot!=null;
+      const ecart=(hasV&&hasD)?pd.depot-pd.ventes:null;
+      const ecartPct=(ecart!=null&&pd.ventes>0)?(Math.abs(ecart)/pd.ventes*100):null;
+      return(<div key={platform.id} style={{marginBottom:8,padding:10,borderRadius:7,background:t.section,border:`1px solid ${t.sectionBorder}`}}>
+        <div style={{fontSize:12,fontWeight:700,color:t.text,marginBottom:6}}>{platform.emoji} {platform.name}</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          <F label="Ventes plateforme" value={pd.ventes} onChange={v=>updPD(platform.id,"ventes",v)} prefix="$"/>
+          <F label="Dépôt reçu" value={pd.depot} onChange={v=>updPD(platform.id,"depot",v)} prefix="$"/>
+        </div>
+        <div style={{marginTop:5,fontSize:11}}>
+          {ecart!=null?(<span style={{color:"#f97316",fontWeight:600,fontFamily:"'DM Mono',monospace"}}>Écart: {fmt(ecart)}{ecartPct!=null?` (${ecartPct.toFixed(1)}%)`:""}</span>):hasV?(<span style={{color:t.textMuted}}>⏳ En attente du dépôt</span>):null}
+        </div>
+      </div>);
+    })}
+    {platforms.length>0&&(<div style={{marginTop:4,padding:"8px 10px",borderRadius:7,background:t.reconNeutralBg,border:`1px solid ${t.reconNeutralBorder}`}}>
+      <div style={{fontSize:9.5,color:t.textMuted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.7,marginBottom:4}}>Sommaire du jour — informatif</div>
+      <RR label="Total ventes plateformes" value={totalVentes>0?totalVentes:null}/>
+      <RR label="Total dépôts reçus" value={totalDepots>0?totalDepots:null}/>
+      {totalVentes>0&&totalDepots>0&&(<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3.5px 0",borderTop:`1px solid ${t.divider}`,marginTop:2}}>
+        <span style={{fontSize:11.5,color:t.textSub,fontWeight:500}}>Commission totale</span>
+        <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:"#f97316",fontWeight:700}}>{fmt(totalComm)} ({totalCommPct.toFixed(1)}%)</span>
+      </div>)}
     </div>)}
   </div>);
 }
@@ -399,7 +448,7 @@ function GeoSearch({apiConfig,saveApiCfg}){
 }
 
 // ── P&L MONTHLY ──
-function MonthlyPL({computeDay,suppliers}){
+function MonthlyPL({computeDay,suppliers,liveData,platforms}){
   const t=useT();
   const [month,setMonth]=useState(()=>{const n=new Date();return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`});
   const [plData,setPlData]=useState({});const [saved,setSaved]=useState(false);const [loaded,setLoaded]=useState(false);const saveRef=useRef(null);
@@ -418,6 +467,11 @@ function MonthlyPL({computeDay,suppliers}){
   let expT=billsSum('pettyCashMisc');EXPENSE_ITEMS.forEach(([k])=>{expT+=billsSum(`exp_${k}`)});
   const labC=plData.labourOverride!=null?plData.labourOverride:autoLab;
   const gp=revenue-fpT;const np=gp-labC-expT;
+  const deliveryStats=(platforms||[]).map(p=>{let tv=0,td=0;for(let day=1;day<=dim;day++){const k=`${y}-${String(m).padStart(2,"0")}-${String(day).padStart(2,"0")}`;const dd=liveData[k];if(!dd?.platformLivraisons)continue;const pd=dd.platformLivraisons[p.id]||{};if(pd.ventes!=null)tv+=pd.ventes;if(pd.depot!=null)td+=pd.depot;}const comm=tv-td;const commPct=tv>0?(comm/tv*100):0;return{...p,totalVentes:tv,totalDepots:td,commission:comm,commPct};});
+  const delGrandV=deliveryStats.reduce((s,p)=>s+p.totalVentes,0);
+  const delGrandD=deliveryStats.reduce((s,p)=>s+p.totalDepots,0);
+  const delGrandComm=delGrandV-delGrandD;
+  const delGrandPct=delGrandV>0?(delGrandComm/delGrandV*100):0;
   const fpP=revenue>0?(fpT/revenue*100):0;const labP=revenue>0?(labC/revenue*100):0;const npP=revenue>0?(np/revenue*100):0;
 
   const buildHTML=()=>{
@@ -498,6 +552,21 @@ function MonthlyPL({computeDay,suppliers}){
       <PL label="Override mensuel" value={plData.labourOverride} onChange={v=>updPL("labourOverride",v)} prefix="$" warn={plData.labourOverride!=null&&plData.labourOverride<0?"⚠️ Le montant ne peut pas être négatif":null}/>
       <RR label="Total" value={labC} accent="#38bdf8" bold/>{revenue>0&&<RR label="%" value={`${labP.toFixed(1)}%`} unit="" accent={labP>35?"#ef4444":labP>28?t.warnText:"#22c55e"}/>}
     </Sec>
+    {deliveryStats.length>0&&delGrandV>0&&(<Sec title="📱 Plateformes de livraison" color="249,115,22">
+      <div style={{fontSize:10,color:t.textMuted,marginBottom:6,fontStyle:"italic"}}>Informatif — commission payée aux plateformes. Non inclus dans le calcul P&L.</div>
+      {deliveryStats.filter(p=>p.totalVentes>0||p.totalDepots>0).map(p=>(<div key={p.id} style={{marginBottom:5,paddingBottom:5,borderBottom:`1px solid ${t.divider}`}}>
+        <div style={{fontSize:11,fontWeight:700,color:t.text,marginBottom:2}}>{p.emoji} {p.name}</div>
+        <RR label="Ventes" value={p.totalVentes}/>
+        <RR label="Dépôts reçus" value={p.totalDepots}/>
+        {p.totalVentes>0&&p.totalDepots>0&&<RR label="Commission" value={p.commission} accent="#f97316"/>}
+        {p.totalVentes>0&&<RR label="Commission %" value={`${p.commPct.toFixed(1)}%`} unit="" accent="#f97316"/>}
+      </div>))}
+      {deliveryStats.filter(p=>p.totalVentes>0).length>1&&(<div style={{paddingTop:4,borderTop:`1px solid rgba(249,115,22,0.15)`}}>
+        <RR label="Total ventes plateformes" value={delGrandV} bold/>
+        <RR label="Commission totale payée" value={delGrandComm} accent="#f97316" bold/>
+        {delGrandV>0&&<RR label="Commission %" value={`${delGrandPct.toFixed(1)}%`} unit="" accent="#f97316"/>}
+      </div>)}
+    </Sec>)}
     <div style={{background:np>=0?t.reconBalBg:t.reconErrBg,border:`1px solid ${np>=0?t.reconBalBorder:t.reconErrBorder}`,borderRadius:10,padding:14}}>
       <div style={{fontSize:11,color:t.textSub,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,marginBottom:8}}>Résultat — {MONTHS_FR[m-1]} {y}</div>
       <RR label="Revenus" value={revenue} accent="#22c55e" bold/><RR label="− F&P" value={fpT} accent="#f97316"/><div style={{paddingTop:4,borderTop:`1px solid ${t.dividerMid}`}}><RR label="= Profit brut" value={gp} bold/></div><RR label="− Main d'œuvre" value={labC} accent="#38bdf8"/><RR label="− Dépenses" value={expT} accent="#818cf8"/>
@@ -518,7 +587,7 @@ function avArr(arr){if(!arr||arr.length===0)return null;return arr.reduce((a,b)=
 const WIN_LABELS=["Début→14h","14h→17h","17h→19h","19h→20h"];
 
 // ── INTELLIGENCE TAB ──
-function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProfiles,getLR}){
+function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProfiles,getLR,platforms}){
   const t=useT();
   const d=new Date(selectedDate+"T12:00:00");
   const dowProfiles=useMemo(()=>{
@@ -673,6 +742,46 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
         <div style={{fontSize:9.5,color:t.textDim}}>{multiFactorPred.hasContext?"Ajusté selon météo, température et jours fériés":"Ajoutez météo de demain dans Facteurs externes pour affiner la prévision"}</div>
       </div>):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>Besoin de 2+ données pour ce jour de semaine</div>)}
     </ICard>
+    <ICard>
+      <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>📱 Livraisons — analyse des plateformes</span>
+      {(platforms||[]).length===0?(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>Aucune plateforme configurée dans Config</div>):(()=>{
+        const platStats=(platforms||[]).map(p=>{
+          const commissions=[];let totalV=0,totalD=0;
+          Object.entries(liveData).forEach(([,dd])=>{const pd=(dd.platformLivraisons||{})[p.id]||{};if(pd.ventes!=null&&pd.depot!=null){const cp=pd.ventes>0?((pd.ventes-pd.depot)/pd.ventes*100):0;commissions.push(cp);totalV+=pd.ventes;totalD+=pd.depot;}});
+          const avgComm=commissions.length>0?commissions.reduce((a,b)=>a+b,0)/commissions.length:null;
+          return{...p,avgComm,totalVentes:totalV,totalDepots:totalD,n:commissions.length};
+        });
+        const overdue=[];
+        Object.entries(liveData).forEach(([date,dd])=>{
+          const daysAgo=Math.round((new Date()-new Date(date+"T12:00:00"))/(1000*60*60*24));
+          if(daysAgo>=7)(platforms||[]).forEach(p=>{const pd=(dd.platformLivraisons||{})[p.id]||{};if(pd.ventes!=null&&pd.depot==null)overdue.push({date,platform:p,ventes:pd.ventes,daysAgo});});
+        });
+        const hasData=platStats.some(p=>p.n>0);
+        return(<div>
+          {hasData?(<div>
+            <div style={{display:"grid",gridTemplateColumns:"1.5fr 0.6fr 1fr 1fr",gap:4,padding:"4px 0",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:3}}>
+              {["Plateforme","n","Comm. moy.","Ventes tot."].map((h,i)=>(<span key={i} style={{fontSize:10,color:t.textMuted,fontWeight:600,textAlign:i>0?"right":"left"}}>{h}</span>))}
+            </div>
+            {platStats.map(p=>p.n>0&&(<div key={p.id} style={{display:"grid",gridTemplateColumns:"1.5fr 0.6fr 1fr 1fr",gap:4,padding:"3px 0",borderBottom:`1px solid ${t.divider}`,alignItems:"center"}}>
+              <span style={{fontSize:11,color:t.text}}>{p.emoji} {p.name}</span>
+              <span style={{fontSize:11,color:t.textMuted,textAlign:"right"}}>{p.n}</span>
+              <span style={{fontSize:12,fontFamily:"'DM Mono',monospace",textAlign:"right",color:"#f97316"}}>{p.avgComm!=null?`${p.avgComm.toFixed(1)}%`:"—"}</span>
+              <span style={{fontSize:12,fontFamily:"'DM Mono',monospace",textAlign:"right",color:t.text}}>{fmt(p.totalVentes)}</span>
+            </div>))}
+          </div>):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:"4px 0"}}>Aucune donnée de livraison enregistrée</div>)}
+          {overdue.length>0&&(<div style={{marginTop:8,padding:"7px 10px",borderRadius:6,background:"rgba(239,68,68,0.05)",border:"1px solid rgba(239,68,68,0.15)"}}>
+            <div style={{fontSize:9.5,color:"#dc2626",fontWeight:700,textTransform:"uppercase",letterSpacing:0.7,marginBottom:5}}>⚠️ Dépôts en retard (7+ jours)</div>
+            {overdue.map((o,i)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"2px 0",borderBottom:`1px solid rgba(239,68,68,0.1)`,fontSize:11}}>
+              <span style={{color:t.textSub}}>{o.platform.emoji} {o.platform.name} — {o.date}</span>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <span style={{color:t.textMuted,fontSize:10}}>il y a {o.daysAgo}j</span>
+                <span style={{fontFamily:"'DM Mono',monospace",color:"#dc2626",fontWeight:600}}>{fmt(o.ventes)}</span>
+              </div>
+            </div>))}
+          </div>)}
+        </div>);
+      })()}
+    </ICard>
   </div>);
 }
 
@@ -703,6 +812,8 @@ export default function App(){
   const saveTimer=useRef(null);
   const [editingSupId,setEditingSupId]=useState(null);
   const [editingSupName,setEditingSupName]=useState("");
+  const [platforms,setPlatforms]=useState(DEFAULT_PLATFORMS);
+  const [newPlatformName,setNewPlatformName]=useState("");
   const [gasCheckLoading,setGasCheckLoading]=useState(false);
   const [gasCheckMsg,setGasCheckMsg]=useState(null);
 
@@ -715,6 +826,7 @@ export default function App(){
     try{const r3=await window.api.storage.get("dicann-suppliers-v2");if(r3?.value)setSuppliers(JSON.parse(r3.value))}catch(e){}
     try{const r4=await window.api.storage.get("dicann-api-config");if(r4?.value)setApiConfig(JSON.parse(r4.value))}catch(e){}
     try{const r5=await window.api.storage.get("balanceiq-theme");if(r5?.value==='light'||r5?.value==='dark')setThemeName(r5.value)}catch(e){}
+    try{const r6=await window.api.storage.get("dicann-platforms");if(r6?.value)setPlatforms(JSON.parse(r6.value))}catch(e){}
     setLoading(false);
     // Load auto-backup info after a short delay (backup runs at t+3s)
     setTimeout(async()=>{try{const info=await window.api.backup.getInfo();setBackupInfo(info)}catch(_){}},4000);
@@ -758,6 +870,7 @@ export default function App(){
   const saveRoster=useCallback(async r=>{try{await window.api.storage.set("dicann-roster",JSON.stringify(r))}catch(e){}},[]);
   const saveEmpRoster=useCallback(async r=>{try{await window.api.storage.set("dicann-emp-roster",JSON.stringify(r))}catch(e){}},[]);
   const saveSup=useCallback(async s=>{try{await window.api.storage.set("dicann-suppliers-v2",JSON.stringify(s))}catch(e){}},[]);
+  const savePlatforms=useCallback(async p=>{try{await window.api.storage.set("dicann-platforms",JSON.stringify(p))}catch(e){}},[]);
   const saveApiCfg=useCallback(async c=>{try{await window.api.storage.set("dicann-api-config",JSON.stringify(c))}catch(e){}},[]);
 
   const upd=useCallback((dt,f,v)=>{setLiveData(p=>{const u={...p,[dt]:{...(p[dt]||{}),[f]:v}};persist(u);return u})},[persist]);
@@ -953,6 +1066,8 @@ export default function App(){
                 :<span style={{fontSize:12,color:t.warnText,fontWeight:600}}>Vérifier les caisses</span>}
             </div>)}
 
+            <LivraisonsSection platforms={platforms} selectedDate={selectedDate} raw={raw} upd={upd}/>
+
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
               {/* Inventory */}
               <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
@@ -1098,8 +1213,8 @@ export default function App(){
             </div>
           </div>)}
 
-          {activeTab==="monthly"&&<MonthlyPL computeDay={computeDay} suppliers={suppliers}/>}
-          {activeTab==="intelligence"&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR}/>}
+          {activeTab==="monthly"&&<MonthlyPL computeDay={computeDay} suppliers={suppliers} liveData={liveData} platforms={platforms}/>}
+          {activeTab==="intelligence"&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR} platforms={platforms}/>}
 
           {/* SETTINGS TAB */}
           {activeTab==="settings"&&(<div style={{display:"flex",flexDirection:"column",gap:10,maxWidth:560}}>
@@ -1158,6 +1273,20 @@ export default function App(){
               </div>
             </div>
 
+            {/* Plateformes de livraison */}
+            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Plateformes de livraison</span>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:6}}>Configurez vos plateformes. Les commissions sont suivies dans le rapport quotidien, le P&L et l'Intelligence.</div>
+              {platforms.map(p=>(<div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:5,marginBottom:3}}>
+                <span style={{fontSize:12,color:t.text}}>{p.emoji} {p.name}</span>
+                <button onClick={()=>{const np=platforms.filter(x=>x.id!==p.id);setPlatforms(np);savePlatforms(np)}} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:4,color:"#ef4444",fontSize:10,padding:"2px 6px",cursor:"pointer"}}>✕</button>
+              </div>))}
+              <div style={{display:"flex",gap:6,marginTop:4}}>
+                <input value={newPlatformName} onChange={e=>setNewPlatformName(e.target.value)} placeholder="Nom de la plateforme..." onKeyDown={e=>{if(e.key==="Enter"&&newPlatformName.trim()){const np=[...platforms,{id:Date.now().toString(),name:newPlatformName.trim(),emoji:"📦"}];setPlatforms(np);savePlatforms(np);setNewPlatformName("")}}} style={{...inputStyle,flex:1}}/>
+                <button onClick={()=>{if(!newPlatformName.trim())return;const np=[...platforms,{id:Date.now().toString(),name:newPlatformName.trim(),emoji:"📦"}];setPlatforms(np);savePlatforms(np);setNewPlatformName("")}} style={{padding:"5px 14px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>+</button>
+              </div>
+            </div>
+
             {/* Coordonnées météo */}
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
               <span style={{fontSize:13,fontWeight:700,marginBottom:4,display:"block",color:t.text}}>Coordonnées météo</span>
@@ -1205,7 +1334,7 @@ export default function App(){
             </div>
 
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:11.5,color:t.textSub}}>Jours: <strong style={{color:"#f97316"}}>{Object.keys(liveData).length}</strong> · Caissiers: <strong style={{color:"#f97316"}}>{roster.length}</strong> · Employés: <strong style={{color:"#f97316"}}>{empRoster.length}</strong> · Fournisseurs: <strong style={{color:"#f97316"}}>{suppliers.length}</strong></span>
+              <span style={{fontSize:11.5,color:t.textSub}}>Jours: <strong style={{color:"#f97316"}}>{Object.keys(liveData).length}</strong> · Caissiers: <strong style={{color:"#f97316"}}>{roster.length}</strong> · Employés: <strong style={{color:"#f97316"}}>{empRoster.length}</strong> · Fournisseurs: <strong style={{color:"#f97316"}}>{suppliers.length}</strong> · Plateformes: <strong style={{color:"#f97316"}}>{platforms.length}</strong></span>
             </div>
             <div style={{textAlign:"center",padding:"4px 0 2px"}}>
               <span style={{fontSize:10.5,color:t.textSub,fontFamily:"'DM Mono',monospace"}}>BalanceIQ v{appVersion}</span>
