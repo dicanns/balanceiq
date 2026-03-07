@@ -79,7 +79,8 @@
 - [x] Cashier roster management (add, remove)
 - [x] Employee roster management (add, remove, with saved hourly wage)
 - [x] Supplier list management (add, remove, rename in-place)
-- [x] API integration fields (Auphan POS, Weather, Gas price) — ready for keys
+- [x] API integration fields (Auphan POS, Gas price) — ready for keys
+- [x] Coordonnées météo — GeoSearch component using Open-Meteo geocoding API; type city name → dropdown of results → saves lat/lng/label to apiConfig; shows "📍 Ville — météo configurée"; defaults to Montréal if unconfigured
 - [x] Export: CSV, PDF (print dialog), JSON backup
 - [x] Restore from JSON backup — file dialog, validation, confirmation, SQLite write, reload (handles both manual + auto-backup formats including P&L)
 - [x] Auto-backup — on launch, 1 JSON per day to Documents/BalanceIQ Backups/, 30-day rotation, cross-platform; Config tab shows last backup date + file count + folder path with "Ouvrir le dossier" button
