@@ -341,6 +341,62 @@ function EmpRow({emp,index,empRoster,selectedDate,updEmp,rmEmp}){
   </div>);
 }
 
+// ── GEO SEARCH (location picker for weather) ──
+function GeoSearch({apiConfig,saveApiCfg}){
+  const t=useT();
+  const [query,setQuery]=useState('');
+  const [results,setResults]=useState([]);
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState('');
+  const inpStyle={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:12,padding:"5px 8px",outline:"none"};
+
+  const search=async()=>{
+    const q=query.trim();if(!q)return;
+    setLoading(true);setError('');setResults([]);
+    try{
+      const res=await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=fr`);
+      const data=await res.json();
+      if(data.results?.length){setResults(data.results);}
+      else{setError('Aucun résultat — essayez un nom de ville différent');}
+    }catch{setError('Erreur de connexion — vérifier internet');}
+    setLoading(false);
+  };
+
+  const select=r=>{
+    const label=[r.name,r.admin1,r.country].filter(Boolean).join(', ');
+    const nc={...apiConfig,weatherLat:r.latitude,weatherLng:r.longitude,weatherLabel:label};
+    saveApiCfg(nc);setResults([]);setQuery('');
+  };
+
+  const clear=()=>{
+    const nc={...apiConfig,weatherLat:null,weatherLng:null,weatherLabel:''};
+    saveApiCfg(nc);
+  };
+
+  const configured=apiConfig.weatherLat&&apiConfig.weatherLng;
+  const displayLabel=apiConfig.weatherLabel?(apiConfig.weatherLabel.split(', ').slice(0,-1).join(', ')||apiConfig.weatherLabel):'';
+
+  return(<div>
+    {configured&&<div style={{display:"flex",alignItems:"center",gap:6,marginBottom:7,padding:"5px 8px",borderRadius:6,background:"rgba(34,197,94,0.06)",border:"1px solid rgba(34,197,94,0.2)"}}>
+      <span style={{fontSize:12,color:"#16a34a",flex:1}}>📍 {displayLabel} — météo configurée</span>
+      <button onClick={clear} style={{fontSize:9,padding:"1px 5px",borderRadius:3,border:"none",background:"rgba(239,68,68,0.1)",color:"#ef4444",cursor:"pointer"}}>✕</button>
+    </div>}
+    <div style={{display:"flex",gap:4}}>
+      <input value={query} onChange={e=>{setQuery(e.target.value);setError('');}} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();search();}}} placeholder="Laval, Saint-Hyacinthe, Montréal..." style={{...inpStyle,flex:1}}/>
+      <button onClick={search} disabled={loading} style={{padding:"5px 12px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",opacity:loading?0.6:1,whiteSpace:"nowrap"}}>{loading?"...":"Chercher"}</button>
+    </div>
+    {error&&<div style={{fontSize:10,color:"#ef4444",marginTop:3}}>{error}</div>}
+    {results.length>0&&<div style={{marginTop:5,border:`1px solid ${t.cardBorder}`,borderRadius:6,overflow:"hidden"}}>
+      {results.map((r,i)=>{
+        const lbl=[r.name,r.admin1,r.country].filter(Boolean).join(', ');
+        return(<button key={i} onClick={()=>select(r)} style={{display:"block",width:"100%",textAlign:"left",padding:"7px 10px",background:i%2===0?t.card:t.section,border:"none",borderBottom:i<results.length-1?`1px solid ${t.divider}`:"none",color:t.text,fontSize:12,cursor:"pointer"}}>
+          {lbl} <span style={{fontSize:10,color:t.textMuted,fontFamily:"'DM Mono',monospace"}}>{r.latitude.toFixed(3)}, {r.longitude.toFixed(3)}</span>
+        </button>);
+      })}
+    </div>}
+  </div>);
+}
+
 // ── P&L MONTHLY ──
 function MonthlyPL({computeDay,suppliers}){
   const t=useT();
@@ -1078,12 +1134,18 @@ export default function App(){
               </div>
             </div>
 
+            {/* Coordonnées météo */}
+            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:4,display:"block",color:t.text}}>Coordonnées météo</span>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>Recherchez votre ville pour auto-remplir la météo sur le rapport quotidien. Défaut: Montréal.</div>
+              <GeoSearch apiConfig={apiConfig} saveApiCfg={nc=>{setApiConfig(nc);saveApiCfg(nc);}}/>
+            </div>
+
             {/* API Config */}
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
               <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Intégrations API</span>
               <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>Entrer vos clés API ici. Les données seront importées automatiquement une fois configurées.</div>
               {[["auphanKey","Auphan POS","Clé API ou URL...","À venir — contacter Auphan pour documentation"],
-                ["weatherKey","Météo (Open-Meteo)","Clé API...","Gratuit — open-meteo.com (aucune clé requise)"],
                 ["gasKey","Prix essence (Régie de l'énergie)","URL de scraping...","Auto-rempli du dernier prix connu."]].map(([key,label,ph,note])=>(
                 <div key={key} style={{marginBottom:8}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}><span style={{fontSize:12,fontWeight:600,color:t.text}}>{label}</span><Pill ok={apiConfig[key]?.length>0} label={apiConfig[key]?.length>0?"Configuré":"Non configuré"}/></div>
