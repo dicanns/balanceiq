@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useContext, createContext } from "react";
 import { version as appVersion } from "../package.json";
+import { canUse, shouldShowUpgradePrompt } from "./config/features.js";
 
 // ── THEME ──
 const DARK = {
@@ -105,6 +106,11 @@ const fmtD=d=>`${DAYS_FR[d.getDay()]} ${d.getDate()} ${MONTHS_FR[d.getMonth()]} 
 const dk=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 const prevDk=s=>{const d=new Date(s+"T12:00:00");d.setDate(d.getDate()-1);return dk(d)};
 const getHol=d=>{const k=`${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;return QC_HOL[k]||null};
+const PROVINCES_CA=["AB","BC","MB","NB","NL","NS","NT","NU","ON","PE","QC","SK","YT"];
+const DEFAULT_COMPANY_INFO={nom:"",adresse:"",ville:"",province:"QC",codePostal:"",telephone:"",courriel:"",siteWeb:"",numeroTPS:"",numeroTVQ:"",logo:null};
+const DEFAULT_DOC_NUMS={prefix:"",soumission:1,commande:1,facture:1,creditNote:1,encaissement:1};
+function fmtDocNum(prefix,code,num){return`${prefix||""}${code}-${String(num).padStart(4,"0")}`;}
+
 const DEFAULT_SUPPLIERS=[{id:"1",name:"Dubord"},{id:"2",name:"Carrousel"},{id:"3",name:"St. Sylvain"},{id:"4",name:"Pepsi"},{id:"5",name:"Pain"},{id:"6",name:"Sauce"},{id:"7",name:"Costco"}];
 const DEFAULT_PLATFORMS=[{id:"doordash",name:"DoorDash",emoji:"🔴"},{id:"ubereats",name:"Uber Eats",emoji:"🟢"},{id:"skip",name:"Skip The Dishes",emoji:"🟠"}];
 const DEFAULT_SORTIE_CATS=[{id:"fournisseur_cash",name:"Fournisseur payé cash"},{id:"avance_employe",name:"Avance employé"},{id:"achats_divers",name:"Achats divers"},{id:"reparations",name:"Réparations"},{id:"autre",name:"Autre"}];
@@ -1073,6 +1079,733 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
   </div>);
 }
 
+// ── FACTURATION TAB ──
+function FacturationTab({categories,saveCategories,produits,saveProduits,clients,saveClients,soumissions,saveSoumissions,docNums,saveDocNums,companyInfo}){
+  const t=useT();
+  const [subTab,setSubTab]=useState("clients");
+  const [activeDoc,setActiveDoc]=useState(null);
+  // activeDoc: null | { type:"soumission", soumission: obj|null, clientId: str|null }
+  const openDoc=(type,clientId,soumission)=>setActiveDoc({type,soumission:soumission||null,clientId:clientId||null});
+  const closeDoc=()=>setActiveDoc(null);
+  const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none"};
+
+  // ── Categories section ──
+  const [editingId,setEditingId]=useState(null);
+  const [editForm,setEditForm]=useState({});
+  const [newForm,setNewForm]=useState({nom:"",compteRevenu:"",compteEscompte:"",description:""});
+  const [showInactive,setShowInactive]=useState(false);
+  const [sortAZ,setSortAZ]=useState(true);
+  const [addOpen,setAddOpen]=useState(false);
+
+  const visibleCats=useMemo(()=>{
+    let list=showInactive?categories:categories.filter(c=>c.actif!==false);
+    list=[...list].sort((a,b)=>sortAZ?a.nom.localeCompare(b.nom,"fr"):b.nom.localeCompare(a.nom,"fr"));
+    return list;
+  },[categories,showInactive,sortAZ]);
+
+  const startEdit=cat=>{setEditingId(cat.id);setEditForm({nom:cat.nom,compteRevenu:cat.compteRevenu||"",compteEscompte:cat.compteEscompte||"",description:cat.description||""})};
+  const saveEdit=()=>{if(!editForm.nom.trim())return;saveCategories(categories.map(c=>c.id===editingId?{...c,...editForm,nom:editForm.nom.trim()}:c));setEditingId(null)};
+  const toggleActif=cat=>saveCategories(categories.map(c=>c.id===cat.id?{...c,actif:!c.actif}:c));
+  const addCat=()=>{if(!newForm.nom.trim())return;saveCategories([...categories,{id:Date.now().toString(),nom:newForm.nom.trim(),compteRevenu:newForm.compteRevenu.trim(),compteEscompte:newForm.compteEscompte.trim(),description:newForm.description.trim(),actif:true}]);setNewForm({nom:"",compteRevenu:"",compteEscompte:"",description:""});setAddOpen(false)};
+
+  const subTabs=[{id:"clients",label:"Clients"},{id:"categories",label:"Catégories"},{id:"produits",label:"Produits & Services"},{id:"documents",label:"Documents",soon:true}];
+
+  if(activeDoc?.type==="soumission"){
+    const initClientId=activeDoc.clientId;
+    const initSoum=activeDoc.soumission;
+    const soumInit=initSoum?{...initSoum}:(initClientId?{date:dk(new Date()),dateExpiration:dk(new Date(Date.now()+30*86400000)),clientId:initClientId,referenceClient:"",statut:"Brouillon",notes:"Soumission valide 30 jours."}:null);
+    return<SoumissionEditor soumission={initSoum||(initClientId?null:null)} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} soumissions={soumissions} saveSoumissions={saveSoumissions} onBack={closeDoc} initClientId={initClientId}/>;
+  }
+
+  return(<div style={{display:"flex",flexDirection:"column",gap:0}}>
+    {/* Sub-nav */}
+    <div style={{display:"flex",gap:1,marginBottom:10,borderBottom:`1px solid ${t.dividerMid}`,overflowX:"auto",alignItems:"center"}}>
+      {subTabs.map(s=>(<button key={s.id} onClick={()=>!s.soon&&setSubTab(s.id)} style={{background:"none",border:"none",color:subTab===s.id?"#f97316":s.soon?t.textDim:t.textMuted,fontSize:11.5,fontWeight:600,padding:"5px 10px",cursor:s.soon?"default":"pointer",borderBottom:subTab===s.id?"2px solid #f97316":"2px solid transparent",whiteSpace:"nowrap",opacity:s.soon?0.5:1}}>
+        {s.label}{s.soon&&<span style={{fontSize:8,marginLeft:4,color:t.textDim,fontWeight:400}}>bientôt</span>}
+      </button>))}
+      <div style={{flex:1}}/>
+      <button onClick={()=>openDoc("soumission",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,marginBottom:2}}>+ Nouvelle soumission</button>
+    </div>
+
+    {/* Clients */}
+    {subTab==="clients"&&<ClientsSection clients={clients} saveClients={saveClients} onNewDoc={(type,clientId)=>openDoc(type,clientId,null)}/>}
+
+    {/* Produits */}
+    {subTab==="produits"&&<ProduitsSection produits={produits} saveProduits={saveProduits} categories={categories}/>}
+
+    {/* Categories */}
+    {subTab==="categories"&&(<div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {/* Header row */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <span style={{fontSize:13.5,fontWeight:700,color:t.text}}>Catégories</span>
+          <span style={{fontSize:11,color:t.textMuted}}>{categories.filter(c=>c.actif!==false).length} active{categories.filter(c=>c.actif!==false).length!==1?"s":""}</span>
+        </div>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          <button onClick={()=>setSortAZ(s=>!s)} style={{fontSize:10,padding:"3px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600}}>
+            {sortAZ?"A → Z":"Z → A"}
+          </button>
+          <button onClick={()=>setShowInactive(s=>!s)} style={{fontSize:10,padding:"3px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:showInactive?"rgba(249,115,22,0.08)":t.section,color:showInactive?"#f97316":t.textSub,cursor:"pointer",fontWeight:600}}>
+            {showInactive?"Masquer inactives":"Afficher inactives"}
+          </button>
+          <button onClick={()=>setAddOpen(o=>!o)} style={{fontSize:11,padding:"4px 12px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontWeight:700}}>
+            + Nouvelle catégorie
+          </button>
+        </div>
+      </div>
+
+      {/* Add form */}
+      {addOpen&&(<div style={{background:t.card,border:`1px solid rgba(249,115,22,0.2)`,borderRadius:9,padding:12}}>
+        <span style={{fontSize:12,fontWeight:700,color:"#f97316",display:"block",marginBottom:8}}>Nouvelle catégorie</span>
+        <div style={{display:"flex",flexDirection:"column",gap:5}}>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            <div style={{flex:"2 1 160px"}}>
+              <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Nom <span style={{color:"#f97316"}}>*</span></div>
+              <input value={newForm.nom} onChange={e=>setNewForm(f=>({...f,nom:e.target.value}))} placeholder="ex: product sale" autoFocus style={{...inputS,width:"100%",boxSizing:"border-box"}} onKeyDown={e=>{if(e.key==="Enter")addCat()}}/>
+            </div>
+            <div style={{flex:"1 1 100px"}}>
+              <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}># Compte revenu</div>
+              <input value={newForm.compteRevenu} onChange={e=>setNewForm(f=>({...f,compteRevenu:e.target.value}))} placeholder="ex: 100" style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
+            </div>
+            <div style={{flex:"1 1 100px"}}>
+              <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}># Compte escompte</div>
+              <input value={newForm.compteEscompte} onChange={e=>setNewForm(f=>({...f,compteEscompte:e.target.value}))} placeholder="ex: 5050" style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
+            </div>
+          </div>
+          <div>
+            <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Description (optionnel)</div>
+            <input value={newForm.description} onChange={e=>setNewForm(f=>({...f,description:e.target.value}))} placeholder="Description interne..." style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+          </div>
+          <div style={{display:"flex",gap:6,marginTop:2}}>
+            <button onClick={addCat} disabled={!newForm.nom.trim()} style={{padding:"6px 16px",borderRadius:6,border:"none",background:newForm.nom.trim()?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:newForm.nom.trim()?"#fff":t.textDim,cursor:newForm.nom.trim()?"pointer":"default",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>Ajouter</button>
+            <button onClick={()=>{setAddOpen(false);setNewForm({nom:"",compteRevenu:"",compteEscompte:"",description:""})}} style={{padding:"6px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>Annuler</button>
+          </div>
+        </div>
+      </div>)}
+
+      {/* Column headers */}
+      {visibleCats.length>0&&(<div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr auto",gap:6,padding:"3px 8px",borderBottom:`1px solid ${t.dividerMid}`}}>
+        {["Nom","# Revenu","# Escompte","Description",""].map((h,i)=>(<span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i===4?"center":"left"}}>{h}</span>))}
+      </div>)}
+
+      {/* Category rows */}
+      {visibleCats.length===0&&(<div style={{textAlign:"center",padding:"24px 0",color:t.textMuted,fontSize:12}}>
+        Aucune catégorie — cliquez sur "+ Nouvelle catégorie" pour commencer.
+      </div>)}
+      {visibleCats.map(cat=>(
+        <div key={cat.id} style={{background:t.card,border:`1px solid ${cat.actif===false?"rgba(239,68,68,0.12)":t.cardBorder}`,borderRadius:7,padding:"6px 8px",opacity:cat.actif===false?0.55:1}}>
+          {editingId===cat.id
+            ?(<div style={{display:"flex",flexDirection:"column",gap:6}}>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  <input value={editForm.nom} onChange={e=>setEditForm(f=>({...f,nom:e.target.value}))} autoFocus placeholder="Nom *" style={{...inputS,flex:"2 1 140px",boxSizing:"border-box"}}/>
+                  <input value={editForm.compteRevenu} onChange={e=>setEditForm(f=>({...f,compteRevenu:e.target.value}))} placeholder="# Revenu" style={{...inputS,flex:"1 1 90px",fontFamily:"'DM Mono',monospace",boxSizing:"border-box"}}/>
+                  <input value={editForm.compteEscompte} onChange={e=>setEditForm(f=>({...f,compteEscompte:e.target.value}))} placeholder="# Escompte" style={{...inputS,flex:"1 1 90px",fontFamily:"'DM Mono',monospace",boxSizing:"border-box"}}/>
+                </div>
+                <input value={editForm.description} onChange={e=>setEditForm(f=>({...f,description:e.target.value}))} placeholder="Description..." style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+                <div style={{display:"flex",gap:6}}>
+                  <button onClick={saveEdit} disabled={!editForm.nom.trim()} style={{padding:"4px 12px",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'Outfit',sans-serif"}}>✓ Sauvegarder</button>
+                  <button onClick={()=>setEditingId(null)} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11,fontFamily:"'Outfit',sans-serif"}}>Annuler</button>
+                </div>
+              </div>)
+            :(<div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr auto",gap:6,alignItems:"center"}}>
+                <span style={{fontSize:12,fontWeight:600,color:t.text,cursor:"pointer"}} onClick={()=>startEdit(cat)}>
+                  {cat.nom}
+                  {cat.actif===false&&<span style={{fontSize:9,color:"#ef4444",marginLeft:5,fontWeight:400}}>inactif</span>}
+                  <span style={{fontSize:9,color:t.textDim,marginLeft:4}}>✎</span>
+                </span>
+                <span style={{fontSize:11,color:t.textSub,fontFamily:"'DM Mono',monospace"}}>{cat.compteRevenu||"—"}</span>
+                <span style={{fontSize:11,color:t.textSub,fontFamily:"'DM Mono',monospace"}}>{cat.compteEscompte||"—"}</span>
+                <span style={{fontSize:11,color:t.textSub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cat.description||"—"}</span>
+                <button onClick={()=>toggleActif(cat)} title={cat.actif===false?"Réactiver":"Désactiver"} style={{background:cat.actif===false?"rgba(34,197,94,0.08)":"rgba(239,68,68,0.07)",border:"none",borderRadius:4,color:cat.actif===false?"#16a34a":"#ef4444",fontSize:10,padding:"2px 6px",cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>
+                  {cat.actif===false?"Réactiver":"Désactiver"}
+                </button>
+              </div>)}
+        </div>
+      ))}
+    </div>)}
+  </div>);
+}
+
+// ── SOUMISSION ──
+const STATUTS_SOUMISSION=["Brouillon","Envoyée","Acceptée","Refusée","Expirée"];
+const STATUT_SOUM_C={"Brouillon":"#6b7280","Envoyée":"#3b82f6","Acceptée":"#22c55e","Refusée":"#ef4444","Expirée":"#9ca3af"};
+function newLigne(){return{id:Date.now().toString(36)+Math.random().toString(36).slice(2),produitId:"",description:"",quantite:1,prixUnitaire:0,remise:0,tps:true,tvq:true};}
+function computeSoumTotals(lignes){
+  let st=0,tp=0,tv=0;
+  lignes.forEach(l=>{const lt=(l.quantite||0)*(l.prixUnitaire||0)*(1-(l.remise||0)/100);st+=lt;if(l.tps)tp+=lt*0.05;if(l.tvq)tv+=lt*0.09975;});
+  return{sousTotal:st,tpsTotal:tp,tvqTotal:tv,total:st+tp+tv};
+}
+function buildSoumissionHTML({numero,date,dateExpiration,statut,client,referenceClient,lignes,notes,totals,companyInfo}){
+  const fd=d=>{if(!d)return"—";const dt=new Date(d+"T12:00:00");return`${dt.getDate()} ${["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"][dt.getMonth()]} ${dt.getFullYear()}`};
+  const fc=n=>(n||0).toLocaleString("fr-CA",{style:"currency",currency:"CAD"});
+  const logo=companyInfo.logo?`<img src="${companyInfo.logo}" style="max-height:55px;max-width:110px;object-fit:contain;" alt="Logo"/>`:"";
+  const rows=lignes.map((l,i)=>{const lt=(l.quantite||0)*(l.prixUnitaire||0)*(1-(l.remise||0)/100);return`<tr style="background:${i%2?"#f9f9f9":"#fff"}"><td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:12px">${l.description||""}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:center;font-size:12px">${l.quantite||1}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:right;font-size:12px">${fc(l.prixUnitaire||0)}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:center;font-size:12px">${l.remise?l.remise+"%":"—"}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:right;font-size:12px;font-weight:700">${fc(lt)}</td></tr>`}).join("");
+  const cli=client?`<div style="font-weight:700;font-size:13px">${client.entreprise}</div>${client.contact?`<div>${client.contact}</div>`:""}${client.adresse?`<div>${client.adresse}</div>`:""}${client.ville?`<div>${[client.ville,client.province,client.codePostal].filter(Boolean).join(", ")}</div>`:""}${client.courriel?`<div>${client.courriel}</div>`:""}${client.tel1?`<div>${client.tel1}</div>`:""}`:""` "(aucun client)"`;
+  return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Soumission ${numero}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}.hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px}.title{font-size:30px;font-weight:900;color:#f97316;letter-spacing:2px}.meta{font-size:11px;color:#555;margin-top:3px}table{width:100%;border-collapse:collapse}th{background:#f97316;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.tot{margin-left:auto;width:260px;margin-top:12px}.tr{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}.tf{font-weight:900;font-size:15px;border-top:2px solid #1a1a1a;margin-top:4px;padding-top:4px}.notes{background:#f9f9f9;border-left:3px solid #f97316;padding:10px 12px;margin-top:16px;font-size:12px}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}</style></head><body><div class="hdr"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${companyInfo.nom||""}</div><div class="meta">${[companyInfo.adresse,companyInfo.ville,companyInfo.province].filter(Boolean).join(", ")}</div>${companyInfo.telephone?`<div class="meta">${companyInfo.telephone}</div>`:""}${companyInfo.courriel?`<div class="meta">${companyInfo.courriel}</div>`:""}</div><div style="text-align:right"><div class="title">SOUMISSION</div><div style="font-size:18px;font-weight:700;margin-top:4px"># ${numero}</div><div class="meta">Date: ${fd(date)}</div><div class="meta">Expiration: ${fd(dateExpiration)}</div><div class="meta">Statut: <strong>${statut}</strong></div>${referenceClient?`<div class="meta">Réf.: ${referenceClient}</div>`:""}</div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Facturé à</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>Description</th><th style="width:55px;text-align:center">Qté</th><th style="width:100px;text-align:right">Prix unit.</th><th style="width:65px;text-align:center">Remise</th><th style="width:100px;text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><div class="tot"><div class="tr"><span>Sous-total</span><span>${fc(totals.sousTotal)}</span></div><div class="tr"><span>TPS (5%)</span><span>${fc(totals.tpsTotal)}</span></div><div class="tr"><span>TVQ (9.975%)</span><span>${fc(totals.tvqTotal)}</span></div><div class="tr tf"><span>TOTAL</span><span>${fc(totals.total)}</span></div></div>${notes?`<div class="notes"><strong>Notes / Conditions</strong><br/>${notes}</div>`:""}<div class="ftr">${companyInfo.numeroTPS?`N° TPS: ${companyInfo.numeroTPS}`:""}${companyInfo.numeroTVQ?` &nbsp;|&nbsp; N° TVQ: ${companyInfo.numeroTVQ}`:""}</div></body></html>`;
+}
+function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveDocNums,soumissions,saveSoumissions,onBack,initClientId}){
+  const t=useT();
+  const isNew=!soumission?.id;
+  const todayStr=dk(new Date());
+  const exp30=dk(new Date(Date.now()+30*86400000));
+  const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none"};
+  const [form,setForm]=useState(soumission?{...soumission}:{date:todayStr,dateExpiration:exp30,clientId:initClientId||"",referenceClient:"",statut:"Brouillon",notes:"Soumission valide 30 jours."});
+  const [lignes,setLignes]=useState(soumission?.lignes?.length?soumission.lignes:[newLigne()]);
+  const [savedId,setSavedId]=useState(soumission?.id||null);
+  const [savedNumero,setSavedNumero]=useState(soumission?.numero||null);
+  const [confirmDel,setConfirmDel]=useState(false);
+  const [flash,setFlash]=useState(false);
+  const totals=useMemo(()=>computeSoumTotals(lignes),[lignes]);
+  const client=clients.find(c=>c.id===form.clientId);
+  const upd=f=>setForm(p=>({...p,...f}));
+  const updL=(id,f)=>setLignes(ls=>ls.map(l=>l.id===id?{...l,...f}:l));
+  const selectProd=(lid,pid)=>{
+    if(!pid){updL(lid,{produitId:""});return;}
+    const p=produits.find(x=>x.id===pid);
+    if(p)updL(lid,{produitId:pid,description:p.description,prixUnitaire:parseFloat(p.prixUnitaire)||0,tps:p.tps!==false,tvq:p.tvq!==false});
+  };
+  const doSave=()=>{
+    let id=savedId,numero=savedNumero;
+    if(!id){
+      id=Date.now().toString();numero=fmtDocNum(docNums.prefix,"S",docNums.soumission);
+      saveDocNums({...docNums,soumission:docNums.soumission+1});
+      setSavedId(id);setSavedNumero(numero);
+    }
+    const doc={...form,id,numero,lignes};
+    saveSoumissions(soumissions.some(s=>s.id===id)?soumissions.map(s=>s.id===id?doc:s):[...soumissions,doc]);
+    setFlash(true);setTimeout(()=>setFlash(false),2000);
+  };
+  const doDelete=()=>{saveSoumissions(soumissions.filter(s=>s.id!==savedId));onBack();};
+  const doPrint=()=>{
+    const numero=savedNumero||fmtDocNum(docNums.prefix,"S",docNums.soumission);
+    openPDF(buildSoumissionHTML({...form,numero,lignes,totals,client,companyInfo}));
+  };
+  const doEmail=()=>{
+    if(!client?.courriel)return;
+    const num=savedNumero||"—";
+    const sub=encodeURIComponent(`Soumission ${num}`);
+    const body=encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint votre soumission ${num} d'un montant de ${fmt(totals.total)}.\n\nMerci de votre confiance,\n${companyInfo.nom||""}`);
+    window.open(`mailto:${client.courriel}?subject=${sub}&body=${body}`);
+  };
+  const SC=STATUT_SOUM_C;
+  return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
+    {/* Top bar */}
+    <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+      <button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>
+      <span style={{fontSize:14,fontWeight:700,color:t.text}}>{savedNumero||(isNew?"Nouvelle soumission":soumission?.numero)}</span>
+      <span style={{fontSize:10,fontWeight:700,color:SC[form.statut]||t.textMuted,background:"rgba(0,0,0,0.06)",borderRadius:10,padding:"2px 8px"}}>{form.statut}</span>
+      <div style={{flex:1}}/>
+      <button onClick={doSave} style={{padding:"5px 14px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'Outfit',sans-serif"}}>💾 Sauvegarder</button>
+      {flash&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>✓</span>}
+      <button onClick={doPrint} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>🖨️ Imprimer</button>
+      <button onClick={doEmail} disabled={!client?.courriel} title={!client?.courriel?"Aucun courriel client":""} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:!client?.courriel?t.textDim:t.textSub,cursor:!client?.courriel?"default":"pointer",fontWeight:600,fontSize:11,opacity:!client?.courriel?0.5:1}}>📧 Envoyer</button>
+      <button disabled title="Disponible à l'étape Commande" style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"default",fontWeight:600,fontSize:11,opacity:0.4}}>→ Commande</button>
+      <button disabled title="Disponible à l'étape Facture" style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"default",fontWeight:600,fontSize:11,opacity:0.4}}>→ Facture</button>
+      {savedId&&form.statut==="Brouillon"&&(
+        confirmDel
+          ?<><span style={{fontSize:11,color:"#ef4444"}}>Confirmer?</span>
+             <button onClick={doDelete} style={{padding:"4px 10px",borderRadius:5,border:"none",background:"#ef4444",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>Supprimer</button>
+             <button onClick={()=>setConfirmDel(false)} style={{padding:"4px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>Annuler</button></>
+          :<button onClick={()=>setConfirmDel(true)} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:600,fontSize:11}}>🗑️</button>
+      )}
+    </div>
+    {/* Header */}
+    <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <div style={{flex:"2 1 200px"}}>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Client</div>
+          <select value={form.clientId||""} onChange={e=>upd({clientId:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box"}}>
+            <option value="">— Choisir un client —</option>
+            {clients.filter(c=>c.statut==="actif").map(c=><option key={c.id} value={c.id}>{c.entreprise} ({c.code})</option>)}
+          </select>
+        </div>
+        <div style={{flex:"1 1 120px"}}>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Date</div>
+          <input type="date" value={form.date||todayStr} onChange={e=>upd({date:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
+        </div>
+        <div style={{flex:"1 1 120px"}}>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Date d'expiration</div>
+          <input type="date" value={form.dateExpiration||exp30} onChange={e=>upd({dateExpiration:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
+        </div>
+        <div style={{flex:"1 1 140px"}}>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Statut</div>
+          <select value={form.statut} onChange={e=>upd({statut:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box",color:SC[form.statut]||t.inputText,fontWeight:700}}>
+            {STATUTS_SOUMISSION.map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        <div style={{flex:"2 1 180px"}}>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Réf. client / Bon de commande</div>
+          <input value={form.referenceClient||""} onChange={e=>upd({referenceClient:e.target.value})} placeholder="Optionnel" style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+        </div>
+      </div>
+      {client&&<div style={{marginTop:8,padding:"5px 8px",borderRadius:6,background:t.section,border:`1px solid ${t.sectionBorder}`,fontSize:11,color:t.textSub}}>
+        <strong style={{color:t.text}}>{client.entreprise}</strong>
+        {client.contact&&` · ${client.contact}`}
+        {client.adresse&&` · ${client.adresse}`}
+        {client.ville&&` · ${[client.ville,client.province].filter(Boolean).join(", ")}`}
+        {client.courriel&&<span style={{fontFamily:"'DM Mono',monospace",marginLeft:6,color:t.textMuted}}>{client.courriel}</span>}
+      </div>}
+    </div>
+    {/* Lines */}
+    <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
+      <span style={{fontSize:12,fontWeight:700,color:t.text,display:"block",marginBottom:8}}>Lignes</span>
+      <div style={{display:"grid",gridTemplateColumns:"1.8fr 2fr 65px 85px 65px 28px 28px 90px 24px",gap:5,padding:"2px 4px",marginBottom:4}}>
+        {["Produit","Description","Qté","Prix unit.","Remise %","TPS","TVQ","Total",""].map((h,i)=>(
+          <span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i>=2&&i<=7?"center":"left"}}>{h}</span>
+        ))}
+      </div>
+      {lignes.map(l=>{
+        const lt=(l.quantite||0)*(l.prixUnitaire||0)*(1-(l.remise||0)/100);
+        return(<div key={l.id} style={{display:"grid",gridTemplateColumns:"1.8fr 2fr 65px 85px 65px 28px 28px 90px 24px",gap:5,marginBottom:6,alignItems:"center"}}>
+          <select value={l.produitId||""} onChange={e=>selectProd(l.id,e.target.value)} style={{...inputS,width:"100%",boxSizing:"border-box",fontSize:11}}>
+            <option value="">— Libre —</option>
+            {produits.filter(p=>p.actif!==false).map(p=><option key={p.id} value={p.id}>{p.code} {p.description}</option>)}
+          </select>
+          <input value={l.description} onChange={e=>updL(l.id,{description:e.target.value})} placeholder="Description" style={{...inputS,width:"100%",boxSizing:"border-box",fontSize:11}}/>
+          <input type="number" min="0" step="0.01" value={l.quantite} onChange={e=>updL(l.id,{quantite:parseFloat(e.target.value)||0})} style={{...inputS,width:"100%",boxSizing:"border-box",textAlign:"right",fontSize:11}}/>
+          <input type="number" min="0" step="0.01" value={l.prixUnitaire} onChange={e=>updL(l.id,{prixUnitaire:parseFloat(e.target.value)||0})} style={{...inputS,width:"100%",boxSizing:"border-box",textAlign:"right",fontSize:11}}/>
+          <input type="number" min="0" max="100" step="0.1" value={l.remise||""} onChange={e=>updL(l.id,{remise:parseFloat(e.target.value)||0})} placeholder="0" style={{...inputS,width:"100%",boxSizing:"border-box",textAlign:"right",fontSize:11}}/>
+          <label style={{display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+            <input type="checkbox" checked={!!l.tps} onChange={e=>updL(l.id,{tps:e.target.checked})} style={{accentColor:"#f97316"}}/>
+          </label>
+          <label style={{display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+            <input type="checkbox" checked={!!l.tvq} onChange={e=>updL(l.id,{tvq:e.target.checked})} style={{accentColor:"#f97316"}}/>
+          </label>
+          <span style={{textAlign:"right",fontSize:12,fontWeight:700,color:t.text,fontFamily:"'DM Mono',monospace"}}>{fmt(lt)}</span>
+          <button onClick={()=>setLignes(ls=>ls.filter(x=>x.id!==l.id))} disabled={lignes.length===1} style={{background:"none",border:"none",color:lignes.length===1?t.textDim:"#ef4444",cursor:lignes.length===1?"default":"pointer",fontSize:14,padding:0,fontWeight:700}}>✕</button>
+        </div>);
+      })}
+      <button onClick={()=>setLignes(ls=>[...ls,newLigne()])} style={{marginTop:2,padding:"5px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>+ Ajouter une ligne</button>
+    </div>
+    {/* Totals + Notes */}
+    <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+      <div style={{flex:"2 1 200px",background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
+        <div style={{fontSize:12,fontWeight:700,color:t.text,marginBottom:6}}>Notes / Conditions</div>
+        <textarea value={form.notes||""} onChange={e=>upd({notes:e.target.value})} rows={4} placeholder="Notes visibles sur le document imprimé..." style={{...inputS,width:"100%",boxSizing:"border-box",resize:"vertical",fontFamily:"'Outfit',sans-serif"}}/>
+      </div>
+      <div style={{flex:"1 1 180px",background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12,display:"flex",flexDirection:"column",gap:5,justifyContent:"flex-end"}}>
+        {[["Sous-total",totals.sousTotal],["TPS (5%)",totals.tpsTotal],["TVQ (9.975%)",totals.tvqTotal]].map(([label,val])=>(
+          <div key={label} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:t.textSub}}>
+            <span>{label}</span><span style={{fontFamily:"'DM Mono',monospace"}}>{fmt(val)}</span>
+          </div>
+        ))}
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:800,color:t.text,borderTop:`2px solid ${t.dividerMid}`,paddingTop:6,marginTop:2}}>
+          <span>TOTAL</span><span style={{fontFamily:"'DM Mono',monospace",color:"#f97316"}}>{fmt(totals.total)}</span>
+        </div>
+      </div>
+    </div>
+  </div>);
+}
+
+// ── CLIENTS ──
+const CONDITIONS_PAIEMENT=["Sur réception","Net 15","Net 30","Net 45","Net 60","Personnalisé"];
+function genClientCode(clients){
+  const nums=clients.map(c=>{const m=c.code?.match(/^CLI-(\d+)$/);return m?parseInt(m[1]):0});
+  const max=nums.length?Math.max(...nums):0;
+  return`CLI-${String(max+1).padStart(3,"0")}`;
+}
+function ClientForm({form,setForm,inputS,t,autoFocusEntreprise}){
+  return(<div style={{display:"flex",flexDirection:"column",gap:7}}>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+      <div style={{flex:"1 1 100px"}}>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Code client</div>
+        <input value={form.code||""} onChange={e=>setForm(f=>({...f,code:e.target.value}))} placeholder="auto-généré" style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
+      </div>
+      <div style={{flex:"3 1 200px"}}>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Entreprise <span style={{color:"#f97316"}}>*</span></div>
+        <input value={form.entreprise||""} onChange={e=>setForm(f=>({...f,entreprise:e.target.value}))} placeholder="Nom de l'entreprise" autoFocus={!!autoFocusEntreprise} style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+      </div>
+      <div style={{flex:"2 1 160px"}}>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Contact</div>
+        <input value={form.contact||""} onChange={e=>setForm(f=>({...f,contact:e.target.value}))} placeholder="Nom du contact" style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+      </div>
+    </div>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+      <div style={{flex:"2 1 180px"}}>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Adresse</div>
+        <input value={form.adresse||""} onChange={e=>setForm(f=>({...f,adresse:e.target.value}))} placeholder="123 rue Principale" style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+      </div>
+      <div style={{flex:"1 1 120px"}}>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Ville</div>
+        <input value={form.ville||""} onChange={e=>setForm(f=>({...f,ville:e.target.value}))} placeholder="Montréal" style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+      </div>
+      <div style={{flex:"0 0 80px"}}>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Province</div>
+        <select value={form.province||"QC"} onChange={e=>setForm(f=>({...f,province:e.target.value}))} style={{...inputS,width:"100%",boxSizing:"border-box"}}>
+          {PROVINCES_CA.map(p=><option key={p} value={p}>{p}</option>)}
+        </select>
+      </div>
+      <div style={{flex:"1 1 90px"}}>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Code postal</div>
+        <input value={form.codePostal||""} onChange={e=>setForm(f=>({...f,codePostal:e.target.value}))} placeholder="H1A 1A1" style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
+      </div>
+      <div style={{flex:"1 1 100px"}}>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Pays</div>
+        <input value={form.pays||"Canada"} onChange={e=>setForm(f=>({...f,pays:e.target.value}))} placeholder="Canada" style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+      </div>
+    </div>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+      <div style={{flex:"1 1 130px"}}>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Téléphone #1</div>
+        <input value={form.tel1||""} onChange={e=>setForm(f=>({...f,tel1:e.target.value}))} placeholder="514-555-0000" style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
+      </div>
+      <div style={{flex:"1 1 130px"}}>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Téléphone #2</div>
+        <input value={form.tel2||""} onChange={e=>setForm(f=>({...f,tel2:e.target.value}))} placeholder="450-555-0000" style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
+      </div>
+      <div style={{flex:"1 1 130px"}}>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Cellulaire</div>
+        <input value={form.cell||""} onChange={e=>setForm(f=>({...f,cell:e.target.value}))} placeholder="514-555-0000" style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
+      </div>
+      <div style={{flex:"2 1 180px"}}>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Courriel</div>
+        <input type="email" value={form.courriel||""} onChange={e=>setForm(f=>({...f,courriel:e.target.value}))} placeholder="client@exemple.com" style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+      </div>
+    </div>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+      <div style={{flex:"1 1 120px"}}>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Langue</div>
+        <select value={form.langue||"Français"} onChange={e=>setForm(f=>({...f,langue:e.target.value}))} style={{...inputS,width:"100%",boxSizing:"border-box"}}>
+          <option>Français</option><option>English</option>
+        </select>
+      </div>
+      <div style={{flex:"1 1 180px"}}>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Conditions de paiement</div>
+        <select value={form.conditionsPaiement||"Net 30"} onChange={e=>setForm(f=>({...f,conditionsPaiement:e.target.value}))} style={{...inputS,width:"100%",boxSizing:"border-box"}}>
+          {CONDITIONS_PAIEMENT.map(c=><option key={c}>{c}</option>)}
+        </select>
+      </div>
+      {form.conditionsPaiement==="Personnalisé"&&(
+        <div style={{flex:"0 0 100px"}}>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Nombre de jours</div>
+          <input type="number" min="1" value={form.nbJours||""} onChange={e=>setForm(f=>({...f,nbJours:e.target.value}))} placeholder="45" style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+        </div>
+      )}
+    </div>
+    <div>
+      <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Notes internes</div>
+      <textarea value={form.notes||""} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Notes internes..." rows={2} style={{...inputS,width:"100%",boxSizing:"border-box",resize:"vertical",fontFamily:"'Outfit',sans-serif"}}/>
+    </div>
+  </div>);
+}
+function ClientProfile({client,saveClient,onBack,onNewDoc,inputS,t}){
+  const [form,setForm]=useState({...client});
+  const [profileTab,setProfileTab]=useState("factures");
+  const [saved,setSaved]=useState(false);
+  const doSave=()=>{
+    if(!form.entreprise?.trim())return;
+    saveClient({...form,entreprise:form.entreprise.trim()});
+    setSaved(true);setTimeout(()=>setSaved(false),2000);
+  };
+  const toggleStatut=()=>{
+    const updated={...form,statut:form.statut==="actif"?"inactif":"actif"};
+    setForm(updated);saveClient(updated);
+  };
+  const HISTORY_TABS=[{id:"factures",label:"Factures"},{id:"commandes",label:"Commandes"},{id:"soumissions",label:"Soumissions"},{id:"encaissements",label:"Encaissements"},{id:"notes",label:"Notes"}];
+  const SOON_BTNS=["Nouvelle commande","Nouvelle facture","Nouvelle note de crédit","Nouvel encaissement","État de compte"];
+  return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
+    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+      <button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>
+      <div style={{flex:1}}>
+        <span style={{fontSize:14,fontWeight:700,color:t.text}}>{client.entreprise}</span>
+        <span style={{fontSize:10,color:t.textMuted,fontFamily:"'DM Mono',monospace",marginLeft:8}}>{client.code}</span>
+        {client.statut==="inactif"&&<span style={{fontSize:9,color:"#ef4444",marginLeft:8,fontWeight:700}}>INACTIF</span>}
+      </div>
+      <button onClick={toggleStatut} style={{background:form.statut==="inactif"?"rgba(34,197,94,0.08)":"rgba(239,68,68,0.07)",border:"none",borderRadius:5,color:form.statut==="inactif"?"#16a34a":"#ef4444",fontSize:10,padding:"4px 10px",cursor:"pointer",fontWeight:700}}>
+        {form.statut==="inactif"?"Réactiver":"Désactiver"}
+      </button>
+    </div>
+    <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+      <button onClick={()=>onNewDoc&&onNewDoc("soumission",client.id)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ Nouvelle soumission</button>
+      {SOON_BTNS.map(btn=>(
+        <button key={btn} disabled title="Bientôt disponible" style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"default",fontWeight:600,opacity:0.5}}>
+          {btn}
+        </button>
+      ))}
+    </div>
+    <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
+      <ClientForm form={form} setForm={setForm} inputS={inputS} t={t}/>
+      <div style={{display:"flex",gap:6,marginTop:10,alignItems:"center"}}>
+        <button onClick={doSave} disabled={!form.entreprise?.trim()} style={{padding:"6px 16px",borderRadius:6,border:"none",background:form.entreprise?.trim()?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:form.entreprise?.trim()?"#fff":t.textDim,cursor:form.entreprise?.trim()?"pointer":"default",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>✓ Sauvegarder</button>
+        {saved&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>Sauvegardé ✓</span>}
+      </div>
+    </div>
+    <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
+      <div style={{display:"flex",gap:1,borderBottom:`1px solid ${t.dividerMid}`,marginBottom:10}}>
+        {HISTORY_TABS.map(ht=>(
+          <button key={ht.id} onClick={()=>setProfileTab(ht.id)} style={{background:"none",border:"none",color:profileTab===ht.id?"#f97316":t.textMuted,fontSize:11,fontWeight:600,padding:"4px 10px",cursor:"pointer",borderBottom:profileTab===ht.id?"2px solid #f97316":"2px solid transparent",whiteSpace:"nowrap"}}>
+            {ht.label}
+          </button>
+        ))}
+      </div>
+      <div style={{textAlign:"center",padding:"16px 0",color:t.textMuted,fontSize:11}}>
+        Aucun enregistrement — les documents apparaîtront ici une fois créés.
+      </div>
+    </div>
+  </div>);
+}
+function ClientsSection({clients,saveClients,onNewDoc}){
+  const t=useT();
+  const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none"};
+  const BLANK={code:"",entreprise:"",contact:"",adresse:"",ville:"",province:"QC",codePostal:"",pays:"Canada",tel1:"",tel2:"",cell:"",courriel:"",langue:"Français",conditionsPaiement:"Net 30",nbJours:"",notes:"",statut:"actif"};
+  const [search,setSearch]=useState("");
+  const [filterStatut,setFilterStatut]=useState("actif");
+  const [sortCol,setSortCol]=useState("entreprise");
+  const [sortAsc,setSortAsc]=useState(true);
+  const [selectedId,setSelectedId]=useState(null);
+  const [addOpen,setAddOpen]=useState(false);
+  const [form,setForm]=useState(BLANK);
+  const filtered=useMemo(()=>{
+    let list=clients;
+    if(filterStatut!=="tous")list=list.filter(c=>c.statut===filterStatut);
+    if(search.trim()){const q=search.toLowerCase();list=list.filter(c=>c.code?.toLowerCase().includes(q)||c.entreprise?.toLowerCase().includes(q)||c.contact?.toLowerCase().includes(q));}
+    return[...list].sort((a,b)=>{const av=a[sortCol]||"",bv=b[sortCol]||"";return sortAsc?av.localeCompare(bv,"fr"):bv.localeCompare(av,"fr");});
+  },[clients,filterStatut,search,sortCol,sortAsc]);
+  const addClient=()=>{
+    if(!form.entreprise.trim())return;
+    const code=form.code.trim()||genClientCode(clients);
+    saveClients([...clients,{...form,id:Date.now().toString(),code,entreprise:form.entreprise.trim()}]);
+    setForm(BLANK);setAddOpen(false);
+  };
+  const saveClient=updated=>saveClients(clients.map(c=>c.id===updated.id?updated:c));
+  const ColH=({col,label,right})=>(
+    <span onClick={()=>{if(sortCol===col)setSortAsc(a=>!a);else{setSortCol(col);setSortAsc(true);}}} style={{fontSize:9.5,color:sortCol===col?"#f97316":t.textMuted,fontWeight:600,cursor:"pointer",userSelect:"none",textAlign:right?"right":"left"}}>
+      {label}{sortCol===col?(sortAsc?" ↑":" ↓"):""}
+    </span>
+  );
+  if(selectedId){
+    const client=clients.find(c=>c.id===selectedId);
+    if(!client){setSelectedId(null);return null;}
+    return<ClientProfile client={client} saveClient={saveClient} onBack={()=>setSelectedId(null)} onNewDoc={onNewDoc} inputS={inputS} t={t}/>;
+  }
+  return(<div style={{display:"flex",flexDirection:"column",gap:8}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}>
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
+        <span style={{fontSize:13.5,fontWeight:700,color:t.text}}>Clients</span>
+        <span style={{fontSize:11,color:t.textMuted}}>{clients.filter(c=>c.statut==="actif").length} actif{clients.filter(c=>c.statut==="actif").length!==1?"s":""}</span>
+      </div>
+      <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Rechercher..." style={{...inputS,fontSize:11,padding:"4px 8px"}}/>
+        <div style={{display:"flex",gap:2}}>
+          {[{v:"actif",l:"Actifs"},{v:"inactif",l:"Inactifs"},{v:"tous",l:"Tous"}].map(({v,l})=>(
+            <button key={v} onClick={()=>setFilterStatut(v)} style={{fontSize:10,padding:"3px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:filterStatut===v?"rgba(249,115,22,0.08)":t.section,color:filterStatut===v?"#f97316":t.textSub,cursor:"pointer",fontWeight:600}}>{l}</button>
+          ))}
+        </div>
+        <button onClick={()=>{setAddOpen(o=>!o);setForm(BLANK);}} style={{fontSize:11,padding:"4px 12px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ Nouveau client</button>
+      </div>
+    </div>
+    {addOpen&&(<div style={{background:t.card,border:"1px solid rgba(249,115,22,0.2)",borderRadius:9,padding:12}}>
+      <span style={{fontSize:12,fontWeight:700,color:"#f97316",display:"block",marginBottom:8}}>Nouveau client</span>
+      <ClientForm form={form} setForm={setForm} inputS={inputS} t={t} autoFocusEntreprise/>
+      <div style={{display:"flex",gap:6,marginTop:8}}>
+        <button onClick={addClient} disabled={!form.entreprise.trim()} style={{padding:"6px 16px",borderRadius:6,border:"none",background:form.entreprise.trim()?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:form.entreprise.trim()?"#fff":t.textDim,cursor:form.entreprise.trim()?"pointer":"default",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>Ajouter</button>
+        <button onClick={()=>{setAddOpen(false);setForm(BLANK);}} style={{padding:"6px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>Annuler</button>
+      </div>
+    </div>)}
+    {filtered.length>0&&(<div style={{display:"grid",gridTemplateColumns:"90px 2fr 1.5fr 1fr 1fr 100px",gap:6,padding:"3px 8px",borderBottom:`1px solid ${t.dividerMid}`}}>
+      <ColH col="code" label="Code"/><ColH col="entreprise" label="Entreprise"/><ColH col="contact" label="Contact"/><ColH col="ville" label="Ville"/>
+      <span style={{fontSize:9.5,color:t.textMuted,fontWeight:600}}>Téléphone</span>
+      <ColH col="_solde" label="Solde dû" right/>
+    </div>)}
+    {filtered.length===0&&!addOpen&&(<div style={{textAlign:"center",padding:"24px 0",color:t.textMuted,fontSize:12}}>
+      {clients.length===0?"Aucun client — cliquez sur \"+ Nouveau client\" pour commencer.":"Aucun résultat."}
+    </div>)}
+    {filtered.map(c=>(
+      <div key={c.id} onClick={()=>setSelectedId(c.id)}
+        style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:7,padding:"7px 10px",cursor:"pointer",opacity:c.statut==="inactif"?0.55:1,display:"grid",gridTemplateColumns:"90px 2fr 1.5fr 1fr 1fr 100px",gap:6,alignItems:"center",transition:"border-color 0.15s"}}
+        onMouseEnter={e=>e.currentTarget.style.borderColor="#f97316"}
+        onMouseLeave={e=>e.currentTarget.style.borderColor=t.cardBorder}>
+        <span style={{fontSize:10,color:t.textMuted,fontFamily:"'DM Mono',monospace"}}>{c.code}</span>
+        <span style={{fontSize:12,fontWeight:600,color:t.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.entreprise}</span>
+        <span style={{fontSize:11,color:t.textSub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.contact||"—"}</span>
+        <span style={{fontSize:11,color:t.textSub}}>{c.ville||"—"}</span>
+        <span style={{fontSize:11,color:t.textSub,fontFamily:"'DM Mono',monospace"}}>{c.tel1||"—"}</span>
+        <span style={{fontSize:11,color:t.textSub,textAlign:"right",fontFamily:"'DM Mono',monospace"}}>0,00 $</span>
+      </div>
+    ))}
+  </div>);
+}
+
+// ── PRODUITS & SERVICES ──
+const UNITES_MESURE=["unité","douzaine","kg","litre","heure","forfait","%","boîte","caisse"];
+function genProdCode(produits){
+  const nums=produits.map(p=>{const m=p.code?.match(/^PROD-(\d+)$/);return m?parseInt(m[1]):0});
+  const max=nums.length?Math.max(...nums):0;
+  return`PROD-${String(max+1).padStart(3,"0")}`;
+}
+function ProdForm({form,setForm,customU,setCustomU,onSave,onCancel,isNew,activeCats,inputS,t}){
+  return(<div style={{display:"flex",flexDirection:"column",gap:7,padding:isNew?12:6}}>
+    {isNew&&<span style={{fontSize:12,fontWeight:700,color:"#f97316",marginBottom:2}}>Nouveau produit / service</span>}
+    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+      <div style={{flex:"1 1 100px"}}>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Code produit</div>
+        <input value={form.code||""} onChange={e=>setForm(f=>({...f,code:e.target.value}))} placeholder={isNew?"auto-généré":""} style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
+      </div>
+      <div style={{flex:"3 1 200px"}}>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Description <span style={{color:"#f97316"}}>*</span></div>
+        <input value={form.description||""} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="ex: Hamburger 1/4 lb" autoFocus={isNew} style={{...inputS,width:"100%",boxSizing:"border-box"}} onKeyDown={e=>{if(e.key==="Enter"&&isNew)onSave()}}/>
+      </div>
+    </div>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+      <div style={{flex:"2 1 140px"}}>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Catégorie</div>
+        <select value={form.categorieId||""} onChange={e=>setForm(f=>({...f,categorieId:e.target.value}))} style={{...inputS,width:"100%",boxSizing:"border-box",borderColor:!form.categorieId?"#f97316":undefined}}>
+          <option value="" disabled>— Choisir une catégorie * —</option>
+          {activeCats.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}
+        </select>
+      </div>
+      <div style={{flex:"1 1 100px"}}>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Prix unitaire ($)</div>
+        <input type="number" min="0" step="0.01" value={form.prixUnitaire||""} onChange={e=>setForm(f=>({...f,prixUnitaire:e.target.value}))} placeholder="0.00" style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+      </div>
+      <div style={{flex:"1 1 120px"}}>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Unité de mesure</div>
+        <select value={form.uniteMesure||"unité"} onChange={e=>setForm(f=>({...f,uniteMesure:e.target.value}))} style={{...inputS,width:"100%",boxSizing:"border-box"}}>
+          {UNITES_MESURE.map(u=><option key={u} value={u}>{u}</option>)}
+          <option value="__custom__">Autre...</option>
+        </select>
+      </div>
+      {form.uniteMesure==="__custom__"&&(
+        <div style={{flex:"1 1 100px"}}>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Unité personnalisée</div>
+          <input value={customU} onChange={e=>setCustomU(e.target.value)} placeholder="ex: palette" style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+        </div>
+      )}
+    </div>
+    <div style={{display:"flex",gap:14,alignItems:"center",flexWrap:"wrap"}}>
+      <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",fontSize:11,color:t.text}}>
+        <input type="checkbox" checked={!!form.tps} onChange={e=>setForm(f=>({...f,tps:e.target.checked}))} style={{accentColor:"#f97316"}}/>
+        Taxable TPS
+      </label>
+      <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",fontSize:11,color:t.text}}>
+        <input type="checkbox" checked={!!form.tvq} onChange={e=>setForm(f=>({...f,tvq:e.target.checked}))} style={{accentColor:"#f97316"}}/>
+        Taxable TVQ
+      </label>
+    </div>
+    <div>
+      <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Notes internes (non visibles sur les documents)</div>
+      <input value={form.notes||""} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Notes..." style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+    </div>
+    <div style={{display:"flex",gap:6,marginTop:2}}>
+      <button onClick={onSave} disabled={!form.description?.trim()||!form.categorieId} style={{padding:"6px 16px",borderRadius:6,border:"none",background:(form.description?.trim()&&form.categorieId)?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:(form.description?.trim()&&form.categorieId)?"#fff":t.textDim,cursor:(form.description?.trim()&&form.categorieId)?"pointer":"default",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>{isNew?"Ajouter":"✓ Sauvegarder"}</button>
+      <button onClick={onCancel} style={{padding:"6px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>Annuler</button>
+    </div>
+  </div>);
+}
+function ProduitsSection({produits,saveProduits,categories}){
+  const t=useT();
+  const activeCats=useMemo(()=>categories.filter(c=>c.actif!==false),[categories]);
+  const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none"};
+  const BLANK={code:"",description:"",categorieId:"",prixUnitaire:"",uniteMesure:"unité",tps:true,tvq:true,notes:"",actif:true};
+  const [search,setSearch]=useState("");
+  const [filterCat,setFilterCat]=useState("all");
+  const [showInactive,setShowInactive]=useState(false);
+  const [addOpen,setAddOpen]=useState(false);
+  const [editingId,setEditingId]=useState(null);
+  const [editForm,setEditForm]=useState({});
+  const [collapsedCats,setCollapsedCats]=useState({});
+  const [newForm,setNewForm]=useState(BLANK);
+  const [customUnite,setCustomUnite]=useState("");
+  const [editCustomUnite,setEditCustomUnite]=useState("");
+  const filtered=useMemo(()=>{
+    let list=showInactive?produits:produits.filter(p=>p.actif!==false);
+    if(filterCat!=="all")list=list.filter(p=>p.categorieId===filterCat);
+    if(search.trim()){const q=search.toLowerCase();list=list.filter(p=>p.description?.toLowerCase().includes(q)||p.code?.toLowerCase().includes(q));}
+    return list;
+  },[produits,showInactive,filterCat,search]);
+  const grouped=useMemo(()=>{
+    const map={};
+    filtered.forEach(p=>{
+      const cat=categories.find(c=>c.id===p.categorieId);
+      const key=cat?cat.id:"__none__";const label=cat?cat.nom:"Sans catégorie";
+      if(!map[key])map[key]={label,items:[]};
+      map[key].items.push(p);
+    });
+    return Object.entries(map).sort(([,a],[,b])=>a.label.localeCompare(b.label,"fr"));
+  },[filtered,categories]);
+  const addProd=()=>{
+    if(!newForm.description.trim()||!newForm.categorieId)return;
+    const code=newForm.code.trim()||genProdCode(produits);
+    const unite=newForm.uniteMesure==="__custom__"?customUnite.trim()||"unité":newForm.uniteMesure;
+    saveProduits([...produits,{id:Date.now().toString(),code,description:newForm.description.trim(),categorieId:newForm.categorieId,prixUnitaire:newForm.prixUnitaire,uniteMesure:unite,tps:newForm.tps,tvq:newForm.tvq,notes:newForm.notes.trim(),actif:true}]);
+    setNewForm(BLANK);setCustomUnite("");setAddOpen(false);
+  };
+  const startEdit=p=>{
+    const isCustom=!UNITES_MESURE.includes(p.uniteMesure);
+    setEditingId(p.id);setEditForm({...p,uniteMesure:isCustom?"__custom__":p.uniteMesure});setEditCustomUnite(isCustom?p.uniteMesure:"");
+  };
+  const saveEdit=()=>{
+    if(!editForm.description?.trim()||!editForm.categorieId)return;
+    const unite=editForm.uniteMesure==="__custom__"?editCustomUnite.trim()||"unité":editForm.uniteMesure;
+    saveProduits(produits.map(p=>p.id===editingId?{...p,...editForm,description:editForm.description.trim(),uniteMesure:unite,code:editForm.code?.trim()||p.code}:p));
+    setEditingId(null);
+  };
+  const toggleActif=p=>saveProduits(produits.map(x=>x.id===p.id?{...x,actif:!x.actif}:x));
+  return(<div style={{display:"flex",flexDirection:"column",gap:8}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}>
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
+        <span style={{fontSize:13.5,fontWeight:700,color:t.text}}>Produits & Services</span>
+        <span style={{fontSize:11,color:t.textMuted}}>{produits.filter(p=>p.actif!==false).length} actif{produits.filter(p=>p.actif!==false).length!==1?"s":""}</span>
+      </div>
+      <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Rechercher..." style={{...inputS,fontSize:11,padding:"4px 8px"}}/>
+        <select value={filterCat} onChange={e=>setFilterCat(e.target.value)} style={{...inputS,fontSize:11,padding:"4px 7px"}}>
+          <option value="all">Toutes les catégories</option>
+          {categories.filter(c=>c.actif!==false).map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}
+        </select>
+        <button onClick={()=>setShowInactive(s=>!s)} style={{fontSize:10,padding:"3px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:showInactive?"rgba(249,115,22,0.08)":t.section,color:showInactive?"#f97316":t.textSub,cursor:"pointer",fontWeight:600}}>
+          {showInactive?"Masquer inactifs":"Afficher inactifs"}
+        </button>
+        <button onClick={()=>{setAddOpen(o=>!o);setNewForm(BLANK);setCustomUnite("");}} style={{fontSize:11,padding:"4px 12px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontWeight:700}}>
+          + Nouveau produit
+        </button>
+      </div>
+    </div>
+    {addOpen&&(<div style={{background:t.card,border:"1px solid rgba(249,115,22,0.2)",borderRadius:9}}>
+      <ProdForm form={newForm} setForm={setNewForm} customU={customUnite} setCustomU={setCustomUnite} onSave={addProd} onCancel={()=>{setAddOpen(false);setNewForm(BLANK);setCustomUnite("");}} isNew={true} activeCats={activeCats} inputS={inputS} t={t}/>
+    </div>)}
+    {filtered.length===0&&!addOpen&&(<div style={{textAlign:"center",padding:"24px 0",color:t.textMuted,fontSize:12}}>
+      {produits.length===0?"Aucun produit — cliquez sur \"+ Nouveau produit\" pour commencer.":"Aucun résultat pour cette recherche."}
+    </div>)}
+    {grouped.map(([catId,group])=>(
+      <div key={catId}>
+        <div onClick={()=>setCollapsedCats(p=>({...p,[catId]:!p[catId]}))} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",padding:"4px 6px",borderRadius:5,userSelect:"none",marginBottom:3}}>
+          <span style={{fontSize:9,color:t.textMuted,fontWeight:700,display:"inline-block",transform:collapsedCats[catId]?"rotate(0deg)":"rotate(90deg)",transition:"transform 0.15s"}}>▶</span>
+          <span style={{fontSize:11.5,fontWeight:700,color:t.textSub}}>{group.label}</span>
+          <span style={{fontSize:10,color:t.textMuted}}>{group.items.length}</span>
+        </div>
+        {!collapsedCats[catId]&&(<div style={{display:"flex",flexDirection:"column",gap:4,marginLeft:16}}>
+          {group.items.map(prod=>(
+            <div key={prod.id} style={{background:t.card,border:`1px solid ${prod.actif===false?"rgba(239,68,68,0.12)":t.cardBorder}`,borderRadius:7,padding:"7px 10px",opacity:prod.actif===false?0.6:1}}>
+              {editingId===prod.id
+                ?(<ProdForm form={editForm} setForm={setEditForm} customU={editCustomUnite} setCustomU={setEditCustomUnite} onSave={saveEdit} onCancel={()=>setEditingId(null)} isNew={false} activeCats={activeCats} inputS={inputS} t={t}/>)
+                :(<div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                    <span style={{fontSize:10,color:t.textMuted,fontFamily:"'DM Mono',monospace",minWidth:80}}>{prod.code}</span>
+                    <span style={{fontSize:12,fontWeight:600,color:t.text,flex:1,cursor:"pointer",minWidth:100}} onClick={()=>startEdit(prod)}>
+                      {prod.description}
+                      {prod.actif===false&&<span style={{fontSize:9,color:"#ef4444",marginLeft:5,fontWeight:400}}>inactif</span>}
+                      <span style={{fontSize:9,color:t.textDim,marginLeft:4}}>✎</span>
+                    </span>
+                    <span style={{fontSize:11,color:t.textSub,fontFamily:"'DM Mono',monospace"}}>
+                      {prod.prixUnitaire?`${Number(prod.prixUnitaire).toFixed(2)} $`:"—"}
+                      <span style={{fontSize:9,color:t.textMuted,marginLeft:2}}>/{prod.uniteMesure}</span>
+                    </span>
+                    <div style={{display:"flex",gap:3}}>
+                      {prod.tps&&<span style={{fontSize:8,padding:"1px 4px",borderRadius:3,background:"rgba(249,115,22,0.08)",color:"#f97316",fontWeight:700}}>TPS</span>}
+                      {prod.tvq&&<span style={{fontSize:8,padding:"1px 4px",borderRadius:3,background:"rgba(249,115,22,0.08)",color:"#f97316",fontWeight:700}}>TVQ</span>}
+                    </div>
+                    <button onClick={()=>toggleActif(prod)} style={{background:prod.actif===false?"rgba(34,197,94,0.08)":"rgba(239,68,68,0.07)",border:"none",borderRadius:4,color:prod.actif===false?"#16a34a":"#ef4444",fontSize:10,padding:"2px 6px",cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>
+                      {prod.actif===false?"Réactiver":"Désactiver"}
+                    </button>
+                  </div>)}
+            </div>
+          ))}
+        </div>)}
+      </div>
+    ))}
+  </div>);
+}
+
 // ── INTELLIGENCE TAB ──
 function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProfiles,getLR,platforms,encaisseData,encaisseConfig}){
   const t=useT();
@@ -1306,6 +2039,74 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
   </div>);
 }
 
+// ── UPGRADE PROMPT MODAL ──
+function UpgradePrompt({onClose}){
+  const t=useT();
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:24}}>
+      <div style={{background:t.name==="dark"?"#16181f":t.bg,border:`1px solid ${t.cardBorder}`,borderRadius:12,padding:24,maxWidth:380,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+          <div style={{width:34,height:30,borderRadius:6,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:"#fff"}}>PRO</div>
+          <span style={{fontSize:14,fontWeight:700,color:t.text}}>BalanceIQ Pro</span>
+        </div>
+        <p style={{fontSize:13,color:t.textSub,lineHeight:1.6,margin:"0 0 18px"}}>
+          Cette fonctionnalité est disponible avec <strong style={{color:"#f97316"}}>BalanceIQ Pro</strong>.<br/>
+          Accès illimité à toutes les fonctionnalités avancées — synchronisation cloud, envoi d'emails direct, rapports Excel, et plus.
+        </p>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>window.open("https://balanceiq.ca","_blank")} style={{flex:1,padding:"8px 14px",borderRadius:7,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>En savoir plus</button>
+          <button onClick={onClose} style={{flex:1,padding:"8px 14px",borderRadius:7,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>Fermer</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── WELCOME SCREEN ──
+function WelcomeScreen({onSelect}){
+  const [franchiseurMsg,setFranchiseurMsg]=useState(false);
+  return(
+    <div style={{minHeight:"100vh",background:DARK.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Outfit','Helvetica Neue',sans-serif",padding:24}}>
+      <div style={{maxWidth:480,width:"100%",textAlign:"center"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:32}}>
+          <div style={{width:44,height:38,borderRadius:8,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:800,color:"#fff",letterSpacing:-0.5}}>BIQ</div>
+          <span style={{fontSize:22,fontWeight:800,color:"#e8e8ec",letterSpacing:-0.5}}>BalanceIQ</span>
+        </div>
+        <h1 style={{fontSize:24,fontWeight:700,color:"#e8e8ec",margin:"0 0 10px"}}>Bienvenue sur BalanceIQ</h1>
+        <p style={{fontSize:15,color:"#8b8fa3",margin:"0 0 36px",lineHeight:1.5}}>Comment utilisez-vous l'application?</p>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <button onClick={()=>onSelect("restaurant")} style={{padding:"18px 24px",borderRadius:12,border:"1.5px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:16,fontFamily:"'Outfit',sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:10,transition:"all 0.15s"}}
+            onMouseEnter={e=>e.currentTarget.style.background="rgba(249,115,22,0.14)"}
+            onMouseLeave={e=>e.currentTarget.style.background="rgba(249,115,22,0.08)"}>
+            <span style={{fontSize:22}}>🏪</span>
+            <div style={{textAlign:"left"}}>
+              <div style={{fontSize:16,fontWeight:700}}>Restaurant / Franchisé</div>
+              <div style={{fontSize:12,color:"rgba(249,115,22,0.7)",fontWeight:400,marginTop:2}}>Fermeture de caisse, P&L, inventaire, facturation</div>
+            </div>
+          </button>
+          <button onClick={()=>setFranchiseurMsg(true)} style={{padding:"18px 24px",borderRadius:12,border:`1.5px solid rgba(255,255,255,0.07)`,background:"rgba(255,255,255,0.025)",color:"#5a5e70",cursor:"pointer",fontWeight:700,fontSize:16,fontFamily:"'Outfit',sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:10}}
+            onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.04)"}
+            onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.025)"}>
+            <span style={{fontSize:22}}>🏢</span>
+            <div style={{textAlign:"left"}}>
+              <div style={{fontSize:16,fontWeight:700}}>Franchiseur / Siège social</div>
+              <div style={{fontSize:12,color:"#4a4e5e",fontWeight:400,marginTop:2}}>Dashboard multi-franchises, redevances, consolidation</div>
+            </div>
+          </button>
+        </div>
+        {franchiseurMsg&&(
+          <div style={{marginTop:20,padding:"14px 18px",borderRadius:9,background:"rgba(251,191,36,0.08)",border:"1px solid rgba(251,191,36,0.2)",textAlign:"left"}}>
+            <div style={{fontSize:13,fontWeight:600,color:"#fbbf24",marginBottom:6}}>Mode Franchiseur — disponible prochainement</div>
+            <div style={{fontSize:12,color:"#8b8fa3",marginBottom:12,lineHeight:1.5}}>Le mode Franchiseur (dashboard multi-succursales, redevances automatiques, consolidation) est en développement. Vous serez notifié dès sa disponibilité.</div>
+            <button onClick={()=>onSelect("restaurant")} style={{padding:"8px 16px",borderRadius:7,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>Continuer en mode Restaurant</button>
+          </div>
+        )}
+        <p style={{fontSize:11,color:"#3e4254",marginTop:28}}>Version {appVersion} · BalanceIQ</p>
+      </div>
+    </div>
+  );
+}
+
 // ── MAIN ──
 export default function App(){
   const [demoData]=useState(()=>genDemo());
@@ -1340,6 +2141,14 @@ export default function App(){
   const [encaisseData,setEncaisseData]=useState({});
   const [encaisseConfig,setEncaisseConfig]=useState(DEFAULT_ENCAISSE_CONFIG);
   const encaisseTimer=useRef(null);
+  const [appMode,setAppMode]=useState(null);
+  const [upgradePromptOpen,setUpgradePromptOpen]=useState(false);
+  const [companyInfo,setCompanyInfo]=useState(DEFAULT_COMPANY_INFO);
+  const [docNums,setDocNums]=useState(DEFAULT_DOC_NUMS);
+  const [facCategories,setFacCategories]=useState([]);
+  const [facProduits,setFacProduits]=useState([]);
+  const [facClients,setFacClients]=useState([]);
+  const [facSoumissions,setFacSoumissions]=useState([]);
 
   const t=theme;
 
@@ -1353,6 +2162,13 @@ export default function App(){
     try{const r6=await window.api.storage.get("dicann-platforms");if(r6?.value)setPlatforms(JSON.parse(r6.value))}catch(e){}
     try{const r7=await window.api.storage.get("dicann-encaisse");if(r7?.value)setEncaisseData(JSON.parse(r7.value))}catch(e){}
     try{const r8=await window.api.storage.get("dicann-encaisse-config");if(r8?.value)setEncaisseConfig(prev=>({...DEFAULT_ENCAISSE_CONFIG,...JSON.parse(r8.value)}))}catch(e){}
+    try{const r9=await window.api.storage.get("balanceiq-mode");if(r9?.value)setAppMode(r9.value);else setAppMode(null)}catch(e){setAppMode(null)}
+    try{const r10=await window.api.storage.get("dicann-company-info");if(r10?.value)setCompanyInfo(prev=>({...DEFAULT_COMPANY_INFO,...JSON.parse(r10.value)}))}catch(e){}
+    try{const r11=await window.api.storage.get("dicann-fac-categories");if(r11?.value)setFacCategories(JSON.parse(r11.value))}catch(e){}
+    try{const r12=await window.api.storage.get("dicann-fac-produits");if(r12?.value)setFacProduits(JSON.parse(r12.value))}catch(e){}
+    try{const r13=await window.api.storage.get("dicann-fac-clients");if(r13?.value)setFacClients(JSON.parse(r13.value))}catch(e){}
+    try{const r14=await window.api.storage.get("dicann-doc-nums");if(r14?.value)setDocNums(prev=>({...DEFAULT_DOC_NUMS,...JSON.parse(r14.value)}))}catch(e){}
+    try{const r15=await window.api.storage.get("dicann-fac-soumissions");if(r15?.value)setFacSoumissions(JSON.parse(r15.value))}catch(e){}
     setLoading(false);
     // Load auto-backup info after a short delay (backup runs at t+3s)
     setTimeout(async()=>{try{const info=await window.api.backup.getInfo();setBackupInfo(info)}catch(_){}},4000);
@@ -1400,6 +2216,14 @@ export default function App(){
   const saveApiCfg=useCallback(async c=>{try{await window.api.storage.set("dicann-api-config",JSON.stringify(c))}catch(e){}},[]);
   const persistEncaisse=useCallback(data=>{setEncaisseData(data);if(encaisseTimer.current)clearTimeout(encaisseTimer.current);encaisseTimer.current=setTimeout(async()=>{try{await window.api.storage.set("dicann-encaisse",JSON.stringify(data))}catch(e){}},600)},[]);
   const saveEncaisseConfig=useCallback(cfg=>{setEncaisseConfig(cfg);window.api.storage.set("dicann-encaisse-config",JSON.stringify(cfg)).catch(()=>{})},[]);
+  const saveAppMode=useCallback(mode=>{setAppMode(mode);window.api.storage.set("balanceiq-mode",mode).catch(()=>{})},[]);
+  const showUpgradePrompt=useCallback(featureName=>{if(shouldShowUpgradePrompt(featureName))setUpgradePromptOpen(true)},[]);
+  const saveCompanyInfo=useCallback(info=>{setCompanyInfo(info);window.api.storage.set("dicann-company-info",JSON.stringify(info)).catch(()=>{})},[]);
+  const saveFacCategories=useCallback(cats=>{setFacCategories(cats);window.api.storage.set("dicann-fac-categories",JSON.stringify(cats)).catch(()=>{})},[]);
+  const saveFacProduits=useCallback(prods=>{setFacProduits(prods);window.api.storage.set("dicann-fac-produits",JSON.stringify(prods)).catch(()=>{})},[]);
+  const saveFacClients=useCallback(list=>{setFacClients(list);window.api.storage.set("dicann-fac-clients",JSON.stringify(list)).catch(()=>{})},[]);
+  const saveDocNums=useCallback(nums=>{setDocNums(nums);window.api.storage.set("dicann-doc-nums",JSON.stringify(nums)).catch(()=>{})},[]);
+  const saveFacSoumissions=useCallback(list=>{setFacSoumissions(list);window.api.storage.set("dicann-fac-soumissions",JSON.stringify(list)).catch(()=>{})},[]);
 
   const upd=useCallback((dt,f,v)=>{setLiveData(p=>{const u={...p,[dt]:{...(p[dt]||{}),[f]:v}};persist(u);return u})},[persist]);
 
@@ -1543,9 +2367,11 @@ export default function App(){
   const inputStyle={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:12,padding:"5px 8px",outline:"none"};
 
   if(loading)return(<div style={{minHeight:"100vh",background:DARK.bg,display:"flex",alignItems:"center",justifyContent:"center",color:"#4a4e5e",fontFamily:"'Outfit',sans-serif"}}>Chargement...</div>);
+  if(!appMode)return(<WelcomeScreen onSelect={saveAppMode}/>);
 
   return(
     <ThemeCtx.Provider value={theme}>
+      {upgradePromptOpen&&<UpgradePrompt onClose={()=>setUpgradePromptOpen(false)}/>}
       <div style={{minHeight:"100vh",background:t.bg,fontFamily:"'Outfit','Helvetica Neue',sans-serif",color:t.text,transition:"background 0.2s,color 0.2s"}}>
 
         {/* ── HEADER ── */}
@@ -1592,8 +2418,11 @@ export default function App(){
               <input type="date" value={selectedDate} onChange={e=>e.target.value&&setSelectedDate(e.target.value)} style={{...inputStyle,fontFamily:"'DM Mono',monospace",fontSize:11}}/>
             </div>
           )}
-          <div style={{display:"flex",gap:1,marginTop:8,borderBottom:`1px solid ${t.dividerMid}`,overflowX:"auto"}}>
+          <div style={{display:"flex",gap:1,marginTop:8,borderBottom:`1px solid ${t.dividerMid}`,overflowX:"auto",alignItems:"center"}}>
             {tabs.map(tab=>(<button key={tab.id} onClick={()=>setActiveTab(tab.id)} style={{background:"none",border:"none",color:activeTab===tab.id?"#f97316":t.textMuted,fontSize:11.5,fontWeight:600,padding:"5px 9px",cursor:"pointer",borderBottom:activeTab===tab.id?"2px solid #f97316":"2px solid transparent",whiteSpace:"nowrap"}}>{tab.label}</button>))}
+            <div style={{flex:1}}/>
+            <div style={{width:1,height:16,background:t.dividerMid,margin:"0 6px",flexShrink:0}}/>
+            <button onClick={()=>setActiveTab("facturation")} style={{background:"none",border:"none",color:activeTab==="facturation"?"#f97316":t.textMuted,fontSize:11.5,fontWeight:600,padding:"5px 9px",cursor:"pointer",borderBottom:activeTab==="facturation"?"2px solid #f97316":"2px solid transparent",whiteSpace:"nowrap"}}>🧾 Facturation</button>
           </div>
         </div>
 
@@ -1783,10 +2612,120 @@ export default function App(){
 
           {activeTab==="monthly"&&<MonthlyPL computeDay={computeDay} suppliers={suppliers} liveData={liveData} platforms={platforms}/>}
           {activeTab==="encaisse"&&<EncaisseTab liveData={liveData} encaisseData={encaisseData} persistEncaisse={persistEncaisse} encaisseConfig={encaisseConfig} saveEncaisseConfig={saveEncaisseConfig}/>}
+          {activeTab==="facturation"&&<FacturationTab categories={facCategories} saveCategories={saveFacCategories} produits={facProduits} saveProduits={saveFacProduits} clients={facClients} saveClients={saveFacClients} soumissions={facSoumissions} saveSoumissions={saveFacSoumissions} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo}/>}
           {activeTab==="intelligence"&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR} platforms={platforms} encaisseData={encaisseData} encaisseConfig={encaisseConfig}/>}
 
           {/* SETTINGS TAB */}
           {activeTab==="settings"&&(<div style={{display:"flex",flexDirection:"column",gap:10,maxWidth:560}}>
+
+            {/* Company Info */}
+            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:10,display:"block",color:t.text}}>🏢 Informations de l'entreprise</span>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {/* Logo */}
+                <div style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0",borderBottom:`1px solid ${t.divider}`,marginBottom:2}}>
+                  <div style={{width:56,height:56,borderRadius:7,border:`1px dashed ${t.cardBorder}`,background:t.section,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",flexShrink:0}}>
+                    {companyInfo.logo
+                      ?<img src={companyInfo.logo} alt="Logo" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
+                      :<span style={{fontSize:20}}>🏢</span>}
+                  </div>
+                  <div>
+                    <div style={{fontSize:11.5,fontWeight:600,color:t.text,marginBottom:4}}>Logo de l'entreprise</div>
+                    <div style={{display:"flex",gap:6}}>
+                      <label style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11,fontFamily:"'Outfit',sans-serif"}}>
+                        Choisir une image
+                        <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>saveCompanyInfo({...companyInfo,logo:ev.target.result});reader.readAsDataURL(file);e.target.value="";}}/>
+                      </label>
+                      {companyInfo.logo&&<button onClick={()=>saveCompanyInfo({...companyInfo,logo:null})} style={{padding:"4px 10px",borderRadius:5,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:600,fontSize:11}}>Supprimer</button>}
+                    </div>
+                    <div style={{fontSize:9.5,color:t.textMuted,marginTop:3}}>PNG, JPG ou SVG · Apparaît sur les factures et documents</div>
+                  </div>
+                </div>
+                {/* Text fields */}
+                {[
+                  ["Nom de l'entreprise","nom","text",true],
+                  ["Adresse","adresse","text",false],
+                  ["Ville","ville","text",false],
+                  ["Code postal","codePostal","text",false],
+                  ["Téléphone","telephone","tel",false],
+                  ["Courriel","courriel","email",false],
+                  ["Site web","siteWeb","text",false],
+                  ["Numéro TPS","numeroTPS","text",false],
+                  ["Numéro TVQ","numeroTVQ","text",false],
+                ].map(([label,key,type,required])=>(
+                  <div key={key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"3.5px 0",borderBottom:`1px solid ${t.divider}`,gap:8}}>
+                    <span style={{fontSize:11.5,color:t.textSub,fontWeight:500,whiteSpace:"nowrap",flexShrink:0}}>{label}{required&&<span style={{color:"#f97316",marginLeft:2}}>*</span>}</span>
+                    <input type={type} value={companyInfo[key]||""} onChange={e=>saveCompanyInfo({...companyInfo,[key]:e.target.value})}
+                      placeholder={key==="numeroTPS"?"ex: 123456789 RT0001":key==="numeroTVQ"?"ex: 1234567890 TQ0001":""}
+                      style={{background:t.inputBg,border:`1px solid rgba(249,115,22,${companyInfo[key]?"0.25":"0.1"})`,borderRadius:4,color:t.inputText,fontSize:12,padding:"3.5px 6px",outline:"none",textAlign:"right",width:200,fontFamily:"'DM Mono',monospace"}}/>
+                  </div>
+                ))}
+                {/* Province dropdown */}
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"3.5px 0",borderBottom:`1px solid ${t.divider}`,gap:8}}>
+                  <span style={{fontSize:11.5,color:t.textSub,fontWeight:500}}>Province</span>
+                  <select value={companyInfo.province||"QC"} onChange={e=>saveCompanyInfo({...companyInfo,province:e.target.value})}
+                    style={{background:t.inputBg,border:`1px solid rgba(249,115,22,0.15)`,borderRadius:4,color:t.inputText,fontSize:12,padding:"3.5px 6px",outline:"none",width:200,fontFamily:"'DM Mono',monospace"}}>
+                    {PROVINCES_CA.map(p=>(<option key={p} value={p}>{p}</option>))}
+                  </select>
+                </div>
+                {companyInfo.nom&&(<div style={{marginTop:4,padding:"6px 8px",borderRadius:6,background:t.section,border:`1px solid ${t.sectionBorder}`}}>
+                  <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Aperçu en-tête facture</div>
+                  <div style={{fontSize:12,fontWeight:700,color:t.text}}>{companyInfo.nom}</div>
+                  {companyInfo.adresse&&<div style={{fontSize:11,color:t.textSub}}>{companyInfo.adresse}</div>}
+                  {(companyInfo.ville||companyInfo.province)&&<div style={{fontSize:11,color:t.textSub}}>{[companyInfo.ville,companyInfo.province,companyInfo.codePostal].filter(Boolean).join(", ")}</div>}
+                  {companyInfo.telephone&&<div style={{fontSize:11,color:t.textSub}}>{companyInfo.telephone}</div>}
+                  {companyInfo.courriel&&<div style={{fontSize:11,color:t.textSub}}>{companyInfo.courriel}</div>}
+                  {companyInfo.numeroTPS&&<div style={{fontSize:10,color:t.textMuted,marginTop:2}}>TPS: {companyInfo.numeroTPS}{companyInfo.numeroTVQ?` · TVQ: ${companyInfo.numeroTVQ}`:""}</div>}
+                </div>)}
+              </div>
+            </div>
+
+            {/* Document numbering */}
+            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:10,display:"block",color:t.text}}>🔢 Numérotation des documents</span>
+              {/* Prefix */}
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+                <span style={{fontSize:11,color:t.textSub,minWidth:160}}>Préfixe (optionnel)</span>
+                <input value={docNums.prefix||""} onChange={e=>saveDocNums({...docNums,prefix:e.target.value})} placeholder='ex: BIQ-' style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.inputText,fontSize:12,padding:"3.5px 6px",outline:"none",width:100,fontFamily:"'DM Mono',monospace"}}/>
+                <span style={{fontSize:10,color:t.textMuted}}>Apparaîtra avant chaque numéro de document</span>
+              </div>
+              {/* Doc types */}
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {[
+                  {key:"soumission",label:"Soumission",code:"S"},
+                  {key:"commande",label:"Commande",code:"C"},
+                  {key:"facture",label:"Facture",code:"F"},
+                  {key:"creditNote",label:"Note de crédit",code:"NC"},
+                  {key:"encaissement",label:"Encaissement",code:"E"},
+                ].map(({key,label,code})=>(
+                  <div key={key} style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                    <span style={{fontSize:11,color:t.textSub,minWidth:160}}>{label}</span>
+                    <div style={{display:"flex",alignItems:"center",gap:4}}>
+                      <span style={{fontSize:11,color:t.textMuted}}>Prochain #</span>
+                      <input type="number" min="1" value={docNums[key]||1} onChange={e=>{const v=parseInt(e.target.value)||1;saveDocNums({...docNums,[key]:Math.max(1,v)});}} style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.inputText,fontSize:12,padding:"3.5px 6px",outline:"none",width:70,fontFamily:"'DM Mono',monospace",textAlign:"right"}}/>
+                    </div>
+                    <span style={{fontSize:11,color:"#f97316",fontFamily:"'DM Mono',monospace",fontWeight:700}}>→ {fmtDocNum(docNums.prefix,code,docNums[key]||1)}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{fontSize:10,color:t.textMuted,marginTop:10}}>Les numéros s'incrémentent automatiquement à la création de chaque document.</div>
+            </div>
+
+            {/* App Mode */}
+            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Mode de l'application</span>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:18}}>🏪</span>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:600,color:t.text}}>Restaurant / Franchisé</div>
+                    <div style={{fontSize:10.5,color:t.textMuted}}>Mode actif — fermeture de caisse, P&L, facturation</div>
+                  </div>
+                </div>
+                <span style={{fontSize:10,fontWeight:700,color:"#16a34a",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:10,padding:"2px 8px"}}>Actif</span>
+              </div>
+              <div style={{fontSize:10.5,color:t.textMuted,marginTop:8}}>Mode Franchiseur / Siège social disponible prochainement.</div>
+            </div>
 
             {/* Theme */}
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
