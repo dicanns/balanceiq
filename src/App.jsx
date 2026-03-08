@@ -1442,7 +1442,7 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
     {subTab==="documents"&&<FacturationDashboard soumissions={soumissions} commandes={commandes} factures={factures} creditNotes={creditNotes} clients={clients} produits={produits} categories={categories} openDoc={openDoc}/>}
 
     {/* Clients */}
-    {subTab==="clients"&&<ClientsSection clients={clients} saveClients={saveClients} onNewDoc={(type,clientId)=>openDoc(type,clientId,null)}/>}
+    {subTab==="clients"&&<ClientsSection clients={clients} saveClients={saveClients} onNewDoc={(type,clientId)=>openDoc(type,clientId,null)} onOpenDoc={openDoc} soumissions={soumissions} commandes={commandes} factures={factures}/>}
 
     {/* Produits */}
     {subTab==="produits"&&<ProduitsSection produits={produits} saveProduits={saveProduits} categories={categories}/>}
@@ -2543,21 +2543,23 @@ function ClientForm({form,setForm,inputS,t,autoFocusEntreprise}){
     </div>
   </div>);
 }
-function ClientProfile({client,saveClient,onBack,onNewDoc,inputS,t}){
+function ClientProfile({client,saveClient,onBack,onNewDoc,onOpenDoc,soumissions,commandes,factures,inputS,t}){
   const [form,setForm]=useState({...client});
   const [profileTab,setProfileTab]=useState("factures");
   const [saved,setSaved]=useState(false);
-  const doSave=()=>{
-    if(!form.entreprise?.trim())return;
-    saveClient({...form,entreprise:form.entreprise.trim()});
-    setSaved(true);setTimeout(()=>setSaved(false),2000);
-  };
-  const toggleStatut=()=>{
-    const updated={...form,statut:form.statut==="actif"?"inactif":"actif"};
-    setForm(updated);saveClient(updated);
-  };
-  const HISTORY_TABS=[{id:"factures",label:"Factures"},{id:"commandes",label:"Commandes"},{id:"soumissions",label:"Soumissions"},{id:"encaissements",label:"Encaissements"},{id:"notes",label:"Notes"}];
-  const SOON_BTNS=["État de compte"];
+  const doSave=()=>{if(!form.entreprise?.trim())return;saveClient({...form,entreprise:form.entreprise.trim()});setSaved(true);setTimeout(()=>setSaved(false),2000);};
+  const toggleStatut=()=>{const updated={...form,statut:form.statut==="actif"?"inactif":"actif"};setForm(updated);saveClient(updated);};
+  // Per-client filtered lists, sorted date desc
+  const cId=client.id;
+  const cFac=useMemo(()=>[...(factures||[]).filter(f=>f.clientId===cId)].sort((a,b)=>(b.date||"").localeCompare(a.date||"")),[factures,cId]);
+  const cCmd=useMemo(()=>[...(commandes||[]).filter(f=>f.clientId===cId)].sort((a,b)=>(b.date||"").localeCompare(a.date||"")),[commandes,cId]);
+  const cSou=useMemo(()=>[...(soumissions||[]).filter(f=>f.clientId===cId)].sort((a,b)=>(b.date||"").localeCompare(a.date||"")),[soumissions,cId]);
+  const cPaiements=useMemo(()=>{const rows=[];for(const f of cFac){for(const p of f.paiements||[]){if(!p.fromCredit)rows.push({...p,factureNumero:f.numero,factureId:f.id});}}return rows.sort((a,b)=>(b.date||"").localeCompare(a.date||""));},[cFac]);
+  const soldeDu=useMemo(()=>cFac.filter(f=>!["Payée","Créditée","Annulée","Brouillon"].includes(f.statut)).reduce((s,f)=>{const paye=(f.paiements||[]).reduce((ps,p)=>ps+(p.montant||0),0);return s+Math.max(0,computeSoumTotals(f.lignes||[]).total-paye);},(0)),[cFac]);
+  const SC=(type,statut)=>type==="soumission"?STATUT_SOUM_C[statut]||"#6b7280":type==="commande"?STATUT_CMD_C[statut]||"#6b7280":STATUT_FAC_C[statut]||"#6b7280";
+  const rowS={display:"grid",gap:6,padding:"6px 6px",borderBottom:`1px solid ${t.divider}`,cursor:"pointer",alignItems:"center"};
+  const EmptyMsg=()=><div style={{textAlign:"center",padding:"20px 0",color:t.textMuted,fontSize:11}}>Aucun enregistrement.</div>;
+  const HISTORY_TABS=[{id:"factures",label:`Factures (${cFac.length})`},{id:"commandes",label:`Commandes (${cCmd.length})`},{id:"soumissions",label:`Soumissions (${cSou.length})`},{id:"encaissements",label:`Encaissements (${cPaiements.length})`},{id:"notes",label:"Notes"}];
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
       <button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>
@@ -2566,21 +2568,21 @@ function ClientProfile({client,saveClient,onBack,onNewDoc,inputS,t}){
         <span style={{fontSize:10,color:t.textMuted,fontFamily:"'DM Mono',monospace",marginLeft:8}}>{client.code}</span>
         {client.statut==="inactif"&&<span style={{fontSize:9,color:"#ef4444",marginLeft:8,fontWeight:700}}>INACTIF</span>}
       </div>
+      {soldeDu>0.005&&<div style={{background:"rgba(249,115,22,0.08)",border:"1px solid rgba(249,115,22,0.2)",borderRadius:7,padding:"5px 12px",textAlign:"right"}}>
+        <div style={{fontSize:9,color:t.textMuted,textTransform:"uppercase",letterSpacing:"0.5px"}}>Solde dû</div>
+        <div style={{fontSize:14,fontWeight:900,color:"#f97316",fontFamily:"'DM Mono',monospace"}}>{fmt(soldeDu)}</div>
+      </div>}
       <button onClick={toggleStatut} style={{background:form.statut==="inactif"?"rgba(34,197,94,0.08)":"rgba(239,68,68,0.07)",border:"none",borderRadius:5,color:form.statut==="inactif"?"#16a34a":"#ef4444",fontSize:10,padding:"4px 10px",cursor:"pointer",fontWeight:700}}>
         {form.statut==="inactif"?"Réactiver":"Désactiver"}
       </button>
     </div>
     <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-      <button onClick={()=>onNewDoc&&onNewDoc("soumission",client.id)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ Nouvelle soumission</button>
-      <button onClick={()=>onNewDoc&&onNewDoc("commande",client.id)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ Nouvelle commande</button>
-      <button onClick={()=>onNewDoc&&onNewDoc("facture",client.id)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ Nouvelle facture</button>
-      <button onClick={()=>onNewDoc&&onNewDoc("encaissement",client.id)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ Nouvel encaissement</button>
-      <button onClick={()=>onNewDoc&&onNewDoc("creditnote",client.id)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:700}}>+ Note de crédit</button>
-      {SOON_BTNS.map(btn=>(
-        <button key={btn} disabled title="Bientôt disponible" style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"default",fontWeight:600,opacity:0.5}}>
-          {btn}
-        </button>
-      ))}
+      <button onClick={()=>onNewDoc&&onNewDoc("soumission",cId)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ Nouvelle soumission</button>
+      <button onClick={()=>onNewDoc&&onNewDoc("commande",cId)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ Nouvelle commande</button>
+      <button onClick={()=>onNewDoc&&onNewDoc("facture",cId)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ Nouvelle facture</button>
+      <button onClick={()=>onNewDoc&&onNewDoc("encaissement",cId)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ Nouvel encaissement</button>
+      <button onClick={()=>onNewDoc&&onNewDoc("creditnote",cId)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:700}}>+ Note de crédit</button>
+      <button disabled title="Bientôt disponible" style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"default",fontWeight:600,opacity:0.5}}>État de compte</button>
     </div>
     <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
       <ClientForm form={form} setForm={setForm} inputS={inputS} t={t}/>
@@ -2589,21 +2591,76 @@ function ClientProfile({client,saveClient,onBack,onNewDoc,inputS,t}){
         {saved&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>Sauvegardé ✓</span>}
       </div>
     </div>
+    {/* History tabs */}
     <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
-      <div style={{display:"flex",gap:1,borderBottom:`1px solid ${t.dividerMid}`,marginBottom:10}}>
+      <div style={{display:"flex",gap:1,borderBottom:`1px solid ${t.dividerMid}`,marginBottom:10,overflowX:"auto"}}>
         {HISTORY_TABS.map(ht=>(
-          <button key={ht.id} onClick={()=>setProfileTab(ht.id)} style={{background:"none",border:"none",color:profileTab===ht.id?"#f97316":t.textMuted,fontSize:11,fontWeight:600,padding:"4px 10px",cursor:"pointer",borderBottom:profileTab===ht.id?"2px solid #f97316":"2px solid transparent",whiteSpace:"nowrap"}}>
-            {ht.label}
-          </button>
+          <button key={ht.id} onClick={()=>setProfileTab(ht.id)} style={{background:"none",border:"none",color:profileTab===ht.id?"#f97316":t.textMuted,fontSize:11,fontWeight:600,padding:"4px 10px",cursor:"pointer",borderBottom:profileTab===ht.id?"2px solid #f97316":"2px solid transparent",whiteSpace:"nowrap"}}>{ht.label}</button>
         ))}
       </div>
-      <div style={{textAlign:"center",padding:"16px 0",color:t.textMuted,fontSize:11}}>
-        Aucun enregistrement — les documents apparaîtront ici une fois créés.
-      </div>
+      {/* Factures */}
+      {profileTab==="factures"&&(cFac.length===0?<EmptyMsg/>:<div>
+        <div style={{display:"grid",gridTemplateColumns:"90px 80px 1fr 80px 80px",gap:6,padding:"2px 6px",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:2}}>
+          {["# Facture","Date","Statut","Total","Solde"].map((h,i)=><span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i>=3?"right":"left"}}>{h}</span>)}
+        </div>
+        {cFac.map(f=>{const tot=computeSoumTotals(f.lignes||[]).total;const paye=(f.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);const sol=Math.max(0,tot-paye);const sc=STATUT_FAC_C[f.statut]||"#6b7280";const isOD=["Envoyée","Payée partiellement"].includes(f.statut)&&f.dateEcheance&&f.dateEcheance<dk(new Date());return(
+          <div key={f.id} onClick={()=>onOpenDoc&&onOpenDoc("facture",f.clientId,f)} style={{...rowS,gridTemplateColumns:"90px 80px 1fr 80px 80px"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(249,115,22,0.04)"} onMouseLeave={e=>e.currentTarget.style.background=""}>
+            <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,fontWeight:600,color:t.text}}>{f.numero||"—"}</span>
+            <span style={{fontSize:11,color:t.textSub,fontFamily:"'DM Mono',monospace"}}>{f.date||"—"}</span>
+            <span style={{fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:8,background:`${sc}18`,color:sc,width:"fit-content"}}>{isOD?"En retard ⚠":f.statut}</span>
+            <span style={{fontSize:11,textAlign:"right",fontFamily:"'DM Mono',monospace",color:t.textSub}}>{fmt(tot)}</span>
+            <span style={{fontSize:11,textAlign:"right",fontFamily:"'DM Mono',monospace",fontWeight:sol>0.005?700:400,color:sol>0.005?"#f97316":t.textDim}}>{sol>0.005?fmt(sol):"—"}</span>
+          </div>
+        );})}
+      </div>)}
+      {/* Commandes */}
+      {profileTab==="commandes"&&(cCmd.length===0?<EmptyMsg/>:<div>
+        <div style={{display:"grid",gridTemplateColumns:"100px 80px 1fr 90px",gap:6,padding:"2px 6px",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:2}}>
+          {["# Commande","Date","Statut","Total"].map((h,i)=><span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i===3?"right":"left"}}>{h}</span>)}
+        </div>
+        {cCmd.map(d=>{const tot=computeSoumTotals(d.lignes||[]).total;const sc=STATUT_CMD_C[d.statut]||"#6b7280";return(
+          <div key={d.id} onClick={()=>onOpenDoc&&onOpenDoc("commande",d.clientId,d)} style={{...rowS,gridTemplateColumns:"100px 80px 1fr 90px"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(249,115,22,0.04)"} onMouseLeave={e=>e.currentTarget.style.background=""}>
+            <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,fontWeight:600,color:t.text}}>{d.numero||"—"}</span>
+            <span style={{fontSize:11,color:t.textSub,fontFamily:"'DM Mono',monospace"}}>{d.date||"—"}</span>
+            <span style={{fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:8,background:`${sc}18`,color:sc,width:"fit-content"}}>{d.statut}</span>
+            <span style={{fontSize:11,textAlign:"right",fontFamily:"'DM Mono',monospace",color:t.textSub}}>{fmt(tot)}</span>
+          </div>
+        );})}
+      </div>)}
+      {/* Soumissions */}
+      {profileTab==="soumissions"&&(cSou.length===0?<EmptyMsg/>:<div>
+        <div style={{display:"grid",gridTemplateColumns:"100px 80px 1fr 90px",gap:6,padding:"2px 6px",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:2}}>
+          {["# Soumission","Date","Statut","Total"].map((h,i)=><span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i===3?"right":"left"}}>{h}</span>)}
+        </div>
+        {cSou.map(d=>{const tot=computeSoumTotals(d.lignes||[]).total;const sc=STATUT_SOUM_C[d.statut]||"#6b7280";return(
+          <div key={d.id} onClick={()=>onOpenDoc&&onOpenDoc("soumission",d.clientId,d)} style={{...rowS,gridTemplateColumns:"100px 80px 1fr 90px"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(249,115,22,0.04)"} onMouseLeave={e=>e.currentTarget.style.background=""}>
+            <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,fontWeight:600,color:t.text}}>{d.numero||"—"}</span>
+            <span style={{fontSize:11,color:t.textSub,fontFamily:"'DM Mono',monospace"}}>{d.date||"—"}</span>
+            <span style={{fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:8,background:`${sc}18`,color:sc,width:"fit-content"}}>{d.statut}</span>
+            <span style={{fontSize:11,textAlign:"right",fontFamily:"'DM Mono',monospace",color:t.textSub}}>{fmt(tot)}</span>
+          </div>
+        );})}
+      </div>)}
+      {/* Encaissements */}
+      {profileTab==="encaissements"&&(cPaiements.length===0?<EmptyMsg/>:<div>
+        <div style={{display:"grid",gridTemplateColumns:"90px 80px 90px 1fr 80px",gap:6,padding:"2px 6px",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:2}}>
+          {["# Reçu","Date","Montant","Mode","# Facture"].map((h,i)=><span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i===2?"right":"left"}}>{h}</span>)}
+        </div>
+        {cPaiements.map(p=>(
+          <div key={p.id} onClick={()=>{const f=cFac.find(f=>f.id===p.factureId);if(f&&onOpenDoc)onOpenDoc("facture",f.clientId,f);}} style={{...rowS,gridTemplateColumns:"90px 80px 90px 1fr 80px"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(249,115,22,0.04)"} onMouseLeave={e=>e.currentTarget.style.background=""}>
+            <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:t.text}}>{p.numero||"—"}</span>
+            <span style={{fontSize:11,color:t.textSub,fontFamily:"'DM Mono',monospace"}}>{p.date||"—"}</span>
+            <span style={{fontSize:11,textAlign:"right",fontFamily:"'DM Mono',monospace",color:"#22c55e",fontWeight:700}}>{fmt(p.montant)}</span>
+            <span style={{fontSize:11,color:t.textSub}}>{p.mode||"—"}</span>
+            <span style={{fontSize:11,fontFamily:"'DM Mono',monospace",color:t.textMuted}}>{p.factureNumero||"—"}</span>
+          </div>
+        ))}
+      </div>)}
+      {profileTab==="notes"&&<EmptyMsg/>}
     </div>
   </div>);
 }
-function ClientsSection({clients,saveClients,onNewDoc}){
+function ClientsSection({clients,saveClients,onNewDoc,onOpenDoc,soumissions,commandes,factures}){
   const t=useT();
   const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none"};
   const BLANK={code:"",entreprise:"",contact:"",adresse:"",ville:"",province:"QC",codePostal:"",pays:"Canada",tel1:"",tel2:"",cell:"",courriel:"",langue:"Français",conditionsPaiement:"Net 30",nbJours:"",notes:"",statut:"actif"};
@@ -2635,7 +2692,7 @@ function ClientsSection({clients,saveClients,onNewDoc}){
   if(selectedId){
     const client=clients.find(c=>c.id===selectedId);
     if(!client){setSelectedId(null);return null;}
-    return<ClientProfile client={client} saveClient={saveClient} onBack={()=>setSelectedId(null)} onNewDoc={onNewDoc} inputS={inputS} t={t}/>;
+    return<ClientProfile client={client} saveClient={saveClient} onBack={()=>setSelectedId(null)} onNewDoc={onNewDoc} onOpenDoc={onOpenDoc} soumissions={soumissions} commandes={commandes} factures={factures} inputS={inputS} t={t}/>;
   }
   return(<div style={{display:"flex",flexDirection:"column",gap:8}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}>
