@@ -1079,6 +1079,121 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
   </div>);
 }
 
+// ── FACTURATION DASHBOARD ──
+const TYPE_PILL={soumission:{label:"S",bg:"rgba(59,130,246,0.12)",color:"#3b82f6"},commande:{label:"C",bg:"rgba(139,92,246,0.12)",color:"#8b5cf6"},facture:{label:"F",bg:"rgba(249,115,22,0.12)",color:"#f97316"},creditnote:{label:"NC",bg:"rgba(239,68,68,0.1)",color:"#ef4444"}};
+function getStatutColor(doc){if(doc._type==="soumission")return STATUT_SOUM_C[doc.statut]||"#6b7280";if(doc._type==="commande")return STATUT_CMD_C[doc.statut]||"#6b7280";if(doc._type==="facture"||doc._type==="creditnote")return STATUT_FAC_C[doc.statut]||STATUT_NC_C[doc.statut]||"#6b7280";return"#6b7280";}
+function getStatutColorFn(type,statut){if(type==="soumission")return STATUT_SOUM_C[statut]||"#6b7280";if(type==="commande")return STATUT_CMD_C[statut]||"#6b7280";if(type==="facture")return STATUT_FAC_C[statut]||"#6b7280";if(type==="creditnote")return STATUT_NC_C[statut]||"#6b7280";return"#6b7280";}
+function getDocSolde(doc){if(doc._type==="facture"){const paye=(doc.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);return Math.max(0,computeSoumTotals(doc.lignes||[]).total-paye);}return null;}
+function FacturationDashboard({soumissions,commandes,factures,creditNotes,clients,openDoc}){
+  const t=useT();
+  const today=dk(new Date());
+  const thisMonth=today.slice(0,7);
+  const [filterType,setFilterType]=useState("tous");
+  const [search,setSearch]=useState("");
+  const [dateFrom,setDateFrom]=useState("");
+  const [dateTo,setDateTo]=useState("");
+  const [sortCol,setSortCol]=useState("date");
+  const [sortDir,setSortDir]=useState(-1);
+  const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:11,padding:"4px 7px",outline:"none"};
+  const stats=useMemo(()=>{
+    const factureCeMois=factures.filter(f=>f.date?.startsWith(thisMonth)&&f.statut!=="Annulée").reduce((s,f)=>s+computeSoumTotals(f.lignes||[]).total,0);
+    const encaisseCeMois=factures.reduce((s,f)=>(s+(f.paiements||[]).filter(p=>p.date?.startsWith(thisMonth)).reduce((ps,p)=>ps+(p.montant||0),0)),0);
+    const enSouffrance=factures.filter(f=>!["Payée","Annulée","Brouillon"].includes(f.statut)).reduce((s,f)=>{const paye=(f.paiements||[]).reduce((ps,p)=>ps+(p.montant||0),0);return s+Math.max(0,computeSoumTotals(f.lignes||[]).total-paye);},0);
+    const enRetard=factures.filter(f=>["Envoyée","Payée partiellement"].includes(f.statut)&&f.dateEcheance&&f.dateEcheance<today).length;
+    return{factureCeMois,encaisseCeMois,enSouffrance,enRetard};
+  },[factures,thisMonth,today]);
+  const allDocs=useMemo(()=>[...soumissions.map(d=>({...d,_type:"soumission"})),...commandes.map(d=>({...d,_type:"commande"})),...factures.map(d=>({...d,_type:"facture"})),...creditNotes.map(d=>({...d,_type:"creditnote"}))]
+  ,[soumissions,commandes,factures,creditNotes]);
+  const filtered=useMemo(()=>{
+    let list=filterType==="tous"?allDocs:allDocs.filter(d=>d._type===filterType);
+    if(search){const q=search.toLowerCase();list=list.filter(d=>{const cl=clients.find(c=>c.id===d.clientId);return(d.numero||"").toLowerCase().includes(q)||(cl?.entreprise||"").toLowerCase().includes(q);});}
+    if(dateFrom)list=list.filter(d=>(d.date||"")>=dateFrom);
+    if(dateTo)list=list.filter(d=>(d.date||"")<=dateTo);
+    return[...list].sort((a,b)=>{
+      if(sortCol==="numero")return sortDir*(a.numero||"").localeCompare(b.numero||"");
+      if(sortCol==="date")return sortDir*(a.date||"").localeCompare(b.date||"");
+      if(sortCol==="client"){const ca=clients.find(c=>c.id===a.clientId)?.entreprise||"";const cb=clients.find(c=>c.id===b.clientId)?.entreprise||"";return sortDir*ca.localeCompare(cb,"fr");}
+      if(sortCol==="total")return sortDir*(computeSoumTotals(b.lignes||[]).total-computeSoumTotals(a.lignes||[]).total);
+      if(sortCol==="statut")return sortDir*(a.statut||"").localeCompare(b.statut||"");
+      return 0;
+    });
+  },[allDocs,filterType,search,dateFrom,dateTo,sortCol,sortDir,clients]);
+  const exportCSV=()=>{
+    const rows=[["#","Type","Date","Client","Total","Statut","Solde"]];
+    for(const d of filtered){const cl=clients.find(c=>c.id===d.clientId);const total=computeSoumTotals(d.lignes||[]).total;const solde=getDocSolde(d);rows.push([d.numero||"",TYPE_PILL[d._type]?.label||"",d.date||"",cl?.entreprise||"",total.toFixed(2),d.statut||"",solde!=null?solde.toFixed(2):"—"]);}
+    const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+    const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`documents-${today}.csv`;a.click();URL.revokeObjectURL(url);
+  };
+  const toggleSort=col=>{if(sortCol===col)setSortDir(d=>-d);else{setSortCol(col);setSortDir(-1);}};
+  const SH=({col,align,children})=>(<span onClick={()=>toggleSort(col)} style={{cursor:"pointer",userSelect:"none",fontSize:10,fontWeight:700,color:sortCol===col?"#f97316":t.textMuted,display:"block",textAlign:align||"left"}}>{children}{sortCol===col?(sortDir<0?" ↓":" ↑"):""}</span>);
+  const FTABS=[{id:"tous",label:"Tous"},{id:"soumission",label:"Soumissions"},{id:"commande",label:"Commandes"},{id:"facture",label:"Factures"},{id:"creditnote",label:"Notes de crédit"}];
+  const countOf=type=>allDocs.filter(d=>d._type===type).length;
+  return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
+    {/* Stats */}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8}}>
+      {[{label:"Facturé ce mois",val:fmt(stats.factureCeMois),color:"#f97316"},{label:"Encaissé ce mois",val:fmt(stats.encaisseCeMois),color:"#22c55e"},{label:"En souffrance",val:fmt(stats.enSouffrance),color:"#ef4444"},{label:"En retard",val:`${stats.enRetard} facture${stats.enRetard!==1?"s":""}`,color:stats.enRetard>0?"#ef4444":t.textMuted}].map(s=>(
+        <div key={s.label} style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:"10px 14px"}}>
+          <div style={{fontSize:9.5,color:t.textMuted,marginBottom:3,textTransform:"uppercase",letterSpacing:"0.5px"}}>{s.label}</div>
+          <div style={{fontSize:15,fontWeight:900,color:s.color,fontFamily:"'DM Mono',monospace"}}>{s.val}</div>
+        </div>
+      ))}
+    </div>
+    {/* Filter tabs + search */}
+    <div style={{display:"flex",gap:1,borderBottom:`1px solid ${t.dividerMid}`,alignItems:"flex-end",flexWrap:"wrap"}}>
+      {FTABS.map(ft=>(<button key={ft.id} onClick={()=>setFilterType(ft.id)} style={{background:"none",border:"none",color:filterType===ft.id?"#f97316":t.textMuted,fontSize:11,fontWeight:600,padding:"5px 10px",cursor:"pointer",borderBottom:filterType===ft.id?"2px solid #f97316":"2px solid transparent",whiteSpace:"nowrap"}}>
+        {ft.label}{ft.id!=="tous"&&<span style={{fontSize:9,marginLeft:3,color:t.textDim}}>({countOf(ft.id)})</span>}
+      </button>))}
+      <div style={{flex:1}}/>
+      <button onClick={exportCSV} style={{fontSize:10,padding:"3px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,marginBottom:3}}>⬇ CSV</button>
+    </div>
+    {/* Search + date range */}
+    <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Rechercher # ou client..." style={{...inputS,flex:"1 1 160px"}}/>
+      <span style={{fontSize:10,color:t.textMuted}}>Du</span>
+      <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={{...inputS,fontFamily:"'DM Mono',monospace"}}/>
+      <span style={{fontSize:10,color:t.textMuted}}>au</span>
+      <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={{...inputS,fontFamily:"'DM Mono',monospace"}}/>
+      {(search||dateFrom||dateTo)&&<button onClick={()=>{setSearch("");setDateFrom("");setDateTo("");}} style={{fontSize:10,padding:"3px 8px",borderRadius:5,border:"none",background:"rgba(239,68,68,0.08)",color:"#ef4444",cursor:"pointer",fontWeight:600}}>✕ Réinitialiser</button>}
+    </div>
+    {/* Table */}
+    {filtered.length===0
+      ?<div style={{textAlign:"center",padding:"32px 0",color:t.textMuted,fontSize:12}}>Aucun document trouvé.</div>
+      :<div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+          <thead><tr style={{borderBottom:`2px solid ${t.dividerMid}`}}>
+            <th style={{padding:"5px 8px",textAlign:"left",width:24}}/>
+            <th style={{padding:"5px 8px",textAlign:"left"}}><SH col="numero">#</SH></th>
+            <th style={{padding:"5px 8px",textAlign:"left"}}><SH col="date">Date</SH></th>
+            <th style={{padding:"5px 8px",textAlign:"left"}}><SH col="client">Client</SH></th>
+            <th style={{padding:"5px 8px",textAlign:"right"}}><SH col="total" align="right">Total</SH></th>
+            <th style={{padding:"5px 8px",textAlign:"left"}}><SH col="statut">Statut</SH></th>
+            <th style={{padding:"5px 8px",textAlign:"right"}}>Solde</th>
+          </tr></thead>
+          <tbody>
+            {filtered.map(doc=>{
+              const pill=TYPE_PILL[doc._type];
+              const cl=clients.find(c=>c.id===doc.clientId);
+              const total=computeSoumTotals(doc.lignes||[]).total;
+              const solde=getDocSolde(doc);
+              const sc=getStatutColorFn(doc._type,doc.statut);
+              const isOverdue=doc._type==="facture"&&["Envoyée","Payée partiellement"].includes(doc.statut)&&doc.dateEcheance&&doc.dateEcheance<today;
+              return(<tr key={doc.id} onClick={()=>openDoc(doc._type,doc.clientId,doc)} style={{borderBottom:`1px solid ${t.divider}`,cursor:"pointer",transition:"background 0.1s"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(249,115,22,0.04)"} onMouseLeave={e=>e.currentTarget.style.background=""}>
+                <td style={{padding:"6px 8px"}}><span style={{fontSize:9,fontWeight:800,padding:"2px 5px",borderRadius:4,background:pill?.bg,color:pill?.color,letterSpacing:"0.3px"}}>{pill?.label}</span></td>
+                <td style={{padding:"6px 8px",fontFamily:"'DM Mono',monospace",fontWeight:600,color:t.text,fontSize:11}}>{doc.numero||<span style={{color:t.textDim,fontStyle:"italic"}}>Brouillon</span>}</td>
+                <td style={{padding:"6px 8px",color:t.textSub,fontFamily:"'DM Mono',monospace"}}>{doc.date||"—"}</td>
+                <td style={{padding:"6px 8px",color:t.text,fontWeight:500}}>{cl?.entreprise||<span style={{color:t.textDim,fontStyle:"italic"}}>Sans client</span>}</td>
+                <td style={{padding:"6px 8px",textAlign:"right",fontFamily:"'DM Mono',monospace",color:doc._type==="creditnote"?"#ef4444":t.textSub}}>{doc._type==="creditnote"?"("+fmt(total)+")":fmt(total)}</td>
+                <td style={{padding:"6px 8px"}}><span style={{fontSize:9.5,fontWeight:700,padding:"2px 7px",borderRadius:10,background:`${sc}18`,color:sc}}>{isOverdue?"En retard ⚠":doc.statut}</span></td>
+                <td style={{padding:"6px 8px",textAlign:"right",fontFamily:"'DM Mono',monospace",color:solde!=null&&solde>0.005?"#f97316":t.textDim,fontWeight:solde!=null&&solde>0.005?700:400}}>{solde!=null?(solde>0.005?fmt(solde):"—"):"—"}</td>
+              </tr>);
+            })}
+          </tbody>
+        </table>
+        <div style={{fontSize:10,color:t.textDim,marginTop:6,textAlign:"right"}}>{filtered.length} document{filtered.length!==1?"s":""}</div>
+      </div>}
+  </div>);
+}
+
 // ── AGING REPORT ──
 function AgingReport({factures,clients}){
   const t=useT();
@@ -1165,7 +1280,7 @@ function AgingReport({factures,clients}){
 // ── FACTURATION TAB ──
 function FacturationTab({categories,saveCategories,produits,saveProduits,clients,saveClients,soumissions,saveSoumissions,commandes,saveCommandes,factures,saveFactures,creditNotes,saveCreditNotes,docNums,saveDocNums,companyInfo,encaisseData,persistEncaisse}){
   const t=useT();
-  const [subTab,setSubTab]=useState("clients");
+  const [subTab,setSubTab]=useState("documents");
   const [activeDoc,setActiveDoc]=useState(null);
   // activeDoc: null | { type, doc: obj|null, clientId: str|null }
   const openDoc=(type,clientId,doc)=>setActiveDoc({type,doc:doc||null,clientId:clientId||null});
@@ -1212,7 +1327,7 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
   const toggleActif=cat=>saveCategories(categories.map(c=>c.id===cat.id?{...c,actif:!c.actif}:c));
   const addCat=()=>{if(!newForm.nom.trim())return;saveCategories([...categories,{id:Date.now().toString(),nom:newForm.nom.trim(),compteRevenu:newForm.compteRevenu.trim(),compteEscompte:newForm.compteEscompte.trim(),description:newForm.description.trim(),actif:true}]);setNewForm({nom:"",compteRevenu:"",compteEscompte:"",description:""});setAddOpen(false)};
 
-  const subTabs=[{id:"clients",label:"Clients"},{id:"categories",label:"Catégories"},{id:"produits",label:"Produits & Services"},{id:"vieillissement",label:"Vieillissement"},{id:"documents",label:"Documents",soon:true}];
+  const subTabs=[{id:"documents",label:"Documents"},{id:"clients",label:"Clients"},{id:"categories",label:"Catégories"},{id:"produits",label:"Produits & Services"},{id:"vieillissement",label:"Vieillissement"}];
 
   if(activeDoc?.type==="soumission"){
     return<SoumissionEditor soumission={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} soumissions={soumissions} saveSoumissions={saveSoumissions} onBack={closeDoc} initClientId={activeDoc.clientId} onConvertToCommande={convertSoumToCommande} onConvertToFacture={soum=>convertToFacture(soum,"soumission")}/>;
@@ -1241,6 +1356,9 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
       <button onClick={()=>openDoc("commande",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,marginBottom:2}}>+ Nouvelle commande</button>
       <button onClick={()=>openDoc("facture",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,marginBottom:2}}>+ Nouvelle facture</button>
     </div>
+
+    {/* Dashboard */}
+    {subTab==="documents"&&<FacturationDashboard soumissions={soumissions} commandes={commandes} factures={factures} creditNotes={creditNotes} clients={clients} openDoc={openDoc}/>}
 
     {/* Clients */}
     {subTab==="clients"&&<ClientsSection clients={clients} saveClients={saveClients} onNewDoc={(type,clientId)=>openDoc(type,clientId,null)}/>}
