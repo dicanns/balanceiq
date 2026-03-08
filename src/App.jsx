@@ -1098,7 +1098,7 @@ function FacturationDashboard({soumissions,commandes,factures,creditNotes,client
   const stats=useMemo(()=>{
     const factureCeMois=factures.filter(f=>f.date?.startsWith(thisMonth)&&f.statut!=="Annulée").reduce((s,f)=>s+computeSoumTotals(f.lignes||[]).total,0);
     const encaisseCeMois=factures.reduce((s,f)=>(s+(f.paiements||[]).filter(p=>p.date?.startsWith(thisMonth)).reduce((ps,p)=>ps+(p.montant||0),0)),0);
-    const enSouffrance=factures.filter(f=>!["Payée","Annulée","Brouillon"].includes(f.statut)).reduce((s,f)=>{const paye=(f.paiements||[]).reduce((ps,p)=>ps+(p.montant||0),0);return s+Math.max(0,computeSoumTotals(f.lignes||[]).total-paye);},0);
+    const enSouffrance=factures.filter(f=>!["Payée","Créditée","Annulée","Brouillon"].includes(f.statut)).reduce((s,f)=>{const paye=(f.paiements||[]).reduce((ps,p)=>ps+(p.montant||0),0);return s+Math.max(0,computeSoumTotals(f.lignes||[]).total-paye);},0);
     const enRetard=factures.filter(f=>["Envoyée","Payée partiellement"].includes(f.statut)&&f.dateEcheance&&f.dateEcheance<today).length;
     return{factureCeMois,encaisseCeMois,enSouffrance,enRetard};
   },[factures,thisMonth,today]);
@@ -1205,7 +1205,7 @@ function AgingReport({factures,clients}){
   const data=useMemo(()=>{
     const asOfDate=new Date(asOf+"T12:00:00");
     const byClient={};
-    for(const fac of factures.filter(f=>!["Payée","Annulée","Brouillon"].includes(f.statut))){
+    for(const fac of factures.filter(f=>!["Payée","Créditée","Annulée","Brouillon"].includes(f.statut))){
       const paye=(fac.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);
       const solde=computeSoumTotals(fac.lignes).total-paye;
       if(solde<=0.005)continue;
@@ -1813,8 +1813,8 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
 }
 
 // ── FACTURE ──
-const STATUTS_FACTURE=["Brouillon","Envoyée","Payée partiellement","Payée","En retard","Annulée"];
-const STATUT_FAC_C={"Brouillon":"#6b7280","Envoyée":"#3b82f6","Payée partiellement":"#f59e0b","Payée":"#22c55e","En retard":"#ef4444","Annulée":"#9ca3af"};
+const STATUTS_FACTURE=["Brouillon","Envoyée","Payée partiellement","Payée","En retard","Créditée","Annulée"];
+const STATUT_FAC_C={"Brouillon":"#6b7280","Envoyée":"#3b82f6","Payée partiellement":"#f59e0b","Payée":"#22c55e","En retard":"#ef4444","Créditée":"#8b5cf6","Annulée":"#9ca3af"};
 function calcDateEcheance(dateStr,conditions,nbJours){
   if(!dateStr)return"";
   const d=new Date(dateStr+"T12:00:00");
@@ -1844,6 +1844,9 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
   const totals=useMemo(()=>computeSoumTotals(lignes),[lignes]);
   const client=clients.find(c=>c.id===form.clientId);
   const locked=form.statut!=="Brouillon";
+  const creditPaiements=useMemo(()=>(form.paiements||[]).filter(p=>p.fromCredit),[form.paiements]);
+  const regularPaiements=useMemo(()=>(form.paiements||[]).filter(p=>!p.fromCredit),[form.paiements]);
+  const montantCredit=useMemo(()=>creditPaiements.reduce((s,p)=>s+(p.montant||0),0),[creditPaiements]);
   const montantPaye=useMemo(()=>(form.paiements||[]).reduce((s,p)=>s+(p.montant||0),0),[form.paiements]);
   const soldeDu=totals.total-montantPaye;
   // Auto-detect overdue
@@ -1994,14 +1997,17 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
         <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:800,color:t.text,borderTop:`2px solid ${t.dividerMid}`,paddingTop:6,marginTop:2}}>
           <span>TOTAL</span><span style={{fontFamily:"'DM Mono',monospace",color:"#f97316"}}>{fmt(totals.total)}</span>
         </div>
-        {montantPaye>0&&<>
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#22c55e"}}>
-            <span>Montant payé</span><span style={{fontFamily:"'DM Mono',monospace"}}>−{fmt(montantPaye)}</span>
-          </div>
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,fontWeight:800,color:soldeDu<=0?"#22c55e":"#ef4444",borderTop:`1px solid ${t.dividerMid}`,paddingTop:5,marginTop:2}}>
-            <span>Solde dû</span><span style={{fontFamily:"'DM Mono',monospace"}}>{fmt(soldeDu)}</span>
-          </div>
-        </>}
+        {regularPaiements.length>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#22c55e"}}>
+          <span>Paiements reçus</span><span style={{fontFamily:"'DM Mono',monospace"}}>−{fmt(regularPaiements.reduce((s,p)=>s+(p.montant||0),0))}</span>
+        </div>}
+        {creditPaiements.length>0&&<div style={{display:"flex",flexDirection:"column",gap:2,marginTop:2}}>
+          {creditPaiements.map(p=><div key={p.id} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8b5cf6"}}>
+            <span>Note de crédit {p.reference||p.numero}</span><span style={{fontFamily:"'DM Mono',monospace"}}>−{fmt(p.montant)}</span>
+          </div>)}
+        </div>}
+        {montantPaye>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:13,fontWeight:800,color:soldeDu<=0?"#22c55e":"#ef4444",borderTop:`1px solid ${t.dividerMid}`,paddingTop:5,marginTop:2}}>
+          <span>Solde dû</span><span style={{fontFamily:"'DM Mono',monospace"}}>{fmt(soldeDu)}</span>
+        </div>}
         {montantPaye===0&&<div style={{fontSize:10,color:t.textMuted,textAlign:"center",marginTop:4}}>Aucun paiement enregistré</div>}
       </div>
     </div>
@@ -2021,7 +2027,7 @@ function EncaissementEditor({clientId,factureId,clients,factures,saveFactures,do
   const todayStr=dk(new Date());
   const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none"};
   const client=clients.find(c=>c.id===clientId);
-  const unpaid=useMemo(()=>factures.filter(f=>f.clientId===clientId&&!["Payée","Annulée","Brouillon"].includes(f.statut)),[factures,clientId]);
+  const unpaid=useMemo(()=>factures.filter(f=>f.clientId===clientId&&!["Payée","Créditée","Annulée","Brouillon"].includes(f.statut)),[factures,clientId]);
   const [selId,setSelId]=useState(factureId||null);
   const [form,setForm]=useState({date:todayStr,montant:"",mode:"Virement/E-Transfer",reference:"",note:""});
   const [confirmation,setConfirmation]=useState(null);
@@ -2129,7 +2135,7 @@ function EncaissementEditor({clientId,factureId,clients,factures,saveFactures,do
 }
 
 // ── NOTE DE CRÉDIT ──
-const RAISONS_NC=["Erreur de facturation","Retour de marchandise","Ajustement de prix","Autre"];
+const RAISONS_NC=["Article brisé / endommagé","Erreur de facturation","Retour de marchandise","Ajustement de prix","Autre"];
 const STATUTS_NC=["Brouillon","Émise","Appliquée","Annulée"];
 const STATUT_NC_C={"Brouillon":"#6b7280","Émise":"#3b82f6","Appliquée":"#22c55e","Annulée":"#9ca3af"};
 function buildNoteDeCreditHTML({numero,date,clientId,factureNumero,raison,raisonDetail,lignes,notes,companyInfo,clients}){
@@ -2146,35 +2152,68 @@ function NoteDeCreditEditor({creditNote,clients,factures,companyInfo,docNums,sav
   const t=useT();
   const isNew=!creditNote?.id;
   const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none"};
-  const [form,setForm]=useState(()=>creditNote?{...creditNote}:{clientId:initClientId||"",factureId:initFactureId||"",raison:"Erreur de facturation",raisonDetail:"",date:dk(new Date()),statut:"Brouillon",lignes:[newLigne()],notes:""});
+  const resolvedFactureId=creditNote?.factureId||initFactureId||"";
+  const initFac=useMemo(()=>factures.find(f=>f.id===resolvedFactureId),[factures,resolvedFactureId]);
+  const fromInvoice=!!initFac;
+  const [form,setForm]=useState(()=>creditNote?{...creditNote}:{clientId:initClientId||initFac?.clientId||"",factureId:resolvedFactureId,raison:"Erreur de facturation",raisonDetail:"",date:dk(new Date()),statut:"Brouillon",notes:""});
+  // From-invoice selection lines (one per invoice line)
+  const [selLines,setSelLines]=useState(()=>{
+    if(creditNote?.selLines)return creditNote.selLines;
+    if(initFac)return initFac.lignes.map(l=>({srcId:l.id,description:l.description||"",qtéOriginale:l.quantite||0,prixUnitaire:l.prixUnitaire||0,remise:l.remise||0,tps:l.tps!==false,tvq:l.tvq!==false,checked:false,qtéACréditer:"0",useOverride:false,montantOverride:""}));
+    return[];
+  });
+  // Manual / custom lines (standalone: all lines; from-invoice: extra custom lines)
+  const [manualLines,setManualLines]=useState(()=>{
+    if(fromInvoice)return creditNote?.customLines||[];
+    return creditNote?.lignes||[newLigne()];
+  });
   const [savedId,setSavedId]=useState(creditNote?.id||null);
   const [saved,setSaved]=useState(false);
   const upd=f=>setForm(p=>({...p,...f}));
-  const updLigne=(id,f)=>upd({lignes:form.lignes.map(l=>l.id===id?{...l,...f}:l)});
-  const addLigne=()=>upd({lignes:[...form.lignes,newLigne()]});
-  const rmLigne=id=>upd({lignes:form.lignes.filter(l=>l.id!==id)});
-  const totals=useMemo(()=>computeSoumTotals(form.lignes),[form.lignes]);
+  const updSel=(srcId,f)=>setSelLines(ls=>ls.map(l=>l.srcId===srcId?{...l,...f}:l));
+  const updManual=(id,f)=>setManualLines(ls=>ls.map(l=>l.id===id?{...l,...f}:l));
+  const addManual=()=>setManualLines(ls=>[...ls,newLigne()]);
+  const rmManual=id=>setManualLines(ls=>ls.filter(l=>l.id!==id));
+  const creditTout=()=>setSelLines(ls=>ls.map(l=>({...l,checked:true,qtéACréditer:String(l.qtéOriginale)})));
+  const activeLignes=useMemo(()=>{
+    const lines=[];
+    if(fromInvoice){
+      for(const sl of selLines){
+        if(!sl.checked)continue;
+        if(sl.useOverride){const amt=parseFloat(sl.montantOverride)||0;if(amt<=0)continue;lines.push({id:sl.srcId,description:sl.description,quantite:1,prixUnitaire:amt,remise:0,tps:sl.tps,tvq:sl.tvq});}
+        else{const qty=parseFloat(sl.qtéACréditer)||0;if(qty<=0)continue;lines.push({id:sl.srcId,description:sl.description,quantite:qty,prixUnitaire:sl.prixUnitaire,remise:sl.remise,tps:sl.tps,tvq:sl.tvq});}
+      }
+      for(const ml of manualLines){if((ml.prixUnitaire||0)>0||(ml.description||"").trim())lines.push(ml);}
+    } else {
+      lines.push(...manualLines);
+    }
+    return lines;
+  },[fromInvoice,selLines,manualLines]);
+  const totals=useMemo(()=>computeSoumTotals(activeLignes),[activeLignes]);
   const clientFactures=useMemo(()=>factures.filter(f=>f.clientId===form.clientId&&!["Annulée"].includes(f.statut)),[factures,form.clientId]);
   const client=clients.find(c=>c.id===form.clientId);
   const linkedFac=factures.find(f=>f.id===form.factureId);
+  const facTotalAmt=linkedFac?computeSoumTotals(linkedFac.lignes).total:0;
+  const alreadyCredited=linkedFac?(linkedFac.paiements||[]).filter(p=>p.fromCredit).reduce((s,p)=>s+(p.montant||0),0):0;
+  const remainingCredit=Math.max(0,facTotalAmt-alreadyCredited);
+  const creditExceedsAvailable=linkedFac&&totals.total>remainingCredit+0.005;
   const locked=!isNew&&form.statut!=="Brouillon";
+  const canSave=form.clientId&&!(form.raison==="Autre"&&!form.raisonDetail?.trim())&&activeLignes.length>0&&totals.total>0&&!creditExceedsAvailable;
   const doSave=()=>{
-    if(!form.clientId)return;
-    if(form.raison==="Autre"&&!form.raisonDetail?.trim())return;
+    if(!canSave)return;
     const id=savedId||Date.now().toString();
     const numero=savedId?(creditNotes.find(n=>n.id===savedId)?.numero||fmtDocNum(docNums.prefix,"NC",docNums.creditNote)):fmtDocNum(docNums.prefix,"NC",docNums.creditNote);
-    const rec={...form,id,numero};
+    const creditAmount=linkedFac?Math.min(totals.total,remainingCredit):totals.total;
+    const rec={...form,id,numero,lignes:activeLignes,selLines:fromInvoice?selLines:undefined,customLines:fromInvoice?manualLines:undefined};
     if(!savedId){
       saveCreditNotes([...creditNotes,rec]);
       saveDocNums({...docNums,creditNote:docNums.creditNote+1});
-      // Apply credit to linked invoice if specified
-      if(form.factureId&&linkedFac){
-        const montant=totals.total;
+      if(form.factureId&&linkedFac&&creditAmount>0){
         const pId=Date.now().toString()+"c";
-        const newPaiements=[...(linkedFac.paiements||[]),{id:pId,numero,date:form.date,montant,mode:"Note de crédit",reference:numero,note:`Note de crédit ${numero}`,fromCredit:true}];
-        const paye=newPaiements.reduce((s,p)=>s+(p.montant||0),0);
-        const solde=computeSoumTotals(linkedFac.lignes).total-paye;
-        const newStatut=solde<=0.005?"Payée":paye>0?"Payée partiellement":linkedFac.statut;
+        const newPaiements=[...(linkedFac.paiements||[]),{id:pId,numero,date:form.date,montant:creditAmount,mode:"Note de crédit",reference:numero,note:`Note de crédit ${numero}`,fromCredit:true}];
+        const totalPaye=newPaiements.reduce((s,p)=>s+(p.montant||0),0);
+        const solde=facTotalAmt-totalPaye;
+        const newStatut=solde<=0.005?"Créditée":totalPaye>0?"Payée partiellement":linkedFac.statut;
         saveFactures(factures.map(f=>f.id===form.factureId?{...f,paiements:newPaiements,statut:newStatut}:f));
       }
     } else {
@@ -2182,11 +2221,13 @@ function NoteDeCreditEditor({creditNote,clients,factures,companyInfo,docNums,sav
     }
     setSavedId(id);setSaved(true);setTimeout(()=>setSaved(false),2000);
   };
-  const doPrint=()=>savedId&&openPDF(buildNoteDeCreditHTML({...form,numero:creditNotes.find(n=>n.id===savedId)?.numero||"",clients,companyInfo}));
+  const doPrint=()=>savedId&&openPDF(buildNoteDeCreditHTML({...form,lignes:activeLignes,numero:creditNotes.find(n=>n.id===savedId)?.numero||"",factureNumero:linkedFac?.numero||"",clients,companyInfo}));
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
+    {/* Header bar */}
     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
       <button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>
       <span style={{fontSize:14,fontWeight:700,color:"#ef4444"}}>Note de crédit</span>
+      {fromInvoice&&<span style={{fontSize:11,color:t.textMuted,background:"rgba(59,130,246,0.07)",padding:"2px 8px",borderRadius:5}}>sur facture <strong>{linkedFac?.numero||"—"}</strong></span>}
       {savedId&&<span style={{fontSize:11,fontFamily:"'DM Mono',monospace",color:t.textMuted}}>{creditNotes.find(n=>n.id===savedId)?.numero}</span>}
       {savedId&&<span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:10,background:`${STATUT_NC_C[form.statut]}22`,color:STATUT_NC_C[form.statut]}}>{form.statut}</span>}
     </div>
@@ -2195,7 +2236,7 @@ function NoteDeCreditEditor({creditNote,clients,factures,companyInfo,docNums,sav
       <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
         <div style={{flex:"1 1 160px"}}>
           <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Client <span style={{color:"#ef4444"}}>*</span></div>
-          <select value={form.clientId} onChange={e=>{upd({clientId:e.target.value,factureId:""});}} disabled={locked} style={{...inputS,width:"100%",boxSizing:"border-box",borderColor:form.clientId?"":!locked?"#ef4444":undefined}}>
+          <select value={form.clientId} onChange={e=>upd({clientId:e.target.value,factureId:""})} disabled={locked||fromInvoice} style={{...inputS,width:"100%",boxSizing:"border-box",borderColor:form.clientId?"":!locked?"#ef4444":undefined,opacity:fromInvoice?0.75:1}}>
             <option value="">— Choisir un client —</option>
             {clients.filter(c=>c.statut!=="inactif").map(c=><option key={c.id} value={c.id}>{c.entreprise}</option>)}
           </select>
@@ -2212,13 +2253,13 @@ function NoteDeCreditEditor({creditNote,clients,factures,companyInfo,docNums,sav
         </div>
       </div>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-        <div style={{flex:"1 1 160px"}}>
+        {!fromInvoice&&<div style={{flex:"1 1 160px"}}>
           <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Facture liée (optionnel)</div>
-          <select value={form.factureId} onChange={e=>upd({factureId:e.target.value})} disabled={locked||!form.clientId||!isNew} style={{...inputS,width:"100%",boxSizing:"border-box",opacity:!form.clientId?0.5:1}}>
-            <option value="">— Aucune —</option>
+          <select value={form.factureId||""} onChange={e=>upd({factureId:e.target.value})} disabled={locked||!form.clientId||!isNew} style={{...inputS,width:"100%",boxSizing:"border-box",opacity:!form.clientId?0.5:1}}>
+            <option value="">— Aucune (autonome) —</option>
             {clientFactures.map(f=><option key={f.id} value={f.id}>{f.numero} ({new Date(f.date+"T12:00:00").toLocaleDateString("fr-CA")})</option>)}
           </select>
-        </div>
+        </div>}
         <div style={{flex:"1 1 160px"}}>
           <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Raison <span style={{color:"#ef4444"}}>*</span></div>
           <select value={form.raison} onChange={e=>upd({raison:e.target.value})} disabled={locked} style={{...inputS,width:"100%",boxSizing:"border-box"}}>
@@ -2230,38 +2271,90 @@ function NoteDeCreditEditor({creditNote,clients,factures,companyInfo,docNums,sav
           <input value={form.raisonDetail||""} onChange={e=>upd({raisonDetail:e.target.value})} placeholder="Décrivez la raison..." disabled={locked} style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
         </div>}
       </div>
-      {linkedFac&&<div style={{marginTop:8,fontSize:11,color:"#3b82f6",background:"rgba(59,130,246,0.06)",borderRadius:5,padding:"4px 8px"}}>Facture liée: <strong>{linkedFac.numero}</strong> — solde courant: <strong style={{fontFamily:"'DM Mono',monospace"}}>{fmt(computeSoumTotals(linkedFac.lignes).total-(linkedFac.paiements||[]).reduce((s,p)=>s+(p.montant||0),0))}</strong></div>}
+      {linkedFac&&<div style={{marginTop:8,fontSize:11,color:"#3b82f6",background:"rgba(59,130,246,0.06)",borderRadius:5,padding:"5px 8px",display:"flex",gap:12,flexWrap:"wrap"}}>
+        <span>Facture <strong>{linkedFac.numero}</strong></span>
+        <span>Total: <strong style={{fontFamily:"'DM Mono',monospace"}}>{fmt(facTotalAmt)}</strong></span>
+        <span>Déjà crédité: <strong style={{fontFamily:"'DM Mono',monospace",color:"#8b5cf6"}}>{alreadyCredited>0?"("+fmt(alreadyCredited)+")":"—"}</strong></span>
+        <span>Disponible: <strong style={{fontFamily:"'DM Mono',monospace",color:remainingCredit>0?"#22c55e":"#ef4444"}}>{fmt(remainingCredit)}</strong></span>
+      </div>}
     </div>
-    {/* Line items */}
-    <div style={{background:t.card,border:`1px solid rgba(239,68,68,0.15)`,borderRadius:9,padding:12}}>
+    {/* FROM INVOICE: Selection table */}
+    {fromInvoice&&<div style={{background:t.card,border:`1px solid rgba(239,68,68,0.15)`,borderRadius:9,padding:12}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+        <span style={{fontSize:12,fontWeight:700,color:t.text}}>Lignes de la facture d'origine</span>
+        {!locked&&<button onClick={creditTout} style={{fontSize:10,padding:"3px 10px",borderRadius:5,border:"1px solid rgba(239,68,68,0.25)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:700}}>Créditer tout</button>}
+      </div>
+      {/* Column headers */}
+      <div style={{display:"grid",gridTemplateColumns:"24px 1fr 70px 90px 80px 80px 90px",gap:4,padding:"0 2px",marginBottom:4}}>
+        {["","Description","Qté orig.","Qté à créd.","Prix unit.","Total",""].map((h,i)=><span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i>=4?"right":"left"}}>{h}</span>)}
+      </div>
+      {selLines.map(sl=>{
+        const subQty=(sl.prixUnitaire||0)*(parseFloat(sl.qtéACréditer)||0)*(1-(sl.remise||0)/100);
+        const subAmt=parseFloat(sl.montantOverride)||0;
+        const sub=sl.useOverride?subAmt:subQty;
+        return(<div key={sl.srcId} style={{display:"grid",gridTemplateColumns:"24px 1fr 70px 90px 80px 80px 90px",gap:4,marginBottom:5,alignItems:"center",opacity:sl.checked?1:0.45}}>
+          <input type="checkbox" checked={sl.checked} onChange={e=>updSel(sl.srcId,{checked:e.target.checked,qtéACréditer:e.target.checked?String(sl.qtéOriginale):"0"})} disabled={locked} style={{accentColor:"#ef4444"}}/>
+          <span style={{fontSize:11,color:t.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={sl.description}>{sl.description||"—"}</span>
+          <span style={{fontSize:11,color:t.textMuted,textAlign:"right",fontFamily:"'DM Mono',monospace"}}>{sl.qtéOriginale}</span>
+          {sl.useOverride
+            ?<input type="number" min="0" step="0.01" value={sl.montantOverride} onChange={e=>updSel(sl.srcId,{montantOverride:e.target.value})} disabled={locked||!sl.checked} placeholder="$" style={{...inputS,textAlign:"right",fontFamily:"'DM Mono',monospace",width:"100%",boxSizing:"border-box",fontSize:11}}/>
+            :<input type="number" min="0" step="0.01" max={sl.qtéOriginale} value={sl.qtéACréditer} onChange={e=>updSel(sl.srcId,{qtéACréditer:e.target.value})} disabled={locked||!sl.checked} style={{...inputS,textAlign:"right",fontFamily:"'DM Mono',monospace",width:"100%",boxSizing:"border-box",fontSize:11}}/>}
+          <span style={{fontSize:11,color:t.textMuted,textAlign:"right",fontFamily:"'DM Mono',monospace"}}>{sl.useOverride?"—":fmt(sl.prixUnitaire)}</span>
+          <span style={{fontSize:11,fontWeight:700,color:sub>0?"#ef4444":t.textDim,textAlign:"right",fontFamily:"'DM Mono',monospace"}}>{sub>0?"("+fmt(sub)+")":"—"}</span>
+          {!locked&&<button onClick={()=>updSel(sl.srcId,{useOverride:!sl.useOverride,montantOverride:""})} title={sl.useOverride?"Retour à la quantité":"Saisir un montant personnalisé"} style={{fontSize:9,padding:"2px 5px",borderRadius:4,border:`1px solid ${t.cardBorder}`,background:sl.useOverride?"rgba(139,92,246,0.08)":t.section,color:sl.useOverride?"#8b5cf6":t.textDim,cursor:"pointer",fontWeight:600}}>
+            {sl.useOverride?"qty":"$"}
+          </button>}
+        </div>);
+      })}
+    </div>}
+    {/* STANDALONE: Manual line items */}
+    {!fromInvoice&&<div style={{background:t.card,border:`1px solid rgba(239,68,68,0.15)`,borderRadius:9,padding:12}}>
       <div style={{fontSize:12,fontWeight:700,color:t.text,marginBottom:8}}>Articles à créditer</div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 60px 90px 60px 50px 50px 90px 24px",gap:4,marginBottom:4,padding:"0 2px"}}>
         {["Description","Qté","Prix unit.","Remise %","TPS","TVQ","Montant",""].map((h,i)=><span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i>=4&&i<7?"center":i===6?"right":"left"}}>{h}</span>)}
       </div>
-      {form.lignes.map(l=>{const sub=(l.prixUnitaire||0)*(l.quantite||0)*(1-(l.remise||0)/100);return(
+      {manualLines.map(l=>{const sub=(l.prixUnitaire||0)*(l.quantite||0)*(1-(l.remise||0)/100);return(
         <div key={l.id} style={{display:"grid",gridTemplateColumns:"1fr 60px 90px 60px 50px 50px 90px 24px",gap:4,marginBottom:4,alignItems:"center"}}>
-          <input value={l.description} onChange={e=>updLigne(l.id,{description:e.target.value})} placeholder="Description du crédit..." disabled={locked} style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
-          <input type="number" min="0.01" step="0.01" value={l.quantite} onChange={e=>updLigne(l.id,{quantite:parseFloat(e.target.value)||0})} disabled={locked} style={{...inputS,textAlign:"right",fontFamily:"'DM Mono',monospace",width:"100%",boxSizing:"border-box"}}/>
-          <input type="number" min="0" step="0.01" value={l.prixUnitaire} onChange={e=>updLigne(l.id,{prixUnitaire:parseFloat(e.target.value)||0})} disabled={locked} style={{...inputS,textAlign:"right",fontFamily:"'DM Mono',monospace",width:"100%",boxSizing:"border-box"}}/>
-          <input type="number" min="0" max="100" step="0.1" value={l.remise} onChange={e=>updLigne(l.id,{remise:parseFloat(e.target.value)||0})} disabled={locked} style={{...inputS,textAlign:"right",fontFamily:"'DM Mono',monospace",width:"100%",boxSizing:"border-box"}}/>
-          <div style={{textAlign:"center"}}><input type="checkbox" checked={l.tps} onChange={e=>updLigne(l.id,{tps:e.target.checked})} disabled={locked} style={{accentColor:"#ef4444"}}/></div>
-          <div style={{textAlign:"center"}}><input type="checkbox" checked={l.tvq} onChange={e=>updLigne(l.id,{tvq:e.target.checked})} disabled={locked} style={{accentColor:"#ef4444"}}/></div>
+          <input value={l.description||""} onChange={e=>updManual(l.id,{description:e.target.value})} placeholder="Description du crédit..." disabled={locked} style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+          <input type="number" min="0.01" step="0.01" value={l.quantite||1} onChange={e=>updManual(l.id,{quantite:parseFloat(e.target.value)||0})} disabled={locked} style={{...inputS,textAlign:"right",fontFamily:"'DM Mono',monospace",width:"100%",boxSizing:"border-box"}}/>
+          <input type="number" min="0" step="0.01" value={l.prixUnitaire||0} onChange={e=>updManual(l.id,{prixUnitaire:parseFloat(e.target.value)||0})} disabled={locked} style={{...inputS,textAlign:"right",fontFamily:"'DM Mono',monospace",width:"100%",boxSizing:"border-box"}}/>
+          <input type="number" min="0" max="100" step="0.1" value={l.remise||0} onChange={e=>updManual(l.id,{remise:parseFloat(e.target.value)||0})} disabled={locked} style={{...inputS,textAlign:"right",fontFamily:"'DM Mono',monospace",width:"100%",boxSizing:"border-box"}}/>
+          <div style={{textAlign:"center"}}><input type="checkbox" checked={l.tps!==false} onChange={e=>updManual(l.id,{tps:e.target.checked})} disabled={locked} style={{accentColor:"#ef4444"}}/></div>
+          <div style={{textAlign:"center"}}><input type="checkbox" checked={l.tvq!==false} onChange={e=>updManual(l.id,{tvq:e.target.checked})} disabled={locked} style={{accentColor:"#ef4444"}}/></div>
           <span style={{textAlign:"right",fontFamily:"'DM Mono',monospace",fontSize:12,color:"#ef4444",fontWeight:700}}>({fmt(sub)})</span>
-          {!locked&&<button onClick={()=>rmLigne(l.id)} disabled={form.lignes.length===1} style={{background:"none",border:"none",color:"#ef4444",cursor:form.lignes.length===1?"default":"pointer",fontSize:13,opacity:form.lignes.length===1?0.3:1}}>✕</button>}
+          {!locked&&<button onClick={()=>rmManual(l.id)} disabled={manualLines.length===1} style={{background:"none",border:"none",color:"#ef4444",cursor:manualLines.length===1?"default":"pointer",fontSize:13,opacity:manualLines.length===1?0.3:1}}>✕</button>}
         </div>
       );})}
-      {!locked&&<button onClick={addLigne} style={{fontSize:11,padding:"3px 10px",borderRadius:5,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.05)",color:"#ef4444",cursor:"pointer",fontWeight:600,marginTop:4}}>+ Ligne</button>}
-      <div style={{display:"flex",justifyContent:"flex-end",marginTop:10}}>
-        <div style={{width:240,display:"flex",flexDirection:"column",gap:3}}>
-          {[["Sous-total",totals.sousTotal],["TPS (5%)",totals.tpsTotal],["TVQ (9.975%)",totals.tvqTotal]].map(([l,v])=>(
-            <div key={l} style={{display:"flex",justifyContent:"space-between",fontSize:12,color:t.textSub}}>
-              <span>{l}</span><span style={{fontFamily:"'DM Mono',monospace",color:"#ef4444"}}>({fmt(v)})</span>
-            </div>
-          ))}
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:900,color:"#ef4444",borderTop:`1px solid ${t.dividerMid}`,paddingTop:4,marginTop:2}}>
-            <span>CRÉDIT TOTAL</span><span style={{fontFamily:"'DM Mono',monospace"}}>({fmt(totals.total)})</span>
-          </div>
+      {!locked&&<button onClick={addManual} style={{fontSize:11,padding:"3px 10px",borderRadius:5,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.05)",color:"#ef4444",cursor:"pointer",fontWeight:600,marginTop:4}}>+ Ligne</button>}
+    </div>}
+    {/* CUSTOM LINES (from-invoice mode extra lines) */}
+    {fromInvoice&&<div style={{background:t.card,border:`1px solid rgba(239,68,68,0.1)`,borderRadius:9,padding:12}}>
+      <div style={{fontSize:12,fontWeight:700,color:t.text,marginBottom:8}}>Lignes personnalisées <span style={{fontSize:10,color:t.textMuted,fontWeight:400}}>(optionnel — ex: article brisé dans une caisse)</span></div>
+      {manualLines.map(l=>{const sub=(l.prixUnitaire||0)*(l.quantite||0)*(1-(l.remise||0)/100);return(
+        <div key={l.id} style={{display:"grid",gridTemplateColumns:"1fr 60px 90px 50px 50px 90px 24px",gap:4,marginBottom:4,alignItems:"center"}}>
+          <input value={l.description||""} onChange={e=>updManual(l.id,{description:e.target.value})} placeholder="ex: 1 article brisé dans case de 24..." disabled={locked} style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+          <input type="number" min="0.01" step="0.01" value={l.quantite||1} onChange={e=>updManual(l.id,{quantite:parseFloat(e.target.value)||0})} disabled={locked} style={{...inputS,textAlign:"right",fontFamily:"'DM Mono',monospace",width:"100%",boxSizing:"border-box"}}/>
+          <input type="number" min="0" step="0.01" value={l.prixUnitaire||0} onChange={e=>updManual(l.id,{prixUnitaire:parseFloat(e.target.value)||0})} disabled={locked} style={{...inputS,textAlign:"right",fontFamily:"'DM Mono',monospace",width:"100%",boxSizing:"border-box"}}/>
+          <div style={{textAlign:"center"}}><input type="checkbox" checked={l.tps!==false} onChange={e=>updManual(l.id,{tps:e.target.checked})} disabled={locked} style={{accentColor:"#ef4444"}}/></div>
+          <div style={{textAlign:"center"}}><input type="checkbox" checked={l.tvq!==false} onChange={e=>updManual(l.id,{tvq:e.target.checked})} disabled={locked} style={{accentColor:"#ef4444"}}/></div>
+          <span style={{textAlign:"right",fontFamily:"'DM Mono',monospace",fontSize:12,color:"#ef4444",fontWeight:700}}>({fmt(sub)})</span>
+          {!locked&&<button onClick={()=>rmManual(l.id)} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:13}}>✕</button>}
         </div>
+      );})}
+      {!locked&&<button onClick={addManual} style={{fontSize:11,padding:"3px 10px",borderRadius:5,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.05)",color:"#ef4444",cursor:"pointer",fontWeight:600,marginTop:4}}>+ Ligne personnalisée</button>}
+    </div>}
+    {/* Totals */}
+    <div style={{display:"flex",justifyContent:"flex-end"}}>
+      <div style={{width:280,display:"flex",flexDirection:"column",gap:3}}>
+        {[["Sous-total",totals.sousTotal],["TPS (5%)",totals.tpsTotal],["TVQ (9.975%)",totals.tvqTotal]].map(([l,v])=>(
+          <div key={l} style={{display:"flex",justifyContent:"space-between",fontSize:12,color:t.textSub}}>
+            <span>{l}</span><span style={{fontFamily:"'DM Mono',monospace",color:"#ef4444"}}>({fmt(v)})</span>
+          </div>
+        ))}
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:900,color:"#ef4444",borderTop:`1px solid ${t.dividerMid}`,paddingTop:4,marginTop:2}}>
+          <span>CRÉDIT TOTAL</span><span style={{fontFamily:"'DM Mono',monospace"}}>({fmt(totals.total)})</span>
+        </div>
+        {creditExceedsAvailable&&<div style={{fontSize:10,color:"#ef4444",background:"rgba(239,68,68,0.08)",borderRadius:4,padding:"3px 6px",marginTop:2}}>⚠ Dépasse le solde disponible ({fmt(remainingCredit)})</div>}
       </div>
     </div>
     {/* Notes */}
@@ -2271,7 +2364,7 @@ function NoteDeCreditEditor({creditNote,clients,factures,companyInfo,docNums,sav
     </div>
     {/* Actions */}
     <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-      <button onClick={doSave} disabled={!form.clientId||(form.raison==="Autre"&&!form.raisonDetail?.trim())} style={{padding:"6px 18px",borderRadius:6,border:"none",background:form.clientId?"linear-gradient(135deg,#ef4444,#dc2626)":"rgba(255,255,255,0.05)",color:form.clientId?"#fff":t.textDim,cursor:form.clientId?"pointer":"default",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>✓ {savedId?"Sauvegarder":"Créer la note de crédit"}</button>
+      <button onClick={doSave} disabled={!canSave} style={{padding:"6px 18px",borderRadius:6,border:"none",background:canSave?"linear-gradient(135deg,#ef4444,#dc2626)":"rgba(255,255,255,0.05)",color:canSave?"#fff":t.textDim,cursor:canSave?"pointer":"default",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>✓ {savedId?"Sauvegarder":"Créer la note de crédit"}</button>
       {saved&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>Sauvegardé ✓</span>}
       {savedId&&<button onClick={doPrint} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>🖨️ Imprimer</button>}
     </div>
