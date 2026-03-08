@@ -1,6 +1,6 @@
 # BalanceIQ — Product Roadmap
 ### L'intelligence derrière vos chiffres.
-### Last updated: March 7, 2026 (session 6)
+### Last updated: March 8, 2026 (session 7)
 
 ---
 
@@ -73,6 +73,22 @@
 - [x] Consumption velocity analysis — average dz consumed per time window (Début→14h, 14h→17h, 17h→19h, 19h→20h) broken down by day of week
 - [x] Predictive ordering with external factors — multi-factor model (dow + weather category + temp range + Quebec holidays); shows ham/hot/sales estimate for tomorrow with contextual adjustments
 - [x] Intra-day projection on daily tab — once any bread checkpoint is entered, linearly extrapolates end-of-day usage for ham and hot
+
+### ✅ DONE — Encaisse tab (💵 daily cash position tracker)
+
+- [x] **New tab** — "💵 Encaisse" placed between P&L Mensuel and Intelligence
+- [x] **Read-only from caisses** — reads `finalCash - float` per register for "Cash des ventes", reads `interac` for "Dépôt Interac/Crédit"; NEVER writes back to caisses
+- [x] **① Solde d'ouverture** — auto-carried from previous day's closing balance (iterative forward computation); manual override (✎) with option to reset; shows warning when no history found
+- [x] **② Entrées de cash** — auto "Cash des ventes" (read-only from caisses, shows "⏳ Remplir les caisses d'abord" if no data); manual "Autre entrée" items with description + amount (add/remove)
+- [x] **③ Dépôts à la banque** — auto "Dépôt Interac/Crédit" from caisses (read-only); manual cash deposits with amount, note, optional bordereau number (add/remove, multiple per day)
+- [x] **④ Sorties de cash** — each entry has category (dropdown), description, amount; default categories: Fournisseur payé cash, Avance employé, Achats divers, Réparations, Autre; add/remove entries
+- [x] **⑤ Comptage physique** — Tiroirs-caisses, Petite caisse, Bureau / Office; auto-totals when at least one entered
+- [x] **⑥ Réconciliation** — full equation display; ✓ BALANCÉ (green, |écart| ≤ $2) or ✗ with surplus/manque amount (red); carry-forward mode selector (Solde calculé vs Comptage physique)
+- [x] **Daily tab status indicator** — clickable card next to labour metric: ✓ (green/Balancé), ✗ (red/Écart), ⏳ (orange/En cours), — (gray/Non saisi); clicking navigates to Encaisse tab
+- [x] **Monthly summary** — collapsible panel with month selector; shows total cash des ventes, dépôts, sorties, current position, days balanced vs not, flags days with écart > $10
+- [x] **Configuration** (inline in Encaisse tab) — add/remove/rename sortie categories; add/remove cash locations; same pattern as suppliers
+- [x] **Intelligence tab** — new "💵 Encaisse — analyse mensuelle" card showing breakdown of sorties by category for current month vs previous month, flags categories up 40%+
+- [x] **Storage** — `dicann-encaisse` (all daily data) + `dicann-encaisse-config` (categories/locations), 600ms debounce persist
 
 ### ✅ DONE — Livraisons (delivery platform tracking)
 
