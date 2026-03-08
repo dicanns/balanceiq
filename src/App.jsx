@@ -107,6 +107,9 @@ const prevDk=s=>{const d=new Date(s+"T12:00:00");d.setDate(d.getDate()-1);return
 const getHol=d=>{const k=`${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;return QC_HOL[k]||null};
 const DEFAULT_SUPPLIERS=[{id:"1",name:"Dubord"},{id:"2",name:"Carrousel"},{id:"3",name:"St. Sylvain"},{id:"4",name:"Pepsi"},{id:"5",name:"Pain"},{id:"6",name:"Sauce"},{id:"7",name:"Costco"}];
 const DEFAULT_PLATFORMS=[{id:"doordash",name:"DoorDash",emoji:"🔴"},{id:"ubereats",name:"Uber Eats",emoji:"🟢"},{id:"skip",name:"Skip The Dishes",emoji:"🟠"}];
+const DEFAULT_SORTIE_CATS=[{id:"fournisseur_cash",name:"Fournisseur payé cash"},{id:"avance_employe",name:"Avance employé"},{id:"achats_divers",name:"Achats divers"},{id:"reparations",name:"Réparations"},{id:"autre",name:"Autre"}];
+const DEFAULT_CASH_LOCATIONS=[{id:"tills",name:"Tiroirs-caisses"},{id:"petty",name:"Petite caisse"},{id:"office",name:"Bureau / Office"}];
+const DEFAULT_ENCAISSE_CONFIG={sortieCategories:DEFAULT_SORTIE_CATS,cashLocations:DEFAULT_CASH_LOCATIONS};
 const EXPENSE_ITEMS=[["hydro","Hydro"],["gazNat","Gaz Nat/Prop"],["allocAuto","Alloc. d'auto"],["depenseAuto","Dépense Auto"],["cell","Cell"],["telInternet","Tel/Internet"],["fraisProf","Frais Prof"],["assurances","Assurances"],["adPromo","Ad & Promo"],["dons","Dons"],["taxMuni","Tax Muni"],["permisGov","Permis Gov't"],["loyer","Loyer"],["csst","CSST"],["reparations","Réparations"],["equipDecor","Équipement/Décor"]];
 const BLANK_CASH={cashierId:"",posVentes:null,posTPS:null,posTVQ:null,posLivraisons:null,float:null,interac:null,livraisons:null,deposits:null,finalCash:null};
 const BLANK_EMP={name:"",hours:null,wage:null};
@@ -788,8 +791,290 @@ function WEATHER_CAT(w){if(!w)return"inconnu";const lw=w.toLowerCase();if(/neige
 function avArr(arr){if(!arr||arr.length===0)return null;return arr.reduce((a,b)=>a+b,0)/arr.length;}
 const WIN_LABELS=["Début→14h","14h→17h","17h→19h","19h→20h"];
 
+// ── SECTION HEADER (used by EncaisseTab) ──
+function SH({label,children}){
+  const t=useT();
+  return(<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}><span style={{fontSize:13,fontWeight:700,marginBottom:8,display:"block",color:t.text}}>{label}</span>{children}</div>);
+}
+
+// ── ENCAISSE TAB ──
+function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveEncaisseConfig}){
+  const t=useT();
+  const [selDate,setSelDate]=useState(()=>dk(new Date()));
+  const [month,setMonth]=useState(()=>{const n=new Date();return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`});
+  const [summaryOpen,setSummaryOpen]=useState(false);
+  const [configOpen,setConfigOpen]=useState(false);
+  const [overrideMode,setOverrideMode]=useState(false);
+  const [overrideVal,setOverrideVal]=useState("");
+  const [newEntreeDesc,setNewEntreeDesc]=useState("");
+  const [newEntreeMt,setNewEntreeMt]=useState("");
+  const [newDepMt,setNewDepMt]=useState("");
+  const [newDepNote,setNewDepNote]=useState("");
+  const [newDepSlip,setNewDepSlip]=useState("");
+  const [newSortCat,setNewSortCat]=useState("");
+  const [newSortDesc,setNewSortDesc]=useState("");
+  const [newSortMt,setNewSortMt]=useState("");
+  const [newCatName,setNewCatName]=useState("");
+  const [newLocName,setNewLocName]=useState("");
+  const [editCatId,setEditCatId]=useState(null);
+  const [editCatName,setEditCatName]=useState("");
+
+  const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none"};
+
+  const getEnc=useCallback(dt=>({openingOverride:null,autreEntrees:[],deposits:[],sorties:[],physicalCount:{},carryForwardMode:"calculated",...(encaisseData[dt]||{})}),[encaisseData]);
+
+  const computedMap=useMemo(()=>{
+    const dates=Object.keys(encaisseData).filter(k=>!k.startsWith("_")).sort();
+    const allDates=[...new Set([...dates,selDate])].sort();
+    const res={};let prevClosing=null;
+    for(const dt of allDates){
+      const enc=getEnc(dt);
+      const opening=enc.openingOverride!=null?enc.openingOverride:(prevClosing??null);
+      const cDay=liveData[dt];
+      let cashVentes=0,totalInterac=0,hasCaisseData=false;
+      if(cDay?.cashes){cDay.cashes.forEach(c=>{if(c.finalCash!=null&&c.float!=null){cashVentes+=(c.finalCash-c.float);hasCaisseData=true;}if(c.interac!=null){totalInterac+=c.interac;hasCaisseData=true;}});}
+      const autreEntreesTotal=enc.autreEntrees.reduce((s,e)=>s+(e.montant||0),0);
+      const depositsTotal=enc.deposits.reduce((s,d)=>s+(d.montant||0),0);
+      const sortiesTotal=enc.sorties.reduce((s,s2)=>s+(s2.montant||0),0);
+      const calculated=(opening||0)+cashVentes+autreEntreesTotal-depositsTotal-sortiesTotal;
+      const locs=encaisseConfig.cashLocations;
+      const physTotal=locs.reduce((s,loc)=>s+((enc.physicalCount[loc.id])||0),0);
+      const physEntered=locs.some(loc=>enc.physicalCount[loc.id]!=null);
+      const ecart=physEntered?physTotal-calculated:null;
+      const balanced=ecart!=null&&Math.abs(ecart)<=2;
+      const carryMode=enc.carryForwardMode||"calculated";
+      const closing=carryMode==="physical"&&physEntered?physTotal:calculated;
+      res[dt]={opening,cashVentes,totalInterac,hasCaisseData,autreEntreesTotal,depositsTotal,sortiesTotal,calculated,physTotal,physEntered,ecart,balanced,closing};
+      prevClosing=closing;
+    }
+    return res;
+  },[encaisseData,liveData,encaisseConfig,selDate,getEnc]);
+
+  const dr=computedMap[selDate]||{opening:null,cashVentes:0,totalInterac:0,hasCaisseData:false,autreEntreesTotal:0,depositsTotal:0,sortiesTotal:0,calculated:0,physTotal:0,physEntered:false,ecart:null,balanced:false,closing:0};
+  const enc=getEnc(selDate);
+  const d=new Date(selDate+"T12:00:00");
+
+  const updEnc=useCallback((field,value)=>{const next={...encaisseData,[selDate]:{...enc,[field]:value}};persistEncaisse(next);},[encaisseData,selDate,enc,persistEncaisse]);
+
+  const mSummary=useMemo(()=>{
+    const [y,m]=month.split("-");const dim=new Date(parseInt(y),parseInt(m),0).getDate();
+    let totalCV=0,totalDep=0,totalSort=0,bal=0,notBal=0,bigE=[];
+    for(let day=1;day<=dim;day++){const k=`${y}-${m}-${String(day).padStart(2,"0")}`;const r=computedMap[k];if(!r)continue;totalCV+=r.cashVentes;totalDep+=r.depositsTotal;totalSort+=r.sortiesTotal;if(r.physEntered){if(r.balanced)bal++;else{notBal++;if(Math.abs(r.ecart||0)>10)bigE.push({date:k,ecart:r.ecart});}}}
+    return{totalCV,totalDep,totalSort,currentPos:dr.closing,bal,notBal,bigE};
+  },[month,computedMap,dr]);
+
+  const addEntree=()=>{if(!newEntreeMt)return;updEnc("autreEntrees",[...enc.autreEntrees,{id:Date.now().toString(),description:newEntreeDesc.trim(),montant:parseFloat(newEntreeMt)}]);setNewEntreeDesc("");setNewEntreeMt("");};
+  const rmEntree=id=>updEnc("autreEntrees",enc.autreEntrees.filter(e=>e.id!==id));
+  const addDeposit=()=>{if(!newDepMt)return;updEnc("deposits",[...enc.deposits,{id:Date.now().toString(),montant:parseFloat(newDepMt),note:newDepNote.trim(),slip:newDepSlip.trim()}]);setNewDepMt("");setNewDepNote("");setNewDepSlip("");};
+  const rmDeposit=id=>updEnc("deposits",enc.deposits.filter(d=>d.id!==id));
+  const addSortie=()=>{if(!newSortMt||!newSortCat)return;updEnc("sorties",[...enc.sorties,{id:Date.now().toString(),categorie:newSortCat,description:newSortDesc.trim(),montant:parseFloat(newSortMt)}]);setNewSortCat("");setNewSortDesc("");setNewSortMt("");};
+  const rmSortie=id=>updEnc("sorties",enc.sorties.filter(s=>s.id!==id));
+
+  return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
+
+    {/* Date nav */}
+    <div style={{display:"flex",alignItems:"center",gap:6}}>
+      <button onClick={()=>{const n=new Date(d);n.setDate(n.getDate()-1);setSelDate(dk(n))}} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.text,padding:"3px 8px",cursor:"pointer",fontSize:13}}>←</button>
+      <div style={{fontSize:14,fontWeight:700,textTransform:"capitalize",color:t.text}}>{fmtD(d)}</div>
+      <button onClick={()=>{const n=new Date(d);n.setDate(n.getDate()+1);setSelDate(dk(n))}} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.text,padding:"3px 8px",cursor:"pointer",fontSize:13}}>→</button>
+      <input type="date" value={selDate} onChange={e=>e.target.value&&setSelDate(e.target.value)} style={{...inputS,fontFamily:"'DM Mono',monospace",fontSize:11,marginLeft:"auto"}}/>
+    </div>
+
+    {/* Monthly summary */}
+    <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none"}} onClick={()=>setSummaryOpen(o=>!o)}>
+        <span style={{fontSize:13,fontWeight:700,color:t.text}}>Sommaire mensuel</span>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <input type="month" value={month} onChange={e=>e.target.value&&setMonth(e.target.value)} onClick={e=>e.stopPropagation()} style={{...inputS,fontFamily:"'DM Mono',monospace",fontSize:11}}/>
+          <span style={{fontSize:9,color:t.textDim,display:"inline-block",transform:summaryOpen?"rotate(0deg)":"rotate(-90deg)",transition:"transform 0.15s"}}>▾</span>
+        </div>
+      </div>
+      {summaryOpen&&(<div style={{marginTop:8}}>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+          <MC label="Cash des ventes" value={fmt(mSummary.totalCV)} accent={t.posColor}/>
+          <MC label="Dépôts banque" value={fmt(mSummary.totalDep)} accent="#f97316"/>
+          <MC label="Sorties cash" value={fmt(mSummary.totalSort)} accent="#7c3aed"/>
+          <MC label="Position actuelle" value={fmt(mSummary.currentPos)}/>
+          <MC label="Jours balancés" value={`${mSummary.bal}j`} accent="#22c55e" sub={mSummary.notBal>0?`${mSummary.notBal} non bal.`:undefined}/>
+        </div>
+        {mSummary.bigE.length>0&&(<div style={{padding:"7px 10px",borderRadius:7,background:t.reconErrBg,border:`1px solid ${t.reconErrBorder}`}}>
+          <span style={{fontSize:11,fontWeight:600,color:"#dc2626"}}>⚠ Écarts &gt; 10$ :</span>
+          {mSummary.bigE.map(x=>(<span key={x.date} style={{display:"inline-block",marginLeft:8,fontSize:10,color:"#dc2626",fontFamily:"'DM Mono',monospace"}}>{x.date}: {x.ecart>0?"surplus":"manque"} {fmt(Math.abs(x.ecart))}</span>))}
+        </div>)}
+      </div>)}
+    </div>
+
+    {/* S1: Solde d'ouverture */}
+    <SH label="① Solde d'ouverture">
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 0"}}>
+        {enc.openingOverride!=null
+          ?(<><span style={{fontSize:11,color:t.textSub}}>Solde d'ouverture (manuel)</span>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <span style={{fontFamily:"'DM Mono',monospace",fontSize:14,fontWeight:700,color:t.text}}>{fmt(enc.openingOverride)}</span>
+              <button onClick={()=>updEnc("openingOverride",null)} style={{fontSize:9.5,padding:"2px 7px",borderRadius:4,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer"}}>✕ Retirer</button>
+            </div></>)
+          :(<><div>
+              <span style={{fontSize:11,color:t.textSub}}>Solde d'ouverture</span>
+              {dr.opening==null&&<div style={{fontSize:9.5,color:t.textMuted,marginTop:1}}>Aucun historique — entrer manuellement pour la première journée</div>}
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <span style={{fontFamily:"'DM Mono',monospace",fontSize:14,fontWeight:700,color:dr.opening!=null?t.text:t.textDim}}>{dr.opening!=null?fmt(dr.opening):"—"}</span>
+              {!overrideMode
+                ?<button onClick={()=>{setOverrideMode(true);setOverrideVal(dr.opening!=null?String(dr.opening):"")}} style={{fontSize:9.5,padding:"2px 7px",borderRadius:4,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer"}}>✎ Modifier</button>
+                :<div style={{display:"flex",gap:4,alignItems:"center"}}>
+                  <input type="number" inputMode="decimal" value={overrideVal} onChange={e=>setOverrideVal(e.target.value)} autoFocus style={{...inputS,width:80,textAlign:"right",fontFamily:"'DM Mono',monospace"}}/>
+                  <button onClick={()=>{updEnc("openingOverride",parseFloat(overrideVal)||0);setOverrideMode(false)}} style={{fontSize:9.5,padding:"2px 8px",borderRadius:4,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700}}>✓</button>
+                  <button onClick={()=>setOverrideMode(false)} style={{fontSize:9.5,padding:"2px 6px",borderRadius:4,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer"}}>✕</button>
+                </div>}
+            </div></>)}
+      </div>
+    </SH>
+
+    {/* S2: Entrées de cash */}
+    <SH label="② Entrées de cash">
+      <div style={{padding:"5px 0",borderBottom:`1px solid ${t.divider}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontSize:11,color:t.textSub}}>Cash des ventes <span style={{fontSize:9,color:t.textDim}}>(auto — depuis les caisses)</span></span>
+          <span style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:600,color:dr.hasCaisseData?t.posColor:t.textDim}}>{dr.hasCaisseData?fmt(dr.cashVentes):"⏳ Remplir les caisses d'abord"}</span>
+        </div>
+      </div>
+      {enc.autreEntrees.map(e=>(<div key={e.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 0",borderBottom:`1px solid ${t.divider}`}}>
+        <span style={{fontSize:11,color:t.textSub}}>{e.description||"Autre entrée"}</span>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:"#22c55e"}}>+{fmt(e.montant)}</span>
+          <button onClick={()=>rmEntree(e.id)} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:3,color:"#ef4444",fontSize:9,padding:"1px 5px",cursor:"pointer"}}>✕</button>
+        </div>
+      </div>))}
+      <div style={{display:"flex",gap:4,marginTop:6,alignItems:"center"}}>
+        <input value={newEntreeDesc} onChange={e=>setNewEntreeDesc(e.target.value)} placeholder="Description..." style={{...inputS,flex:1}}/>
+        <input type="number" inputMode="decimal" value={newEntreeMt} onChange={e=>setNewEntreeMt(e.target.value)} placeholder="Montant" style={{...inputS,width:80,textAlign:"right",fontFamily:"'DM Mono',monospace"}} onKeyDown={e=>{if(e.key==="Enter")addEntree()}}/>
+        <button onClick={addEntree} style={{padding:"5px 10px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>+ Autre entrée</button>
+      </div>
+    </SH>
+
+    {/* S3: Dépôts à la banque */}
+    <SH label="③ Dépôts à la banque">
+      <div style={{padding:"5px 0",borderBottom:`1px solid ${t.divider}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontSize:11,color:t.textSub}}>Dépôt Interac / Crédit <span style={{fontSize:9,color:t.textDim}}>(auto — depuis les caisses)</span></span>
+          <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,fontWeight:600,color:dr.hasCaisseData?t.text:t.textDim}}>{dr.hasCaisseData?fmt(dr.totalInterac):"—"}</span>
+        </div>
+      </div>
+      {enc.deposits.map(dep=>(<div key={dep.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 0",borderBottom:`1px solid ${t.divider}`}}>
+        <span style={{fontSize:11,color:t.textSub}}>{dep.note||"Dépôt comptant"}{dep.slip&&<span style={{fontSize:9,color:t.textDim,marginLeft:4}}>#{dep.slip}</span>}</span>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:"#ef4444"}}>−{fmt(dep.montant)}</span>
+          <button onClick={()=>rmDeposit(dep.id)} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:3,color:"#ef4444",fontSize:9,padding:"1px 5px",cursor:"pointer"}}>✕</button>
+        </div>
+      </div>))}
+      <div style={{display:"flex",gap:4,marginTop:6,flexWrap:"wrap",alignItems:"center"}}>
+        <input type="number" inputMode="decimal" value={newDepMt} onChange={e=>setNewDepMt(e.target.value)} placeholder="Montant" style={{...inputS,width:80,textAlign:"right",fontFamily:"'DM Mono',monospace"}}/>
+        <input value={newDepNote} onChange={e=>setNewDepNote(e.target.value)} placeholder="Note..." style={{...inputS,flex:1,minWidth:80}}/>
+        <input value={newDepSlip} onChange={e=>setNewDepSlip(e.target.value)} placeholder="# bordereau" style={{...inputS,width:90}}/>
+        <button onClick={addDeposit} style={{padding:"5px 10px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>+ Dépôt</button>
+      </div>
+    </SH>
+
+    {/* S4: Sorties de cash */}
+    <SH label="④ Sorties de cash">
+      {enc.sorties.map(s=>(<div key={s.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 0",borderBottom:`1px solid ${t.divider}`}}>
+        <div>
+          <span style={{fontSize:11,color:t.textSub}}>{s.description||"—"}</span>
+          <span style={{fontSize:9,color:t.textDim,marginLeft:6}}>{encaisseConfig.sortieCategories.find(c=>c.id===s.categorie)?.name||s.categorie}</span>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:"#ef4444"}}>−{fmt(s.montant)}</span>
+          <button onClick={()=>rmSortie(s.id)} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:3,color:"#ef4444",fontSize:9,padding:"1px 5px",cursor:"pointer"}}>✕</button>
+        </div>
+      </div>))}
+      <div style={{display:"flex",gap:4,marginTop:6,flexWrap:"wrap",alignItems:"center"}}>
+        <select value={newSortCat} onChange={e=>setNewSortCat(e.target.value)} style={{...inputS,flex:"0 0 auto",minWidth:160}}>
+          <option value="">-- Catégorie --</option>
+          {encaisseConfig.sortieCategories.map(c=>(<option key={c.id} value={c.id}>{c.name}</option>))}
+        </select>
+        <input value={newSortDesc} onChange={e=>setNewSortDesc(e.target.value)} placeholder="Description..." style={{...inputS,flex:1,minWidth:80}}/>
+        <input type="number" inputMode="decimal" value={newSortMt} onChange={e=>setNewSortMt(e.target.value)} placeholder="Montant" style={{...inputS,width:80,textAlign:"right",fontFamily:"'DM Mono',monospace"}} onKeyDown={e=>{if(e.key==="Enter")addSortie()}}/>
+        <button onClick={addSortie} style={{padding:"5px 10px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>+ Sortie</button>
+      </div>
+    </SH>
+
+    {/* S5: Comptage physique */}
+    <SH label="⑤ Comptage physique">
+      {encaisseConfig.cashLocations.map(loc=>(<F key={loc.id} label={loc.name} value={enc.physicalCount[loc.id]??null} onChange={v=>updEnc("physicalCount",{...enc.physicalCount,[loc.id]:v})} wide/>))}
+      {dr.physEntered&&(<div style={{display:"flex",justifyContent:"space-between",padding:"5px 0",marginTop:4,borderTop:`1px solid ${t.dividerStrong}`}}>
+        <span style={{fontSize:12,fontWeight:700,color:t.text}}>Total physique</span>
+        <span style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:700,color:t.text}}>{fmt(dr.physTotal)}</span>
+      </div>)}
+    </SH>
+
+    {/* S6: Réconciliation */}
+    <div style={{background:dr.physEntered?(dr.balanced?t.reconBalBg:t.reconErrBg):t.reconNeutralBg,border:`1px solid ${dr.physEntered?(dr.balanced?t.reconBalBorder:t.reconErrBorder):t.reconNeutralBorder}`,borderRadius:9,padding:11}}>
+      <span style={{fontSize:13,fontWeight:700,marginBottom:8,display:"block",color:t.text}}>⑥ Réconciliation</span>
+      <ReconLine label="Solde d'ouverture" value={dr.opening??0}/>
+      <ReconLine label="+ Cash des ventes" value={dr.cashVentes}/>
+      {dr.autreEntreesTotal>0&&<ReconLine label="+ Autres entrées" value={dr.autreEntreesTotal}/>}
+      {dr.depositsTotal>0&&<ReconLine label="− Dépôts banque (comptant)" value={dr.depositsTotal} negative/>}
+      {dr.sortiesTotal>0&&<ReconLine label="− Sorties de cash" value={dr.sortiesTotal} negative/>}
+      <ReconLine label="= Solde calculé" value={dr.calculated} bold borderTop/>
+      {dr.physEntered&&(<>
+        <ReconLine label="Comptage physique" value={dr.physTotal}/>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",marginTop:4,borderTop:`1.5px solid ${t.dividerStrong}`}}>
+          <span style={{fontSize:12,fontWeight:700,color:t.reconLabelBold}}>ÉCART</span>
+          <span style={{fontFamily:"'DM Mono',monospace",fontSize:14,fontWeight:800,color:dr.balanced?"#16a34a":"#dc2626"}}>{dr.balanced?"✓ BALANCÉ":`✗ ${(dr.ecart||0)>0?"surplus":"manque"} ${fmt(Math.abs(dr.ecart||0))}`}</span>
+        </div>
+      </>)}
+      {!dr.physEntered&&<div style={{fontSize:10.5,color:t.textMuted,marginTop:6}}>Entrer le comptage physique (section ⑤) pour voir l'écart.</div>}
+      <div style={{marginTop:10,paddingTop:8,borderTop:`1px solid ${t.divider}`}}>
+        <span style={{fontSize:11,color:t.textSub,display:"block",marginBottom:5}}>Reporter au lendemain :</span>
+        <div style={{display:"flex",gap:6}}>
+          {[["calculated","Solde calculé"],["physical","Comptage physique"]].map(([v,label])=>(
+            <button key={v} onClick={()=>updEnc("carryForwardMode",v)} style={{flex:1,padding:"5px 8px",borderRadius:6,border:`1.5px solid ${enc.carryForwardMode===v?"#f97316":t.cardBorder}`,background:enc.carryForwardMode===v?"rgba(249,115,22,0.08)":t.section,color:enc.carryForwardMode===v?"#f97316":t.textSub,cursor:"pointer",fontWeight:enc.carryForwardMode===v?700:500,fontSize:11,transition:"all 0.15s"}}>{label}</button>
+          ))}
+        </div>
+      </div>
+    </div>
+
+    {/* Config */}
+    <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+      <div onClick={()=>setConfigOpen(o=>!o)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none"}}>
+        <span style={{fontSize:13,fontWeight:700,color:t.text}}>Configuration</span>
+        <span style={{fontSize:9,color:t.textDim,display:"inline-block",transform:configOpen?"rotate(0deg)":"rotate(-90deg)",transition:"transform 0.15s"}}>▾</span>
+      </div>
+      {configOpen&&(<>
+        <div style={{marginTop:10}}>
+          <span style={{fontSize:11.5,fontWeight:700,color:t.textSub,display:"block",marginBottom:5}}>Catégories de sorties</span>
+          {encaisseConfig.sortieCategories.map(c=>(<div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 6px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:4,marginBottom:3}}>
+            {editCatId===c.id
+              ?(<input value={editCatName} onChange={e=>setEditCatName(e.target.value)} autoFocus
+                  onBlur={()=>{if(editCatName.trim()){saveEncaisseConfig({...encaisseConfig,sortieCategories:encaisseConfig.sortieCategories.map(x=>x.id===c.id?{...x,name:editCatName.trim()}:x)})}setEditCatId(null)}}
+                  onKeyDown={e=>{if(e.key==="Enter")e.target.blur();if(e.key==="Escape")setEditCatId(null)}}
+                  style={{flex:1,background:t.inputBg,border:`1px solid rgba(249,115,22,0.3)`,borderRadius:3,color:t.inputText,fontSize:11,padding:"2px 5px",outline:"none",marginRight:6}}/>)
+              :(<span style={{fontSize:11,cursor:"pointer",color:t.text,flex:1}} onClick={()=>{setEditCatId(c.id);setEditCatName(c.name)}}>{c.name} <span style={{fontSize:9,color:t.textDim}}>✎</span></span>)}
+            <button onClick={()=>saveEncaisseConfig({...encaisseConfig,sortieCategories:encaisseConfig.sortieCategories.filter(x=>x.id!==c.id)})} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:3,color:"#ef4444",fontSize:9,padding:"1px 5px",cursor:"pointer"}}>✕</button>
+          </div>))}
+          <div style={{display:"flex",gap:4,marginTop:3}}>
+            <input value={newCatName} onChange={e=>setNewCatName(e.target.value)} placeholder="Nouvelle catégorie..." style={{flex:1,background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.inputText,fontSize:11,padding:"3px 6px",outline:"none"}} onKeyDown={e=>{if(e.key==="Enter"&&newCatName.trim()){saveEncaisseConfig({...encaisseConfig,sortieCategories:[...encaisseConfig.sortieCategories,{id:Date.now().toString(),name:newCatName.trim()}]});setNewCatName("")}}}/>
+            <button onClick={()=>{if(!newCatName.trim())return;saveEncaisseConfig({...encaisseConfig,sortieCategories:[...encaisseConfig.sortieCategories,{id:Date.now().toString(),name:newCatName.trim()}]});setNewCatName("")}} style={{padding:"3px 10px",borderRadius:4,border:"none",cursor:"pointer",fontWeight:700,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>+</button>
+          </div>
+        </div>
+        <div style={{marginTop:10}}>
+          <span style={{fontSize:11.5,fontWeight:700,color:t.textSub,display:"block",marginBottom:5}}>Emplacements de cash</span>
+          {encaisseConfig.cashLocations.map(loc=>(<div key={loc.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 6px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:4,marginBottom:3}}>
+            <span style={{fontSize:11,color:t.text,flex:1}}>{loc.name}</span>
+            <button onClick={()=>saveEncaisseConfig({...encaisseConfig,cashLocations:encaisseConfig.cashLocations.filter(x=>x.id!==loc.id)})} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:3,color:"#ef4444",fontSize:9,padding:"1px 5px",cursor:"pointer"}}>✕</button>
+          </div>))}
+          <div style={{display:"flex",gap:4,marginTop:3}}>
+            <input value={newLocName} onChange={e=>setNewLocName(e.target.value)} placeholder="Nouvel emplacement..." style={{flex:1,background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.inputText,fontSize:11,padding:"3px 6px",outline:"none"}} onKeyDown={e=>{if(e.key==="Enter"&&newLocName.trim()){saveEncaisseConfig({...encaisseConfig,cashLocations:[...encaisseConfig.cashLocations,{id:Date.now().toString(),name:newLocName.trim()}]});setNewLocName("")}}}/>
+            <button onClick={()=>{if(!newLocName.trim())return;saveEncaisseConfig({...encaisseConfig,cashLocations:[...encaisseConfig.cashLocations,{id:Date.now().toString(),name:newLocName.trim()}]});setNewLocName("")}} style={{padding:"3px 10px",borderRadius:4,border:"none",cursor:"pointer",fontWeight:700,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>+</button>
+          </div>
+        </div>
+      </>)}
+    </div>
+  </div>);
+}
+
 // ── INTELLIGENCE TAB ──
-function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProfiles,getLR,platforms}){
+function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProfiles,getLR,platforms,encaisseData,encaisseConfig}){
   const t=useT();
   const d=new Date(selectedDate+"T12:00:00");
   const dowProfiles=useMemo(()=>{
@@ -984,6 +1269,40 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
         </div>);
       })()}
     </ICard>
+    <ICard>
+      <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>💵 Encaisse — analyse mensuelle</span>
+      {(()=>{
+        const n=new Date();const y=n.getFullYear();const m=String(n.getMonth()+1).padStart(2,"0");const dim=new Date(y,n.getMonth()+1,0).getDate();
+        const catTotals={};(encaisseConfig?.sortieCategories||DEFAULT_SORTIE_CATS).forEach(c=>{catTotals[c.id]={name:c.name,total:0,prevTotal:0}});
+        let totalSort=0,totalSortPrev=0,daysWithData=0;
+        const pm=n.getMonth()===0?12:n.getMonth();const py=n.getMonth()===0?y-1:y;const pmStr=`${py}-${String(pm).padStart(2,"0")}`;
+        const dimPrev=new Date(py,pm,0).getDate();
+        for(let day=1;day<=dim;day++){const k=`${y}-${m}-${String(day).padStart(2,"0")}`;const enc=encaisseData[k];if(!enc)continue;daysWithData++;(enc.sorties||[]).forEach(s=>{const amt=s.montant||0;totalSort+=amt;if(catTotals[s.categorie])catTotals[s.categorie].total+=amt;});}
+        for(let day=1;day<=dimPrev;day++){const k=`${pmStr}-${String(day).padStart(2,"0")}`;const enc=encaisseData[k];if(!enc)continue;(enc.sorties||[]).forEach(s=>{const amt=s.montant||0;totalSortPrev+=amt;if(catTotals[s.categorie])catTotals[s.categorie].prevTotal+=amt;});}
+        const avgDailySort=daysWithData>0?totalSort/daysWithData:0;
+        const anomalyCats=Object.values(catTotals).filter(c=>c.prevTotal>0&&c.total>c.prevTotal*1.4);
+        if(daysWithData===0)return(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>Aucune donnée d'encaisse ce mois</div>);
+        return(<div>
+          <div style={{fontSize:11,color:t.textSub,marginBottom:8}}>Mois en cours — {daysWithData} jour{daysWithData!==1?"s":""} avec données</div>
+          <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:4,padding:"3px 0",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:3}}>
+            {["Catégorie","Total"].map((h,i)=>(<span key={i} style={{fontSize:10,color:t.textMuted,fontWeight:600,textAlign:i>0?"right":"left"}}>{h}</span>))}
+          </div>
+          {Object.values(catTotals).filter(c=>c.total>0).map((c,i)=>(<div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:4,padding:"3px 0",borderBottom:`1px solid ${t.divider}`,alignItems:"center"}}>
+            <span style={{fontSize:11,color:t.text}}>{c.name}</span>
+            <span style={{fontSize:12,fontFamily:"'DM Mono',monospace",textAlign:"right",color:"#ef4444"}}>{fmt(c.total)}</span>
+          </div>))}
+          <div style={{display:"flex",justifyContent:"space-between",padding:"5px 0",marginTop:2,borderTop:`1px solid ${t.dividerStrong}`}}>
+            <span style={{fontSize:11.5,fontWeight:700,color:t.text}}>Total sorties</span>
+            <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,fontWeight:700,color:"#ef4444"}}>{fmt(totalSort)}</span>
+          </div>
+          {avgDailySort>0&&<div style={{fontSize:10.5,color:t.textSub,marginTop:2}}>Moyenne quotidienne: {fmt(avgDailySort)}</div>}
+          {anomalyCats.length>0&&(<div style={{marginTop:8,padding:"7px 10px",borderRadius:6,background:"rgba(239,68,68,0.05)",border:"1px solid rgba(239,68,68,0.15)"}}>
+            <div style={{fontSize:9.5,color:"#dc2626",fontWeight:700,textTransform:"uppercase",letterSpacing:0.7,marginBottom:4}}>⚠️ Hausses inhabituelles vs mois dernier</div>
+            {anomalyCats.map((c,i)=>(<div key={i} style={{fontSize:11,color:t.textSub,padding:"2px 0"}}>{c.name}: {fmt(c.total)} <span style={{color:"#dc2626",fontWeight:600}}>(+{Math.round((c.total/c.prevTotal-1)*100)}% vs M-1)</span></div>))}
+          </div>)}
+        </div>);
+      })()}
+    </ICard>
   </div>);
 }
 
@@ -1018,6 +1337,9 @@ export default function App(){
   const [newPlatformName,setNewPlatformName]=useState("");
   const [gasCheckLoading,setGasCheckLoading]=useState(false);
   const [gasCheckMsg,setGasCheckMsg]=useState(null);
+  const [encaisseData,setEncaisseData]=useState({});
+  const [encaisseConfig,setEncaisseConfig]=useState(DEFAULT_ENCAISSE_CONFIG);
+  const encaisseTimer=useRef(null);
 
   const t=theme;
 
@@ -1029,6 +1351,8 @@ export default function App(){
     try{const r4=await window.api.storage.get("dicann-api-config");if(r4?.value)setApiConfig(JSON.parse(r4.value))}catch(e){}
     try{const r5=await window.api.storage.get("balanceiq-theme");if(r5?.value==='light'||r5?.value==='dark')setThemeName(r5.value)}catch(e){}
     try{const r6=await window.api.storage.get("dicann-platforms");if(r6?.value)setPlatforms(JSON.parse(r6.value))}catch(e){}
+    try{const r7=await window.api.storage.get("dicann-encaisse");if(r7?.value)setEncaisseData(JSON.parse(r7.value))}catch(e){}
+    try{const r8=await window.api.storage.get("dicann-encaisse-config");if(r8?.value)setEncaisseConfig(prev=>({...DEFAULT_ENCAISSE_CONFIG,...JSON.parse(r8.value)}))}catch(e){}
     setLoading(false);
     // Load auto-backup info after a short delay (backup runs at t+3s)
     setTimeout(async()=>{try{const info=await window.api.backup.getInfo();setBackupInfo(info)}catch(_){}},4000);
@@ -1074,6 +1398,8 @@ export default function App(){
   const saveSup=useCallback(async s=>{try{await window.api.storage.set("dicann-suppliers-v2",JSON.stringify(s))}catch(e){}},[]);
   const savePlatforms=useCallback(async p=>{try{await window.api.storage.set("dicann-platforms",JSON.stringify(p))}catch(e){}},[]);
   const saveApiCfg=useCallback(async c=>{try{await window.api.storage.set("dicann-api-config",JSON.stringify(c))}catch(e){}},[]);
+  const persistEncaisse=useCallback(data=>{setEncaisseData(data);if(encaisseTimer.current)clearTimeout(encaisseTimer.current);encaisseTimer.current=setTimeout(async()=>{try{await window.api.storage.set("dicann-encaisse",JSON.stringify(data))}catch(e){}},600)},[]);
+  const saveEncaisseConfig=useCallback(cfg=>{setEncaisseConfig(cfg);window.api.storage.set("dicann-encaisse-config",JSON.stringify(cfg)).catch(()=>{})},[]);
 
   const upd=useCallback((dt,f,v)=>{setLiveData(p=>{const u={...p,[dt]:{...(p[dt]||{}),[f]:v}};persist(u);return u})},[persist]);
 
@@ -1119,6 +1445,39 @@ export default function App(){
 
   const today=computeDay(selectedDate);const d=new Date(selectedDate+"T12:00:00");const holiday=getHol(d);const raw=getLR(selectedDate);const cashes=raw.cashes;const emps=raw.employees;
   const isDayComplete=today.anyData&&today.allBal&&raw.hamEnd!=null&&raw.hotEnd!=null;
+
+  const encaisseStatus=useMemo(()=>{
+    const dayEnc=encaisseData[selectedDate];
+    if(!dayEnc)return"empty";
+    const hasAny=(dayEnc.autreEntrees?.length>0)||(dayEnc.deposits?.length>0)||(dayEnc.sorties?.length>0)||Object.values(dayEnc.physicalCount||{}).some(v=>v!=null)||dayEnc.openingOverride!=null;
+    if(!hasAny)return"empty";
+    const locs=encaisseConfig.cashLocations;
+    const physEntered=locs.some(loc=>(dayEnc.physicalCount||{})[loc.id]!=null);
+    if(!physEntered)return"pending";
+    const dates=Object.keys(encaisseData).filter(k=>!k.startsWith("_")&&k<=selectedDate).sort();
+    const allDates=[...new Set([...dates,selectedDate])].sort();
+    let prevClosing=null,result=null;
+    for(const dt of allDates){
+      const enc={openingOverride:null,autreEntrees:[],deposits:[],sorties:[],physicalCount:{},carryForwardMode:"calculated",...(encaisseData[dt]||{})};
+      const opening=enc.openingOverride!=null?enc.openingOverride:(prevClosing??null);
+      const cDay=liveData[dt];let cashVentes=0;
+      if(cDay?.cashes)cDay.cashes.forEach(c=>{if(c.finalCash!=null&&c.float!=null)cashVentes+=(c.finalCash-c.float);});
+      const autreEntreesTotal=enc.autreEntrees.reduce((s,e)=>s+(e.montant||0),0);
+      const depositsTotal=enc.deposits.reduce((s,d2)=>s+(d2.montant||0),0);
+      const sortiesTotal=enc.sorties.reduce((s,s2)=>s+(s2.montant||0),0);
+      const calculated=(opening||0)+cashVentes+autreEntreesTotal-depositsTotal-sortiesTotal;
+      const physTotal=locs.reduce((s,loc)=>s+((enc.physicalCount[loc.id])||0),0);
+      const pEntered=locs.some(loc=>enc.physicalCount[loc.id]!=null);
+      const ecart=pEntered?physTotal-calculated:null;
+      const carryMode=enc.carryForwardMode||"calculated";
+      const closing=carryMode==="physical"&&pEntered?physTotal:calculated;
+      if(dt===selectedDate)result={physEntered:pEntered,balanced:ecart!=null&&Math.abs(ecart)<=2};
+      prevClosing=closing;
+    }
+    if(!result)return"empty";
+    if(!result.physEntered)return"pending";
+    return result.balanced?"balanced":"error";
+  },[encaisseData,encaisseConfig,liveData,selectedDate]);
 
   const lastGas=useMemo(()=>{
     if(raw.gas!=null&&raw.gas!=="")return null;
@@ -1179,7 +1538,7 @@ export default function App(){
     return h;
   };
 
-  const tabs=[{id:"daily",label:"Quotidien"},{id:"monthly",label:"P&L Mensuel"},{id:"intelligence",label:"Intelligence"},{id:"settings",label:"Config"}];
+  const tabs=[{id:"daily",label:"Quotidien"},{id:"monthly",label:"P&L Mensuel"},{id:"encaisse",label:"💵 Encaisse"},{id:"intelligence",label:"Intelligence"},{id:"settings",label:"Config"}];
 
   const inputStyle={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:12,padding:"5px 8px",outline:"none"};
 
@@ -1250,6 +1609,13 @@ export default function App(){
               <MC label="Cumul sem." value={fmt(wkC)}/>
               <MC label="Mois en cours" value={fmt(mtdTotal)} sub={`${mtdDays} jr${mtdDays!==1?"s":""}`}/>
               {today.labourPct!=null&&<MC label="Main d'œuvre" value={`${today.labourPct.toFixed(1)}%`} sub={fmt(today.labourCost)} accent={today.labourPct>35?"#ef4444":today.labourPct>28?t.warnText:"#22c55e"}/>}
+              <div style={{background:t.section,border:`1px solid ${t.sectionBorder}`,borderRadius:8,padding:"9px 13px",display:"flex",flexDirection:"column",gap:1,minWidth:100,flex:"0 0 auto",cursor:"pointer"}} onClick={()=>setActiveTab("encaisse")}>
+                <span style={{fontSize:8.5,color:t.textMuted,textTransform:"uppercase",letterSpacing:0.8,fontWeight:600}}>Encaisse</span>
+                <span style={{fontSize:18,fontWeight:700,fontFamily:"'DM Mono',monospace",color:encaisseStatus==="balanced"?"#22c55e":encaisseStatus==="error"?"#ef4444":encaisseStatus==="pending"?"#f97316":t.textDim}}>
+                  {encaisseStatus==="balanced"?"✓":encaisseStatus==="error"?"✗":encaisseStatus==="pending"?"⏳":"—"}
+                </span>
+                <span style={{fontSize:9.5,color:t.textMuted}}>{encaisseStatus==="balanced"?"Balancé":encaisseStatus==="error"?"Écart":encaisseStatus==="pending"?"En cours":"Non saisi"}</span>
+              </div>
             </div>
 
             <div>
@@ -1416,7 +1782,8 @@ export default function App(){
           </div>)}
 
           {activeTab==="monthly"&&<MonthlyPL computeDay={computeDay} suppliers={suppliers} liveData={liveData} platforms={platforms}/>}
-          {activeTab==="intelligence"&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR} platforms={platforms}/>}
+          {activeTab==="encaisse"&&<EncaisseTab liveData={liveData} encaisseData={encaisseData} persistEncaisse={persistEncaisse} encaisseConfig={encaisseConfig} saveEncaisseConfig={saveEncaisseConfig}/>}
+          {activeTab==="intelligence"&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR} platforms={platforms} encaisseData={encaisseData} encaisseConfig={encaisseConfig}/>}
 
           {/* SETTINGS TAB */}
           {activeTab==="settings"&&(<div style={{display:"flex",flexDirection:"column",gap:10,maxWidth:560}}>
