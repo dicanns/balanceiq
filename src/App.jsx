@@ -945,10 +945,10 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
         </div>
       </div>
       {enc.autreEntrees.map(e=>(<div key={e.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 0",borderBottom:`1px solid ${t.divider}`}}>
-        <span style={{fontSize:11,color:t.textSub}}>{e.description||"Autre entrée"}</span>
+        <span style={{fontSize:11,color:t.textSub}}>{e.description||"Autre entrée"}{e.fromFacturation&&<span style={{fontSize:9,color:t.textDim,marginLeft:5,fontWeight:600}}>(Facturation)</span>}</span>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:"#22c55e"}}>+{fmt(e.montant)}</span>
-          <button onClick={()=>rmEntree(e.id)} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:3,color:"#ef4444",fontSize:9,padding:"1px 5px",cursor:"pointer"}}>✕</button>
+          {!e.fromFacturation&&<button onClick={()=>rmEntree(e.id)} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:3,color:"#ef4444",fontSize:9,padding:"1px 5px",cursor:"pointer"}}>✕</button>}
         </div>
       </div>))}
       <div style={{display:"flex",gap:4,marginTop:6,alignItems:"center"}}>
@@ -1080,7 +1080,7 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
 }
 
 // ── FACTURATION TAB ──
-function FacturationTab({categories,saveCategories,produits,saveProduits,clients,saveClients,soumissions,saveSoumissions,commandes,saveCommandes,factures,saveFactures,docNums,saveDocNums,companyInfo}){
+function FacturationTab({categories,saveCategories,produits,saveProduits,clients,saveClients,soumissions,saveSoumissions,commandes,saveCommandes,factures,saveFactures,docNums,saveDocNums,companyInfo,encaisseData,persistEncaisse}){
   const t=useT();
   const [subTab,setSubTab]=useState("clients");
   const [activeDoc,setActiveDoc]=useState(null);
@@ -1138,7 +1138,10 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
     return<CommandeEditor commande={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} commandes={commandes} saveCommandes={saveCommandes} onBack={closeDoc} initClientId={activeDoc.clientId} onConvertToFacture={cmd=>convertToFacture(cmd,"commande")}/>;
   }
   if(activeDoc?.type==="facture"){
-    return<FactureEditor facture={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} factures={factures} saveFactures={saveFactures} onBack={closeDoc} initClientId={activeDoc.clientId}/>;
+    return<FactureEditor facture={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} factures={factures} saveFactures={saveFactures} onBack={closeDoc} initClientId={activeDoc.clientId} onEnregistrerPaiement={(fac)=>openDoc("encaissement",fac.clientId,{factureId:fac.id})}/>;
+  }
+  if(activeDoc?.type==="encaissement"){
+    return<EncaissementEditor clientId={activeDoc.clientId} factureId={activeDoc.doc?.factureId||null} clients={clients} factures={factures} saveFactures={saveFactures} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData||{}} persistEncaisse={persistEncaisse} onBack={closeDoc}/>;
   }
 
   return(<div style={{display:"flex",flexDirection:"column",gap:0}}>
@@ -1620,7 +1623,7 @@ function buildFactureHTML({numero,date,dateEcheance,statut,client,referenceClien
   const solde=totals.total-(montantPaye||0);
   return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Facture ${numero}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}table{width:100%;border-collapse:collapse}th{background:#f97316;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.tot{margin-left:auto;width:280px;margin-top:12px}.tr{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}.tf{font-weight:900;font-size:15px;border-top:2px solid #1a1a1a;margin-top:4px;padding-top:4px}.due{background:#fff3cd;border:1px solid #f97316;borderRadius:4px;padding:6px 10px;margin-bottom:12px;font-size:12px;font-weight:700}.notes{background:#f9f9f9;border-left:3px solid #f97316;padding:10px 12px;margin-top:16px;font-size:12px}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${companyInfo.nom||""}</div><div style="font-size:11px;color:#555">${[companyInfo.adresse,companyInfo.ville,companyInfo.province].filter(Boolean).join(", ")}</div>${companyInfo.telephone?`<div style="font-size:11px;color:#555">${companyInfo.telephone}</div>`:""}${companyInfo.courriel?`<div style="font-size:11px;color:#555">${companyInfo.courriel}</div>`:""}</div><div style="text-align:right"><div style="font-size:30px;font-weight:900;color:#f97316;letter-spacing:2px">FACTURE</div><div style="font-size:18px;font-weight:700;margin-top:4px"># ${numero}</div><div style="font-size:11px;color:#555;margin-top:3px">Date: ${fd(date)}</div><div style="font-size:12px;font-weight:700;color:${statut==="En retard"?"#ef4444":"#1a1a1a"};margin-top:4px;padding:4px 8px;background:${statut==="En retard"?"#fee2e2":"#f3f4f6"};borderRadius:4px;display:inline-block">Échéance: ${fd(dateEcheance)}</div><div style="font-size:11px;color:#555;margin-top:3px">Statut: <strong>${statut}</strong></div>${referenceClient?`<div style="font-size:11px;color:#555">Réf.: ${referenceClient}</div>`:""}${sourceNumero?`<div style="font-size:11px;color:#555">${sourceType==="commande"?"Commande":"Soumission"}: ${sourceNumero}</div>`:""}</div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Facturé à</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>Description</th><th style="width:55px;text-align:center">Qté</th><th style="width:100px;text-align:right">Prix unit.</th><th style="width:65px;text-align:center">Remise</th><th style="width:100px;text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><div class="tot"><div class="tr"><span>Sous-total</span><span>${fc(totals.sousTotal)}</span></div><div class="tr"><span>TPS (5%)</span><span>${fc(totals.tpsTotal)}</span></div><div class="tr"><span>TVQ (9.975%)</span><span>${fc(totals.tvqTotal)}</span></div><div class="tr tf"><span>TOTAL</span><span>${fc(totals.total)}</span></div>${(montantPaye||0)>0?`<div class="tr" style="color:#22c55e"><span>Montant payé</span><span>${fc(montantPaye)}</span></div><div class="tr tf" style="color:#ef4444"><span>SOLDE DÛ</span><span>${fc(solde)}</span></div>`:""}</div>${notes?`<div class="notes"><strong>Notes</strong><br/>${notes}</div>`:""}<div class="ftr">${companyInfo.numeroTPS?`N° TPS: ${companyInfo.numeroTPS}`:""}${companyInfo.numeroTVQ?` &nbsp;|&nbsp; N° TVQ: ${companyInfo.numeroTVQ}`:""}</div></body></html>`;
 }
-function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums,factures,saveFactures,onBack,initClientId}){
+function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums,factures,saveFactures,onBack,initClientId,onEnregistrerPaiement}){
   const t=useT();
   const isNew=!facture?.id;
   const todayStr=dk(new Date());
@@ -1692,7 +1695,7 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
       {flash&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>✓</span>}
       <button onClick={doPrint} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>🖨️ Imprimer</button>
       <button onClick={doEmail} disabled={!client?.courriel} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:!client?.courriel?t.textDim:t.textSub,cursor:!client?.courriel?"default":"pointer",fontWeight:600,fontSize:11,opacity:!client?.courriel?0.5:1}}>📧 Envoyer</button>
-      <button disabled title="Disponible à l'étape Encaissement" style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"default",fontWeight:600,fontSize:11,opacity:0.4}}>Enregistrer un paiement</button>
+      <button onClick={()=>savedId&&onEnregistrerPaiement&&onEnregistrerPaiement(factures.find(f=>f.id===savedId)||{...form,id:savedId})} disabled={!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?t.cardBorder:"rgba(249,115,22,0.3)"}`,background:!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?t.section:"rgba(249,115,22,0.07)",color:!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?t.textDim:"#f97316",cursor:!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?"default":"pointer",fontWeight:600,fontSize:11,opacity:!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?0.4:1}}>Enregistrer un paiement</button>
       <button disabled title="Disponible à l'étape Note de crédit" style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"default",fontWeight:600,fontSize:11,opacity:0.4}}>→ Note de crédit</button>
       {savedId&&!locked&&(
         confirmDel
@@ -1795,6 +1798,126 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
         {montantPaye===0&&<div style={{fontSize:10,color:t.textMuted,textAlign:"center",marginTop:4}}>Aucun paiement enregistré</div>}
       </div>
     </div>
+  </div>);
+}
+
+// ── ENCAISSEMENT ──
+const MODES_PAIEMENT=["Chèque","Virement/E-Transfer","Carte de crédit","Carte de débit","Comptant","Autre"];
+function buildReceiptHTML({numero,date,montant,mode,reference,note,client,facture,companyInfo}){
+  const fd=d=>{if(!d)return"—";const dt=new Date(d+"T12:00:00");return`${dt.getDate()} ${["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"][dt.getMonth()]} ${dt.getFullYear()}`};
+  const fc=n=>(n||0).toLocaleString("fr-CA",{style:"currency",currency:"CAD"});
+  const logo=companyInfo.logo?`<img src="${companyInfo.logo}" style="max-height:50px;object-fit:contain;" alt="Logo"/>`:"";
+  return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Reçu ${numero}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:30px;font-size:13px;max-width:400px}.title{font-size:24px;font-weight:900;color:#f97316;letter-spacing:2px;margin:12px 0 4px}.num{font-size:16px;font-weight:700;margin-bottom:16px}.row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee;font-size:12px}.total{font-size:18px;font-weight:900;color:#22c55e;text-align:right;margin-top:12px}.stamp{border:3px solid #22c55e;color:#22c55e;font-weight:900;font-size:20px;text-align:center;padding:8px;margin-top:16px;letter-spacing:4px}.ftr{margin-top:20px;font-size:10px;color:#888;text-align:center}@media print{body{padding:15px}}</style></head><body>${logo}<div class="title">REÇU DE PAIEMENT</div><div class="num"># ${numero}</div><div class="row"><span>Date</span><span>${fd(date)}</span></div><div class="row"><span>Client</span><span>${client?.entreprise||"—"}</span></div>${facture?`<div class="row"><span>Facture</span><span>${facture.numero}</span></div>`:""}<div class="row"><span>Mode de paiement</span><span>${mode}</span></div>${reference?`<div class="row"><span>Référence</span><span>${reference}</span></div>`:""}<div class="total">${fc(montant)}</div>${note?`<div style="margin-top:10px;font-size:11px;color:#555">Note: ${note}</div>`:""}<div class="stamp">✓ REÇU</div><div class="ftr">${companyInfo.nom||""}</div></body></html>`;
+}
+function EncaissementEditor({clientId,factureId,clients,factures,saveFactures,docNums,saveDocNums,companyInfo,encaisseData,persistEncaisse,onBack}){
+  const t=useT();
+  const todayStr=dk(new Date());
+  const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none"};
+  const client=clients.find(c=>c.id===clientId);
+  const unpaid=useMemo(()=>factures.filter(f=>f.clientId===clientId&&!["Payée","Annulée","Brouillon"].includes(f.statut)),[factures,clientId]);
+  const [selId,setSelId]=useState(factureId||null);
+  const [form,setForm]=useState({date:todayStr,montant:"",mode:"Virement/E-Transfer",reference:"",note:""});
+  const [confirmation,setConfirmation]=useState(null);
+  const selFac=factures.find(f=>f.id===selId);
+  const selTotals=selFac?computeSoumTotals(selFac.lignes):{total:0};
+  const dejaPaye=selFac?(selFac.paiements||[]).reduce((s,p)=>s+(p.montant||0),0):0;
+  const solde=selTotals.total-dejaPaye;
+  const upd=f=>setForm(p=>({...p,...f}));
+  const doSave=()=>{
+    if(!selFac||!form.montant||parseFloat(form.montant)<=0)return;
+    const montant=Math.min(parseFloat(form.montant),solde);
+    const id=Date.now().toString();
+    const numero=fmtDocNum(docNums.prefix,"E",docNums.encaissement);
+    const paiement={id,numero,date:form.date,montant,mode:form.mode,reference:form.reference,note:form.note};
+    const newSolde=solde-montant;
+    const newStatut=newSolde<=0.005?"Payée":"Payée partiellement";
+    const updFac={...selFac,paiements:[...(selFac.paiements||[]),paiement],statut:newStatut};
+    saveFactures(factures.map(f=>f.id===selId?updFac:f));
+    saveDocNums({...docNums,encaissement:docNums.encaissement+1});
+    // If Comptant → add read-only entry to Encaisse for this date
+    if(form.mode==="Comptant"&&persistEncaisse){
+      const d=form.date;
+      const prev=encaisseData[d]||{};
+      const existingEntrees=prev.autreEntrees||[];
+      persistEncaisse({...encaisseData,[d]:{...prev,autreEntrees:[...existingEntrees,{id,description:`Paiement ${updFac.numero} (Facturation)`,montant,fromFacturation:true}]}});
+    }
+    setConfirmation({numero,montant,factureNumero:selFac.numero,paiement,facture:updFac});
+  };
+  if(confirmation){
+    return(<div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>
+        <span style={{fontSize:14,fontWeight:700,color:t.text}}>Paiement enregistré</span>
+      </div>
+      <div style={{background:"rgba(34,197,94,0.08)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:9,padding:16,textAlign:"center"}}>
+        <div style={{fontSize:22,marginBottom:4}}>✓</div>
+        <div style={{fontSize:14,fontWeight:700,color:"#22c55e"}}>Paiement de {fmt(confirmation.montant)} enregistré</div>
+        <div style={{fontSize:12,color:t.textSub,marginTop:4}}>sur facture {confirmation.factureNumero} — reçu {confirmation.numero}</div>
+        <div style={{fontSize:11,color:t.textMuted,marginTop:4}}>Statut facture : <strong style={{color:STATUT_FAC_C[confirmation.facture.statut]}}>{confirmation.facture.statut}</strong></div>
+      </div>
+      <div style={{display:"flex",gap:8,justifyContent:"center"}}>
+        <button onClick={()=>openPDF(buildReceiptHTML({...confirmation.paiement,numero:confirmation.numero,montant:confirmation.montant,client,facture:selFac,companyInfo}))} style={{padding:"7px 16px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12}}>🖨️ Imprimer le reçu</button>
+        <button onClick={onBack} style={{padding:"7px 16px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>Terminer</button>
+      </div>
+    </div>);
+  }
+  return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
+    <div style={{display:"flex",alignItems:"center",gap:8}}>
+      <button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>
+      <span style={{fontSize:14,fontWeight:700,color:t.text}}>Enregistrer un paiement</span>
+      {client&&<span style={{fontSize:12,color:t.textMuted}}>— {client.entreprise}</span>}
+    </div>
+    {/* Invoice selector */}
+    <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
+      <div style={{fontSize:12,fontWeight:700,color:t.text,marginBottom:8}}>① Choisir la facture</div>
+      {unpaid.length===0
+        ?<div style={{textAlign:"center",padding:"16px 0",color:t.textMuted,fontSize:12}}>Aucune facture impayée pour ce client.</div>
+        :<div style={{display:"flex",flexDirection:"column",gap:4}}>
+          <div style={{display:"grid",gridTemplateColumns:"24px 80px 100px 1fr 90px 90px",gap:6,padding:"2px 6px",borderBottom:`1px solid ${t.dividerMid}`}}>
+            {["","# Facture","Date","Total","Déjà payé","Solde"].map((h,i)=><span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i>=3?"right":"left"}}>{h}</span>)}
+          </div>
+          {unpaid.map(f=>{const tot=computeSoumTotals(f.lignes).total;const dp=(f.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);const sol=tot-dp;return(
+            <div key={f.id} onClick={()=>setSelId(f.id)} style={{display:"grid",gridTemplateColumns:"24px 80px 100px 1fr 90px 90px",gap:6,padding:"5px 6px",borderRadius:6,background:selId===f.id?"rgba(249,115,22,0.08)":t.card,border:`1px solid ${selId===f.id?"#f97316":t.cardBorder}`,cursor:"pointer",alignItems:"center"}}>
+              <input type="radio" checked={selId===f.id} onChange={()=>setSelId(f.id)} style={{accentColor:"#f97316"}}/>
+              <span style={{fontSize:11,fontFamily:"'DM Mono',monospace",color:t.text,fontWeight:600}}>{f.numero}</span>
+              <span style={{fontSize:11,color:t.textSub}}>{f.date}</span>
+              <span style={{fontSize:11,color:t.textSub,textAlign:"right",fontFamily:"'DM Mono',monospace"}}>{fmt(tot)}</span>
+              <span style={{fontSize:11,color:"#22c55e",textAlign:"right",fontFamily:"'DM Mono',monospace"}}>{dp>0?fmt(dp):"—"}</span>
+              <span style={{fontSize:12,fontWeight:700,color:"#f97316",textAlign:"right",fontFamily:"'DM Mono',monospace"}}>{fmt(sol)}</span>
+            </div>
+          );})}
+        </div>}
+    </div>
+    {/* Payment form */}
+    {selFac&&<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
+      <div style={{fontSize:12,fontWeight:700,color:t.text,marginBottom:8}}>② Détails du paiement</div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+        <div style={{flex:"1 1 120px"}}>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Date du versement</div>
+          <input type="date" value={form.date} onChange={e=>upd({date:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
+        </div>
+        <div style={{flex:"1 1 130px"}}>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Montant reçu <span style={{color:t.textDim,fontSize:9}}>(solde: {fmt(solde)})</span></div>
+          <input type="number" min="0.01" step="0.01" value={form.montant} onChange={e=>upd({montant:e.target.value})} placeholder={solde.toFixed(2)} style={{...inputS,width:"100%",boxSizing:"border-box",textAlign:"right",fontFamily:"'DM Mono',monospace"}}/>
+        </div>
+        <div style={{flex:"1 1 160px"}}>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Mode de paiement</div>
+          <select value={form.mode} onChange={e=>upd({mode:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box"}}>
+            {MODES_PAIEMENT.map(m=><option key={m}>{m}</option>)}
+          </select>
+        </div>
+        <div style={{flex:"1 1 140px"}}>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Numéro de référence</div>
+          <input value={form.reference} onChange={e=>upd({reference:e.target.value})} placeholder="Optionnel" style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
+        </div>
+        <div style={{flex:"2 1 200px"}}>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Note</div>
+          <input value={form.note} onChange={e=>upd({note:e.target.value})} placeholder="Optionnel" style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+        </div>
+      </div>
+      {form.mode==="Comptant"&&<div style={{fontSize:10,color:"#f59e0b",background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.2)",borderRadius:5,padding:"4px 8px",marginBottom:8}}>💵 Paiement comptant — une entrée sera ajoutée automatiquement dans l'onglet Encaisse.</div>}
+      <button onClick={doSave} disabled={!form.montant||parseFloat(form.montant)<=0} style={{padding:"7px 20px",borderRadius:6,border:"none",background:form.montant&&parseFloat(form.montant)>0?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:form.montant&&parseFloat(form.montant)>0?"#fff":t.textDim,cursor:form.montant&&parseFloat(form.montant)>0?"pointer":"default",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>✓ Enregistrer le paiement</button>
+    </div>}
   </div>);
 }
 
@@ -1903,7 +2026,7 @@ function ClientProfile({client,saveClient,onBack,onNewDoc,inputS,t}){
     setForm(updated);saveClient(updated);
   };
   const HISTORY_TABS=[{id:"factures",label:"Factures"},{id:"commandes",label:"Commandes"},{id:"soumissions",label:"Soumissions"},{id:"encaissements",label:"Encaissements"},{id:"notes",label:"Notes"}];
-  const SOON_BTNS=["Nouvelle commande","Nouvelle facture","Nouvelle note de crédit","Nouvel encaissement","État de compte"];
+  const SOON_BTNS=["Nouvelle note de crédit","État de compte"];
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
       <button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>
@@ -1920,6 +2043,7 @@ function ClientProfile({client,saveClient,onBack,onNewDoc,inputS,t}){
       <button onClick={()=>onNewDoc&&onNewDoc("soumission",client.id)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ Nouvelle soumission</button>
       <button onClick={()=>onNewDoc&&onNewDoc("commande",client.id)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ Nouvelle commande</button>
       <button onClick={()=>onNewDoc&&onNewDoc("facture",client.id)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ Nouvelle facture</button>
+      <button onClick={()=>onNewDoc&&onNewDoc("encaissement",client.id)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ Nouvel encaissement</button>
       {SOON_BTNS.map(btn=>(
         <button key={btn} disabled title="Bientôt disponible" style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"default",fontWeight:600,opacity:0.5}}>
           {btn}
@@ -3021,7 +3145,7 @@ export default function App(){
 
           {activeTab==="monthly"&&<MonthlyPL computeDay={computeDay} suppliers={suppliers} liveData={liveData} platforms={platforms}/>}
           {activeTab==="encaisse"&&<EncaisseTab liveData={liveData} encaisseData={encaisseData} persistEncaisse={persistEncaisse} encaisseConfig={encaisseConfig} saveEncaisseConfig={saveEncaisseConfig}/>}
-          {activeTab==="facturation"&&<FacturationTab categories={facCategories} saveCategories={saveFacCategories} produits={facProduits} saveProduits={saveFacProduits} clients={facClients} saveClients={saveFacClients} soumissions={facSoumissions} saveSoumissions={saveFacSoumissions} commandes={facCommandes} saveCommandes={saveFacCommandes} factures={facFactures} saveFactures={saveFacFactures} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo}/>}
+          {activeTab==="facturation"&&<FacturationTab categories={facCategories} saveCategories={saveFacCategories} produits={facProduits} saveProduits={saveFacProduits} clients={facClients} saveClients={saveFacClients} soumissions={facSoumissions} saveSoumissions={saveFacSoumissions} commandes={facCommandes} saveCommandes={saveFacCommandes} factures={facFactures} saveFactures={saveFacFactures} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData} persistEncaisse={persistEncaisse}/>}
           {activeTab==="intelligence"&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR} platforms={platforms} encaisseData={encaisseData} encaisseConfig={encaisseConfig}/>}
 
           {/* SETTINGS TAB */}
