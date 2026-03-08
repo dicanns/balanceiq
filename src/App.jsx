@@ -1080,13 +1080,22 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
 }
 
 // ── FACTURATION TAB ──
-function FacturationTab({categories,saveCategories,produits,saveProduits,clients,saveClients,soumissions,saveSoumissions,docNums,saveDocNums,companyInfo}){
+function FacturationTab({categories,saveCategories,produits,saveProduits,clients,saveClients,soumissions,saveSoumissions,commandes,saveCommandes,docNums,saveDocNums,companyInfo}){
   const t=useT();
   const [subTab,setSubTab]=useState("clients");
   const [activeDoc,setActiveDoc]=useState(null);
-  // activeDoc: null | { type:"soumission", soumission: obj|null, clientId: str|null }
-  const openDoc=(type,clientId,soumission)=>setActiveDoc({type,soumission:soumission||null,clientId:clientId||null});
+  // activeDoc: null | { type, doc: obj|null, clientId: str|null }
+  const openDoc=(type,clientId,doc)=>setActiveDoc({type,doc:doc||null,clientId:clientId||null});
   const closeDoc=()=>setActiveDoc(null);
+  const convertSoumToCommande=(soum)=>{
+    const id=Date.now().toString();
+    const numero=fmtDocNum(docNums.prefix,"C",docNums.commande);
+    const newCmd={id,numero,date:dk(new Date()),dateLivraison:"",clientId:soum.clientId,referenceClient:soum.referenceClient,statut:"Brouillon",lignes:soum.lignes.map(l=>({...l,id:Date.now().toString(36)+Math.random().toString(36).slice(2)})),notes:soum.notes,sourceType:"soumission",sourceId:soum.id,sourceNumero:soum.numero};
+    saveCommandes([...commandes,newCmd]);
+    saveDocNums({...docNums,commande:docNums.commande+1});
+    saveSoumissions(soumissions.map(s=>s.id===soum.id?{...s,statut:"Acceptée",commandeId:id,commandeNumero:numero}:s));
+    setActiveDoc({type:"commande",doc:newCmd,clientId:null});
+  };
   const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none"};
 
   // ── Categories section ──
@@ -1111,10 +1120,10 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
   const subTabs=[{id:"clients",label:"Clients"},{id:"categories",label:"Catégories"},{id:"produits",label:"Produits & Services"},{id:"documents",label:"Documents",soon:true}];
 
   if(activeDoc?.type==="soumission"){
-    const initClientId=activeDoc.clientId;
-    const initSoum=activeDoc.soumission;
-    const soumInit=initSoum?{...initSoum}:(initClientId?{date:dk(new Date()),dateExpiration:dk(new Date(Date.now()+30*86400000)),clientId:initClientId,referenceClient:"",statut:"Brouillon",notes:"Soumission valide 30 jours."}:null);
-    return<SoumissionEditor soumission={initSoum||(initClientId?null:null)} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} soumissions={soumissions} saveSoumissions={saveSoumissions} onBack={closeDoc} initClientId={initClientId}/>;
+    return<SoumissionEditor soumission={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} soumissions={soumissions} saveSoumissions={saveSoumissions} onBack={closeDoc} initClientId={activeDoc.clientId} onConvertToCommande={convertSoumToCommande}/>;
+  }
+  if(activeDoc?.type==="commande"){
+    return<CommandeEditor commande={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} commandes={commandes} saveCommandes={saveCommandes} onBack={closeDoc} initClientId={activeDoc.clientId}/>;
   }
 
   return(<div style={{display:"flex",flexDirection:"column",gap:0}}>
@@ -1125,6 +1134,7 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
       </button>))}
       <div style={{flex:1}}/>
       <button onClick={()=>openDoc("soumission",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,marginBottom:2}}>+ Nouvelle soumission</button>
+      <button onClick={()=>openDoc("commande",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,marginBottom:2}}>+ Nouvelle commande</button>
     </div>
 
     {/* Clients */}
@@ -1243,7 +1253,7 @@ function buildSoumissionHTML({numero,date,dateExpiration,statut,client,reference
   const cli=client?`<div style="font-weight:700;font-size:13px">${client.entreprise}</div>${client.contact?`<div>${client.contact}</div>`:""}${client.adresse?`<div>${client.adresse}</div>`:""}${client.ville?`<div>${[client.ville,client.province,client.codePostal].filter(Boolean).join(", ")}</div>`:""}${client.courriel?`<div>${client.courriel}</div>`:""}${client.tel1?`<div>${client.tel1}</div>`:""}`:""` "(aucun client)"`;
   return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Soumission ${numero}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}.hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px}.title{font-size:30px;font-weight:900;color:#f97316;letter-spacing:2px}.meta{font-size:11px;color:#555;margin-top:3px}table{width:100%;border-collapse:collapse}th{background:#f97316;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.tot{margin-left:auto;width:260px;margin-top:12px}.tr{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}.tf{font-weight:900;font-size:15px;border-top:2px solid #1a1a1a;margin-top:4px;padding-top:4px}.notes{background:#f9f9f9;border-left:3px solid #f97316;padding:10px 12px;margin-top:16px;font-size:12px}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}</style></head><body><div class="hdr"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${companyInfo.nom||""}</div><div class="meta">${[companyInfo.adresse,companyInfo.ville,companyInfo.province].filter(Boolean).join(", ")}</div>${companyInfo.telephone?`<div class="meta">${companyInfo.telephone}</div>`:""}${companyInfo.courriel?`<div class="meta">${companyInfo.courriel}</div>`:""}</div><div style="text-align:right"><div class="title">SOUMISSION</div><div style="font-size:18px;font-weight:700;margin-top:4px"># ${numero}</div><div class="meta">Date: ${fd(date)}</div><div class="meta">Expiration: ${fd(dateExpiration)}</div><div class="meta">Statut: <strong>${statut}</strong></div>${referenceClient?`<div class="meta">Réf.: ${referenceClient}</div>`:""}</div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Facturé à</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>Description</th><th style="width:55px;text-align:center">Qté</th><th style="width:100px;text-align:right">Prix unit.</th><th style="width:65px;text-align:center">Remise</th><th style="width:100px;text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><div class="tot"><div class="tr"><span>Sous-total</span><span>${fc(totals.sousTotal)}</span></div><div class="tr"><span>TPS (5%)</span><span>${fc(totals.tpsTotal)}</span></div><div class="tr"><span>TVQ (9.975%)</span><span>${fc(totals.tvqTotal)}</span></div><div class="tr tf"><span>TOTAL</span><span>${fc(totals.total)}</span></div></div>${notes?`<div class="notes"><strong>Notes / Conditions</strong><br/>${notes}</div>`:""}<div class="ftr">${companyInfo.numeroTPS?`N° TPS: ${companyInfo.numeroTPS}`:""}${companyInfo.numeroTVQ?` &nbsp;|&nbsp; N° TVQ: ${companyInfo.numeroTVQ}`:""}</div></body></html>`;
 }
-function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveDocNums,soumissions,saveSoumissions,onBack,initClientId}){
+function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveDocNums,soumissions,saveSoumissions,onBack,initClientId,onConvertToCommande}){
   const t=useT();
   const isNew=!soumission?.id;
   const todayStr=dk(new Date());
@@ -1299,7 +1309,12 @@ function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveD
       {flash&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>✓</span>}
       <button onClick={doPrint} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>🖨️ Imprimer</button>
       <button onClick={doEmail} disabled={!client?.courriel} title={!client?.courriel?"Aucun courriel client":""} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:!client?.courriel?t.textDim:t.textSub,cursor:!client?.courriel?"default":"pointer",fontWeight:600,fontSize:11,opacity:!client?.courriel?0.5:1}}>📧 Envoyer</button>
-      <button disabled title="Disponible à l'étape Commande" style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"default",fontWeight:600,fontSize:11,opacity:0.4}}>→ Commande</button>
+      {savedId&&!soumission?.commandeId&&onConvertToCommande
+        ?<button onClick={()=>onConvertToCommande({...form,id:savedId,numero:savedNumero,lignes})} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11}}>→ Commande</button>
+        :soumission?.commandeId
+          ?<span style={{fontSize:10,color:"#22c55e",fontWeight:600}}>✓ {soumission.commandeNumero}</span>
+          :<button disabled style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"default",fontWeight:600,fontSize:11,opacity:0.4}}>→ Commande</button>
+      }
       <button disabled title="Disponible à l'étape Facture" style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"default",fontWeight:600,fontSize:11,opacity:0.4}}>→ Facture</button>
       {savedId&&form.statut==="Brouillon"&&(
         confirmDel
@@ -1378,6 +1393,170 @@ function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveD
       <button onClick={()=>setLignes(ls=>[...ls,newLigne()])} style={{marginTop:2,padding:"5px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>+ Ajouter une ligne</button>
     </div>
     {/* Totals + Notes */}
+    <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+      <div style={{flex:"2 1 200px",background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
+        <div style={{fontSize:12,fontWeight:700,color:t.text,marginBottom:6}}>Notes / Conditions</div>
+        <textarea value={form.notes||""} onChange={e=>upd({notes:e.target.value})} rows={4} placeholder="Notes visibles sur le document imprimé..." style={{...inputS,width:"100%",boxSizing:"border-box",resize:"vertical",fontFamily:"'Outfit',sans-serif"}}/>
+      </div>
+      <div style={{flex:"1 1 180px",background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12,display:"flex",flexDirection:"column",gap:5,justifyContent:"flex-end"}}>
+        {[["Sous-total",totals.sousTotal],["TPS (5%)",totals.tpsTotal],["TVQ (9.975%)",totals.tvqTotal]].map(([label,val])=>(
+          <div key={label} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:t.textSub}}>
+            <span>{label}</span><span style={{fontFamily:"'DM Mono',monospace"}}>{fmt(val)}</span>
+          </div>
+        ))}
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:800,color:t.text,borderTop:`2px solid ${t.dividerMid}`,paddingTop:6,marginTop:2}}>
+          <span>TOTAL</span><span style={{fontFamily:"'DM Mono',monospace",color:"#f97316"}}>{fmt(totals.total)}</span>
+        </div>
+      </div>
+    </div>
+  </div>);
+}
+
+// ── COMMANDE ──
+const STATUTS_COMMANDE=["Brouillon","Confirmée","En cours","Complétée","Annulée"];
+const STATUT_CMD_C={"Brouillon":"#6b7280","Confirmée":"#3b82f6","En cours":"#f59e0b","Complétée":"#22c55e","Annulée":"#ef4444"};
+function buildCommandeHTML({numero,date,dateLivraison,statut,client,referenceClient,lignes,notes,totals,companyInfo,sourceNumero}){
+  const fd=d=>{if(!d)return"—";const dt=new Date(d+"T12:00:00");return`${dt.getDate()} ${["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"][dt.getMonth()]} ${dt.getFullYear()}`};
+  const fc=n=>(n||0).toLocaleString("fr-CA",{style:"currency",currency:"CAD"});
+  const logo=companyInfo.logo?`<img src="${companyInfo.logo}" style="max-height:55px;max-width:110px;object-fit:contain;" alt="Logo"/>`:"";
+  const rows=lignes.map((l,i)=>{const lt=(l.quantite||0)*(l.prixUnitaire||0)*(1-(l.remise||0)/100);return`<tr style="background:${i%2?"#f9f9f9":"#fff"}"><td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:12px">${l.description||""}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:center;font-size:12px">${l.quantite||1}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:right;font-size:12px">${fc(l.prixUnitaire||0)}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:center;font-size:12px">${l.remise?l.remise+"%":"—"}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:right;font-size:12px;font-weight:700">${fc(lt)}</td></tr>`}).join("");
+  const cli=client?`<div style="font-weight:700;font-size:13px">${client.entreprise}</div>${client.contact?`<div>${client.contact}</div>`:""}${client.adresse?`<div>${client.adresse}</div>`:""}${client.ville?`<div>${[client.ville,client.province,client.codePostal].filter(Boolean).join(", ")}</div>`:""}${client.courriel?`<div>${client.courriel}</div>`:""}${client.tel1?`<div>${client.tel1}</div>`:""}`:""` "(aucun client)"`;
+  return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Commande ${numero}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}.hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px}.title{font-size:26px;font-weight:900;color:#f97316;letter-spacing:2px}.meta{font-size:11px;color:#555;margin-top:3px}table{width:100%;border-collapse:collapse}th{background:#f97316;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.tot{margin-left:auto;width:260px;margin-top:12px}.tr{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}.tf{font-weight:900;font-size:15px;border-top:2px solid #1a1a1a;margin-top:4px;padding-top:4px}.notes{background:#f9f9f9;border-left:3px solid #f97316;padding:10px 12px;margin-top:16px;font-size:12px}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}</style></head><body><div class="hdr"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${companyInfo.nom||""}</div><div class="meta">${[companyInfo.adresse,companyInfo.ville,companyInfo.province].filter(Boolean).join(", ")}</div>${companyInfo.telephone?`<div class="meta">${companyInfo.telephone}</div>`:""}${companyInfo.courriel?`<div class="meta">${companyInfo.courriel}</div>`:""}</div><div style="text-align:right"><div class="title">BON DE COMMANDE</div><div style="font-size:18px;font-weight:700;margin-top:4px"># ${numero}</div><div class="meta">Date: ${fd(date)}</div>${dateLivraison?`<div class="meta">Livraison: ${fd(dateLivraison)}</div>`:""}<div class="meta">Statut: <strong>${statut}</strong></div>${referenceClient?`<div class="meta">Réf.: ${referenceClient}</div>`:""}${sourceNumero?`<div class="meta">Soumission: ${sourceNumero}</div>`:""}</div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Facturé à</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>Description</th><th style="width:55px;text-align:center">Qté</th><th style="width:100px;text-align:right">Prix unit.</th><th style="width:65px;text-align:center">Remise</th><th style="width:100px;text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><div class="tot"><div class="tr"><span>Sous-total</span><span>${fc(totals.sousTotal)}</span></div><div class="tr"><span>TPS (5%)</span><span>${fc(totals.tpsTotal)}</span></div><div class="tr"><span>TVQ (9.975%)</span><span>${fc(totals.tvqTotal)}</span></div><div class="tr tf"><span>TOTAL</span><span>${fc(totals.total)}</span></div></div>${notes?`<div class="notes"><strong>Notes / Conditions</strong><br/>${notes}</div>`:""}<div class="ftr">${companyInfo.numeroTPS?`N° TPS: ${companyInfo.numeroTPS}`:""}${companyInfo.numeroTVQ?` &nbsp;|&nbsp; N° TVQ: ${companyInfo.numeroTVQ}`:""}</div></body></html>`;
+}
+function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNums,commandes,saveCommandes,onBack,initClientId,onConvertToFacture}){
+  const t=useT();
+  const isNew=!commande?.id;
+  const todayStr=dk(new Date());
+  const locked=commande?.statut==="Complétée";
+  const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none"};
+  const [form,setForm]=useState(commande?{...commande}:{date:todayStr,dateLivraison:"",clientId:initClientId||"",referenceClient:"",statut:"Brouillon",notes:"",sourceType:null,sourceId:null,sourceNumero:null});
+  const [lignes,setLignes]=useState(commande?.lignes?.length?commande.lignes:[newLigne()]);
+  const [savedId,setSavedId]=useState(commande?.id||null);
+  const [savedNumero,setSavedNumero]=useState(commande?.numero||null);
+  const [confirmDel,setConfirmDel]=useState(false);
+  const [flash,setFlash]=useState(false);
+  const totals=useMemo(()=>computeSoumTotals(lignes),[lignes]);
+  const client=clients.find(c=>c.id===form.clientId);
+  const upd=f=>setForm(p=>({...p,...f}));
+  const updL=(id,f)=>setLignes(ls=>ls.map(l=>l.id===id?{...l,...f}:l));
+  const selectProd=(lid,pid)=>{
+    if(!pid){updL(lid,{produitId:""});return;}
+    const p=produits.find(x=>x.id===pid);
+    if(p)updL(lid,{produitId:pid,description:p.description,prixUnitaire:parseFloat(p.prixUnitaire)||0,tps:p.tps!==false,tvq:p.tvq!==false});
+  };
+  const doSave=()=>{
+    let id=savedId,numero=savedNumero;
+    if(!id){
+      id=Date.now().toString();numero=fmtDocNum(docNums.prefix,"C",docNums.commande);
+      saveDocNums({...docNums,commande:docNums.commande+1});
+      setSavedId(id);setSavedNumero(numero);
+    }
+    const doc={...form,id,numero,lignes};
+    saveCommandes(commandes.some(c=>c.id===id)?commandes.map(c=>c.id===id?doc:c):[...commandes,doc]);
+    setFlash(true);setTimeout(()=>setFlash(false),2000);
+  };
+  const doDelete=()=>{saveCommandes(commandes.filter(c=>c.id!==savedId));onBack();};
+  const doPrint=()=>{
+    const numero=savedNumero||fmtDocNum(docNums.prefix,"C",docNums.commande);
+    openPDF(buildCommandeHTML({...form,numero,lignes,totals,client,companyInfo}));
+  };
+  const doEmail=()=>{
+    if(!client?.courriel)return;
+    const num=savedNumero||"—";
+    const sub=encodeURIComponent(`Commande ${num}`);
+    const body=encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint votre bon de commande ${num} d'un montant de ${fmt(totals.total)}.\n\nMerci de votre confiance,\n${companyInfo.nom||""}`);
+    window.open(`mailto:${client.courriel}?subject=${sub}&body=${body}`);
+  };
+  const SC=STATUT_CMD_C;
+  return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
+    <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+      <button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>
+      <span style={{fontSize:14,fontWeight:700,color:t.text}}>{savedNumero||(isNew?"Nouvelle commande":commande?.numero)}</span>
+      <span style={{fontSize:10,fontWeight:700,color:SC[form.statut]||t.textMuted,background:"rgba(0,0,0,0.06)",borderRadius:10,padding:"2px 8px"}}>{form.statut}</span>
+      {form.sourceNumero&&<span style={{fontSize:10,color:t.textMuted}}>← Soumission {form.sourceNumero}</span>}
+      <div style={{flex:1}}/>
+      <button onClick={doSave} style={{padding:"5px 14px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'Outfit',sans-serif"}}>💾 Sauvegarder</button>
+      {flash&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>✓</span>}
+      <button onClick={doPrint} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>🖨️ Imprimer</button>
+      <button onClick={doEmail} disabled={!client?.courriel} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:!client?.courriel?t.textDim:t.textSub,cursor:!client?.courriel?"default":"pointer",fontWeight:600,fontSize:11,opacity:!client?.courriel?0.5:1}}>📧 Envoyer</button>
+      <button disabled title="Disponible à l'étape Facture" style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"default",fontWeight:600,fontSize:11,opacity:0.4}}>Facturer cette commande</button>
+      {savedId&&form.statut==="Brouillon"&&(
+        confirmDel
+          ?<><span style={{fontSize:11,color:"#ef4444"}}>Confirmer?</span>
+             <button onClick={doDelete} style={{padding:"4px 10px",borderRadius:5,border:"none",background:"#ef4444",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>Supprimer</button>
+             <button onClick={()=>setConfirmDel(false)} style={{padding:"4px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>Annuler</button></>
+          :<button onClick={()=>setConfirmDel(true)} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:600,fontSize:11}}>🗑️</button>
+      )}
+    </div>
+    <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <div style={{flex:"2 1 200px"}}>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Client</div>
+          <select value={form.clientId||""} onChange={e=>upd({clientId:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box"}}>
+            <option value="">— Choisir un client —</option>
+            {clients.filter(c=>c.statut==="actif").map(c=><option key={c.id} value={c.id}>{c.entreprise} ({c.code})</option>)}
+          </select>
+        </div>
+        <div style={{flex:"1 1 120px"}}>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Date</div>
+          <input type="date" value={form.date||todayStr} onChange={e=>upd({date:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
+        </div>
+        <div style={{flex:"1 1 120px"}}>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Date de livraison (opt.)</div>
+          <input type="date" value={form.dateLivraison||""} onChange={e=>upd({dateLivraison:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
+        </div>
+        <div style={{flex:"1 1 140px"}}>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Statut</div>
+          <select value={form.statut} onChange={e=>upd({statut:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box",color:SC[form.statut]||t.inputText,fontWeight:700}}>
+            {STATUTS_COMMANDE.map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        <div style={{flex:"2 1 180px"}}>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Réf. client / Bon de commande</div>
+          <input value={form.referenceClient||""} onChange={e=>upd({referenceClient:e.target.value})} placeholder="Optionnel" style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+        </div>
+      </div>
+      {client&&<div style={{marginTop:8,padding:"5px 8px",borderRadius:6,background:t.section,border:`1px solid ${t.sectionBorder}`,fontSize:11,color:t.textSub}}>
+        <strong style={{color:t.text}}>{client.entreprise}</strong>
+        {client.contact&&` · ${client.contact}`}
+        {client.adresse&&` · ${client.adresse}`}
+        {client.ville&&` · ${[client.ville,client.province].filter(Boolean).join(", ")}`}
+        {client.courriel&&<span style={{fontFamily:"'DM Mono',monospace",marginLeft:6,color:t.textMuted}}>{client.courriel}</span>}
+      </div>}
+    </div>
+    <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+        <span style={{fontSize:12,fontWeight:700,color:t.text}}>Lignes</span>
+        {locked&&<span style={{fontSize:10,color:"#f59e0b",fontWeight:600,background:"rgba(245,158,11,0.1)",borderRadius:8,padding:"1px 7px"}}>Commande complétée — lignes verrouillées</span>}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1.8fr 2fr 65px 85px 65px 28px 28px 90px 24px",gap:5,padding:"2px 4px",marginBottom:4}}>
+        {["Produit","Description","Qté","Prix unit.","Remise %","TPS","TVQ","Total",""].map((h,i)=>(
+          <span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i>=2&&i<=7?"center":"left"}}>{h}</span>
+        ))}
+      </div>
+      {lignes.map(l=>{
+        const lt=(l.quantite||0)*(l.prixUnitaire||0)*(1-(l.remise||0)/100);
+        return(<div key={l.id} style={{display:"grid",gridTemplateColumns:"1.8fr 2fr 65px 85px 65px 28px 28px 90px 24px",gap:5,marginBottom:6,alignItems:"center"}}>
+          <select value={l.produitId||""} onChange={e=>selectProd(l.id,e.target.value)} disabled={locked} style={{...inputS,width:"100%",boxSizing:"border-box",fontSize:11,opacity:locked?0.6:1}}>
+            <option value="">— Libre —</option>
+            {produits.filter(p=>p.actif!==false).map(p=><option key={p.id} value={p.id}>{p.code} {p.description}</option>)}
+          </select>
+          <input value={l.description} onChange={e=>updL(l.id,{description:e.target.value})} disabled={locked} placeholder="Description" style={{...inputS,width:"100%",boxSizing:"border-box",fontSize:11,opacity:locked?0.6:1}}/>
+          <input type="number" min="0" step="0.01" value={l.quantite} onChange={e=>updL(l.id,{quantite:parseFloat(e.target.value)||0})} disabled={locked} style={{...inputS,width:"100%",boxSizing:"border-box",textAlign:"right",fontSize:11,opacity:locked?0.6:1}}/>
+          <input type="number" min="0" step="0.01" value={l.prixUnitaire} onChange={e=>updL(l.id,{prixUnitaire:parseFloat(e.target.value)||0})} disabled={locked} style={{...inputS,width:"100%",boxSizing:"border-box",textAlign:"right",fontSize:11,opacity:locked?0.6:1}}/>
+          <input type="number" min="0" max="100" step="0.1" value={l.remise||""} onChange={e=>updL(l.id,{remise:parseFloat(e.target.value)||0})} disabled={locked} placeholder="0" style={{...inputS,width:"100%",boxSizing:"border-box",textAlign:"right",fontSize:11,opacity:locked?0.6:1}}/>
+          <label style={{display:"flex",alignItems:"center",justifyContent:"center",cursor:locked?"default":"pointer"}}>
+            <input type="checkbox" checked={!!l.tps} onChange={e=>updL(l.id,{tps:e.target.checked})} disabled={locked} style={{accentColor:"#f97316"}}/>
+          </label>
+          <label style={{display:"flex",alignItems:"center",justifyContent:"center",cursor:locked?"default":"pointer"}}>
+            <input type="checkbox" checked={!!l.tvq} onChange={e=>updL(l.id,{tvq:e.target.checked})} disabled={locked} style={{accentColor:"#f97316"}}/>
+          </label>
+          <span style={{textAlign:"right",fontSize:12,fontWeight:700,color:t.text,fontFamily:"'DM Mono',monospace"}}>{fmt(lt)}</span>
+          <button onClick={()=>setLignes(ls=>ls.filter(x=>x.id!==l.id))} disabled={lignes.length===1||locked} style={{background:"none",border:"none",color:(lignes.length===1||locked)?t.textDim:"#ef4444",cursor:(lignes.length===1||locked)?"default":"pointer",fontSize:14,padding:0,fontWeight:700}}>✕</button>
+        </div>);
+      })}
+      {!locked&&<button onClick={()=>setLignes(ls=>[...ls,newLigne()])} style={{marginTop:2,padding:"5px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>+ Ajouter une ligne</button>}
+    </div>
     <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
       <div style={{flex:"2 1 200px",background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
         <div style={{fontSize:12,fontWeight:700,color:t.text,marginBottom:6}}>Notes / Conditions</div>
@@ -1517,6 +1696,7 @@ function ClientProfile({client,saveClient,onBack,onNewDoc,inputS,t}){
     </div>
     <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
       <button onClick={()=>onNewDoc&&onNewDoc("soumission",client.id)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ Nouvelle soumission</button>
+      <button onClick={()=>onNewDoc&&onNewDoc("commande",client.id)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ Nouvelle commande</button>
       {SOON_BTNS.map(btn=>(
         <button key={btn} disabled title="Bientôt disponible" style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"default",fontWeight:600,opacity:0.5}}>
           {btn}
@@ -2149,6 +2329,7 @@ export default function App(){
   const [facProduits,setFacProduits]=useState([]);
   const [facClients,setFacClients]=useState([]);
   const [facSoumissions,setFacSoumissions]=useState([]);
+  const [facCommandes,setFacCommandes]=useState([]);
 
   const t=theme;
 
@@ -2169,6 +2350,7 @@ export default function App(){
     try{const r13=await window.api.storage.get("dicann-fac-clients");if(r13?.value)setFacClients(JSON.parse(r13.value))}catch(e){}
     try{const r14=await window.api.storage.get("dicann-doc-nums");if(r14?.value)setDocNums(prev=>({...DEFAULT_DOC_NUMS,...JSON.parse(r14.value)}))}catch(e){}
     try{const r15=await window.api.storage.get("dicann-fac-soumissions");if(r15?.value)setFacSoumissions(JSON.parse(r15.value))}catch(e){}
+    try{const r16=await window.api.storage.get("dicann-fac-commandes");if(r16?.value)setFacCommandes(JSON.parse(r16.value))}catch(e){}
     setLoading(false);
     // Load auto-backup info after a short delay (backup runs at t+3s)
     setTimeout(async()=>{try{const info=await window.api.backup.getInfo();setBackupInfo(info)}catch(_){}},4000);
@@ -2224,6 +2406,7 @@ export default function App(){
   const saveFacClients=useCallback(list=>{setFacClients(list);window.api.storage.set("dicann-fac-clients",JSON.stringify(list)).catch(()=>{})},[]);
   const saveDocNums=useCallback(nums=>{setDocNums(nums);window.api.storage.set("dicann-doc-nums",JSON.stringify(nums)).catch(()=>{})},[]);
   const saveFacSoumissions=useCallback(list=>{setFacSoumissions(list);window.api.storage.set("dicann-fac-soumissions",JSON.stringify(list)).catch(()=>{})},[]);
+  const saveFacCommandes=useCallback(list=>{setFacCommandes(list);window.api.storage.set("dicann-fac-commandes",JSON.stringify(list)).catch(()=>{})},[]);
 
   const upd=useCallback((dt,f,v)=>{setLiveData(p=>{const u={...p,[dt]:{...(p[dt]||{}),[f]:v}};persist(u);return u})},[persist]);
 
@@ -2612,7 +2795,7 @@ export default function App(){
 
           {activeTab==="monthly"&&<MonthlyPL computeDay={computeDay} suppliers={suppliers} liveData={liveData} platforms={platforms}/>}
           {activeTab==="encaisse"&&<EncaisseTab liveData={liveData} encaisseData={encaisseData} persistEncaisse={persistEncaisse} encaisseConfig={encaisseConfig} saveEncaisseConfig={saveEncaisseConfig}/>}
-          {activeTab==="facturation"&&<FacturationTab categories={facCategories} saveCategories={saveFacCategories} produits={facProduits} saveProduits={saveFacProduits} clients={facClients} saveClients={saveFacClients} soumissions={facSoumissions} saveSoumissions={saveFacSoumissions} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo}/>}
+          {activeTab==="facturation"&&<FacturationTab categories={facCategories} saveCategories={saveFacCategories} produits={facProduits} saveProduits={saveFacProduits} clients={facClients} saveClients={saveFacClients} soumissions={facSoumissions} saveSoumissions={saveFacSoumissions} commandes={facCommandes} saveCommandes={saveFacCommandes} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo}/>}
           {activeTab==="intelligence"&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR} platforms={platforms} encaisseData={encaisseData} encaisseConfig={encaisseConfig}/>}
 
           {/* SETTINGS TAB */}
