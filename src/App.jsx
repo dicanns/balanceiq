@@ -1435,6 +1435,7 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
       <button onClick={()=>openDoc("soumission",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,marginBottom:2}}>+ Nouvelle soumission</button>
       <button onClick={()=>openDoc("commande",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,marginBottom:2}}>+ Nouvelle commande</button>
       <button onClick={()=>openDoc("facture",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,marginBottom:2}}>+ Nouvelle facture</button>
+      <button onClick={()=>openDoc("creditnote",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:700,marginBottom:2}}>+ Note de crédit</button>
     </div>
 
     {/* Dashboard */}
