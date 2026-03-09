@@ -4,3 +4,5 @@ release/
 *.db
 .DS_Store
 .claude/
+CLAUDE.md
+ROADMAP.md
