@@ -1569,7 +1569,7 @@ function AgingReport({factures,clients,creditNotes,companyInfo,apiConfig,showUpg
 
   // Show état de compte viewer for a specific client
   if(etatClient){
-    return<EtatDeCompteViewer clientId={etatClient} clients={clients} factures={factures} creditNotes={creditNotes||[]} companyInfo={companyInfo} invoiceTemplate={effectiveTemplate} onBack={()=>setEtatClient(null)}/>;
+    return<EtatDeCompteViewer clientId={etatClient} clients={clients} factures={factures} creditNotes={creditNotes||[]} companyInfo={companyInfo} invoiceTemplate={invoiceTemplate} onBack={()=>setEtatClient(null)}/>;
   }
 
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -1764,15 +1764,15 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
 
   if(activeDoc?.type==="soumission"){
     const fc=activeDoc.fromClient;
-    return<SoumissionEditor soumission={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} soumissions={soumissions} saveSoumissions={saveSoumissions} commandes={commandes} factures={factures} onBack={closeDoc} onBackToClient={fc?backToClient:null} onBackToList={fc?backToList:null} initClientId={activeDoc.clientId} onConvertToCommande={convertSoumToCommande} onConvertToFacture={soum=>convertToFacture(soum,"soumission")} apiConfig={apiConfig} invoiceTemplate={effectiveTemplate} onOpenDoc={openDoc}/>;
+    return<SoumissionEditor soumission={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} soumissions={soumissions} saveSoumissions={saveSoumissions} commandes={commandes} factures={factures} onBack={closeDoc} onBackToClient={fc?backToClient:null} onBackToList={fc?backToList:null} initClientId={activeDoc.clientId} onConvertToCommande={convertSoumToCommande} onConvertToFacture={soum=>convertToFacture(soum,"soumission")} apiConfig={apiConfig} invoiceTemplate={invoiceTemplate} onOpenDoc={openDoc}/>;
   }
   if(activeDoc?.type==="commande"){
     const fc=activeDoc.fromClient;
-    return<CommandeEditor commande={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} commandes={commandes} saveCommandes={saveCommandes} soumissions={soumissions} factures={factures} onBack={closeDoc} onBackToClient={fc?backToClient:null} onBackToList={fc?backToList:null} initClientId={activeDoc.clientId} onConvertToFacture={cmd=>convertToFacture(cmd,"commande")} apiConfig={apiConfig} showUpgradePrompt={showUpgradePrompt} invoiceTemplate={effectiveTemplate} onOpenDoc={openDoc}/>;
+    return<CommandeEditor commande={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} commandes={commandes} saveCommandes={saveCommandes} soumissions={soumissions} factures={factures} onBack={closeDoc} onBackToClient={fc?backToClient:null} onBackToList={fc?backToList:null} initClientId={activeDoc.clientId} onConvertToFacture={cmd=>convertToFacture(cmd,"commande")} apiConfig={apiConfig} showUpgradePrompt={showUpgradePrompt} invoiceTemplate={invoiceTemplate} onOpenDoc={openDoc}/>;
   }
   if(activeDoc?.type==="facture"){
     const fc=activeDoc.fromClient;
-    return<FactureEditor facture={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} factures={factures} saveFactures={saveFactures} commandes={commandes} soumissions={soumissions} onBack={closeDoc} onBackToClient={fc?backToClient:null} onBackToList={fc?backToList:null} initClientId={activeDoc.clientId} onEnregistrerPaiement={(fac)=>openDoc("encaissement",fac.clientId,{factureId:fac.id},fc)} onCreditNote={(fac)=>setActiveDoc({type:"creditnote",doc:null,clientId:fac.clientId,factureId:fac.id,fromClient:fc})} apiConfig={apiConfig} showUpgradePrompt={showUpgradePrompt} invoiceTemplate={effectiveTemplate} onOpenDoc={openDoc}/>;
+    return<FactureEditor facture={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} factures={factures} saveFactures={saveFactures} commandes={commandes} soumissions={soumissions} onBack={closeDoc} onBackToClient={fc?backToClient:null} onBackToList={fc?backToList:null} initClientId={activeDoc.clientId} onEnregistrerPaiement={(fac)=>openDoc("encaissement",fac.clientId,{factureId:fac.id},fc)} onCreditNote={(fac)=>setActiveDoc({type:"creditnote",doc:null,clientId:fac.clientId,factureId:fac.id,fromClient:fc})} apiConfig={apiConfig} showUpgradePrompt={showUpgradePrompt} invoiceTemplate={invoiceTemplate} onOpenDoc={openDoc}/>;
   }
   if(activeDoc?.type==="encaissement"){
     const fc=activeDoc.fromClient;
@@ -1780,7 +1780,7 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
   }
   if(activeDoc?.type==="creditnote"){
     const fc=activeDoc.fromClient;
-    return<NoteDeCreditEditor creditNote={activeDoc.doc} clients={clients} factures={factures} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} creditNotes={creditNotes} saveCreditNotes={saveCreditNotes} saveFactures={saveFactures} onBack={closeDoc} onBackToClient={fc?backToClient:null} onBackToList={fc?backToList:null} initClientId={activeDoc.clientId} initFactureId={activeDoc.factureId||null} invoiceTemplate={effectiveTemplate}/>;
+    return<NoteDeCreditEditor creditNote={activeDoc.doc} clients={clients} factures={factures} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} creditNotes={creditNotes} saveCreditNotes={saveCreditNotes} saveFactures={saveFactures} onBack={closeDoc} onBackToClient={fc?backToClient:null} onBackToList={fc?backToList:null} initClientId={activeDoc.clientId} initFactureId={activeDoc.factureId||null} invoiceTemplate={invoiceTemplate}/>;
   }
 
   return(<div style={{display:"flex",flexDirection:"column",gap:0}}>
@@ -1809,13 +1809,13 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
     {subTab==="documents"&&<FacturationDashboard soumissions={soumissions} commandes={commandes} factures={factures} creditNotes={creditNotes} clients={clients} produits={produits} categories={categories} companyInfo={companyInfo} showUpgradePrompt={showUpgradePrompt} openDoc={openDoc}/>}
 
     {/* Clients */}
-    {subTab==="clients"&&<ClientsSection clients={clients} saveClients={saveClients} onNewDoc={(type,clientId)=>openDoc(type,clientId,null,true)} onOpenDoc={(type,clientId,doc)=>openDoc(type,clientId,doc,true)} soumissions={soumissions} commandes={commandes} factures={factures} creditNotes={creditNotes} companyInfo={companyInfo} invoiceTemplate={effectiveTemplate} recurrents={recurrents} saveRecurrents={saveRecurrents} showUpgradePrompt={showUpgradePrompt} selectedClientId={selectedClientId} setSelectedClientId={setSelectedClientId}/>}
+    {subTab==="clients"&&<ClientsSection clients={clients} saveClients={saveClients} onNewDoc={(type,clientId)=>openDoc(type,clientId,null,true)} onOpenDoc={(type,clientId,doc)=>openDoc(type,clientId,doc,true)} soumissions={soumissions} commandes={commandes} factures={factures} creditNotes={creditNotes} companyInfo={companyInfo} invoiceTemplate={invoiceTemplate} recurrents={recurrents} saveRecurrents={saveRecurrents} showUpgradePrompt={showUpgradePrompt} selectedClientId={selectedClientId} setSelectedClientId={setSelectedClientId}/>}
 
     {/* Produits */}
     {subTab==="produits"&&<ProduitsSection produits={produits} saveProduits={saveProduits} categories={categories}/>}
 
     {/* Vieillissement */}
-    {subTab==="vieillissement"&&<AgingReport factures={factures} clients={clients} creditNotes={creditNotes} companyInfo={companyInfo} apiConfig={apiConfig} showUpgradePrompt={showUpgradePrompt} invoiceTemplate={effectiveTemplate}/>}
+    {subTab==="vieillissement"&&<AgingReport factures={factures} clients={clients} creditNotes={creditNotes} companyInfo={companyInfo} apiConfig={apiConfig} showUpgradePrompt={showUpgradePrompt} invoiceTemplate={invoiceTemplate}/>}
 
     {/* Categories */}
     {subTab==="categories"&&(<div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -3645,7 +3645,7 @@ function ClientProfile({client,saveClient,onBack,onNewDoc,onOpenDoc,soumissions,
   const myRecs=(recurrents||[]).filter(r=>r.clientId===cId);
   const HISTORY_TABS=[{id:"factures",label:`${T.filterInvoices} (${cFac.length})`},{id:"commandes",label:`${T.filterOrders} (${cCmd.length})`},{id:"soumissions",label:`${T.filterQuotes} (${cSou.length})`},{id:"encaissements",label:`Encaissements (${cPaiements.length})`},{id:"recurrentes",label:`Récurrentes (${myRecs.length})`},{id:"notes",label:"Notes"}];
   if(showEtatCompte){
-    return <EtatDeCompteViewer clientId={cId} clients={[client]} factures={factures} creditNotes={creditNotes||[]} companyInfo={companyInfo} invoiceTemplate={effectiveTemplate} onBack={()=>setShowEtatCompte(false)}/>;
+    return <EtatDeCompteViewer clientId={cId} clients={[client]} factures={factures} creditNotes={creditNotes||[]} companyInfo={companyInfo} invoiceTemplate={invoiceTemplate} onBack={()=>setShowEtatCompte(false)}/>;
   }
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
@@ -3785,7 +3785,7 @@ function ClientsSection({clients,saveClients,onNewDoc,onOpenDoc,soumissions,comm
   if(selectedId){
     const client=clients.find(c=>c.id===selectedId);
     if(!client){setSelectedId(null);return null;}
-    return<ClientProfile client={client} saveClient={saveClient} onBack={()=>setSelectedId(null)} onNewDoc={onNewDoc} onOpenDoc={onOpenDoc} soumissions={soumissions} commandes={commandes} factures={factures} creditNotes={creditNotes} companyInfo={companyInfo} invoiceTemplate={effectiveTemplate} inputS={inputS} t={t} recurrents={recurrents} saveRecurrents={saveRecurrents} showUpgradePrompt={showUpgradePrompt}/>;
+    return<ClientProfile client={client} saveClient={saveClient} onBack={()=>setSelectedId(null)} onNewDoc={onNewDoc} onOpenDoc={onOpenDoc} soumissions={soumissions} commandes={commandes} factures={factures} creditNotes={creditNotes} companyInfo={companyInfo} invoiceTemplate={invoiceTemplate} inputS={inputS} t={t} recurrents={recurrents} saveRecurrents={saveRecurrents} showUpgradePrompt={showUpgradePrompt}/>;
   }
   return(<div style={{display:"flex",flexDirection:"column",gap:8}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}>
