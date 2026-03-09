@@ -586,6 +586,168 @@ export const FR = {
   auditVoid:        "Annulé",
   auditCorrectionDialog:"Correction financière",
   auditCorrectionPrompt:(field) => `Vous modifiez "${field}" sur un rapport existant. Quelle est la raison de cette correction ?`,
+
+  // ── HEADER / UI CHROME ──
+  dark:             "Foncé",
+  light:            "Clair",
+  modeToggle:       "Mode",
+  entryMode:        "Saisie",
+  appMode:          "Mode",
+
+  // ── DAILY TAB — EXTRA ──
+  verifyCaisses:    "Vérifier les caisses",
+  posVentes:        "Ventes",
+  printReport:      "Imprimer le rapport",
+  weekChart:        "Semaine",
+  inventoryStart:   "Début",
+  inventoryEnd:     "Fin journée",
+  inventoryUsed:    "Utilisé",
+  livInfoOnly2:     "Informatif seulement",
+  livTitle2:        "Livraisons — suivi des plateformes",
+  livDailySummary:  "SUMMAIRE DU JOUR — INFORMATIF",
+
+  // ── P&L TAB — EXTRA ──
+  plNetSales:       "Ventes nettes",
+
+  // ── ENCAISSE TAB — EXTRA ──
+  encModify:        "Modifier",
+  encAmount:        "Montant",
+  encCarryForward:  "Reporter au lendemain :",
+  encCashLocations: "Emplacements de cash",
+
+  // ── INTELLIGENCE TAB — EXTRA ──
+  intelDowEmpty:    "Entrer des données quotidiennes pour voir les tendances",
+  intelAnomalyTitle:(n) => `Anomalies Detected (${n} derniers jours)`,
+  intelAnomalyEmpty:"Aucune anomalie — besoin de 3+ jours du même type",
+  intelVelocityTitle:(day) => `Consumption Velocity — ${day}`,
+  intelVelocityEmpty:"Entrer les comptages pain (14h–20h) pour voir la vélocité",
+  intelOrderForecast:(day) => `Prévision de commande — ${day}`,
+  intelOrderEmpty:  "Besoin de 2+ données pour ce jour de semaine",
+  intelLivTitle:    "Livraisons — analyse des plateformes",
+  intelLivEmpty:    "Aucune donnée de livraison enregistrée",
+  intelEncaisseMonthData:(n) => `Mois en cours — ${n} jour${n!==1?"s":""} avec données`,
+  intelCategorie:   "Catégorie",
+  intelTotalSorties:"Total sorties",
+
+  // ── CONFIG — BUSINESS — EXTRA ──
+  cfgCompanyInfo:   "Informations de l'entreprise",
+  cfgCompanyLogo:   "Logo de l'entreprise",
+  cfgChooseImage:   "Choisir une image",
+  cfgLogoHint:      "PNG, JPG ou SVG · Apparaît sur les factures et documents",
+  cfgCity:          "Ville",
+  cfgPostal:        "Code postal",
+  cfgWebsite:       "Site web",
+  cfgGSTNum:        "Numéro TPS",
+  cfgQSTNum:        "Numéro TVQ",
+  cfgDocNumbering:  "Numérotation des documents",
+  cfgPrefix:        "Préfixe (optionnel)",
+  cfgPrefixHint:    "Apparaîtra avant chaque numéro de document",
+  cfgNextNum:       "Prochain #",
+  cfgNumHint:       "Les numéros s'incrémentent automatiquement à la création de chaque document.",
+
+  // ── CONFIG — STAFF — EXTRA ──
+  cfgCashiers:      "Caissiers",
+  cfgNamePlaceholder:"Nom...",
+  cfgEmployees:     "Employés",
+  cfgWageHint:      "Taux horaire auto-rempli dans le rapport quotidien.",
+
+  // ── CONFIG — SUPPLIERS — EXTRA ──
+  cfgSuppliers:     "Fournisseurs (P&L)",
+  cfgNewSupplier:   "Nouveau fournisseur...",
+  cfgDeliveryPlatforms:"Plateformes de livraison",
+  cfgPlatformHint:  "Commissions suivies dans le rapport quotidien, P&L et Intelligence.",
+  cfgPlatformName:  "Nom de la plateforme...",
+  cfgBillingCategories:"Catégories de facturation",
+  cfgBillingCatHint:"Gérez les catégories utilisées dans vos factures et soumissions.",
+  cfgSearchProducts:"Rechercher...",
+  cfgAllCategories: "Toutes les catégories",
+  cfgShowInactive:  "Afficher inactifs",
+  cfgHideInactive:  "Masquer inactifs",
+  cfgNoProducts:    (btn) => `Aucun produit — cliquez sur "${btn}" pour commencer.`,
+  cfgNoResults:     "Aucun résultat pour cette recherche.",
+
+  // ── CONFIG — FINANCES — EXTRA ──
+  cfgOutflowCats:   "Catégories de sorties — Encaisse",
+  cfgOutflowCatHint:"Catégories disponibles lors de l'enregistrement de sorties de caisse.",
+  cfgNewCategory:   "Nouvelle catégorie...",
+  cfgLogoLeft:      "Gauche",
+  cfgLogoRight:     "Droite",
+  cfgLogoCenter:    "Centre",
+  cfgFooterPlaceholder:"Ex: Merci de votre confiance — paiement dû dans 30 jours",
+  cfgDefaultNotesPlaceholder:"Ex: Soumission valide 30 jours. Tous les prix sont en dollars canadiens.",
+  cfgShowTaxNums:   "Afficher les numéros TPS/TVQ sur les documents",
+  cfgTemplateApplied:"Paramètres appliqués à tous vos documents (factures, soumissions, commandes)",
+  cfgTemplatePreview2:"Aperçu du modèle (facture démo)",
+
+  // ── CONFIG — INTEGRATIONS — EXTRA ──
+  cfgWeatherCoords: "Coordonnées météo",
+  cfgWeatherHint:   "Recherchez votre ville pour auto-remplir la météo sur le rapport quotidien.",
+  cfgWeatherConfigured:(city) => `📍 ${city} — météo configurée`,
+  cfgCitySearch:    "Laval, Saint-Hyacinthe, Montréal...",
+  cfgSearch:        "Chercher",
+  cfgAPIIntegrations:"Intégrations API",
+  cfgAuphanKey:     "Clé API ou URL...",
+  cfgAuphanHint:    "À venir — contacter Auphan pour documentation",
+  cfgGasPrice:      "Prix essence",
+  cfgGasHint:       "Auto-rempli du dernier prix connu.",
+  cfgEmailService:  "Service courriel (Resend)",
+  cfgEmailServiceHint:"Envoi direct de factures et états de compte sans ouvrir votre client courriel.",
+  cfgSendEmail:     "Courriel d'envoi",
+  cfgSendEmailHint: "Doit correspondre à un domaine vérifié dans Resend.",
+
+  // ── CONFIG — DATA — EXTRA ──
+  cfgLastBackup:    (date, count) => `✓ Dernière: ${date} · ${count} fichiers`,
+  auditJournal:     "Journal",
+  auditCorrections: "Corrections",
+  auditAnnulations: "Annulations",
+  auditIntegrity:   "Intégrité",
+  auditRefresh:     "Actualiser",
+  auditEntries:     (n) => `${n} entrées`,
+  auditTimestamp2:  "HORODATAGE",
+  auditModule2:     "MODULE",
+  auditAction2:     "ACTION",
+  auditType:        "TYPE",
+  auditField2:      "CHAMP",
+  auditFrom:        "DU",
+  auditTo:          "AU",
+
+  // ── CONFIG — APPLICATION — EXTRA ──
+  cfgPlanDevOnly:   "Sélection du plan disponible en mode développement uniquement.",
+  cfgActive:        "Actif",
+
+  // ── WELCOME SCREEN — EXTRA ──
+  welcomeTitle2:    "Bienvenue sur BalanceIQ",
+  welcomeSubtitle2: "Comment utilisez-vous l'application?",
+  welcomeRestaurant2:"Restaurant / Franchisé",
+  welcomeRestaurantDesc:"Fermeture de caisse, P&L, inventaire, facturation",
+  welcomeFranchisor2:"Franchiseur / Siège social",
+  welcomeFranchisorDesc:"Dashboard multi-succursales, redevances, consolidation",
+
+  // ── FRANCHISE — LOCATIONS ──
+  frcAllNetwork:    "Tout le réseau",
+  frcLocationMgmt:  "Gestion des succursales",
+  frcNewLocation:   "+ Nouvelle succursale",
+  frcNoLocations:   "Aucune succursale. Cliquez sur \"+Nouvelle succursale\" pour commencer.",
+
+  // ── FRANCHISE — ROYALTIES ──
+  frcRoyaltyConfig: "Configuration des redevances",
+  frcRoyaltyRate:   "Taux redevance (%)",
+  frcAdContrib:     "Contribution publicitaire (%)",
+  frcStructure:     "Structure",
+  frcFlatRate:      "Taux fixe",
+  frcProgressive:   "Progressif",
+  frcFrequency:     "Fréquence",
+  frcMonthly:       "Mensuel",
+  frcBillingCategory:"Catégorie de facturation",
+  frcBillingProduct:"Produit de facturation",
+  frcSelectPlaceholder:"— Sélectionner —",
+  frcAdvancedOptions:"Options avancées",
+
+  // ── FRANCHISE — WHITE LABEL ──
+  frcWhiteLabel:    "Marque blanche",
+  frcWhiteLabelDesc:"Personnalise l'apparence des documents générés (factures, états de compte, scorecards).",
+  frcEnableWhiteLabel:"Activer la marque blanche",
+  frcTier:          "Palier",
 };
 
 // ── ENGLISH ──
@@ -1172,4 +1334,166 @@ export const EN = {
   auditVoid:        "Voided",
   auditCorrectionDialog:"Financial Correction",
   auditCorrectionPrompt:(field) => `You are modifying "${field}" on an existing report. What is the reason for this correction?`,
+
+  // ── HEADER / UI CHROME ──
+  dark:             "Dark",
+  light:            "Light",
+  modeToggle:       "Mode",
+  entryMode:        "Entry",
+  appMode:          "Mode",
+
+  // ── DAILY TAB — EXTRA ──
+  verifyCaisses:    "Check registers",
+  posVentes:        "Sales",
+  printReport:      "Print Report",
+  weekChart:        "Week",
+  inventoryStart:   "Start",
+  inventoryEnd:     "End of Day",
+  inventoryUsed:    "Used",
+  livInfoOnly2:     "Informational only",
+  livTitle2:        "Deliveries — Platform Tracking",
+  livDailySummary:  "DAILY SUMMARY — INFORMATIONAL",
+
+  // ── P&L TAB — EXTRA ──
+  plNetSales:       "Net Sales",
+
+  // ── ENCAISSE TAB — EXTRA ──
+  encModify:        "Edit",
+  encAmount:        "Amount",
+  encCarryForward:  "Carry to next day:",
+  encCashLocations: "Cash Locations",
+
+  // ── INTELLIGENCE TAB — EXTRA ──
+  intelDowEmpty:    "Enter daily data to see trends",
+  intelAnomalyTitle:(n) => `Anomalies Detected (last ${n} days)`,
+  intelAnomalyEmpty:"No anomaly — need 3+ days of the same type",
+  intelVelocityTitle:(day) => `Consumption Velocity — ${day}`,
+  intelVelocityEmpty:"Enter bread counts (2pm–8pm) to see velocity",
+  intelOrderForecast:(day) => `Order Forecast — ${day}`,
+  intelOrderEmpty:  "Need 2+ data points for this day of week",
+  intelLivTitle:    "Deliveries — Platform Analysis",
+  intelLivEmpty:    "No delivery data recorded",
+  intelEncaisseMonthData:(n) => `Current month — ${n} day${n!==1?"s":""} with data`,
+  intelCategorie:   "Category",
+  intelTotalSorties:"Total Outflows",
+
+  // ── CONFIG — BUSINESS — EXTRA ──
+  cfgCompanyInfo:   "Company Information",
+  cfgCompanyLogo:   "Company Logo",
+  cfgChooseImage:   "Choose image",
+  cfgLogoHint:      "PNG, JPG or SVG · Appears on invoices and documents",
+  cfgCity:          "City",
+  cfgPostal:        "Postal Code",
+  cfgWebsite:       "Website",
+  cfgGSTNum:        "GST Number",
+  cfgQSTNum:        "QST Number",
+  cfgDocNumbering:  "Document Numbering",
+  cfgPrefix:        "Prefix (optional)",
+  cfgPrefixHint:    "Appears before each document number",
+  cfgNextNum:       "Next #",
+  cfgNumHint:       "Numbers increment automatically when each document is created.",
+
+  // ── CONFIG — STAFF — EXTRA ──
+  cfgCashiers:      "Cashiers",
+  cfgNamePlaceholder:"Name...",
+  cfgEmployees:     "Employees",
+  cfgWageHint:      "Hourly rate auto-filled in the daily report.",
+
+  // ── CONFIG — SUPPLIERS — EXTRA ──
+  cfgSuppliers:     "Suppliers (P&L)",
+  cfgNewSupplier:   "New supplier...",
+  cfgDeliveryPlatforms:"Delivery Platforms",
+  cfgPlatformHint:  "Commissions tracked in daily report, P&L and Intelligence.",
+  cfgPlatformName:  "Platform name...",
+  cfgBillingCategories:"Billing Categories",
+  cfgBillingCatHint:"Manage categories used in your invoices and quotes.",
+  cfgSearchProducts:"Search...",
+  cfgAllCategories: "All categories",
+  cfgShowInactive:  "Show inactive",
+  cfgHideInactive:  "Hide inactive",
+  cfgNoProducts:    (btn) => `No products — click "${btn}" to get started.`,
+  cfgNoResults:     "No results for this search.",
+
+  // ── CONFIG — FINANCES — EXTRA ──
+  cfgOutflowCats:   "Cash Outflow Categories",
+  cfgOutflowCatHint:"Categories available when recording cash outflows.",
+  cfgNewCategory:   "New category...",
+  cfgLogoLeft:      "Left",
+  cfgLogoRight:     "Right",
+  cfgLogoCenter:    "Center",
+  cfgFooterPlaceholder:"Ex: Thank you for your business — payment due in 30 days",
+  cfgDefaultNotesPlaceholder:"Ex: Quote valid 30 days. All prices are in Canadian dollars.",
+  cfgShowTaxNums:   "Show GST/QST numbers on documents",
+  cfgTemplateApplied:"Settings applied to all your documents (invoices, quotes, orders)",
+  cfgTemplatePreview2:"Template preview (demo invoice)",
+
+  // ── CONFIG — INTEGRATIONS — EXTRA ──
+  cfgWeatherCoords: "Weather Coordinates",
+  cfgWeatherHint:   "Search your city to auto-fill weather on the daily report.",
+  cfgWeatherConfigured:(city) => `📍 ${city} — weather configured`,
+  cfgCitySearch:    "Laval, Saint-Hyacinthe, Montreal...",
+  cfgSearch:        "Search",
+  cfgAPIIntegrations:"API Integrations",
+  cfgAuphanKey:     "API Key or URL...",
+  cfgAuphanHint:    "Coming soon — contact Auphan for documentation",
+  cfgGasPrice:      "Gas Price",
+  cfgGasHint:       "Auto-filled from last known price.",
+  cfgEmailService:  "Email Service (Resend)",
+  cfgEmailServiceHint:"Send invoices and statements directly without opening your email client.",
+  cfgSendEmail:     "Sending email",
+  cfgSendEmailHint: "Must match a verified domain in Resend.",
+
+  // ── CONFIG — DATA — EXTRA ──
+  cfgLastBackup:    (date, count) => `✓ Last: ${date} · ${count} files`,
+  auditJournal:     "Log",
+  auditCorrections: "Corrections",
+  auditAnnulations: "Void",
+  auditIntegrity:   "Integrity",
+  auditRefresh:     "Refresh",
+  auditEntries:     (n) => `${n} entries`,
+  auditTimestamp2:  "TIMESTAMP",
+  auditModule2:     "MODULE",
+  auditAction2:     "ACTION",
+  auditType:        "TYPE",
+  auditField2:      "FIELD",
+  auditFrom:        "FROM",
+  auditTo:          "TO",
+
+  // ── CONFIG — APPLICATION — EXTRA ──
+  cfgPlanDevOnly:   "Plan selection available in development mode only.",
+  cfgActive:        "Active",
+
+  // ── WELCOME SCREEN — EXTRA ──
+  welcomeTitle2:    "Welcome to BalanceIQ",
+  welcomeSubtitle2: "How do you use the application?",
+  welcomeRestaurant2:"Restaurant / Franchisee",
+  welcomeRestaurantDesc:"Cash close, P&L, inventory, invoicing",
+  welcomeFranchisor2:"Franchisor / Head Office",
+  welcomeFranchisorDesc:"Multi-location dashboard, royalties, consolidation",
+
+  // ── FRANCHISE — LOCATIONS ──
+  frcAllNetwork:    "All locations",
+  frcLocationMgmt:  "Location Management",
+  frcNewLocation:   "+ New Location",
+  frcNoLocations:   "No locations. Click \"+ New Location\" to get started.",
+
+  // ── FRANCHISE — ROYALTIES ──
+  frcRoyaltyConfig: "Royalty Configuration",
+  frcRoyaltyRate:   "Royalty Rate (%)",
+  frcAdContrib:     "Advertising Contribution (%)",
+  frcStructure:     "Structure",
+  frcFlatRate:      "Flat Rate",
+  frcProgressive:   "Progressive",
+  frcFrequency:     "Frequency",
+  frcMonthly:       "Monthly",
+  frcBillingCategory:"Billing Category",
+  frcBillingProduct:"Billing Product",
+  frcSelectPlaceholder:"— Select —",
+  frcAdvancedOptions:"Advanced Options",
+
+  // ── FRANCHISE — WHITE LABEL ──
+  frcWhiteLabel:    "White Label",
+  frcWhiteLabelDesc:"Customizes the appearance of generated documents (invoices, statements, scorecards).",
+  frcEnableWhiteLabel:"Enable White Label",
+  frcTier:          "Tier",
 };

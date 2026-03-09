@@ -107,7 +107,7 @@ const DAYS_FR=["dimanche","lundi","mardi","mercredi","jeudi","vendredi","samedi"
 const MONTHS_FR=["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
 const QC_HOL={"01-01":"Jour de l'An","03-29":"Vendredi saint","04-01":"Lundi de Pâques","05-20":"Journée nationale des patriotes","06-24":"Fête nationale du Québec","07-01":"Fête du Canada","09-02":"Fête du Travail","10-14":"Action de grâce","12-25":"Noël","12-26":"Lendemain de Noël"};
 const fmt=n=>n==null||isNaN(n)?"—":n.toLocaleString("fr-CA",{style:"currency",currency:"CAD"});
-const fmtD=d=>`${DAYS_FR[d.getDay()]} ${d.getDate()} ${MONTHS_FR[d.getMonth()]} ${d.getFullYear()}`;
+const fmtD=(d,T_)=>T_?`${T_.days[d.getDay()]} ${d.getDate()} ${T_.months[d.getMonth()]} ${d.getFullYear()}`:`${DAYS_FR[d.getDay()]} ${d.getDate()} ${MONTHS_FR[d.getMonth()]} ${d.getFullYear()}`;
 const dk=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 const prevDk=s=>{const d=new Date(s+"T12:00:00");d.setDate(d.getDate()-1);return dk(d)};
 const getHol=d=>{const k=`${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;return QC_HOL[k]||null};
@@ -202,8 +202,9 @@ const CompBar=({label,current,previous,unit="$"})=>{
 
 const WeekChart=({selectedDate,computeDay,getLR})=>{
   const t=useT();
+  const T=useL();
   const d=new Date(selectedDate+"T12:00:00");const dow=d.getDay();const mon=new Date(d);mon.setDate(d.getDate()-((dow+6)%7));
-  const days=[];for(let i=0;i<7;i++){const dd=new Date(mon);dd.setDate(mon.getDate()+i);const key=dk(dd);const cd=computeDay(key);const lr=getLR?getLR(key):null;const complete=cd.anyData&&cd.allBal&&lr?.hamEnd!=null&&lr?.hotEnd!=null;const hasNotes=!!(lr?.notes&&lr.notes.trim().length>0);days.push({key,label:DAYS_FR[dd.getDay()].slice(0,3),vn:cd.venteNet,complete,hasNotes})}
+  const days=[];for(let i=0;i<7;i++){const dd=new Date(mon);dd.setDate(mon.getDate()+i);const key=dk(dd);const cd=computeDay(key);const lr=getLR?getLR(key):null;const complete=cd.anyData&&cd.allBal&&lr?.hamEnd!=null&&lr?.hotEnd!=null;const hasNotes=!!(lr?.notes&&lr.notes.trim().length>0);days.push({key,label:T.days[dd.getDay()].slice(0,3),vn:cd.venteNet,complete,hasNotes})}
   const mx=Math.max(...days.map(x=>x.vn||0),1);
   const barFilled=t.name==='dark'?"rgba(255,255,255,0.08)":"#DDD7CE";
   const barEmpty=t.name==='dark'?"rgba(255,255,255,0.02)":"#EDE9E3";
@@ -261,7 +262,7 @@ function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,ro
         <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:8,alignItems:"start"}}>
           <div><div style={{fontSize:9,color:"#f97316",fontWeight:600,textTransform:"uppercase",marginBottom:4}}>{T.dailyReconCounted}</div><ReconLine label={T.dailyInterac} value={cash.interac??0}/><ReconLine label={T.dailyDeliveries} value={cash.livraisons??0}/><ReconLine label={T.dailyDeposits} value={cash.deposits??0}/><ReconLine label={T.dailyFinalCash} value={cash.finalCash??0}/><ReconLine label={T.dailyFloat} value={cash.float??0} negative/><ReconLine label={T.dailyTotalManual} value={manT} bold accent="#f97316" borderTop/></div>
           <div style={{display:"flex",alignItems:"center",paddingTop:40}}><span style={{fontSize:13,fontWeight:700,color:t.textMuted}}>vs</span></div>
-          <div><div style={{fontSize:9,color:t.posColor,fontWeight:600,textTransform:"uppercase",marginBottom:4}}>{T.dailyReconPOS}</div><ReconLine label="Ventes" value={cash.posVentes??null}/><ReconLine label={T.dailyGST} value={cash.posTPS??0}/><ReconLine label={T.dailyQST} value={cash.posTVQ??0}/><ReconLine label={T.dailyDeliveries} value={cash.posLivraisons??0}/><ReconLine label={T.dailyTotalManual} value={posOk?posT:null} bold accent={t.posColor} borderTop/></div>
+          <div><div style={{fontSize:9,color:t.posColor,fontWeight:600,textTransform:"uppercase",marginBottom:4}}>{T.dailyReconPOS}</div><ReconLine label={T.posVentes} value={cash.posVentes??null}/><ReconLine label={T.dailyGST} value={cash.posTPS??0}/><ReconLine label={T.dailyQST} value={cash.posTVQ??0}/><ReconLine label={T.dailyDeliveries} value={cash.posLivraisons??0}/><ReconLine label={T.dailyTotalManual} value={posOk?posT:null} bold accent={t.posColor} borderTop/></div>
         </div>
         {canR?(<div style={{marginTop:8,padding:"7px 10px",borderRadius:6,textAlign:"center",background:bal?"rgba(34,197,94,0.08)":"rgba(239,68,68,0.08)"}}>{bal?<span style={{fontSize:13,fontWeight:700,color:"#16a34a"}}>{T.dailyReconOK(fmt(manT))}</span>:<div><span style={{fontSize:13,fontWeight:700,color:"#dc2626"}}>{T.dailyReconErr(fmt(Math.abs(ecart)))}</span><div style={{fontSize:11,color:"#dc2626",marginTop:1}}>{ecart>0?T.dailySurplus:T.dailyShortage} de {fmt(Math.abs(ecart))}</div></div>}</div>):(<div style={{marginTop:8,padding:"7px 10px",borderRadius:6,textAlign:"center",background:t.reconNeutralBg,border:`1px solid ${t.reconNeutralBorder}`}}><span style={{fontSize:11.5,color:t.textMuted}}>{fc===0?T.dailyFillToRecon:!posOk?T.dailyFillPOS:T.dailyCompleteCount}</span></div>)}
       </div>
@@ -395,9 +396,9 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
     <div onClick={()=>setCollapsed(!collapsed)} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'9px 11px',cursor:'pointer',background:t.cashHeaderBg,borderBottom:collapsed?'none':`1px solid ${t.innerBorder}`,userSelect:'none'}}>
       <div style={{display:'flex',alignItems:'center',gap:6}}>
         <span style={{fontSize:12,color:collapsed?t.textMuted:'#f97316',transform:collapsed?'rotate(-90deg)':'rotate(0deg)',display:'inline-block'}}>▾</span>
-        <span style={{fontSize:13,fontWeight:700,color:t.text}}>📱 Livraisons — suivi des plateformes</span>
+        <span style={{fontSize:13,fontWeight:700,color:t.text}}>📱 {T.livTitle2}</span>
       </div>
-      <span style={{fontSize:10,color:t.textMuted,fontStyle:'italic'}}>Informatif seulement</span>
+      <span style={{fontSize:10,color:t.textMuted,fontStyle:'italic'}}>{T.livInfoOnly2}</span>
     </div>
     {!collapsed&&(<div style={{padding:11}}>
       <div style={{fontSize:10,color:t.textMuted,marginBottom:8,fontStyle:'italic'}}>{T.livInfoOnly}</div>
@@ -443,7 +444,7 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
             :(<div>
               <div style={{maxHeight:160,overflowY:'auto',marginBottom:6}}>
                 {preview.map(({date,amount},i)=>{
-                  const dd=new Date(date+'T12:00:00');const lbl=`${dd.getDate()} ${MONTHS_FR[dd.getMonth()]}`;
+                  const dd=new Date(date+'T12:00:00');const lbl=`${dd.getDate()} ${T.months[dd.getMonth()]}`;
                   const existing=(liveData[date]?.platformLivraisons||{})[importPid]?.depot;
                   return(<div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'2px 0',borderBottom:`1px solid ${t.divider}`,fontSize:11}}>
                     <span style={{color:t.textSub}}>{lbl}</span>
@@ -472,7 +473,7 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
               const dd=new Date(date+'T12:00:00');
               const existing=(liveData[date]?.platformLivraisons||{})[importPid]?.depot;
               return(<div key={i} style={{fontSize:11,color:t.textSub,padding:'2px 0',borderBottom:`1px solid ${t.divider}`}}>
-                {dd.getDate()} {MONTHS_FR[dd.getMonth()]} — existant: {fmt(existing)} → nouveau: {fmt(amount)}
+                {dd.getDate()} {T.months[dd.getMonth()]} — existant: {fmt(existing)} → nouveau: {fmt(amount)}
               </div>);
             })}
           </div>
@@ -641,6 +642,7 @@ function EmpRow({emp,index,empRoster,selectedDate,updEmp,rmEmp}){
 // ── GEO SEARCH (location picker for weather) ──
 function GeoSearch({apiConfig,saveApiCfg}){
   const t=useT();
+  const T=useL();
   const [query,setQuery]=useState('');
   const [results,setResults]=useState([]);
   const [loading,setLoading]=useState(false);
@@ -675,12 +677,12 @@ function GeoSearch({apiConfig,saveApiCfg}){
 
   return(<div>
     {configured&&<div style={{display:"flex",alignItems:"center",gap:6,marginBottom:7,padding:"5px 8px",borderRadius:6,background:"rgba(34,197,94,0.06)",border:"1px solid rgba(34,197,94,0.2)"}}>
-      <span style={{fontSize:12,color:"#16a34a",flex:1}}>📍 {displayLabel} — météo configurée</span>
+      <span style={{fontSize:12,color:"#16a34a",flex:1}}>{T.cfgWeatherConfigured(displayLabel)}</span>
       <button onClick={clear} style={{fontSize:9,padding:"1px 5px",borderRadius:3,border:"none",background:"rgba(239,68,68,0.1)",color:"#ef4444",cursor:"pointer"}}>✕</button>
     </div>}
     <div style={{display:"flex",gap:4}}>
-      <input value={query} onChange={e=>{setQuery(e.target.value);setError('');}} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();search();}}} placeholder="Laval, Saint-Hyacinthe, Montréal..." style={{...inpStyle,flex:1}}/>
-      <button onClick={search} disabled={loading} style={{padding:"5px 12px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",opacity:loading?0.6:1,whiteSpace:"nowrap"}}>{loading?"...":"Chercher"}</button>
+      <input value={query} onChange={e=>{setQuery(e.target.value);setError('');}} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();search();}}} placeholder={T.cfgCitySearch} style={{...inpStyle,flex:1}}/>
+      <button onClick={search} disabled={loading} style={{padding:"5px 12px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",opacity:loading?0.6:1,whiteSpace:"nowrap"}}>{loading?"...":T.cfgSearch}</button>
     </div>
     {error&&<div style={{fontSize:10,color:"#ef4444",marginTop:3}}>{error}</div>}
     {results.length>0&&<div style={{marginTop:5,border:`1px solid ${t.cardBorder}`,borderRadius:6,overflow:"hidden"}}>
@@ -772,12 +774,12 @@ function MonthlyPL({computeDay,suppliers,liveData,platforms}){
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
       <input type="month" value={month} onChange={e=>setMonth(e.target.value)} style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,padding:"5px 8px",fontSize:12,fontFamily:"'DM Mono',monospace"}}/>
-      <span style={{fontSize:14,fontWeight:700,textTransform:"capitalize",color:t.text}}>{MONTHS_FR[m-1]} {y}</span>
+      <span style={{fontSize:14,fontWeight:700,textTransform:"capitalize",color:t.text}}>{T.months[m-1]} {y}</span>
     </div>
     <div style={{display:"flex",gap:5,flexWrap:"wrap"}}><MC label={T.plRevenue} value={fmt(revenue)} accent="#22c55e"/><MC label="F&P" value={fmt(fpT)} sub={`${fpP.toFixed(1)}%`} accent={fpP>35?"#ef4444":"#f97316"}/><MC label={T.plLabour} value={fmt(labC)} sub={`${labP.toFixed(1)}%`} accent={labP>35?"#ef4444":"#38bdf8"}/><MC label="Profit" value={fmt(np)} sub={`${npP.toFixed(1)}%`} accent={np>=0?"#22c55e":"#ef4444"}/></div>
     <Sec title={T.plRevenue} color="34,197,94">
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 0"}}>
-        <span style={{fontSize:12,color:t.textSub}}>Ventes nettes <span style={{fontSize:10,color:t.textMuted}}>({T.plRevenueAuto}: {fmt(autoRev)})</span></span>
+        <span style={{fontSize:12,color:t.textSub}}>{T.plNetSales} <span style={{fontSize:10,color:t.textMuted}}>({T.plRevenueAuto}: {fmt(autoRev)})</span></span>
         {plData._revenueOverride==null
           ?(<div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontFamily:"'DM Mono',monospace",fontSize:14,fontWeight:700,color:"#22c55e"}}>{fmt(autoRev)}</span><button onClick={()=>updPL("_revenueOverride",autoRev)} style={{fontSize:9,padding:"1px 5px",borderRadius:3,border:"1px solid rgba(251,191,36,0.2)",background:"rgba(251,191,36,0.08)",color:t.warnText,cursor:"pointer"}}>✎</button></div>)
           :(<div><div style={{display:"flex",gap:4,alignItems:"center"}}><input type="number" value={plData._revenueOverride??""} onChange={e=>updPL("_revenueOverride",e.target.value===""?null:parseFloat(e.target.value))} onBlur={()=>setRevTouched(true)} style={{width:100,padding:"3px 6px",borderRadius:4,border:"1px solid rgba(251,191,36,0.25)",background:"rgba(251,191,36,0.06)",color:t.warnText,fontFamily:"'DM Mono',monospace",fontSize:13,textAlign:"right",outline:"none"}}/><button onClick={()=>{updPL("_revenueOverride",null);setRevTouched(false)}} style={{fontSize:9,padding:"1px 4px",borderRadius:3,border:"none",background:"rgba(239,68,68,0.1)",color:"#ef4444",cursor:"pointer"}}>✕</button></div>{revTouched&&plData._revenueOverride!=null&&plData._revenueOverride<0&&<div style={{fontSize:10,color:"#f97316",padding:"1px 0 2px"}}>{T.warnNegativeAmount}</div>}</div>)}
@@ -816,7 +818,7 @@ function MonthlyPL({computeDay,suppliers,liveData,platforms}){
       </div>)}
     </Sec>)}
     <div style={{background:np>=0?t.reconBalBg:t.reconErrBg,border:`1px solid ${np>=0?t.reconBalBorder:t.reconErrBorder}`,borderRadius:10,padding:14}}>
-      <div style={{fontSize:11,color:t.textSub,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,marginBottom:8}}>{T.plResult} — {MONTHS_FR[m-1]} {y}</div>
+      <div style={{fontSize:11,color:t.textSub,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,marginBottom:8}}>{T.plResult} — {T.months[m-1]} {y}</div>
       <RR label={T.plRevenue} value={revenue} accent="#22c55e" bold/><RR label={T.plSubtractFP} value={fpT} accent="#f97316"/><div style={{paddingTop:4,borderTop:`1px solid ${t.dividerMid}`}}><RR label={T.plGrossProfit} value={gp} bold/></div><RR label={T.plSubtractLabour} value={labC} accent="#38bdf8"/><RR label={T.plSubtractExp} value={expT} accent="#818cf8"/>
       <div style={{paddingTop:6,marginTop:4,borderTop:`2px solid ${t.dividerStrong}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{fontSize:14,fontWeight:700,color:np>=0?"#16a34a":"#dc2626"}}>{np>=0?T.plNetProfit:T.plNetLoss}</span><div style={{textAlign:"right"}}><span style={{fontSize:22,fontWeight:700,color:np>=0?"#16a34a":"#dc2626",fontFamily:"'DM Mono',monospace"}}>{fmt(Math.abs(np))}</span>{revenue>0&&<div style={{fontSize:11,color:np>=0?"#16a34a":"#dc2626"}}>{npP.toFixed(1)}%</div>}</div></div>
     </div>
@@ -919,7 +921,7 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
     {/* Date nav */}
     <div style={{display:"flex",alignItems:"center",gap:6}}>
       <button onClick={()=>{const n=new Date(d);n.setDate(n.getDate()-1);setSelDate(dk(n))}} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.text,padding:"3px 8px",cursor:"pointer",fontSize:13}}>←</button>
-      <div style={{fontSize:14,fontWeight:700,textTransform:"capitalize",color:t.text}}>{fmtD(d)}</div>
+      <div style={{fontSize:14,fontWeight:700,textTransform:"capitalize",color:t.text}}>{fmtD(d,T)}</div>
       <button onClick={()=>{const n=new Date(d);n.setDate(n.getDate()+1);setSelDate(dk(n))}} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.text,padding:"3px 8px",cursor:"pointer",fontSize:13}}>→</button>
       <input type="date" value={selDate} onChange={e=>e.target.value&&setSelDate(e.target.value)} style={{...inputS,fontFamily:"'DM Mono',monospace",fontSize:11,marginLeft:"auto"}}/>
     </div>
@@ -964,7 +966,7 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
             <div style={{display:"flex",alignItems:"center",gap:6}}>
               <span style={{fontFamily:"'DM Mono',monospace",fontSize:14,fontWeight:700,color:dr.opening!=null?t.text:t.textDim}}>{dr.opening!=null?fmt(dr.opening):"—"}</span>
               {!overrideMode
-                ?<button onClick={()=>{setOverrideMode(true);setOverrideVal(dr.opening!=null?String(dr.opening):"")}} style={{fontSize:9.5,padding:"2px 7px",borderRadius:4,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer"}}>✎ Modifier</button>
+                ?<button onClick={()=>{setOverrideMode(true);setOverrideVal(dr.opening!=null?String(dr.opening):"")}} style={{fontSize:9.5,padding:"2px 7px",borderRadius:4,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer"}}>✎ {T.encModify}</button>
                 :<div style={{display:"flex",gap:4,alignItems:"center"}}>
                   <input type="number" inputMode="decimal" value={overrideVal} onChange={e=>setOverrideVal(e.target.value)} autoFocus style={{...inputS,width:80,textAlign:"right",fontFamily:"'DM Mono',monospace"}}/>
                   <button onClick={()=>{updEnc("openingOverride",parseFloat(overrideVal)||0);setOverrideMode(false)}} style={{fontSize:9.5,padding:"2px 8px",borderRadius:4,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700}}>✓</button>
@@ -991,7 +993,7 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
       </div>))}
       <div style={{display:"flex",gap:4,marginTop:6,alignItems:"center"}}>
         <input value={newEntreeDesc} onChange={e=>setNewEntreeDesc(e.target.value)} placeholder={T.encDescPlaceholder} style={{...inputS,flex:1}}/>
-        <input type="number" inputMode="decimal" value={newEntreeMt} onChange={e=>setNewEntreeMt(e.target.value)} placeholder="Montant" style={{...inputS,width:80,textAlign:"right",fontFamily:"'DM Mono',monospace"}} onKeyDown={e=>{if(e.key==="Enter")addEntree()}}/>
+        <input type="number" inputMode="decimal" value={newEntreeMt} onChange={e=>setNewEntreeMt(e.target.value)} placeholder={T.encAmount} style={{...inputS,width:80,textAlign:"right",fontFamily:"'DM Mono',monospace"}} onKeyDown={e=>{if(e.key==="Enter")addEntree()}}/>
         <button onClick={addEntree} style={{padding:"5px 10px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>{T.encAddInflow}</button>
       </div>
     </SH>
@@ -1012,7 +1014,7 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
         </div>
       </div>))}
       <div style={{display:"flex",gap:4,marginTop:6,flexWrap:"wrap",alignItems:"center"}}>
-        <input type="number" inputMode="decimal" value={newDepMt} onChange={e=>setNewDepMt(e.target.value)} placeholder="Montant" style={{...inputS,width:80,textAlign:"right",fontFamily:"'DM Mono',monospace"}}/>
+        <input type="number" inputMode="decimal" value={newDepMt} onChange={e=>setNewDepMt(e.target.value)} placeholder={T.encAmount} style={{...inputS,width:80,textAlign:"right",fontFamily:"'DM Mono',monospace"}}/>
         <input value={newDepNote} onChange={e=>setNewDepNote(e.target.value)} placeholder="Note..." style={{...inputS,flex:1,minWidth:80}}/>
         <input value={newDepSlip} onChange={e=>setNewDepSlip(e.target.value)} placeholder={T.encSlipNumber} style={{...inputS,width:90}}/>
         <button onClick={addDeposit} style={{padding:"5px 10px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>{T.encAddDeposit}</button>
@@ -1037,7 +1039,7 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
           {encaisseConfig.sortieCategories.map(c=>(<option key={c.id} value={c.id}>{c.name}</option>))}
         </select>
         <input value={newSortDesc} onChange={e=>setNewSortDesc(e.target.value)} placeholder={T.encDescPlaceholder} style={{...inputS,flex:1,minWidth:80}}/>
-        <input type="number" inputMode="decimal" value={newSortMt} onChange={e=>setNewSortMt(e.target.value)} placeholder="Montant" style={{...inputS,width:80,textAlign:"right",fontFamily:"'DM Mono',monospace"}} onKeyDown={e=>{if(e.key==="Enter")addSortie()}}/>
+        <input type="number" inputMode="decimal" value={newSortMt} onChange={e=>setNewSortMt(e.target.value)} placeholder={T.encAmount} style={{...inputS,width:80,textAlign:"right",fontFamily:"'DM Mono',monospace"}} onKeyDown={e=>{if(e.key==="Enter")addSortie()}}/>
         <button onClick={addSortie} style={{padding:"5px 10px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>{T.encAddOutflow}</button>
       </div>
     </SH>
@@ -1069,7 +1071,7 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
       </>)}
       {!dr.physEntered&&<div style={{fontSize:10.5,color:t.textMuted,marginTop:6}}>{T.encPhysicalNeeded}</div>}
       <div style={{marginTop:10,paddingTop:8,borderTop:`1px solid ${t.divider}`}}>
-        <span style={{fontSize:11,color:t.textSub,display:"block",marginBottom:5}}>Reporter au lendemain :</span>
+        <span style={{fontSize:11,color:t.textSub,display:"block",marginBottom:5}}>{T.encCarryForward}</span>
         <div style={{display:"flex",gap:6}}>
           {[["calculated",T.encCarryCalc],["physical",T.encCarryPhys]].map(([v,label])=>(
             <button key={v} onClick={()=>updEnc("carryForwardMode",v)} style={{flex:1,padding:"5px 8px",borderRadius:6,border:`1.5px solid ${enc.carryForwardMode===v?"#f97316":t.cardBorder}`,background:enc.carryForwardMode===v?"rgba(249,115,22,0.08)":t.section,color:enc.carryForwardMode===v?"#f97316":t.textSub,cursor:"pointer",fontWeight:enc.carryForwardMode===v?700:500,fontSize:11,transition:"all 0.15s"}}>{label}</button>
@@ -1102,7 +1104,7 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
           </div>
         </div>
         <div style={{marginTop:10}}>
-          <span style={{fontSize:11.5,fontWeight:700,color:t.textSub,display:"block",marginBottom:5}}>Emplacements de cash</span>
+          <span style={{fontSize:11.5,fontWeight:700,color:t.textSub,display:"block",marginBottom:5}}>{T.encCashLocations}</span>
           {encaisseConfig.cashLocations.map(loc=>(<div key={loc.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 6px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:4,marginBottom:3}}>
             <span style={{fontSize:11,color:t.text,flex:1}}>{loc.name}</span>
             <button onClick={()=>saveEncaisseConfig({...encaisseConfig,cashLocations:encaisseConfig.cashLocations.filter(x=>x.id!==loc.id)})} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:3,color:"#ef4444",fontSize:9,padding:"1px 5px",cursor:"pointer"}}>✕</button>
@@ -3954,13 +3956,13 @@ function ProduitsSection({produits,saveProduits,categories}){
         <span style={{fontSize:11,color:t.textMuted}}>{produits.filter(p=>p.actif!==false).length} actif{produits.filter(p=>p.actif!==false).length!==1?"s":""}</span>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Rechercher..." style={{...inputS,fontSize:11,padding:"4px 8px"}}/>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder={T.cfgSearchProducts} style={{...inputS,fontSize:11,padding:"4px 8px"}}/>
         <select value={filterCat} onChange={e=>setFilterCat(e.target.value)} style={{...inputS,fontSize:11,padding:"4px 7px"}}>
-          <option value="all">Toutes les catégories</option>
+          <option value="all">{T.cfgAllCategories}</option>
           {categories.filter(c=>c.actif!==false).map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}
         </select>
         <button onClick={()=>setShowInactive(s=>!s)} style={{fontSize:10,padding:"3px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:showInactive?"rgba(249,115,22,0.08)":t.section,color:showInactive?"#f97316":t.textSub,cursor:"pointer",fontWeight:600}}>
-          {showInactive?"Masquer inactifs":"Afficher inactifs"}
+          {showInactive?T.cfgHideInactive:T.cfgShowInactive}
         </button>
         <button onClick={()=>{setAddOpen(o=>!o);setNewForm(BLANK);setCustomUnite("");}} style={{fontSize:11,padding:"4px 12px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontWeight:700}}>
           {T.facNewProduct}
@@ -3971,7 +3973,7 @@ function ProduitsSection({produits,saveProduits,categories}){
       <ProdForm form={newForm} setForm={setNewForm} customU={customUnite} setCustomU={setCustomUnite} onSave={addProd} onCancel={()=>{setAddOpen(false);setNewForm(BLANK);setCustomUnite("");}} isNew={true} activeCats={activeCats} inputS={inputS} t={t}/>
     </div>)}
     {filtered.length===0&&!addOpen&&(<div style={{textAlign:"center",padding:"24px 0",color:t.textMuted,fontSize:12}}>
-      {produits.length===0?"Aucun produit — cliquez sur \"+ Nouveau produit\" pour commencer.":"Aucun résultat pour cette recherche."}
+      {produits.length===0?T.cfgNoProducts(T.facNewProduct):T.cfgNoResults}
     </div>)}
     {grouped.map(([catId,group])=>(
       <div key={catId}>
@@ -4103,9 +4105,9 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
 
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     <ICard>
-      <span style={{fontSize:13,fontWeight:700,marginBottom:5,display:"block",color:t.text}}>Projections — {DAYS_FR[dow]} {d.getDate()} {MONTHS_FR[d.getMonth()]}</span>
+      <span style={{fontSize:13,fontWeight:700,marginBottom:5,display:"block",color:t.text}}>{T.intelProjections(T.days[dow],d.getDate(),T.months[d.getMonth()])}</span>
       {hasProj?(<div style={{display:"flex",flexDirection:"column",gap:8}}>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><MC label={T.intelProjected} value={fmt(proj)} sub={`${samples.length} ${DAYS_FR[dow]}s`} accent="#f97316"/><MC label={T.intelAverage} value={fmt(avg)} accent={t.posColor}/></div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><MC label={T.intelProjected} value={fmt(proj)} sub={`${samples.length} ${T.days[dow]}s`} accent="#f97316"/><MC label={T.intelAverage} value={fmt(avg)} accent={t.posColor}/></div>
         <div style={{background:t.section,borderRadius:6,padding:8}}>
           <div style={{fontSize:9.5,color:t.textSub,fontWeight:600,textTransform:"uppercase",letterSpacing:0.7,marginBottom:4}}>{T.intelSuggestedOrder}</div>
           <span style={{fontSize:13,color:t.text}}><span style={{color:"#f97316",fontWeight:700}}>{aH+3}</span> <span style={{color:t.textMuted}}>{T.intelDozHam}</span></span>
@@ -4126,14 +4128,14 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
           <span style={{fontSize:12,fontFamily:"'DM Mono',monospace",textAlign:"right",color:t.text}}>{p.avgHam}</span>
           <span style={{fontSize:12,fontFamily:"'DM Mono',monospace",textAlign:"right",color:t.text}}>{p.avgHot}</span>
         </div>))}
-      </div>):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>Entrer des données quotidiennes pour voir les tendances</div>)}
+      </div>):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>{T.intelDowEmpty}</div>)}
     </ICard>
     <ICard>
-      <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.intelAnomalies} (14 derniers jours)</span>
+      <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.intelAnomalyTitle(14)}</span>
       {anomalies.length>0?anomalies.map((a,i)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderBottom:`1px solid ${t.divider}`}}>
         <span style={{fontSize:12,textTransform:"capitalize",color:t.text}}>{a.day} {a.date}</span>
         <div style={{display:"flex",gap:8,alignItems:"center"}}><span style={{fontSize:11,color:t.textMuted}}>Moy: {fmt(a.avg)}</span><span style={{fontSize:11,color:t.textSub}}>→</span><span style={{fontSize:12,fontWeight:600,fontFamily:"'DM Mono',monospace",color:t.text}}>{fmt(a.venteNet)}</span><span style={{fontSize:11,fontWeight:700,color:a.pct>0?"#22c55e":"#ef4444",fontFamily:"'DM Mono',monospace"}}>{a.pct>0?"+":""}{a.pct.toFixed(0)}%</span></div>
-      </div>)):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>Aucune anomalie — besoin de 3+ jours du même type</div>)}
+      </div>)):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>{T.intelAnomalyEmpty}</div>)}
     </ICard>
     <ICard>
       <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.intelCashVariance}</span>
@@ -4143,7 +4145,7 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
       </div>)):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>Aucune donnée — les écarts apparaîtront après réconciliation</div>)}
     </ICard>
     <ICard>
-      <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.intelVelocity} — {DAYS_FR[dow]}</span>
+      <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.intelVelocityTitle(T.days[dow])}</span>
       {velocityData.some(v=>v.n>0)?(<div>
         <div style={{display:"grid",gridTemplateColumns:"1.8fr 0.6fr 1fr 1fr",gap:4,padding:"3px 0",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:3}}>
           {["Fenêtre","n","Ham moy.","Hot moy."].map((h,i)=>(<span key={i} style={{fontSize:10,color:t.textMuted,fontWeight:600,textAlign:i>0?"right":"left"}}>{h}</span>))}
@@ -4155,10 +4157,10 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
           <span style={{fontSize:12,fontFamily:"'DM Mono',monospace",textAlign:"right",color:t.text}}>{v.avgHot!=null?Math.round(v.avgHot):"—"}</span>
         </div>))}
         <div style={{fontSize:9,color:t.textDim,marginTop:4}}>Douzaines consommées par fenêtre de temps</div>
-      </div>):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>Entrer les comptages pain (14h–20h) pour voir la vélocité</div>)}
+      </div>):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>{T.intelVelocityEmpty}</div>)}
     </ICard>
     <ICard>
-      <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Prévision de commande — demain</span>
+      <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.intelOrderForecast(T.days[(dow+1)%7])}</span>
       {multiFactorPred?(<div style={{display:"flex",flexDirection:"column",gap:8}}>
         <div style={{fontSize:12,color:t.textSub,textTransform:"capitalize"}}>{multiFactorPred.day}{multiFactorPred.factors.length>0?" · "+multiFactorPred.factors.join(", "):""}</div>
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
@@ -4167,10 +4169,10 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
           {multiFactorPred.salesEst>0&&<MC label="Ventes est." value={fmt(multiFactorPred.salesEst)} sub={`${multiFactorPred.n} ${multiFactorPred.day}s`} accent={t.posColor}/>}
         </div>
         <div style={{fontSize:9.5,color:t.textDim}}>{multiFactorPred.hasContext?"Ajusté selon météo, température et jours fériés":"Ajoutez météo de demain dans Facteurs externes pour affiner la prévision"}</div>
-      </div>):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>Besoin de 2+ données pour ce jour de semaine</div>)}
+      </div>):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>{T.intelOrderEmpty}</div>)}
     </ICard>
     <ICard>
-      <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>📱 Livraisons — analyse des plateformes</span>
+      <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>📱 {T.intelLivTitle}</span>
       {(platforms||[]).length===0?(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>Aucune plateforme configurée dans Config</div>):(()=>{
         const platStats=(platforms||[]).map(p=>{
           const commissions=[];let totalV=0,totalD=0;
@@ -4195,7 +4197,7 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
               <span style={{fontSize:12,fontFamily:"'DM Mono',monospace",textAlign:"right",color:"#f97316"}}>{p.avgComm!=null?`${p.avgComm.toFixed(1)}%`:"—"}</span>
               <span style={{fontSize:12,fontFamily:"'DM Mono',monospace",textAlign:"right",color:t.text}}>{fmt(p.totalVentes)}</span>
             </div>))}
-          </div>):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:"4px 0"}}>Aucune donnée de livraison enregistrée</div>)}
+          </div>):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:"4px 0"}}>{T.intelLivEmpty}</div>)}
           {overdue.length>0&&(<div style={{marginTop:8,padding:"7px 10px",borderRadius:6,background:"rgba(239,68,68,0.05)",border:"1px solid rgba(239,68,68,0.15)"}}>
             <div style={{fontSize:9.5,color:"#dc2626",fontWeight:700,textTransform:"uppercase",letterSpacing:0.7,marginBottom:5}}>⚠️ Dépôts en retard (7+ jours)</div>
             {overdue.map((o,i)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"2px 0",borderBottom:`1px solid rgba(239,68,68,0.1)`,fontSize:11}}>
@@ -4223,16 +4225,16 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
         const anomalyCats=Object.values(catTotals).filter(c=>c.prevTotal>0&&c.total>c.prevTotal*1.4);
         if(daysWithData===0)return(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>Aucune donnée d'encaisse ce mois</div>);
         return(<div>
-          <div style={{fontSize:11,color:t.textSub,marginBottom:8}}>Mois en cours — {daysWithData} jour{daysWithData!==1?"s":""} avec données</div>
+          <div style={{fontSize:11,color:t.textSub,marginBottom:8}}>{T.intelEncaisseMonthData(daysWithData)}</div>
           <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:4,padding:"3px 0",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:3}}>
-            {["Catégorie","Total"].map((h,i)=>(<span key={i} style={{fontSize:10,color:t.textMuted,fontWeight:600,textAlign:i>0?"right":"left"}}>{h}</span>))}
+            {[T.intelCategorie,T.total].map((h,i)=>(<span key={i} style={{fontSize:10,color:t.textMuted,fontWeight:600,textAlign:i>0?"right":"left"}}>{h}</span>))}
           </div>
           {Object.values(catTotals).filter(c=>c.total>0).map((c,i)=>(<div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:4,padding:"3px 0",borderBottom:`1px solid ${t.divider}`,alignItems:"center"}}>
             <span style={{fontSize:11,color:t.text}}>{c.name}</span>
             <span style={{fontSize:12,fontFamily:"'DM Mono',monospace",textAlign:"right",color:"#ef4444"}}>{fmt(c.total)}</span>
           </div>))}
           <div style={{display:"flex",justifyContent:"space-between",padding:"5px 0",marginTop:2,borderTop:`1px solid ${t.dividerStrong}`}}>
-            <span style={{fontSize:11.5,fontWeight:700,color:t.text}}>Total sorties</span>
+            <span style={{fontSize:11.5,fontWeight:700,color:t.text}}>{T.intelTotalSorties}</span>
             <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,fontWeight:700,color:"#ef4444"}}>{fmt(totalSort)}</span>
           </div>
           {avgDailySort>0&&<div style={{fontSize:10.5,color:t.textSub,marginTop:2}}>Moyenne quotidienne: {fmt(avgDailySort)}</div>}
@@ -4272,6 +4274,7 @@ function UpgradePrompt({onClose}){
 // ── LOCATIONS CONFIG ──
 function LocationsConfig({locations,saveLocations,facClients}){
   const t=useT();
+  const T=useL();
   const [editing,setEditing]=useState(null);
   const [form,setForm]=useState({});
   const newLoc=()=>{setForm({nom:"",adresse:"",ville:"",responsable:"",email:"",telephone:"",clientId:"",statut:"active",royaltyOverride:false,royaltyRate:null,adRate:null});setEditing("new")};
@@ -4290,8 +4293,8 @@ function LocationsConfig({locations,saveLocations,facClients}){
   return(
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <span style={{fontSize:13,fontWeight:700,color:t.text}}>📍 Gestion des succursales</span>
-        <button onClick={newLoc} style={{padding:"5px 13px",borderRadius:7,border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.1)",color:"#c4b5fd",cursor:"pointer",fontWeight:600,fontSize:11}}>+ Nouvelle succursale</button>
+        <span style={{fontSize:13,fontWeight:700,color:t.text}}>📍 {T.frcLocationMgmt}</span>
+        <button onClick={newLoc} style={{padding:"5px 13px",borderRadius:7,border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.1)",color:"#c4b5fd",cursor:"pointer",fontWeight:600,fontSize:11}}>{T.frcNewLocation}</button>
       </div>
       {editing&&(
         <div style={{background:t.card,border:`1px solid rgba(167,139,250,0.2)`,borderRadius:9,padding:14}}>
@@ -4313,8 +4316,8 @@ function LocationsConfig({locations,saveLocations,facClients}){
             <div>
               <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Statut</div>
               <select value={form.statut||"active"} onChange={e=>setForm(p=>({...p,statut:e.target.value}))} style={{...inp,height:28}}>
-                <option value="active">Actif</option>
-                <option value="inactive">Inactif</option>
+                <option value="active">{T.cfgActive}</option>
+                <option value="inactive">{T.recurringInactive}</option>
               </select>
             </div>
           </div>
@@ -4337,12 +4340,12 @@ function LocationsConfig({locations,saveLocations,facClients}){
             )}
           </div>
           <div style={{display:"flex",gap:8,marginTop:12}}>
-            <button onClick={saveLoc} style={{padding:"6px 16px",borderRadius:7,border:"1px solid rgba(34,197,94,0.3)",background:"rgba(34,197,94,0.1)",color:"#4ade80",cursor:"pointer",fontWeight:600,fontSize:11}}>Enregistrer</button>
-            <button onClick={()=>{setEditing(null);setForm({})}} style={{padding:"6px 12px",borderRadius:7,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textSub,cursor:"pointer",fontSize:11}}>Annuler</button>
+            <button onClick={saveLoc} style={{padding:"6px 16px",borderRadius:7,border:"1px solid rgba(34,197,94,0.3)",background:"rgba(34,197,94,0.1)",color:"#4ade80",cursor:"pointer",fontWeight:600,fontSize:11}}>{T.save}</button>
+            <button onClick={()=>{setEditing(null);setForm({})}} style={{padding:"6px 12px",borderRadius:7,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textSub,cursor:"pointer",fontSize:11}}>{T.cancel}</button>
           </div>
         </div>
       )}
-      {locations.length===0&&!editing&&<div style={{fontSize:12,color:t.textMuted,padding:"16px 0",textAlign:"center"}}>Aucune succursale. Cliquez "+ Nouvelle succursale" pour commencer.</div>}
+      {locations.length===0&&!editing&&<div style={{fontSize:12,color:t.textMuted,padding:"16px 0",textAlign:"center"}}>{T.frcNoLocations}</div>}
       {locations.map(loc=>(
         <div key={loc.id} style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",opacity:loc.statut==="inactive"?0.5:1}}>
           <div>
@@ -4350,8 +4353,8 @@ function LocationsConfig({locations,saveLocations,facClients}){
             <div style={{fontSize:10.5,color:t.textMuted,marginTop:2}}>{[loc.ville,loc.responsable,loc.email].filter(Boolean).join(" · ")}</div>
           </div>
           <div style={{display:"flex",gap:6,alignItems:"center"}}>
-            <span style={{fontSize:9.5,padding:"2px 7px",borderRadius:6,background:loc.statut==="active"?"rgba(34,197,94,0.1)":"rgba(239,68,68,0.1)",color:loc.statut==="active"?"#4ade80":"#fca5a5",fontWeight:600}}>{loc.statut==="active"?"Actif":"Inactif"}</span>
-            <button onClick={()=>editLoc(loc)} style={{padding:"3px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textSub,cursor:"pointer",fontSize:10.5}}>Modifier</button>
+            <span style={{fontSize:9.5,padding:"2px 7px",borderRadius:6,background:loc.statut==="active"?"rgba(34,197,94,0.1)":"rgba(239,68,68,0.1)",color:loc.statut==="active"?"#4ade80":"#fca5a5",fontWeight:600}}>{loc.statut==="active"?T.cfgActive:T.recurringInactive}</span>
+            <button onClick={()=>editLoc(loc)} style={{padding:"3px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textSub,cursor:"pointer",fontSize:10.5}}>{T.edit}</button>
             <button onClick={()=>deactivate(loc.id)} style={{padding:"3px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textMuted,cursor:"pointer",fontSize:10.5}}>{loc.statut==="active"?"Désactiver":"Réactiver"}</button>
           </div>
         </div>
@@ -4363,47 +4366,48 @@ function LocationsConfig({locations,saveLocations,facClients}){
 // ── REDEVANCES CONFIG ──
 function RedevancesConfig({royaltyConfig,saveRoyaltyConfig,facCategories,facProduits}){
   const t=useT();
+  const T=useL();
   const [cfg,setCfg]=useState(royaltyConfig);
   useEffect(()=>setCfg(royaltyConfig),[royaltyConfig]);
   const inp={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:12,padding:"5px 8px",outline:"none"};
   return(
     <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:14}}>
-      <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:12}}>💰 Configuration des redevances</div>
+      <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:12}}>💰 {T.frcRoyaltyConfig}</div>
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
           <div>
-            <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Taux redevance (%)</div>
+            <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.frcRoyaltyRate}</div>
             <input type="number" value={cfg.rate} onChange={e=>setCfg(p=>({...p,rate:parseFloat(e.target.value)||0}))} style={{...inp,width:100}}/>
           </div>
           <div>
-            <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Contribution publicitaire (%)</div>
+            <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.frcAdContrib}</div>
             <input type="number" value={cfg.adRate} onChange={e=>setCfg(p=>({...p,adRate:parseFloat(e.target.value)||0}))} style={{...inp,width:100}}/>
           </div>
           <div>
-            <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Structure</div>
+            <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.frcStructure}</div>
             <select value={cfg.structure} onChange={e=>setCfg(p=>({...p,structure:e.target.value}))} style={{...inp,height:28}}>
-              <option value="fixed">Taux fixe</option>
+              <option value="fixed">{T.frcFlatRate}</option>
               <option value="progressive">Échelle progressive</option>
             </select>
           </div>
           <div>
-            <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Fréquence</div>
+            <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.frcFrequency}</div>
             <select value={cfg.frequency} onChange={e=>setCfg(p=>({...p,frequency:e.target.value}))} style={{...inp,height:28}}>
-              <option value="monthly">Mensuel</option>
+              <option value="monthly">{T.frcMonthly}</option>
               <option value="bimonthly">Bimensuel</option>
             </select>
           </div>
           <div>
-            <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Catégorie de facturation</div>
+            <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.frcBillingCategory}</div>
             <select value={cfg.categoryId||""} onChange={e=>setCfg(p=>({...p,categoryId:e.target.value||null}))} style={{...inp,height:28}}>
-              <option value="">— Sélectionner —</option>
+              <option value="">{T.frcSelectPlaceholder}</option>
               {facCategories.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}
             </select>
           </div>
           <div>
-            <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Produit de facturation</div>
+            <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.frcBillingProduct}</div>
             <select value={cfg.produitId||""} onChange={e=>setCfg(p=>({...p,produitId:e.target.value||null}))} style={{...inp,height:28}}>
-              <option value="">— Sélectionner —</option>
+              <option value="">{T.frcSelectPlaceholder}</option>
               {facProduits.map(p=><option key={p.id} value={p.id}>{p.nom}</option>)}
             </select>
           </div>
@@ -4427,7 +4431,7 @@ function RedevancesConfig({royaltyConfig,saveRoyaltyConfig,facCategories,facProd
         {/* Hidden advanced option — stepped flat rate */}
         <details style={{marginTop:4}}>
           <summary style={{fontSize:10,color:t.textDim,cursor:"pointer",userSelect:"none",listStyle:"none",display:"flex",alignItems:"center",gap:4}}>
-            <span style={{fontSize:8}}>▶</span> Options avancées
+            <span style={{fontSize:8}}>▶</span> {T.frcAdvancedOptions}
           </summary>
           <div style={{marginTop:8,padding:"10px 12px",borderRadius:7,border:`1px solid ${t.cardBorder}`,background:t.section}}>
             <label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:t.textSub,cursor:"pointer",marginBottom:6}}>
@@ -4447,12 +4451,12 @@ function RedevancesConfig({royaltyConfig,saveRoyaltyConfig,facCategories,facProd
                     <button onClick={()=>setCfg(prev=>({...prev,paliersMensuels:prev.paliersMensuels.filter((_,j)=>j!==i)}))} style={{padding:"2px 7px",borderRadius:4,border:"1px solid rgba(239,68,68,0.3)",background:"none",color:"#ef4444",cursor:"pointer",fontSize:10}}>✕</button>
                   </div>
                 ))}
-                <button onClick={()=>setCfg(prev=>({...prev,paliersMensuels:[...(prev.paliersMensuels||[]),{minVentes:0,rate:6}]}))} style={{marginTop:2,padding:"3px 9px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textSub,cursor:"pointer",fontSize:10}}>+ Palier</button>
+                <button onClick={()=>setCfg(prev=>({...prev,paliersMensuels:[...(prev.paliersMensuels||[]),{minVentes:0,rate:6}]}))} style={{marginTop:2,padding:"3px 9px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textSub,cursor:"pointer",fontSize:10}}>+ {T.frcTier}</button>
               </div>
             )}
           </div>
         </details>
-        <button onClick={()=>saveRoyaltyConfig(cfg)} style={{alignSelf:"flex-start",padding:"6px 16px",borderRadius:7,border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.1)",color:"#c4b5fd",cursor:"pointer",fontWeight:600,fontSize:11}}>Enregistrer</button>
+        <button onClick={()=>saveRoyaltyConfig(cfg)} style={{alignSelf:"flex-start",padding:"6px 16px",borderRadius:7,border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.1)",color:"#c4b5fd",cursor:"pointer",fontWeight:600,fontSize:11}}>{T.save}</button>
       </div>
     </div>
   );
@@ -4461,18 +4465,19 @@ function RedevancesConfig({royaltyConfig,saveRoyaltyConfig,facCategories,facProd
 // ── MARQUE BLANCHE CONFIG ──
 function MarqueBlancheConfig({whiteLabelConfig,saveWhiteLabel}){
   const t=useT();
+  const T=useL();
   const [cfg,setCfg]=useState(whiteLabelConfig);
   useEffect(()=>setCfg(whiteLabelConfig),[whiteLabelConfig]);
   if(!canUse('whiteLabel'))return(<div style={{padding:24,textAlign:"center",color:"#8b8fa3",fontSize:13}}>🔒 Marque blanche disponible avec le plan Franchise.</div>);
   const inp={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:12,padding:"5px 8px",outline:"none",width:"100%"};
   return(
     <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:14}}>
-      <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:12}}>🏷️ Marque blanche</div>
-      <div style={{fontSize:11,color:t.textSub,marginBottom:10}}>Personnalise l'apparence des documents générés (factures, états de compte, scorecards).</div>
+      <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:12}}>🏷️ {T.frcWhiteLabel}</div>
+      <div style={{fontSize:11,color:t.textSub,marginBottom:10}}>{T.frcWhiteLabelDesc}</div>
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
         <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:t.text,cursor:"pointer"}}>
           <input type="checkbox" checked={!!cfg.enabled} onChange={e=>setCfg(p=>({...p,enabled:e.target.checked}))}/>
-          Activer la marque blanche
+          {T.frcEnableWhiteLabel}
         </label>
         {cfg.enabled&&(<>
           <div>
@@ -4491,7 +4496,7 @@ function MarqueBlancheConfig({whiteLabelConfig,saveWhiteLabel}){
             <input value={cfg.footer||""} onChange={e=>setCfg(p=>({...p,footer:e.target.value}))} style={inp} placeholder="Ex: Dic Ann's Franchises Inc. · Siège social · Laval, QC"/>
           </div>
         </>)}
-        <button onClick={()=>saveWhiteLabel(cfg)} style={{alignSelf:"flex-start",padding:"6px 16px",borderRadius:7,border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.1)",color:"#c4b5fd",cursor:"pointer",fontWeight:600,fontSize:11}}>Enregistrer</button>
+        <button onClick={()=>saveWhiteLabel(cfg)} style={{alignSelf:"flex-start",padding:"6px 16px",borderRadius:7,border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.1)",color:"#c4b5fd",cursor:"pointer",fontWeight:600,fontSize:11}}>{T.save}</button>
       </div>
     </div>
   );
@@ -5195,7 +5200,7 @@ function PinLockConfig({lockConfig,saveLockConfig}){
               if(step===1){const h=await hashPin(currentPin);if(h!==lockConfig.pin){setErr(T.cfgPinWrong);setCurrentPin("");return;}setErr("");setStep(2);}
               else if(step===2){if(pin1.length<4||!/^\d+$/.test(pin1)){setErr(T.cfgPin4to6);return;}setErr("");setStep(3);}
               else{if(pin1!==pin2){setErr(T.cfgPinMismatch);setPin2("");return;}const h=await hashPin(pin1);saveLockConfig({...lockConfig,pin:h,pinLength:pin1.length,lockedUntil:null});setMode("view");setCurrentPin("");setPin1("");setPin2("");setSuccess(T.cfgPinChanged);setTimeout(()=>setSuccess(""),3000);}
-            }} style={{flex:1,padding:"6px 0",fontSize:12,background:"#f97316",border:"none",borderRadius:5,color:"#fff",cursor:"pointer",fontWeight:600}}>{step===3?"Enregistrer":T.next}</button>
+            }} style={{flex:1,padding:"6px 0",fontSize:12,background:"#f97316",border:"none",borderRadius:5,color:"#fff",cursor:"pointer",fontWeight:600}}>{step===3?T.save:T.next}</button>
           </div>
         </div>
       )}
@@ -5221,7 +5226,7 @@ function PinLockConfig({lockConfig,saveLockConfig}){
 }
 
 // ── WELCOME SCREEN ──
-function WelcomeScreen({onSelect}){
+function WelcomeScreen({onSelect,T}){
   return(
     <div style={{minHeight:"100vh",background:DARK.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Outfit','Helvetica Neue',sans-serif",padding:24}}>
       <div style={{maxWidth:480,width:"100%",textAlign:"center"}}>
@@ -5229,21 +5234,21 @@ function WelcomeScreen({onSelect}){
           <div style={{width:44,height:38,borderRadius:8,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:800,color:"#fff",letterSpacing:-0.5}}>BIQ</div>
           <span style={{fontSize:22,fontWeight:800,color:"#e8e8ec",letterSpacing:-0.5}}>BalanceIQ</span>
         </div>
-        <h1 style={{fontSize:24,fontWeight:700,color:"#e8e8ec",margin:"0 0 10px"}}>Bienvenue sur BalanceIQ</h1>
-        <p style={{fontSize:15,color:"#8b8fa3",margin:"0 0 36px",lineHeight:1.5}}>Comment utilisez-vous l'application?</p>
+        <h1 style={{fontSize:24,fontWeight:700,color:"#e8e8ec",margin:"0 0 10px"}}>{T.welcomeTitle2}</h1>
+        <p style={{fontSize:15,color:"#8b8fa3",margin:"0 0 36px",lineHeight:1.5}}>{T.welcomeSubtitle2}</p>
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           <button onClick={()=>onSelect("restaurant")} style={{display:"flex",alignItems:"center",gap:14,padding:"18px 22px",borderRadius:11,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",cursor:"pointer",textAlign:"left",transition:"background 0.15s",color:"#e8e8ec"}}>
             <span style={{fontSize:22}}>🏪</span>
             <div style={{textAlign:"left"}}>
-              <div style={{fontSize:16,fontWeight:700}}>Restaurant / Franchisé</div>
-              <div style={{fontSize:12,color:"rgba(249,115,22,0.7)",fontWeight:400,marginTop:2}}>Fermeture de caisse, P&L, inventaire, facturation</div>
+              <div style={{fontSize:16,fontWeight:700}}>{T.welcomeRestaurant2}</div>
+              <div style={{fontSize:12,color:"rgba(249,115,22,0.7)",fontWeight:400,marginTop:2}}>{T.welcomeRestaurantDesc}</div>
             </div>
           </button>
           <button onClick={()=>onSelect("franchiseur")} style={{display:"flex",alignItems:"center",gap:14,padding:"18px 22px",borderRadius:11,border:"1px solid rgba(139,92,246,0.25)",background:"rgba(139,92,246,0.07)",cursor:"pointer",textAlign:"left",transition:"background 0.15s",color:"#e8e8ec"}}>
             <span style={{fontSize:22}}>🏢</span>
             <div style={{textAlign:"left"}}>
-              <div style={{fontSize:16,fontWeight:700}}>Franchiseur / Siège social</div>
-              <div style={{fontSize:12,color:"rgba(139,92,246,0.7)",fontWeight:400,marginTop:2}}>Dashboard multi-succursales, redevances, consolidation</div>
+              <div style={{fontSize:16,fontWeight:700}}>{T.welcomeFranchisor2}</div>
+              <div style={{fontSize:12,color:"rgba(139,92,246,0.7)",fontWeight:400,marginTop:2}}>{T.welcomeFranchisorDesc}</div>
             </div>
           </button>
         </div>
@@ -5260,6 +5265,7 @@ const ACTION_COLORS={create:"#22c55e",update:"#3b82f6",void:"#ef4444",correct:"#
 
 function AuditViewer(){
   const t=useT();
+  const T=useL();
   const [entries,setEntries]=useState([]);
   const [loading,setLoading]=useState(false);
   const [filters,setFilters]=useState({module:"",action:"",dateFrom:"",dateTo:""});
@@ -5323,17 +5329,17 @@ function AuditViewer(){
         </select>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:3}}>
-        <span style={{fontSize:9,color:t.textMuted,fontWeight:600,textTransform:"uppercase",letterSpacing:0.5}}>Du</span>
+        <span style={{fontSize:9,color:t.textMuted,fontWeight:600,textTransform:"uppercase",letterSpacing:0.5}}>{T.auditFrom}</span>
         <input type="date" value={filters.dateFrom} onChange={e=>setFilters(p=>({...p,dateFrom:e.target.value}))} style={inp}/>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:3}}>
-        <span style={{fontSize:9,color:t.textMuted,fontWeight:600,textTransform:"uppercase",letterSpacing:0.5}}>Au</span>
+        <span style={{fontSize:9,color:t.textMuted,fontWeight:600,textTransform:"uppercase",letterSpacing:0.5}}>{T.auditTo}</span>
         <input type="date" value={filters.dateTo} onChange={e=>setFilters(p=>({...p,dateTo:e.target.value}))} style={inp}/>
       </div>
       <input placeholder="Rechercher…" value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}} style={{...inp,width:140}}/>
-      <button onClick={load} style={{padding:"4px 12px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>Actualiser</button>
+      <button onClick={load} style={{padding:"4px 12px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>{T.auditRefresh}</button>
       <button onClick={exportCSV} disabled={!filtered.length} style={{padding:"4px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>⬇ CSV</button>
-      <span style={{fontSize:10.5,color:t.textMuted,marginLeft:"auto"}}>{filtered.length} entr{filtered.length!==1?"ées":"ée"}</span>
+      <span style={{fontSize:10.5,color:t.textMuted,marginLeft:"auto"}}>{T.auditEntries(filtered.length)}</span>
     </div>
 
     {/* Table */}
@@ -5485,8 +5491,9 @@ function IntegrityCheck(){
 // Enhanced AuditViewer with sub-tabs that wraps the existing viewer + reports
 function AuditSection(){
   const t=useT();
+  const T=useL();
   const [sub,setSub]=useState("journal");
-  const TABS=[["journal","📋 Journal"],["corrections","⚠ Corrections"],["annulations","🚫 Annulations"],["integrite","🔍 Intégrité"]];
+  const TABS=[["journal",`📋 ${T.auditJournal}`],["corrections",`⚠ ${T.auditCorrections}`],["annulations",`🚫 ${T.auditAnnulations}`],["integrite",`🔍 ${T.auditIntegrity}`]];
   const btnStyle=active=>({padding:"5px 12px",borderRadius:"6px 6px 0 0",border:`1px solid ${active?t.cardBorder:"transparent"}`,borderBottom:active?"none":"transparent",background:active?t.card:t.section,color:active?"#f97316":t.textSub,cursor:"pointer",fontWeight:active?700:400,fontSize:11,marginBottom:active?"-1px":"0"});
   return(<div>
     <div style={{display:"flex",gap:4,borderBottom:`1px solid ${t.cardBorder}`,marginBottom:10}}>
@@ -5907,7 +5914,7 @@ export default function App(){
 
   if(loading)return(<div style={{minHeight:"100vh",background:DARK.bg,display:"flex",alignItems:"center",justifyContent:"center",color:"#4a4e5e",fontFamily:"'Outfit',sans-serif"}}>{T.loading}</div>);
   if(appLocked)return(<PinLockScreen lockConfig={lockConfig} onUnlock={()=>setAppLocked(false)} saveLockConfig={saveLockConfig}/>);
-  if(!appMode)return(<WelcomeScreen onSelect={saveAppMode}/>);
+  if(!appMode)return(<WelcomeScreen onSelect={saveAppMode} T={T}/>);
 
   return(
     <LangCtx.Provider value={T}>
@@ -5925,7 +5932,7 @@ export default function App(){
               {appMode==="franchiseur"&&(
                 <select value={activeLocationId} onChange={e=>setActiveLocationId(e.target.value)}
                   style={{marginLeft:12,background:"rgba(139,92,246,0.1)",border:"1px solid rgba(139,92,246,0.25)",borderRadius:6,color:"#c4b5fd",fontSize:11,fontWeight:600,padding:"3px 8px",cursor:"pointer",outline:"none",fontFamily:"'Outfit',sans-serif"}}>
-                  <option value="all">🏢 Tout le réseau</option>
+                  <option value="all">🏢 {T.frcAllNetwork}</option>
                   {locations.filter(l=>l.statut!=="inactive").map(l=>(
                     <option key={l.id} value={l.id}>📍 {l.nom}</option>
                   ))}
@@ -5934,15 +5941,15 @@ export default function App(){
             </div>
             <div style={{display:"flex",alignItems:"center",gap:6}}>
               {saving&&<span style={{fontSize:9,color:"#f97316",fontFamily:"'DM Mono',monospace"}}>sauvegarde...</span>}
-              {hasL&&<Pill ok label="Saisie"/>}
+              {hasL&&<Pill ok label={T.entryMode}/>}
               <button onClick={()=>{saveAppMode(null)}} title="Changer de mode" style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textMuted,fontSize:10,padding:"3px 8px",cursor:"pointer",fontWeight:600}}>
-                ⇄ Mode
+                ⇄ {T.modeToggle}
               </button>
               {lockConfig.enabled&&lockConfig.pin&&(
                 <button onClick={()=>setAppLocked(true)} title="Verrouiller l'application" style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textMuted,fontSize:11,padding:"3px 8px",cursor:"pointer",fontWeight:600}}>🔒</button>
               )}
               <button onClick={toggleTheme} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 8px",cursor:"pointer",fontWeight:600,fontFamily:"'DM Mono',monospace"}}>
-                {themeName==='dark'?'☀ Clair':'☾ Foncé'}
+                {themeName==='dark'?`☀ ${T.light}`:`☾ ${T.dark}`}
               </button>
             </div>
           </div>
@@ -5963,7 +5970,7 @@ export default function App(){
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <button onClick={()=>{const n=new Date(d);n.setDate(n.getDate()-1);setSelectedDate(dk(n))}} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.text,padding:"3px 8px",cursor:"pointer",fontSize:13}}>←</button>
                 <div>
-                  <div style={{fontSize:15,fontWeight:700,textTransform:"capitalize",color:t.text,display:"flex",alignItems:"center",gap:6}}>{fmtD(d)}{isDayComplete&&<span style={{fontSize:9.5,fontWeight:700,color:"#16a34a",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:10,padding:"1px 7px",lineHeight:1.6}}>✓ {T.statusDayComplete}</span>}</div>
+                  <div style={{fontSize:15,fontWeight:700,textTransform:"capitalize",color:t.text,display:"flex",alignItems:"center",gap:6}}>{fmtD(d,T)}{isDayComplete&&<span style={{fontSize:9.5,fontWeight:700,color:"#16a34a",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:10,padding:"1px 7px",lineHeight:1.6}}>✓ {T.statusDayComplete}</span>}</div>
                   <div style={{display:"flex",gap:3,marginTop:1,flexWrap:"wrap"}}>
                     {holiday&&<span style={{fontSize:9,background:t.warnBg,color:t.warnText,padding:"1px 5px",borderRadius:8,fontWeight:600}}>{holiday}</span>}
                     {today.weather&&<span style={{fontSize:9,background:"rgba(56,189,248,0.07)",color:"#38bdf8",padding:"1px 5px",borderRadius:8}}>{today.weather}{today.tempC!=null?` ${today.tempC}°C`:""}</span>}
@@ -6020,7 +6027,7 @@ export default function App(){
             {today.anyData&&(<div style={{padding:"6px 10px",borderRadius:6,textAlign:"center",background:today.allBal?t.balStatusBg:t.warnStatusBg,border:`1px solid ${today.allBal?t.reconBalBorder:t.reconErrBorder}`}}>
               {today.allBal
                 ?<span style={{fontSize:12,color:"#16a34a",fontWeight:600}}>✓ Toutes les caisses balancent</span>
-                :<span style={{fontSize:12,color:t.warnText,fontWeight:600}}>Vérifier les caisses</span>}
+                :<span style={{fontSize:12,color:t.warnText,fontWeight:600}}>{T.verifyCaisses}</span>}
             </div>)}
 
             <LivraisonsSection platforms={platforms} selectedDate={selectedDate} raw={raw} upd={upd} liveData={liveData} apiConfig={apiConfig} saveApiCfg={nc=>{setApiConfig(nc);saveApiCfg(nc);}}/>
@@ -6033,11 +6040,11 @@ export default function App(){
                   {[["HAMBURGER","ham",raw.hamStartOverride!=null,today.hamStart,today.hamUsed,today.hamEnd],["HOT DOG","hot",raw.hotStartOverride!=null,today.hotStart,today.hotUsed,today.hotEnd]].map(([title,pre,hasOv,startV,usedV,endV])=>(<div key={pre}>
                     <div style={{fontSize:10,color:"#f97316",fontWeight:700,marginBottom:2}}>{title}</div>
                     {!hasOv
-                      ?(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"3.5px 0",borderBottom:`1px solid ${t.divider}`}}><span style={{fontSize:11.5,color:t.textSub}}>Début</span><div style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:t.text,fontWeight:600}}>{startV??"-"}</span><button onClick={()=>upd(selectedDate,`${pre}StartOverride`,startV??0)} style={{fontSize:9,padding:"1px 5px",borderRadius:3,border:"1px solid rgba(251,191,36,0.2)",background:"rgba(251,191,36,0.08)",color:t.warnText,cursor:"pointer"}}>✎</button></div></div>)
+                      ?(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"3.5px 0",borderBottom:`1px solid ${t.divider}`}}><span style={{fontSize:11.5,color:t.textSub}}>{T.inventoryStart}</span><div style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:t.text,fontWeight:600}}>{startV??"-"}</span><button onClick={()=>upd(selectedDate,`${pre}StartOverride`,startV??0)} style={{fontSize:9,padding:"1px 5px",borderRadius:3,border:"1px solid rgba(251,191,36,0.2)",background:"rgba(251,191,36,0.08)",color:t.warnText,cursor:"pointer"}}>✎</button></div></div>)
                       :(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"3.5px 0",borderBottom:"1px solid rgba(251,191,36,0.2)"}}><span style={{fontSize:11.5,color:t.warnText}}>Ajusté</span><div style={{display:"flex",alignItems:"center",gap:3}}><input type="number" value={raw[`${pre}StartOverride`]??""} onChange={e=>upd(selectedDate,`${pre}StartOverride`,e.target.value===""?null:parseFloat(e.target.value))} style={{width:50,padding:"2px 5px",borderRadius:4,border:"1px solid rgba(251,191,36,0.25)",background:"rgba(251,191,36,0.06)",color:t.warnText,fontFamily:"'DM Mono',monospace",fontSize:12,textAlign:"right",outline:"none"}}/><button onClick={()=>upd(selectedDate,`${pre}StartOverride`,null)} style={{fontSize:9,padding:"1px 4px",borderRadius:3,border:"none",background:"rgba(239,68,68,0.1)",color:"#ef4444",cursor:"pointer"}}>✕</button></div></div>)}
                     <F label={T.invHamReceived} value={raw[`${pre}Received`]} onChange={v=>upd(selectedDate,`${pre}Received`,v)} warn={raw[`${pre}Received`]!=null&&raw[`${pre}Received`]<0?T.warnNegativeHours:null}/>
-                    <F label="Fin journée" value={raw[`${pre}End`]} onChange={v=>upd(selectedDate,`${pre}End`,v)} warn={endV!=null&&endV<0?T.warnNegativeHours:startV!=null&&endV!=null&&endV>(startV+(raw[`${pre}Received`]||0))?"⚠️ Fin > Début + Reçu — vérifier":null}/>
-                    <div style={{marginTop:3,paddingTop:3,borderTop:`1px solid ${t.divider}`}}><RR label="Utilisé" value={usedV} unit=""/></div>
+                    <F label={T.inventoryEnd} value={raw[`${pre}End`]} onChange={v=>upd(selectedDate,`${pre}End`,v)} warn={endV!=null&&endV<0?T.warnNegativeHours:startV!=null&&endV!=null&&endV>(startV+(raw[`${pre}Received`]||0))?"⚠️ Fin > Début + Reçu — vérifier":null}/>
+                    <div style={{marginTop:3,paddingTop:3,borderTop:`1px solid ${t.divider}`}}><RR label={T.inventoryUsed} value={usedV} unit=""/></div>
                     {endV!=null&&endV<5&&endV>=0&&<div style={{fontSize:9.5,color:t.warnText,marginTop:2}}>Stock faible</div>}
                   </div>))}
                 </div>
@@ -6102,7 +6109,7 @@ export default function App(){
               {/* Right column */}
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
                 <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-                  <span style={{fontSize:13,fontWeight:700,marginBottom:4,display:"block",color:t.text}}>Semaine</span>
+                  <span style={{fontSize:13,fontWeight:700,marginBottom:4,display:"block",color:t.text}}>{T.weekChart}</span>
                   <WeekChart selectedDate={selectedDate} computeDay={computeDay} getLR={getLR}/>
                 </div>
                 <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
@@ -6166,7 +6173,7 @@ export default function App(){
 
             {/* Print */}
             <div style={{display:"flex",justifyContent:"flex-end"}}>
-              <button onClick={()=>openPDF(buildDailyHTML())} style={{padding:"8px 16px",borderRadius:7,border:`1px solid rgba(${t.posRgb},0.2)`,background:`rgba(${t.posRgb},0.07)`,color:t.posColor,cursor:"pointer",fontWeight:600,fontSize:12}}>🖨️ Imprimer le rapport</button>
+              <button onClick={()=>openPDF(buildDailyHTML())} style={{padding:"8px 16px",borderRadius:7,border:`1px solid rgba(${t.posRgb},0.2)`,background:`rgba(${t.posRgb},0.07)`,color:t.posColor,cursor:"pointer",fontWeight:600,fontSize:12}}>🖨️ {T.printReport}</button>
             </div>
           </div>)}
 
@@ -6203,7 +6210,7 @@ export default function App(){
             {/* 🏢 ENTREPRISE */}
             {configSubTab==="entreprise"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:10,display:"block",color:t.text}}>🏢 Informations de l'entreprise</span>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:10,display:"block",color:t.text}}>🏢 {T.cfgCompanyInfo}</span>
               <div style={{display:"flex",flexDirection:"column",gap:6}}>
                 {/* Logo */}
                 <div style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0",borderBottom:`1px solid ${t.divider}`,marginBottom:2}}>
@@ -6213,28 +6220,28 @@ export default function App(){
                       :<span style={{fontSize:20}}>🏢</span>}
                   </div>
                   <div>
-                    <div style={{fontSize:11.5,fontWeight:600,color:t.text,marginBottom:4}}>Logo de l'entreprise</div>
+                    <div style={{fontSize:11.5,fontWeight:600,color:t.text,marginBottom:4}}>{T.cfgCompanyLogo}</div>
                     <div style={{display:"flex",gap:6}}>
                       <label style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11,fontFamily:"'Outfit',sans-serif"}}>
-                        Choisir une image
+                        {T.cfgChooseImage}
                         <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>saveCompanyInfo({...companyInfo,logo:ev.target.result});reader.readAsDataURL(file);e.target.value="";}}/>
                       </label>
                       {companyInfo.logo&&<button onClick={()=>saveCompanyInfo({...companyInfo,logo:null})} style={{padding:"4px 10px",borderRadius:5,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:600,fontSize:11}}>Supprimer</button>}
                     </div>
-                    <div style={{fontSize:9.5,color:t.textMuted,marginTop:3}}>PNG, JPG ou SVG · Apparaît sur les factures et documents</div>
+                    <div style={{fontSize:9.5,color:t.textMuted,marginTop:3}}>{T.cfgLogoHint}</div>
                   </div>
                 </div>
                 {/* Text fields */}
                 {[
-                  ["Nom de l'entreprise","nom","text",true],
-                  ["Adresse","adresse","text",false],
-                  ["Ville","ville","text",false],
-                  ["Code postal","codePostal","text",false],
-                  ["Téléphone","telephone","tel",false],
-                  ["Courriel","courriel","email",false],
-                  ["Site web","siteWeb","text",false],
-                  ["Numéro TPS","numeroTPS","text",false],
-                  ["Numéro TVQ","numeroTVQ","text",false],
+                  [T.cfgCompanyName,"nom","text",true],
+                  [T.cfgAddress,"adresse","text",false],
+                  [T.cfgCity,"ville","text",false],
+                  [T.cfgPostal,"codePostal","text",false],
+                  [T.cfgPhone,"telephone","tel",false],
+                  [T.cfgEmail,"courriel","email",false],
+                  [T.cfgWebsite,"siteWeb","text",false],
+                  [T.cfgGSTNum,"numeroTPS","text",false],
+                  [T.cfgQSTNum,"numeroTVQ","text",false],
                 ].map(([label,key,type,required])=>(
                   <div key={key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"3.5px 0",borderBottom:`1px solid ${t.divider}`,gap:8}}>
                     <span style={{fontSize:11.5,color:t.textSub,fontWeight:500,whiteSpace:"nowrap",flexShrink:0}}>{label}{required&&<span style={{color:"#f97316",marginLeft:2}}>*</span>}</span>
@@ -6265,47 +6272,47 @@ export default function App(){
 
             {/* Document numbering */}
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:10,display:"block",color:t.text}}>🔢 Numérotation des documents</span>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:10,display:"block",color:t.text}}>🔢 {T.cfgDocNumbering}</span>
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-                <span style={{fontSize:11,color:t.textSub,minWidth:160}}>Préfixe (optionnel)</span>
+                <span style={{fontSize:11,color:t.textSub,minWidth:160}}>{T.cfgPrefix}</span>
                 <input value={docNums.prefix||""} onChange={e=>saveDocNums({...docNums,prefix:e.target.value})} placeholder='ex: BIQ-' style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.inputText,fontSize:12,padding:"3.5px 6px",outline:"none",width:100,fontFamily:"'DM Mono',monospace"}}/>
-                <span style={{fontSize:10,color:t.textMuted}}>Apparaîtra avant chaque numéro de document</span>
+                <span style={{fontSize:10,color:t.textMuted}}>{T.cfgPrefixHint}</span>
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:6}}>
                 {[{key:"soumission",label:"Soumission",code:"S"},{key:"commande",label:"Commande",code:"C"},{key:"facture",label:"Facture",code:"F"},{key:"creditNote",label:"Note de crédit",code:"NC"},{key:"encaissement",label:"Encaissement",code:"E"}].map(({key,label,code})=>(
                   <div key={key} style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                     <span style={{fontSize:11,color:t.textSub,minWidth:160}}>{label}</span>
                     <div style={{display:"flex",alignItems:"center",gap:4}}>
-                      <span style={{fontSize:11,color:t.textMuted}}>Prochain #</span>
+                      <span style={{fontSize:11,color:t.textMuted}}>{T.cfgNextNum}</span>
                       <input type="number" min="1" value={docNums[key]||1} onChange={e=>{const v=parseInt(e.target.value)||1;saveDocNums({...docNums,[key]:Math.max(1,v)});}} style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.inputText,fontSize:12,padding:"3.5px 6px",outline:"none",width:70,fontFamily:"'DM Mono',monospace",textAlign:"right"}}/>
                     </div>
                     <span style={{fontSize:11,color:"#f97316",fontFamily:"'DM Mono',monospace",fontWeight:700}}>→ {fmtDocNum(docNums.prefix,code,docNums[key]||1)}</span>
                   </div>
                 ))}
               </div>
-              <div style={{fontSize:10,color:t.textMuted,marginTop:10}}>Les numéros s'incrémentent automatiquement à la création de chaque document.</div>
+              <div style={{fontSize:10,color:t.textMuted,marginTop:10}}>{T.cfgNumHint}</div>
             </div>
             </div>)}
 
             {/* 👥 PERSONNEL */}
             {configSubTab==="personnel"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Caissiers</span>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.cfgCashiers}</span>
               {roster.map(r=>(<div key={r.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:5,marginBottom:3}}><span style={{fontSize:12,color:t.text}}>{r.name}</span><button onClick={()=>{const n=roster.filter(x=>x.id!==r.id);setRoster(n);saveRoster(n)}} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:4,color:"#ef4444",fontSize:10,padding:"2px 6px",cursor:"pointer"}}>✕</button></div>))}
               <div style={{display:"flex",gap:6,marginTop:4}}>
-                <input value={newCN} onChange={e=>setNewCN(e.target.value)} placeholder="Nom..." onKeyDown={e=>e.key==="Enter"&&addRC()} style={{...inputStyle,flex:1}}/>
+                <input value={newCN} onChange={e=>setNewCN(e.target.value)} placeholder={T.cfgNamePlaceholder} onKeyDown={e=>e.key==="Enter"&&addRC()} style={{...inputStyle,flex:1}}/>
                 <button onClick={addRC} style={{padding:"5px 14px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>+</button>
               </div>
             </div>
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Employés</span>
-              <div style={{fontSize:11,color:t.textMuted,marginBottom:6}}>Taux horaire auto-rempli dans le rapport quotidien.</div>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.cfgEmployees}</span>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:6}}>{T.cfgWageHint}</div>
               {empRoster.map(r=>(<div key={r.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:5,marginBottom:3}}>
                 <span style={{fontSize:12,color:t.text}}>{r.name} <span style={{fontSize:11,color:t.textSub,fontFamily:"'DM Mono',monospace"}}>{r.wage?`${r.wage.toFixed(2)}$/h`:""}</span></span>
                 <button onClick={()=>{const n=empRoster.filter(x=>x.id!==r.id);setEmpRoster(n);saveEmpRoster(n)}} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:4,color:"#ef4444",fontSize:10,padding:"2px 6px",cursor:"pointer"}}>✕</button>
               </div>))}
               <div style={{display:"flex",gap:4,marginTop:4}}>
-                <input value={newEN} onChange={e=>setNewEN(e.target.value)} placeholder="Nom..." style={{...inputStyle,flex:2}}/>
+                <input value={newEN} onChange={e=>setNewEN(e.target.value)} placeholder={T.cfgNamePlaceholder} style={{...inputStyle,flex:2}}/>
                 <input value={newEW} onChange={e=>setNewEW(e.target.value)} placeholder="$/h" type="number" style={{...inputStyle,flex:1,fontFamily:"'DM Mono',monospace",textAlign:"right"}}/>
                 <button onClick={()=>{if(!newEN.trim())return;const nr=[...empRoster,{id:Date.now().toString(),name:newEN.trim(),wage:newEW?parseFloat(newEW):null}];setEmpRoster(nr);saveEmpRoster(nr);setNewEN("");setNewEW("")}} style={{padding:"5px 14px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>+</button>
               </div>
@@ -6315,7 +6322,7 @@ export default function App(){
             {/* 📦 FOURNISSEURS & PRODUITS */}
             {configSubTab==="fournisseurs"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Fournisseurs (P&L)</span>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.cfgSuppliers}</span>
               {suppliers.map(s=>(<div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:5,marginBottom:3}}>
                 {editingSupId===s.id
                   ?(<input value={editingSupName} onChange={e=>setEditingSupName(e.target.value)} onBlur={()=>{if(editingSupName.trim()){const ns=suppliers.map(x=>x.id===s.id?{...x,name:editingSupName.trim()}:x);setSuppliers(ns);saveSup(ns)}setEditingSupId(null)}} onKeyDown={e=>{if(e.key==="Enter")e.target.blur();if(e.key==="Escape")setEditingSupId(null)}} autoFocus style={{flex:1,...inputStyle,border:"1px solid rgba(249,115,22,0.3)",marginRight:6}}/>)
@@ -6323,24 +6330,24 @@ export default function App(){
                 <button onClick={()=>{const ns=suppliers.filter(x=>x.id!==s.id);setSuppliers(ns);saveSup(ns)}} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:4,color:"#ef4444",fontSize:10,padding:"2px 6px",cursor:"pointer"}}>✕</button>
               </div>))}
               <div style={{display:"flex",gap:6,marginTop:4}}>
-                <input placeholder="Nouveau fournisseur..." onKeyDown={e=>{if(e.key==="Enter"&&e.target.value.trim()){const ns=[...suppliers,{id:Date.now().toString(),name:e.target.value.trim()}];setSuppliers(ns);saveSup(ns);e.target.value=""}}} style={{...inputStyle,flex:1}}/>
+                <input placeholder={T.cfgNewSupplier} onKeyDown={e=>{if(e.key==="Enter"&&e.target.value.trim()){const ns=[...suppliers,{id:Date.now().toString(),name:e.target.value.trim()}];setSuppliers(ns);saveSup(ns);e.target.value=""}}} style={{...inputStyle,flex:1}}/>
               </div>
             </div>
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Plateformes de livraison</span>
-              <div style={{fontSize:11,color:t.textMuted,marginBottom:6}}>Commissions suivies dans le rapport quotidien, P&L et Intelligence.</div>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.cfgDeliveryPlatforms}</span>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:6}}>{T.cfgPlatformHint}</div>
               {platforms.map(p=>(<div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:5,marginBottom:3}}>
                 <span style={{fontSize:12,color:t.text}}>{p.emoji} {p.name}</span>
                 <button onClick={()=>{const np=platforms.filter(x=>x.id!==p.id);setPlatforms(np);savePlatforms(np)}} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:4,color:"#ef4444",fontSize:10,padding:"2px 6px",cursor:"pointer"}}>✕</button>
               </div>))}
               <div style={{display:"flex",gap:6,marginTop:4}}>
-                <input value={newPlatformName} onChange={e=>setNewPlatformName(e.target.value)} placeholder="Nom de la plateforme..." onKeyDown={e=>{if(e.key==="Enter"&&newPlatformName.trim()){const np=[...platforms,{id:Date.now().toString(),name:newPlatformName.trim(),emoji:"📦"}];setPlatforms(np);savePlatforms(np);setNewPlatformName("")}}} style={{...inputStyle,flex:1}}/>
+                <input value={newPlatformName} onChange={e=>setNewPlatformName(e.target.value)} placeholder={T.cfgPlatformName} onKeyDown={e=>{if(e.key==="Enter"&&newPlatformName.trim()){const np=[...platforms,{id:Date.now().toString(),name:newPlatformName.trim(),emoji:"📦"}];setPlatforms(np);savePlatforms(np);setNewPlatformName("")}}} style={{...inputStyle,flex:1}}/>
                 <button onClick={()=>{if(!newPlatformName.trim())return;const np=[...platforms,{id:Date.now().toString(),name:newPlatformName.trim(),emoji:"📦"}];setPlatforms(np);savePlatforms(np);setNewPlatformName("")}} style={{padding:"5px 14px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>+</button>
               </div>
             </div>
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Catégories de facturation</span>
-              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>Gérez les catégories utilisées dans vos factures et soumissions.</div>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.cfgBillingCategories}</span>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{T.cfgBillingCatHint}</div>
               <ProduitsSection produits={facProduits} saveProduits={saveFacProduits} categories={facCategories} configOnly/>
             </div>
             </div>)}
@@ -6348,32 +6355,32 @@ export default function App(){
             {/* 💵 FINANCES */}
             {configSubTab==="finances"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Catégories de sorties — Encaisse</span>
-              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>Catégories disponibles lors de l'enregistrement de sorties de caisse.</div>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.cfgOutflowCats}</span>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{T.cfgOutflowCatHint}</div>
               {encaisseConfig.sortieCategories.map(c=>(<div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 6px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:4,marginBottom:3}}>
                 {cfgEditCatId===c.id
                   ?<input autoFocus value={cfgEditCatName} onChange={e=>setCfgEditCatName(e.target.value)} style={{flex:1,background:t.inputBg,border:`1px solid rgba(249,115,22,0.3)`,borderRadius:4,color:t.inputText,fontSize:11,padding:"2px 6px",outline:"none"}} onBlur={()=>{if(cfgEditCatName.trim()){saveEncaisseConfig({...encaisseConfig,sortieCategories:encaisseConfig.sortieCategories.map(x=>x.id===c.id?{...x,name:cfgEditCatName.trim()}:x)})}setCfgEditCatId(null)}} onKeyDown={e=>{if(e.key==="Enter")e.target.blur()}}/>
                   :<span style={{fontSize:11,color:t.text,cursor:"pointer",flex:1}} onClick={()=>{setCfgEditCatId(c.id);setCfgEditCatName(c.name)}}>{c.name} <span style={{fontSize:9,color:t.textDim}}>✎</span></span>}
                 <button onClick={()=>saveEncaisseConfig({...encaisseConfig,sortieCategories:encaisseConfig.sortieCategories.filter(x=>x.id!==c.id)})} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:3,color:"#ef4444",fontSize:9,padding:"1px 5px",cursor:"pointer"}}>✕</button>
               </div>))}
-              <input value={cfgNewCatName} onChange={e=>setCfgNewCatName(e.target.value)} placeholder="Nouvelle catégorie..." style={{flex:1,background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.inputText,fontSize:11,padding:"3px 6px",outline:"none",width:"100%",boxSizing:"border-box",marginTop:4}} onKeyDown={e=>{if(e.key==="Enter"&&cfgNewCatName.trim()){saveEncaisseConfig({...encaisseConfig,sortieCategories:[...encaisseConfig.sortieCategories,{id:Date.now().toString(),name:cfgNewCatName.trim()}]});setCfgNewCatName("")}}}/>
+              <input value={cfgNewCatName} onChange={e=>setCfgNewCatName(e.target.value)} placeholder={T.cfgNewCategory} style={{flex:1,background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.inputText,fontSize:11,padding:"3px 6px",outline:"none",width:"100%",boxSizing:"border-box",marginTop:4}} onKeyDown={e=>{if(e.key==="Enter"&&cfgNewCatName.trim()){saveEncaisseConfig({...encaisseConfig,sortieCategories:[...encaisseConfig.sortieCategories,{id:Date.now().toString(),name:cfgNewCatName.trim()}]});setCfgNewCatName("")}}}/>
             </div>
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-                <span style={{fontSize:13,fontWeight:700,color:t.text}}>Modèle de facture</span>
+                <span style={{fontSize:13,fontWeight:700,color:t.text}}>{T.cfgInvoiceTemplate}</span>
                 {canUse("customTemplates")?<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"1px 6px",borderRadius:6}}>PRO</span>:<span style={{fontSize:9,fontWeight:700,color:"#6b7280",background:"rgba(255,255,255,0.06)",padding:"1px 6px",borderRadius:6}}>Pro</span>}
               </div>
               {canUse("customTemplates")
                 ?<div style={{display:"flex",flexDirection:"column",gap:8}}>
                   <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                     <div style={{flex:"1 1 120px"}}>
-                      <div style={{fontSize:11,color:t.textMuted,marginBottom:3}}>Position du logo</div>
+                      <div style={{fontSize:11,color:t.textMuted,marginBottom:3}}>{T.cfgLogoPosition}</div>
                       <select value={invoiceTemplate.logoPosition} onChange={e=>saveInvoiceTemplate({...invoiceTemplate,logoPosition:e.target.value})} style={{...inputStyle,width:"100%",boxSizing:"border-box"}}>
-                        <option value="gauche">Gauche</option><option value="centre">Centre</option><option value="droite">Droite</option>
+                        <option value="gauche">{T.cfgLogoLeft}</option><option value="centre">{T.cfgLogoCenter}</option><option value="droite">{T.cfgLogoRight}</option>
                       </select>
                     </div>
                     <div style={{flex:"1 1 120px"}}>
-                      <div style={{fontSize:11,color:t.textMuted,marginBottom:3}}>Couleur d'accent</div>
+                      <div style={{fontSize:11,color:t.textMuted,marginBottom:3}}>{T.cfgAccentColor}</div>
                       <div style={{display:"flex",gap:6,alignItems:"center"}}>
                         <input type="color" value={invoiceTemplate.accentColor} onChange={e=>saveInvoiceTemplate({...invoiceTemplate,accentColor:e.target.value})} style={{width:38,height:32,border:`1px solid ${t.inputBorder}`,borderRadius:5,padding:2,background:t.inputBg,cursor:"pointer"}}/>
                         <input value={invoiceTemplate.accentColor} onChange={e=>saveInvoiceTemplate({...invoiceTemplate,accentColor:e.target.value})} style={{...inputStyle,flex:1,fontFamily:"'DM Mono',monospace"}} placeholder="#f97316"/>
@@ -6382,25 +6389,25 @@ export default function App(){
                     </div>
                   </div>
                   <div>
-                    <div style={{fontSize:11,color:t.textMuted,marginBottom:3}}>Texte de pied de page</div>
-                    <input value={invoiceTemplate.footerText} onChange={e=>saveInvoiceTemplate({...invoiceTemplate,footerText:e.target.value})} placeholder="Ex: Merci de votre confiance — paiement dû dans 30 jours" style={{...inputStyle,width:"100%",boxSizing:"border-box"}}/>
+                    <div style={{fontSize:11,color:t.textMuted,marginBottom:3}}>{T.cfgFooterText}</div>
+                    <input value={invoiceTemplate.footerText} onChange={e=>saveInvoiceTemplate({...invoiceTemplate,footerText:e.target.value})} placeholder={T.cfgFooterPlaceholder} style={{...inputStyle,width:"100%",boxSizing:"border-box"}}/>
                   </div>
                   <div>
-                    <div style={{fontSize:11,color:t.textMuted,marginBottom:3}}>Notes par défaut (nouveaux documents)</div>
-                    <textarea value={invoiceTemplate.defaultNotes} onChange={e=>saveInvoiceTemplate({...invoiceTemplate,defaultNotes:e.target.value})} rows={2} placeholder="Ex: Soumission valide 30 jours. Tous les prix sont en dollars canadiens." style={{...inputStyle,width:"100%",boxSizing:"border-box",resize:"vertical",fontFamily:"'Outfit',sans-serif"}}/>
+                    <div style={{fontSize:11,color:t.textMuted,marginBottom:3}}>{T.cfgDefaultNotes}</div>
+                    <textarea value={invoiceTemplate.defaultNotes} onChange={e=>saveInvoiceTemplate({...invoiceTemplate,defaultNotes:e.target.value})} rows={2} placeholder={T.cfgDefaultNotesPlaceholder} style={{...inputStyle,width:"100%",boxSizing:"border-box",resize:"vertical",fontFamily:"'Outfit',sans-serif"}}/>
                   </div>
                   <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:11,color:t.text}}>
                     <input type="checkbox" checked={invoiceTemplate.showTaxNumbers} onChange={e=>saveInvoiceTemplate({...invoiceTemplate,showTaxNumbers:e.target.checked})} style={{accentColor:"#f97316"}}/>
-                    Afficher les numéros TPS/TVQ sur les documents
+                    {T.cfgShowTaxNums}
                   </label>
-                  <div style={{fontSize:10,color:"#22c55e",fontWeight:600}}>✓ Paramètres appliqués à tous vos documents (factures, soumissions, commandes)</div>
+                  <div style={{fontSize:10,color:"#22c55e",fontWeight:600}}>✓ {T.cfgTemplateApplied}</div>
                   <button onClick={()=>{
                     const sampleClient={entreprise:companyInfo.nom||"Entreprise Exemple inc.",contact:"Jean Dupont",adresse:"123 rue Principale",ville:"Montréal",province:"QC",codePostal:"H1A 1A1",courriel:"jean@exemple.ca",tel1:"514-555-0100"};
                     const sampleLignes=[{id:"1",description:"Service de consultation",quantite:10,prixUnitaire:150,remise:0,tps:true,tvq:true},{id:"2",description:"Frais de déplacement",quantite:1,prixUnitaire:75,remise:10,tps:true,tvq:false},{id:"3",description:"Licence logicielle annuelle",quantite:3,prixUnitaire:200,remise:0,tps:true,tvq:true}];
                     const sampleTotals=computeSoumTotals(sampleLignes);
                     openPDF(buildFactureHTML({numero:"F-DEMO",date:dk(new Date()),dateEcheance:"2026-04-07",statut:"Envoyée",referenceClient:"REF-2026-001",lignes:sampleLignes,notes:invoiceTemplate.defaultNotes||"Merci de votre confiance. Paiement dû dans 30 jours.",totals:sampleTotals,client:sampleClient,companyInfo,montantPaye:0,acomptes:[],sourceType:null,sourceNumero:null,invoiceTemplate}));
                   }} style={{padding:"7px 16px",borderRadius:6,border:"1px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11}}>
-                    👁️ Aperçu du modèle (facture démo)
+                    👁️ {T.cfgTemplatePreview2}
                   </button>
                 </div>
                 :<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
@@ -6413,13 +6420,13 @@ export default function App(){
             {/* 🔌 INTÉGRATIONS */}
             {configSubTab==="integrations"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:4,display:"block",color:t.text}}>Coordonnées météo</span>
-              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>Recherchez votre ville pour auto-remplir la météo sur le rapport quotidien.</div>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:4,display:"block",color:t.text}}>{T.cfgWeatherCoords}</span>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{T.cfgWeatherHint}</div>
               <GeoSearch apiConfig={apiConfig} saveApiCfg={nc=>{setApiConfig(nc);saveApiCfg(nc);}}/>
             </div>
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Intégrations API</span>
-              {[["auphanKey","Auphan POS","Clé API ou URL...","À venir — contacter Auphan pour documentation"],["gasKey","Prix essence","URL...","Auto-rempli du dernier prix connu."]].map(([key,label,ph,note])=>(
+              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.cfgAPIIntegrations}</span>
+              {[["auphanKey","Auphan POS",T.cfgAuphanKey,T.cfgAuphanHint],["gasKey",T.cfgGasPrice,"URL...",T.cfgGasHint]].map(([key,label,ph,note])=>(
                 <div key={key} style={{marginBottom:8}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}><span style={{fontSize:12,fontWeight:600,color:t.text}}>{label}</span><Pill ok={apiConfig[key]?.length>0} label={apiConfig[key]?.length>0?T.statusConfigured:T.statusNotConfigured}/></div>
                   <input value={apiConfig[key]||""} onChange={e=>{const nc={...apiConfig,[key]:e.target.value};setApiConfig(nc);saveApiCfg(nc)}} placeholder={ph} style={{...inputStyle,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
@@ -6429,21 +6436,21 @@ export default function App(){
             </div>
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-                <span style={{fontSize:13,fontWeight:700,color:t.text}}>Service courriel (Resend)</span>
+                <span style={{fontSize:13,fontWeight:700,color:t.text}}>{T.cfgEmailService}</span>
                 {canUse("directEmailSend")?<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"1px 6px",borderRadius:6}}>PRO</span>:<span style={{fontSize:9,color:"#6b7280"}}>Pro</span>}
               </div>
-              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>Envoi direct de factures et états de compte sans ouvrir votre client courriel.</div>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{T.cfgEmailServiceHint}</div>
               <div style={{marginBottom:8}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
-                  <span style={{fontSize:12,fontWeight:600,color:t.text}}>Clé API Resend</span>
+                  <span style={{fontSize:12,fontWeight:600,color:t.text}}>{T.cfgResendKey}</span>
                   <Pill ok={apiConfig.resendKey?.length>0} label={apiConfig.resendKey?.length>0?T.statusConfigured:T.statusNotConfigured}/>
                 </div>
                 <input value={apiConfig.resendKey||""} onChange={e=>{const nc={...apiConfig,resendKey:e.target.value};setApiConfig(nc);saveApiCfg(nc);}} placeholder="re_xxxxxxxxxxxxxxxxxxxxxxxx" style={{...inputStyle,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}} type="password"/>
               </div>
               <div style={{marginBottom:10}}>
-                <div style={{fontSize:12,fontWeight:600,color:t.text,marginBottom:2}}>Courriel d'envoi</div>
+                <div style={{fontSize:12,fontWeight:600,color:t.text,marginBottom:2}}>{T.cfgSendEmail}</div>
                 <input value={apiConfig.resendFrom||""} onChange={e=>{const nc={...apiConfig,resendFrom:e.target.value};setApiConfig(nc);saveApiCfg(nc);}} placeholder="noreply@balanceiq.ca" style={{...inputStyle,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
-                <div style={{fontSize:10,color:t.textDim,marginTop:2}}>Doit correspondre à un domaine vérifié dans Resend.</div>
+                <div style={{fontSize:10,color:t.textDim,marginTop:2}}>{T.cfgSendEmailHint}</div>
               </div>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
                 <button onClick={async()=>{
@@ -6481,7 +6488,7 @@ export default function App(){
               <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.cfgAutoBackup}</span>
               <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{T.cfgAutoBackupDesc}</div>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}>
-                <span style={{fontSize:11.5,color:t.textSub}}>{backupInfo==null?T.statusLoading:backupInfo.lastBackup?`✓ Dernière: ${backupInfo.lastBackup} · ${backupInfo.count} fichier${backupInfo.count!==1?"s":""}`:"Aucune sauvegarde encore"}</span>
+                <span style={{fontSize:11.5,color:t.textSub}}>{backupInfo==null?T.statusLoading:backupInfo.lastBackup?T.cfgLastBackup(backupInfo.lastBackup,backupInfo.count):"Aucune sauvegarde encore"}</span>
                 <button onClick={()=>window.api.backup.openDir()} style={{padding:"5px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>{T.cfgOpenFolder}</button>
               </div>
               {backupInfo?.dir&&<div style={{marginTop:5,fontSize:9.5,color:t.textMuted,fontFamily:"'DM Mono',monospace",wordBreak:"break-all"}}>{backupInfo.dir}</div>}
@@ -6524,7 +6531,7 @@ export default function App(){
                     <div style={{fontSize:10.5,color:t.textMuted}}>{appMode==="franchiseur"?T.cfgModeFranDesc:T.cfgModeRestDesc}</div>
                   </div>
                 </div>
-                <span style={{fontSize:10,fontWeight:700,color:"#16a34a",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:10,padding:"2px 8px"}}>Actif</span>
+                <span style={{fontSize:10,fontWeight:700,color:"#16a34a",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:10,padding:"2px 8px"}}>{T.cfgActive}</span>
               </div>
               <div style={{fontSize:10.5,color:t.textMuted,marginTop:8}}>{T.cfgModeChangeBtn}</div>
             </div>
@@ -6542,7 +6549,7 @@ export default function App(){
                       </button>
                     ))}
                   </div>
-                  <div style={{fontSize:10,color:t.textMuted,marginTop:6}}>Sélection du plan disponible en mode développement uniquement.</div>
+                  <div style={{fontSize:10,color:t.textMuted,marginTop:6}}>{T.cfgPlanDevOnly}</div>
                 </>
                 :<>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
