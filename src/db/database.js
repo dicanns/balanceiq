@@ -1,6 +1,7 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 const { app } = require('electron');
+const crypto = require('crypto');
 
 let db;
 
@@ -12,10 +13,82 @@ function getDb() {
       CREATE TABLE IF NOT EXISTS kv_store (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
-      )
+      );
+
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        device_id TEXT NOT NULL,
+        user_name TEXT DEFAULT 'local',
+        module TEXT NOT NULL,
+        action TEXT NOT NULL,
+        record_type TEXT NOT NULL,
+        record_id TEXT NOT NULL,
+        field_name TEXT,
+        old_value TEXT,
+        new_value TEXT,
+        reason TEXT,
+        metadata TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_audit_module    ON audit_log(module);
+      CREATE INDEX IF NOT EXISTS idx_audit_record    ON audit_log(record_type, record_id);
+      CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp);
     `);
   }
   return db;
+}
+
+// Returns the persistent device UUID, creating it on first call
+function getDeviceId() {
+  const db = getDb();
+  const row = db.prepare('SELECT value FROM kv_store WHERE key = ?').get('balanceiq-device-id');
+  if (row) return row.value;
+  const id = crypto.randomUUID();
+  db.prepare('INSERT INTO kv_store (key, value) VALUES (?, ?)').run('balanceiq-device-id', id);
+  return id;
+}
+
+// Insert one audit entry — APPEND ONLY, never update or delete
+function auditInsert(entry) {
+  const deviceId = getDeviceId();
+  getDb().prepare(`
+    INSERT INTO audit_log
+      (device_id, user_name, module, action, record_type, record_id,
+       field_name, old_value, new_value, reason, metadata)
+    VALUES
+      (@deviceId, @userName, @module, @action, @recordType, @recordId,
+       @fieldName, @oldValue, @newValue, @reason, @metadata)
+  `).run({
+    deviceId,
+    userName:   entry.userName   ?? 'local',
+    module:     entry.module,
+    action:     entry.action,
+    recordType: entry.recordType,
+    recordId:   String(entry.recordId),
+    fieldName:  entry.fieldName  ?? null,
+    oldValue:   entry.oldValue   != null ? String(entry.oldValue) : null,
+    newValue:   entry.newValue   != null ? String(entry.newValue) : null,
+    reason:     entry.reason     ?? null,
+    metadata:   entry.metadata   != null ? (typeof entry.metadata === 'string' ? entry.metadata : JSON.stringify(entry.metadata)) : null,
+  });
+  return true;
+}
+
+// Query audit entries with optional filters
+function auditQuery({ module, action, recordType, recordId, dateFrom, dateTo, limit, offset } = {}) {
+  let sql = 'SELECT * FROM audit_log WHERE 1=1';
+  const params = [];
+  if (module)     { sql += ' AND module = ?';      params.push(module); }
+  if (action)     { sql += ' AND action = ?';      params.push(action); }
+  if (recordType) { sql += ' AND record_type = ?'; params.push(recordType); }
+  if (recordId)   { sql += ' AND record_id = ?';   params.push(String(recordId)); }
+  if (dateFrom)   { sql += ' AND timestamp >= ?';  params.push(dateFrom); }
+  if (dateTo)     { sql += ' AND timestamp <= ?';  params.push(dateTo); }
+  sql += ' ORDER BY timestamp DESC';
+  if (limit)  { sql += ` LIMIT ${parseInt(limit, 10)}`; }
+  if (offset) { sql += ` OFFSET ${parseInt(offset, 10)}`; }
+  return getDb().prepare(sql).all(...params);
 }
 
 function storageGet(key) {
@@ -37,4 +110,4 @@ function storageGetAll() {
   return result;
 }
 
-module.exports = { storageGet, storageSet, storageGetAll };
+module.exports = { storageGet, storageSet, storageGetAll, auditInsert, auditQuery, getDeviceId };

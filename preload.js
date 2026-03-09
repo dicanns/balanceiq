@@ -17,4 +17,9 @@ contextBridge.exposeInMainWorld('api', {
     onAvailable: (cb) => ipcRenderer.on('update:available', () => cb()),
     downloadAndInstall: () => ipcRenderer.invoke('updater:downloadAndInstall'),
   },
+  audit: {
+    log:      (entry)   => ipcRenderer.invoke('audit:log', entry),
+    query:    (filters) => ipcRenderer.invoke('audit:query', filters),
+    deviceId: ()        => ipcRenderer.invoke('audit:deviceId'),
+  },
 });
