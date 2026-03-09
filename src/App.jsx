@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useContext, createContext } from "react";
 import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt, CURRENT_PLAN } from "./config/features.js";
+import * as XLSX from "xlsx";
 import { logCreate, logUpdate, logVoid, logCorrection, isFinancialField, promptCorrectionReason } from "./services/auditLogger.js";
 
 // ── THEME ──
@@ -1089,7 +1090,7 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
 }
 
 // ── COMPTABILITE EXPORT ──
-function ComptabiliteExport({factures,clients,produits,categories,onClose}){
+function ComptabiliteExport({factures,clients,produits,categories,companyInfo,onClose,showUpgradePrompt}){
   const t=useT();
   const today=dk(new Date());
   const firstOfMonth=today.slice(0,8)+"01";
@@ -1104,6 +1105,91 @@ function ComptabiliteExport({factures,clients,produits,categories,onClose}){
     const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});
     const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;
     a.download=`${filename}-${dateFrom}-${dateTo}.csv`;a.click();URL.revokeObjectURL(url);
+  };
+
+  const HEADER_STYLE={font:{bold:true},fill:{fgColor:{rgb:"EA580C"}},font:{bold:true,color:{rgb:"FFFFFF"}}};
+  const applyHeaderStyle=(ws,headers)=>{
+    headers.forEach((_,ci)=>{
+      const addr=XLSX.utils.encode_cell({r:0,c:ci});
+      if(!ws[addr])return;
+      ws[addr].s=HEADER_STYLE;
+    });
+  };
+  const autoColWidths=(ws,rows)=>{
+    if(!rows.length)return;
+    const cols=rows[0].map((_,ci)=>({wch:Math.max(...rows.map(r=>String(r[ci]==null?"":r[ci]).length),10)+2}));
+    ws['!cols']=cols;
+  };
+
+  const buildFacRows=()=>{
+    const hdr=["Date","# Facture","Code client","Nom client","Code produit","Catégorie","# Compte revenu","Description","Quantité","Prix unitaire","Remise %","Sous-total","TPS","TVQ","Total"];
+    const data=[];
+    const facs=factures.filter(f=>!["Annulée","Brouillon"].includes(f.statut)&&(!dateFrom||f.date>=dateFrom)&&(!dateTo||f.date<=dateTo));
+    for(const fac of facs){const cl=clients.find(c=>c.id===fac.clientId);for(const l of fac.lignes||[]){const prod=produits.find(p=>p.id===l.produitId);const cat=categories.find(c=>c.id===prod?.categorieId);const st=(l.prixUnitaire||0)*(l.quantite||0)*(1-(l.remise||0)/100);const tps=l.tps!==false?st*0.05:0;const tvq=l.tvq!==false?st*0.09975:0;data.push([fac.date||"",fac.numero||"",cl?.code||"",cl?.entreprise||"",prod?.code||"",cat?.nom||"",cat?.compteRevenu||"",l.description||"",l.quantite||0,parseFloat((l.prixUnitaire||0).toFixed(2)),parseFloat((l.remise||0).toFixed(1)),parseFloat(st.toFixed(2)),parseFloat(tps.toFixed(2)),parseFloat(tvq.toFixed(2)),parseFloat((st+tps+tvq).toFixed(2))]);}}
+    return{hdr,data};
+  };
+  const buildEncRows=()=>{
+    const hdr=["Date","# Encaissement","Code client","Nom client","# Facture","Montant","Mode de paiement","Référence","Note"];
+    const data=[];
+    for(const fac of factures){const cl=clients.find(c=>c.id===fac.clientId);for(const p of fac.paiements||[]){if(p.fromCredit)continue;if(dateFrom&&p.date<dateFrom)continue;if(dateTo&&p.date>dateTo)continue;data.push([p.date||"",p.numero||"",cl?.code||"",cl?.entreprise||"",fac.numero||"",parseFloat((p.montant||0).toFixed(2)),p.mode||"",p.reference||"",p.note||""]);}}
+    return{hdr,data};
+  };
+  const buildGLRows=()=>{
+    const hdr=["Code client","Nom client","Solde ouverture","Facturé","Notes de crédit","Encaissé","Solde fermeture"];
+    const data=[];
+    const clientIds=[...new Set(factures.map(f=>f.clientId))];
+    for(const cid of clientIds){
+      const cl=clients.find(c=>c.id===cid);
+      const facs=factures.filter(f=>f.clientId===cid&&!["Annulée","Brouillon"].includes(f.statut));
+      let soldOuv=0;if(dateFrom){for(const f of facs){if(f.date>=dateFrom)continue;const tot=computeSoumTotals(f.lignes||[]).total;const pBefore=(f.paiements||[]).filter(p=>p.date<dateFrom).reduce((s,p)=>s+(p.montant||0),0);soldOuv+=tot-pBefore;}}
+      const facture=facs.filter(f=>(!dateFrom||f.date>=dateFrom)&&(!dateTo||f.date<=dateTo)).reduce((s,f)=>s+computeSoumTotals(f.lignes||[]).total,0);
+      const credited=facs.reduce((s,f)=>s+(f.paiements||[]).filter(p=>p.fromCredit&&(!dateFrom||p.date>=dateFrom)&&(!dateTo||p.date<=dateTo)).reduce((ss,p)=>ss+(p.montant||0),0),0);
+      const encaisse=facs.reduce((s,f)=>s+(f.paiements||[]).filter(p=>!p.fromCredit&&(!dateFrom||p.date>=dateFrom)&&(!dateTo||p.date<=dateTo)).reduce((ss,p)=>ss+(p.montant||0),0),0);
+      const soldFerm=soldOuv+facture-credited-encaisse;
+      if(soldOuv===0&&facture===0&&credited===0&&encaisse===0)continue;
+      data.push([cl?.code||"",cl?.entreprise||cid,parseFloat(soldOuv.toFixed(2)),parseFloat(facture.toFixed(2)),parseFloat(credited.toFixed(2)),parseFloat(encaisse.toFixed(2)),parseFloat(soldFerm.toFixed(2))]);
+    }
+    return{hdr,data};
+  };
+
+  const doExportExcel=()=>{
+    if(!canUse("excelExport")){if(showUpgradePrompt)showUpgradePrompt("excelExport");else setUpgradeMsg(true);return;}
+    setMsg("");setUpgradeMsg(false);
+    const wb=XLSX.utils.book_new();
+    const makeSheet=(hdr,data)=>{
+      const ws=XLSX.utils.aoa_to_sheet([hdr,...data]);
+      applyHeaderStyle(ws,hdr);autoColWidths(ws,[hdr,...data]);
+      return ws;
+    };
+    const{hdr:hdr1,data:data1}=buildFacRows();
+    const{hdr:hdr2,data:data2}=buildEncRows();
+    const{hdr:hdr3,data:data3}=buildGLRows();
+    if(!data1.length&&!data2.length&&!data3.length){setMsg("Aucune donnée dans cette période.");return;}
+    XLSX.utils.book_append_sheet(wb,makeSheet(hdr1,data1),"Journal de facturation");
+    XLSX.utils.book_append_sheet(wb,makeSheet(hdr2,data2),"Journal des encaissements");
+    XLSX.utils.book_append_sheet(wb,makeSheet(hdr3,data3),"Grand livre AR");
+    // Sommaire sheet
+    const now=new Date().toLocaleDateString("fr-CA");
+    const totFac=data1.reduce((s,r)=>s+(r[14]||0),0);
+    const totEnc=data2.reduce((s,r)=>s+(r[5]||0),0);
+    const totSold=data3.reduce((s,r)=>s+(r[6]||0),0);
+    const summaryData=[
+      ["BalanceIQ — Rapport comptable"],
+      [],
+      ["Entreprise",companyInfo?.nom||""],
+      ["Période",`${dateFrom} → ${dateTo}`],
+      ["Généré le",now],
+      [],
+      ["Feuille","Lignes","Montant total"],
+      ["Journal de facturation",data1.length,parseFloat(totFac.toFixed(2))],
+      ["Journal des encaissements",data2.length,parseFloat(totEnc.toFixed(2))],
+      ["Grand livre AR",data3.length,parseFloat(totSold.toFixed(2))],
+    ];
+    const wsSomm=XLSX.utils.aoa_to_sheet(summaryData);
+    wsSomm['!cols']=[{wch:30},{wch:20},{wch:18}];
+    XLSX.utils.book_append_sheet(wb,wsSomm,"Sommaire");
+    XLSX.writeFile(wb,`balanceiq-${dateFrom}-${dateTo}.xlsx`);
+    setMsg(`Export Excel généré — 3 feuilles.`);
   };
   const doExport=()=>{
     setMsg("");setUpgradeMsg(false);
@@ -1156,8 +1242,10 @@ function ComptabiliteExport({factures,clients,produits,categories,onClose}){
         </label>))}
       </div>
       <div style={{display:"flex",gap:8,alignItems:"center",borderTop:`1px solid ${t.dividerMid}`,paddingTop:10,flexWrap:"wrap"}}>
-        <button onClick={doExport} style={{padding:"7px 20px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>⬇ Exporter CSV</button>
-        <button onClick={()=>{if(!canUse("excelExport"))setUpgradeMsg(true);}} style={{padding:"7px 14px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"pointer",fontWeight:600,fontSize:11,opacity:0.6}}>Excel 🔒</button>
+        <button onClick={doExport} style={{padding:"7px 20px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>⬇ CSV</button>
+        <button onClick={doExportExcel} style={{padding:"7px 14px",borderRadius:6,border:`1px solid ${canUse("excelExport")?"rgba(34,197,94,0.3)":t.cardBorder}`,background:canUse("excelExport")?"rgba(34,197,94,0.08)":t.section,color:canUse("excelExport")?"#16a34a":t.textDim,cursor:"pointer",fontWeight:600,fontSize:11,display:"flex",alignItems:"center",gap:5}}>
+          {canUse("excelExport")?"📊 Excel":(<>Excel <span style={{fontSize:9,fontWeight:700,color:"#6b7280",background:"rgba(255,255,255,0.06)",padding:"1px 5px",borderRadius:4,marginLeft:3}}>Pro</span></>)}
+        </button>
         {upgradeMsg&&<span style={{fontSize:10,color:"#f97316",fontWeight:600}}>🔒 Pro requis pour l'export Excel</span>}
         {msg&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>{msg}</span>}
       </div>
@@ -1170,7 +1258,7 @@ const TYPE_PILL={soumission:{label:"S",bg:"rgba(59,130,246,0.12)",color:"#3b82f6
 function getStatutColor(doc){if(doc._type==="soumission")return STATUT_SOUM_C[doc.statut]||"#6b7280";if(doc._type==="commande")return STATUT_CMD_C[doc.statut]||"#6b7280";if(doc._type==="facture"||doc._type==="creditnote")return STATUT_FAC_C[doc.statut]||STATUT_NC_C[doc.statut]||"#6b7280";return"#6b7280";}
 function getStatutColorFn(type,statut){if(type==="soumission")return STATUT_SOUM_C[statut]||"#6b7280";if(type==="commande")return STATUT_CMD_C[statut]||"#6b7280";if(type==="facture")return STATUT_FAC_C[statut]||"#6b7280";if(type==="creditnote")return STATUT_NC_C[statut]||"#6b7280";return"#6b7280";}
 function getDocSolde(doc){if(doc._type==="facture"){const paye=(doc.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);return Math.max(0,computeSoumTotals(doc.lignes||[]).total-paye);}return null;}
-function FacturationDashboard({soumissions,commandes,factures,creditNotes,clients,produits,categories,openDoc}){
+function FacturationDashboard({soumissions,commandes,factures,creditNotes,clients,produits,categories,companyInfo,showUpgradePrompt,openDoc}){
   const t=useT();
   const [showCompta,setShowCompta]=useState(false);
   const today=dk(new Date());
@@ -1234,7 +1322,7 @@ function FacturationDashboard({soumissions,commandes,factures,creditNotes,client
       <button onClick={exportCSV} style={{fontSize:10,padding:"3px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,marginBottom:3}}>⬇ CSV</button>
       <button onClick={()=>setShowCompta(true)} style={{fontSize:10,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,marginBottom:3}}>📊 Comptabilité</button>
     </div>
-    {showCompta&&<ComptabiliteExport factures={factures} clients={clients} produits={produits} categories={categories} onClose={()=>setShowCompta(false)}/>}
+    {showCompta&&<ComptabiliteExport factures={factures} clients={clients} produits={produits} categories={categories} companyInfo={companyInfo} showUpgradePrompt={showUpgradePrompt} onClose={()=>setShowCompta(false)}/>}
     {/* Search + date range */}
     <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
       <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Rechercher # ou client..." style={{...inputS,flex:"1 1 160px"}}/>
@@ -1668,7 +1756,7 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
     {showRecurringModal&&<RecurringGenerateModal recurrents={recurrents||[]} saveRecurrents={saveRecurrents} factures={factures} saveFactures={saveFactures} docNums={docNums} saveDocNums={saveDocNums} clients={clients} companyInfo={companyInfo} apiConfig={apiConfig} onClose={()=>setShowRecurringModal(false)}/>}
 
     {/* Dashboard */}
-    {subTab==="documents"&&<FacturationDashboard soumissions={soumissions} commandes={commandes} factures={factures} creditNotes={creditNotes} clients={clients} produits={produits} categories={categories} openDoc={openDoc}/>}
+    {subTab==="documents"&&<FacturationDashboard soumissions={soumissions} commandes={commandes} factures={factures} creditNotes={creditNotes} clients={clients} produits={produits} categories={categories} companyInfo={companyInfo} showUpgradePrompt={showUpgradePrompt} openDoc={openDoc}/>}
 
     {/* Clients */}
     {subTab==="clients"&&<ClientsSection clients={clients} saveClients={saveClients} onNewDoc={(type,clientId)=>openDoc(type,clientId,null)} onOpenDoc={openDoc} soumissions={soumissions} commandes={commandes} factures={factures} recurrents={recurrents} saveRecurrents={saveRecurrents} showUpgradePrompt={showUpgradePrompt}/>}
