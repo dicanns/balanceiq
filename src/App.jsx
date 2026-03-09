@@ -3,6 +3,7 @@ import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./config/features.js";
 import * as XLSX from "xlsx";
 import { logCreate, logUpdate, logVoid, logCorrection, isFinancialField, promptCorrectionReason } from "./services/auditLogger.js";
+import { FR, EN } from "./i18n/translations.js";
 
 // ── THEME ──
 const DARK = {
@@ -5516,6 +5517,7 @@ export default function App(){
   const [cfgNewCatName,setCfgNewCatName]=useState("");
   const encaisseTimer=useRef(null);
   const [appMode,setAppMode]=useState(null);
+  const [lang,setLang]=useState("fr");
   const [lockConfig,setLockConfig]=useState({enabled:false,pin:"",lockedUntil:null});
   const [appLocked,setAppLocked]=useState(false);
   const [locations,setLocations]=useState([]);
@@ -5555,6 +5557,7 @@ export default function App(){
     try{const rR=await window.api.storage.get("balanceiq-royalty-config");if(rR?.value)setRoyaltyConfig(prev=>({...prev,...JSON.parse(rR.value)}))}catch(e){}
     try{const rWL=await window.api.storage.get("balanceiq-whitelabel");if(rWL?.value)setWhiteLabelConfig(prev=>({...prev,...JSON.parse(rWL.value)}))}catch(e){}
     try{const rLock=await window.api.storage.get("balanceiq-lock");if(rLock?.value){const lc=JSON.parse(rLock.value);setLockConfig(lc);if(lc.enabled&&lc.pin)setAppLocked(true);}}catch(e){}
+    try{const rLang=await window.api.storage.get("balanceiq-lang");if(rLang?.value==="en"||rLang?.value==="fr")setLang(rLang.value);}catch(e){}
     try{const r10=await window.api.storage.get("dicann-company-info");if(r10?.value)setCompanyInfo(prev=>({...DEFAULT_COMPANY_INFO,...JSON.parse(r10.value)}))}catch(e){}
     try{const rTpl=await window.api.storage.get("dicann-invoice-template");if(rTpl?.value)setInvoiceTemplate(prev=>({...DEFAULT_INVOICE_TEMPLATE,...JSON.parse(rTpl.value)}))}catch(e){}
     try{const r11=await window.api.storage.get("dicann-fac-categories");if(r11?.value)setFacCategories(JSON.parse(r11.value))}catch(e){}
@@ -5610,6 +5613,14 @@ export default function App(){
     setThemeName(name);
     window.api.storage.set("balanceiq-theme",name).catch(()=>{});
   },[]);
+
+  const setLangTo=useCallback(l=>{
+    setLang(l);
+    window.api.storage.set("balanceiq-lang",l).catch(()=>{});
+  },[]);
+
+  // T = active translation object — use T.keyName throughout UI
+  const T=lang==="en"?EN:FR;
 
   const persist=useCallback(data=>{if(saveTimer.current)clearTimeout(saveTimer.current);setSaving(true);saveTimer.current=setTimeout(async()=>{try{await window.api.storage.set("dicann-v7",JSON.stringify(data))}catch(e){}setSaving(false)},600)},[]);
   const saveRoster=useCallback(async r=>{try{await window.api.storage.set("dicann-roster",JSON.stringify(r))}catch(e){}},[]);
@@ -6463,8 +6474,12 @@ export default function App(){
               </div>
             </div>
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Langue</span>
-              <div style={{fontSize:11,color:t.textMuted}}>Français uniquement pour l'instant. Version bilingue FR/EN à venir.</div>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:8,display:"block",color:t.text}}>{T.cfgLanguage}</span>
+              <div style={{display:"flex",gap:8}}>
+                {[["fr",T.cfgLanguageFR],["en",T.cfgLanguageEN]].map(([code,label])=>(
+                  <button key={code} onClick={()=>setLangTo(code)} style={{flex:1,padding:"8px 12px",borderRadius:7,border:`2px solid ${lang===code?"#f97316":t.cardBorder}`,background:lang===code?"rgba(249,115,22,0.08)":t.section,color:lang===code?"#f97316":t.textSub,cursor:"pointer",fontWeight:lang===code?700:500,fontSize:12,transition:"all 0.15s"}}>{label}</button>
+                ))}
+              </div>
             </div>
             </div>)}
 
