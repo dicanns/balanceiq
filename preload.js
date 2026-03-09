@@ -22,4 +22,10 @@ contextBridge.exposeInMainWorld('api', {
     query:    (filters) => ipcRenderer.invoke('audit:query', filters),
     deviceId: ()        => ipcRenderer.invoke('audit:deviceId'),
   },
+  snapshot: {
+    save:       (date, data) => ipcRenderer.invoke('snapshot:save', date, data),
+    getByDate:  (date)       => ipcRenderer.invoke('snapshot:getByDate', date),
+    getLatest:  (date)       => ipcRenderer.invoke('snapshot:getLatest', date),
+    listDates:  ()           => ipcRenderer.invoke('snapshot:listDates'),
+  },
 });

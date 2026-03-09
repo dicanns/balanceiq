@@ -34,6 +34,16 @@ function getDb() {
       CREATE INDEX IF NOT EXISTS idx_audit_module    ON audit_log(module);
       CREATE INDEX IF NOT EXISTS idx_audit_record    ON audit_log(record_type, record_id);
       CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp);
+
+      CREATE TABLE IF NOT EXISTS daily_snapshots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        snapshot_timestamp TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        data TEXT NOT NULL,
+        device_id TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_snap_date ON daily_snapshots(date);
     `);
   }
   return db;
@@ -110,4 +120,28 @@ function storageGetAll() {
   return result;
 }
 
-module.exports = { storageGet, storageSet, storageGetAll, auditInsert, auditQuery, getDeviceId };
+// Save an immutable daily snapshot — APPEND ONLY, never update or delete
+function snapshotSave(date, data) {
+  const deviceId = getDeviceId();
+  getDb().prepare(`
+    INSERT INTO daily_snapshots (date, data, device_id) VALUES (?, ?, ?)
+  `).run(date, typeof data === 'string' ? data : JSON.stringify(data), deviceId);
+  return true;
+}
+
+// Get all snapshots for a date (newest first)
+function snapshotGetByDate(date) {
+  return getDb().prepare('SELECT * FROM daily_snapshots WHERE date = ? ORDER BY snapshot_timestamp DESC').all(date);
+}
+
+// Get latest snapshot for a date
+function snapshotGetLatest(date) {
+  return getDb().prepare('SELECT * FROM daily_snapshots WHERE date = ? ORDER BY snapshot_timestamp DESC LIMIT 1').get(date);
+}
+
+// List all dates that have at least one snapshot
+function snapshotListDates() {
+  return getDb().prepare('SELECT date, COUNT(*) as count, MAX(snapshot_timestamp) as latest FROM daily_snapshots GROUP BY date ORDER BY date DESC').all();
+}
+
+module.exports = { storageGet, storageSet, storageGetAll, auditInsert, auditQuery, getDeviceId, snapshotSave, snapshotGetByDate, snapshotGetLatest, snapshotListDates };

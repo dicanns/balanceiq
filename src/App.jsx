@@ -3476,6 +3476,9 @@ export default function App(){
   // Keep liveDataRef in sync so audit callbacks can read old values synchronously
   useEffect(()=>{liveDataRef.current=liveData;},[liveData]);
 
+  // Track which dates have had a snapshot taken this session (avoid duplicates)
+  const snapshotTakenRef=useRef(new Set());
+
   useEffect(()=>{
     if(loading)return;
     const today=dk(new Date());
@@ -3615,6 +3618,20 @@ export default function App(){
 
   const today=computeDay(selectedDate);const d=new Date(selectedDate+"T12:00:00");const holiday=getHol(d);const raw=getLR(selectedDate);const cashes=raw.cashes;const emps=raw.employees;
   const isDayComplete=today.anyData&&today.allBal&&raw.hamEnd!=null&&raw.hotEnd!=null;
+
+  // Auto-snapshot when a day becomes "complete" — once per date per session
+  useEffect(()=>{
+    if(!isDayComplete||loading)return;
+    const key=selectedDate;
+    if(snapshotTakenRef.current.has(key))return;
+    snapshotTakenRef.current.add(key);
+    // Take snapshot asynchronously — fire and forget
+    const dayData=liveDataRef.current[key];
+    if(dayData&&Object.keys(dayData).length>0){
+      window.api.snapshot.save(key,dayData).catch(()=>{});
+      logUpdate('daily','snapshot',key,'fermeture',null,'journée complète');
+    }
+  },[isDayComplete,selectedDate,loading]);
 
   const encaisseStatus=useMemo(()=>{
     const dayEnc=encaisseData[selectedDate];
