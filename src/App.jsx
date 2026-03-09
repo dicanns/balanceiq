@@ -240,7 +240,7 @@ function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,ro
       <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:8,paddingBottom:7,borderBottom:`1px solid ${t.innerBorder}`}}><span style={{fontSize:11}}>👤</span><select value={cash.cashierId||""} onChange={e=>onChange({...cash,cashierId:e.target.value})} style={{flex:1,background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:12,padding:"4px 7px",outline:"none"}}><option value="" style={{background:t.optionBg}}>— Sélectionner —</option>{roster.map(r=>(<option key={r.id} value={r.id} style={{background:t.optionBg}}>{r.name}</option>))}</select></div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
         <div>
-          <div style={{fontSize:9.5,color:t.posColor,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,marginBottom:4}}><span style={{width:8,height:8,borderRadius:2,background:t.posColor,display:"inline-block",marginRight:4}}/> Lecture POS</div>
+          <div style={{fontSize:9.5,color:t.posColor,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,marginBottom:4}}><span style={{width:8,height:8,borderRadius:2,background:t.posColor,display:"inline-block",marginRight:4}}/> {T.dailyLecturePOS}</div>
           <div style={{background:`rgba(${t.posRgb},0.05)`,borderRadius:7,padding:8,border:`1px solid rgba(${t.posRgb},0.12)`}}>
             <F label={T.dailySalesTax} value={cash.posVentes} onChange={v=>onChange({...cash,posVentes:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+1} warn={cash.posVentes!=null&&cash.posVentes<0?T.warnNegativeAmount:cash.posVentes!=null&&cash.posVentes>15000?T.warnHighAmount:null}/>
             <F label={T.dailyGST} value={cash.posTPS} onChange={v=>onChange({...cash,posTPS:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+2} warn={cash.posTPS!=null&&cash.posTPS<0?T.warnNegativeAmount:null}/>
@@ -6038,17 +6038,17 @@ export default function App(){
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
               {/* Inventory */}
               <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-                <span style={{fontSize:13,fontWeight:700,marginBottom:5,display:"block",color:t.text}}>Inventaire</span>
+                <span style={{fontSize:13,fontWeight:700,marginBottom:5,display:"block",color:t.text}}>{T.dailyInventory}</span>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                   {[["HAMBURGER","ham",raw.hamStartOverride!=null,today.hamStart,today.hamUsed,today.hamEnd],["HOT DOG","hot",raw.hotStartOverride!=null,today.hotStart,today.hotUsed,today.hotEnd]].map(([title,pre,hasOv,startV,usedV,endV])=>(<div key={pre}>
                     <div style={{fontSize:10,color:"#f97316",fontWeight:700,marginBottom:2}}>{title}</div>
                     {!hasOv
                       ?(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"3.5px 0",borderBottom:`1px solid ${t.divider}`}}><span style={{fontSize:11.5,color:t.textSub}}>{T.inventoryStart}</span><div style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:t.text,fontWeight:600}}>{startV??"-"}</span><button onClick={()=>upd(selectedDate,`${pre}StartOverride`,startV??0)} style={{fontSize:9,padding:"1px 5px",borderRadius:3,border:"1px solid rgba(251,191,36,0.2)",background:"rgba(251,191,36,0.08)",color:t.warnText,cursor:"pointer"}}>✎</button></div></div>)
-                      :(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"3.5px 0",borderBottom:"1px solid rgba(251,191,36,0.2)"}}><span style={{fontSize:11.5,color:t.warnText}}>Ajusté</span><div style={{display:"flex",alignItems:"center",gap:3}}><input type="number" value={raw[`${pre}StartOverride`]??""} onChange={e=>upd(selectedDate,`${pre}StartOverride`,e.target.value===""?null:parseFloat(e.target.value))} style={{width:50,padding:"2px 5px",borderRadius:4,border:"1px solid rgba(251,191,36,0.25)",background:"rgba(251,191,36,0.06)",color:t.warnText,fontFamily:"'DM Mono',monospace",fontSize:12,textAlign:"right",outline:"none"}}/><button onClick={()=>upd(selectedDate,`${pre}StartOverride`,null)} style={{fontSize:9,padding:"1px 4px",borderRadius:3,border:"none",background:"rgba(239,68,68,0.1)",color:"#ef4444",cursor:"pointer"}}>✕</button></div></div>)}
+                      :(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"3.5px 0",borderBottom:"1px solid rgba(251,191,36,0.2)"}}><span style={{fontSize:11.5,color:t.warnText}}>{T.invAdjusted}</span><div style={{display:"flex",alignItems:"center",gap:3}}><input type="number" value={raw[`${pre}StartOverride`]??""} onChange={e=>upd(selectedDate,`${pre}StartOverride`,e.target.value===""?null:parseFloat(e.target.value))} style={{width:50,padding:"2px 5px",borderRadius:4,border:"1px solid rgba(251,191,36,0.25)",background:"rgba(251,191,36,0.06)",color:t.warnText,fontFamily:"'DM Mono',monospace",fontSize:12,textAlign:"right",outline:"none"}}/><button onClick={()=>upd(selectedDate,`${pre}StartOverride`,null)} style={{fontSize:9,padding:"1px 4px",borderRadius:3,border:"none",background:"rgba(239,68,68,0.1)",color:"#ef4444",cursor:"pointer"}}>✕</button></div></div>)}
                     <F label={T.invHamReceived} value={raw[`${pre}Received`]} onChange={v=>upd(selectedDate,`${pre}Received`,v)} warn={raw[`${pre}Received`]!=null&&raw[`${pre}Received`]<0?T.warnNegativeHours:null}/>
-                    <F label={T.inventoryEnd} value={raw[`${pre}End`]} onChange={v=>upd(selectedDate,`${pre}End`,v)} warn={endV!=null&&endV<0?T.warnNegativeHours:startV!=null&&endV!=null&&endV>(startV+(raw[`${pre}Received`]||0))?"⚠️ Fin > Début + Reçu — vérifier":null}/>
+                    <F label={T.inventoryEnd} value={raw[`${pre}End`]} onChange={v=>upd(selectedDate,`${pre}End`,v)} warn={endV!=null&&endV<0?T.warnNegativeHours:startV!=null&&endV!=null&&endV>(startV+(raw[`${pre}Received`]||0))?T.invWarnEndHigh:null}/>
                     <div style={{marginTop:3,paddingTop:3,borderTop:`1px solid ${t.divider}`}}><RR label={T.inventoryUsed} value={usedV} unit=""/></div>
-                    {endV!=null&&endV<5&&endV>=0&&<div style={{fontSize:9.5,color:t.warnText,marginTop:2}}>Stock faible</div>}
+                    {endV!=null&&endV<5&&endV>=0&&<div style={{fontSize:9.5,color:t.warnText,marginTop:2}}>{T.invStockLow}</div>}
                   </div>))}
                 </div>
                 {today.totalDoz>0&&(<div style={{marginTop:8,padding:"8px 10px",borderRadius:7,background:"rgba(124,58,237,0.06)",border:"1px solid rgba(124,58,237,0.15)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -6082,7 +6082,7 @@ export default function App(){
                       {showHotPassed&&<span style={{fontSize:9,color:t.textMuted}}>{T.breadPasse}</span>}
                       {showHotPassed&&TIMES.map(([,sfx])=>{const v=raw[`hot${sfx}`];const p=v!=null?hotAvail-v:null;return(<span key={sfx} style={passedStyle(p)}>{p!=null?p:"—"}</span>);})}
                     </div>
-                    {(showHamPassed||showHotPassed)&&<div style={{fontSize:9,color:t.textDim,marginTop:3}}>Passé = Début + Reçu − Restant à l'heure</div>}
+                    {(showHamPassed||showHotPassed)&&<div style={{fontSize:9,color:t.textDim,marginTop:3}}>{T.breadPassedNote}</div>}
                   </div>);
                 })()}
                 {(()=>{
@@ -6099,12 +6099,12 @@ export default function App(){
                   const hamProj=hamConsumed!=null&&latestFrac>0?Math.round(hamConsumed/latestFrac):null;
                   const hotProj=hotConsumed!=null&&latestFrac>0?Math.round(hotConsumed/latestFrac):null;
                   return(<div style={{marginTop:6,padding:"6px 8px",borderRadius:6,background:"rgba(249,115,22,0.05)",border:"1px solid rgba(249,115,22,0.12)"}}>
-                    <div style={{fontSize:9.5,color:"#f97316",fontWeight:700,textTransform:"uppercase",letterSpacing:0.6,marginBottom:4}}>Projection fin de journée</div>
+                    <div style={{fontSize:9.5,color:"#f97316",fontWeight:700,textTransform:"uppercase",letterSpacing:0.6,marginBottom:4}}>{T.invProjection}</div>
                     <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
                       {hamProj!=null&&<span style={{fontSize:12,color:t.text}}>Ham: <span style={{fontWeight:700,fontFamily:"'DM Mono',monospace"}}>~{hamProj}</span> <span style={{fontSize:10,color:t.textMuted}}>dz</span></span>}
                       {hotProj!=null&&<span style={{fontSize:12,color:t.text}}>Hot: <span style={{fontWeight:700,fontFamily:"'DM Mono',monospace"}}>~{hotProj}</span> <span style={{fontSize:10,color:t.textMuted}}>dz</span></span>}
                     </div>
-                    <div style={{fontSize:9,color:t.textDim,marginTop:2}}>Basé sur votre rythme à {latestLabel}</div>
+                    <div style={{fontSize:9,color:t.textDim,marginTop:2}}>{T.invBasedOn(latestLabel)}</div>
                   </div>);
                 })()}
               </div>
@@ -6118,7 +6118,7 @@ export default function App(){
                 <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
                   <span style={{fontSize:13,fontWeight:700,marginBottom:4,display:"block",color:t.text}}>{T.extTitle}</span>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}>
-                    <F label={T.extWeather} value={raw.weather} onChange={v=>upd(selectedDate,"weather",v)} type="text" placeholder={T.wSunny+"..."} wide/>
+                    <F label={T.extWeather} value={xlateWeather(raw.weather,T)} onChange={v=>upd(selectedDate,"weather",v)} type="text" placeholder={T.wSunny+"..."} wide/>
                     <F label={T.extTemp} value={raw.tempC} onChange={v=>upd(selectedDate,"tempC",v)} suffix="°C"/>
                     <div>
                       <F label={T.extGas} value={raw.gas} onChange={v=>upd(selectedDate,"gas",v)} suffix="$/L"/>
@@ -6126,7 +6126,7 @@ export default function App(){
                         <span style={{fontSize:10,color:t.warnText}}>Auto: {Number(lastGas.price).toFixed(3)}$/L (il y a {lastGas.daysAgo}j)</span>
                         <button onClick={()=>upd(selectedDate,"gas",lastGas.price)} style={{fontSize:9,padding:"1px 6px",borderRadius:3,border:"1px solid rgba(34,197,94,0.2)",background:"rgba(34,197,94,0.08)",color:"#16a34a",cursor:"pointer",fontWeight:600}}>{T.extConfirmGas}</button>
                       </div>)}
-                      <button onClick={checkGasPrice} disabled={gasCheckLoading} style={{marginTop:3,fontSize:9.5,padding:"3px 8px",borderRadius:4,border:"1px solid rgba(56,189,248,0.2)",background:"rgba(56,189,248,0.06)",color:"#38bdf8",cursor:gasCheckLoading?"default":"pointer",fontWeight:600,width:"100%",textAlign:"center",opacity:gasCheckLoading?0.65:1}}>{gasCheckLoading?"Vérification...":T.extFetchGas}</button>
+                      <button onClick={checkGasPrice} disabled={gasCheckLoading} style={{marginTop:3,fontSize:9.5,padding:"3px 8px",borderRadius:4,border:"1px solid rgba(56,189,248,0.2)",background:"rgba(56,189,248,0.06)",color:"#38bdf8",cursor:gasCheckLoading?"default":"pointer",fontWeight:600,width:"100%",textAlign:"center",opacity:gasCheckLoading?0.65:1}}>{gasCheckLoading?T.gasVerifying:T.extFetchGas}</button>
                       {gasCheckMsg&&<div style={{fontSize:9.5,marginTop:2,padding:"1px 4px",color:gasCheckMsg.ok?"#16a34a":"#f97316"}}>{gasCheckMsg.text}</div>}
                     </div>
                     <F label={T.extEvent} value={raw.events} onChange={v=>upd(selectedDate,"events",v)} type="text" placeholder="Festival..." wide/>
