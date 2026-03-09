@@ -122,6 +122,13 @@ const DEFAULT_PLATFORMS=[{id:"doordash",name:"DoorDash",emoji:"🔴"},{id:"ubere
 const DEFAULT_SORTIE_CATS=[{id:"fournisseur_cash",name:"Fournisseur payé cash"},{id:"avance_employe",name:"Avance employé"},{id:"achats_divers",name:"Achats divers"},{id:"reparations",name:"Réparations"},{id:"autre",name:"Autre"}];
 const DEFAULT_CASH_LOCATIONS=[{id:"tills",name:"Tiroirs-caisses"},{id:"petty",name:"Petite caisse"},{id:"office",name:"Bureau / Office"}];
 const DEFAULT_ENCAISSE_CONFIG={sortieCategories:DEFAULT_SORTIE_CATS,cashLocations:DEFAULT_CASH_LOCATIONS};
+const DEFAULT_INV_CONFIG={
+  enabled:true,
+  items:[
+    {id:"ham",nom:"Hamburger",unite:"douzaines",seuil:5,intraDayEnabled:true,intraDayTimes:[14,17,19,20]},
+    {id:"hot",nom:"Hot Dog",unite:"douzaines",seuil:5,intraDayEnabled:true,intraDayTimes:[14,17,19,20]},
+  ]
+};
 const EXPENSE_ITEMS=[["hydro","Hydro"],["gazNat","Gaz Nat/Prop"],["allocAuto","Alloc. d'auto"],["depenseAuto","Dépense Auto"],["cell","Cell"],["telInternet","Tel/Internet"],["fraisProf","Frais Prof"],["assurances","Assurances"],["adPromo","Ad & Promo"],["dons","Dons"],["taxMuni","Tax Muni"],["permisGov","Permis Gov't"],["loyer","Loyer"],["csst","CSST"],["reparations","Réparations"],["equipDecor","Équipement/Décor"]];
 const BLANK_CASH={cashierId:"",posVentes:null,posTPS:null,posTVQ:null,posLivraisons:null,float:null,interac:null,livraisons:null,deposits:null,finalCash:null};
 const BLANK_EMP={name:"",hours:null,wage:null};
@@ -5509,6 +5516,150 @@ function AuditSection(){
   </div>);
 }
 
+// ── INVENTORY CONFIG SECTION ──
+function InvConfigSection({invConfig,saveInvConfig,t,T}){
+  const UNITE_OPTIONS=["douzaines","unités","kg","litres","portions","boîtes"];
+  const [editingId,setEditingId]=useState(null);
+  const [editForm,setEditForm]=useState({});
+  const [addOpen,setAddOpen]=useState(false);
+  const [newForm,setNewForm]=useState({nom:"",unite:"douzaines",seuil:5,intraDayEnabled:false,intraDayTimes:[14,17,19,20],customUnite:""});
+  const [newTimeInput,setNewTimeInput]=useState("");
+  const [editTimeInput,setEditTimeInput]=useState("");
+
+  const toggleEnabled=()=>saveInvConfig({...invConfig,enabled:!invConfig.enabled});
+
+  const startEdit=(item)=>{setEditingId(item.id);setEditForm({...item,customUnite:UNITE_OPTIONS.includes(item.unite)?"":item.unite});setEditTimeInput("");};
+  const cancelEdit=()=>setEditingId(null);
+  const saveEdit=()=>{
+    const unite=editForm.customUnite?editForm.customUnite:editForm.unite;
+    const updated=invConfig.items.map(i=>i.id===editingId?{...editForm,unite,customUnite:undefined}:i);
+    saveInvConfig({...invConfig,items:updated});setEditingId(null);
+  };
+  const removeItem=(id)=>{
+    if(invConfig.items.length<=1){alert("Au moins un item requis.");return;}
+    saveInvConfig({...invConfig,items:invConfig.items.filter(i=>i.id!==id)});
+  };
+  const addItem=()=>{
+    if(!newForm.nom.trim())return;
+    const id=newForm.nom.trim().toLowerCase().replace(/[^a-z0-9]/g,"").slice(0,12)||`item${Date.now()}`;
+    const safeId=invConfig.items.some(i=>i.id===id)?`${id}${Date.now()}`:id;
+    const unite=newForm.customUnite?newForm.customUnite:newForm.unite;
+    saveInvConfig({...invConfig,items:[...invConfig.items,{id:safeId,nom:newForm.nom.trim(),unite,seuil:newForm.seuil,intraDayEnabled:newForm.intraDayEnabled,intraDayTimes:newForm.intraDayTimes}]});
+    setNewForm({nom:"",unite:"douzaines",seuil:5,intraDayEnabled:false,intraDayTimes:[14,17,19,20],customUnite:""});setAddOpen(false);
+  };
+
+  return(<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+      <span style={{fontSize:13,fontWeight:700,color:t.text}}>📦 {T.cfgInvTitle}</span>
+      <button onClick={toggleEnabled} style={{padding:"3px 12px",borderRadius:12,border:"none",background:invConfig.enabled?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.08)",color:invConfig.enabled?"#fff":t.textSub,cursor:"pointer",fontWeight:700,fontSize:10.5}}>{invConfig.enabled?T.cfgToggleOn:T.cfgToggleOff}</button>
+    </div>
+    {!invConfig.enabled&&<div style={{fontSize:11,color:t.textMuted,padding:"6px 0"}}>{T.cfgInvDisabledNote}</div>}
+    {invConfig.enabled&&(<>
+      <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{T.cfgInvWhat}</div>
+      {invConfig.items.map(item=>(
+        <div key={item.id} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:7,padding:"8px 10px",marginBottom:6}}>
+          {editingId===item.id
+            ?(<div style={{display:"flex",flexDirection:"column",gap:6}}>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  <div style={{flex:"2 1 120px"}}>
+                    <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.cfgInvNom}</div>
+                    <input value={editForm.nom||""} onChange={e=>setEditForm(f=>({...f,nom:e.target.value}))} style={{width:"100%",background:t.inputBg,border:`1px solid rgba(249,115,22,0.2)`,borderRadius:5,color:t.text,fontSize:12,padding:"4px 7px",outline:"none",boxSizing:"border-box"}}/>
+                  </div>
+                  <div style={{flex:"1 1 100px"}}>
+                    <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.cfgInvUnite}</div>
+                    <select value={UNITE_OPTIONS.includes(editForm.unite)&&!editForm.customUnite?editForm.unite:"__custom__"} onChange={e=>setEditForm(f=>e.target.value==="__custom__"?{...f,unite:f.unite,customUnite:f.customUnite||""}:{...f,unite:e.target.value,customUnite:""})} style={{width:"100%",background:t.inputBg,border:`1px solid rgba(249,115,22,0.2)`,borderRadius:5,color:t.text,fontSize:12,padding:"4px 7px",outline:"none",boxSizing:"border-box"}}>
+                      {UNITE_OPTIONS.map(u=>(<option key={u} value={u} style={{background:t.optionBg}}>{u}</option>))}
+                      <option value="__custom__" style={{background:t.optionBg}}>— {T.cfgInvCustom} —</option>
+                    </select>
+                  </div>
+                  <div style={{flex:"1 1 80px"}}>
+                    <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.cfgInvSeuil}</div>
+                    <input type="number" value={editForm.seuil??""} onChange={e=>setEditForm(f=>({...f,seuil:e.target.value===""?null:parseFloat(e.target.value)}))} style={{width:"100%",background:t.inputBg,border:`1px solid rgba(249,115,22,0.2)`,borderRadius:5,color:t.text,fontSize:12,padding:"4px 7px",outline:"none",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
+                  </div>
+                </div>
+                {(editForm.customUnite!==undefined&&(!UNITE_OPTIONS.includes(editForm.unite)||editForm.customUnite))&&(
+                  <input placeholder={T.cfgInvCustomUnite} value={editForm.customUnite||""} onChange={e=>setEditForm(f=>({...f,customUnite:e.target.value}))} style={{width:"100%",background:t.inputBg,border:`1px solid rgba(249,115,22,0.2)`,borderRadius:5,color:t.text,fontSize:12,padding:"4px 7px",outline:"none",boxSizing:"border-box"}}/>
+                )}
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:11,color:t.textSub}}>{T.cfgInvIntraDay}</span>
+                  <button onClick={()=>setEditForm(f=>({...f,intraDayEnabled:!f.intraDayEnabled}))} style={{padding:"2px 10px",borderRadius:10,border:"none",background:editForm.intraDayEnabled?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.08)",color:editForm.intraDayEnabled?"#fff":t.textSub,cursor:"pointer",fontWeight:700,fontSize:10}}>{editForm.intraDayEnabled?T.cfgToggleOn:T.cfgToggleOff}</button>
+                </div>
+                {editForm.intraDayEnabled&&(<div>
+                  <div style={{fontSize:10,color:t.textMuted,marginBottom:4}}>{T.cfgInvCheckTimes}</div>
+                  <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>
+                    {(editForm.intraDayTimes||[]).map(h=>(<span key={h} style={{display:"flex",alignItems:"center",gap:2,background:"rgba(249,115,22,0.1)",border:"1px solid rgba(249,115,22,0.2)",borderRadius:12,padding:"2px 8px",fontSize:11,color:"#f97316"}}>{h}h<button onClick={()=>setEditForm(f=>({...f,intraDayTimes:(f.intraDayTimes||[]).filter(x=>x!==h)}))} style={{background:"none",border:"none",color:"#f97316",cursor:"pointer",padding:0,fontSize:11,lineHeight:1}}>✕</button></span>))}
+                  </div>
+                  <div style={{display:"flex",gap:4}}>
+                    <input type="number" placeholder="ex: 14" value={editTimeInput} onChange={e=>setEditTimeInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){const h=parseInt(editTimeInput);if(!isNaN(h)&&h>=0&&h<=23&&!(editForm.intraDayTimes||[]).includes(h)){setEditForm(f=>({...f,intraDayTimes:[...(f.intraDayTimes||[]),h].sort((a,b)=>a-b)}));setEditTimeInput("");}}}} style={{width:70,background:t.inputBg,border:`1px solid rgba(249,115,22,0.2)`,borderRadius:5,color:t.text,fontSize:12,padding:"3px 6px",outline:"none",fontFamily:"'DM Mono',monospace"}}/>
+                    <button onClick={()=>{const h=parseInt(editTimeInput);if(!isNaN(h)&&h>=0&&h<=23&&!(editForm.intraDayTimes||[]).includes(h)){setEditForm(f=>({...f,intraDayTimes:[...(f.intraDayTimes||[]),h].sort((a,b)=>a-b)}));setEditTimeInput("");}}} style={{padding:"3px 8px",borderRadius:5,border:"1px solid rgba(249,115,22,0.2)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontSize:11}}>+ {T.cfgInvAddTime}</button>
+                  </div>
+                </div>)}
+                <div style={{display:"flex",gap:6}}>
+                  <button onClick={saveEdit} style={{padding:"5px 14px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>{T.save}</button>
+                  <button onClick={cancelEdit} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>{T.cancel}</button>
+                </div>
+              </div>)
+            :(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <div>
+                  <span style={{fontSize:12,fontWeight:700,color:t.text}}>{item.nom}</span>
+                  <span style={{fontSize:10.5,color:t.textMuted,marginLeft:6}}>{item.unite}</span>
+                  {item.seuil!=null&&<span style={{fontSize:10,color:t.textDim,marginLeft:6}}>⚠ {item.seuil}</span>}
+                  {item.intraDayEnabled&&item.intraDayTimes?.length>0&&<span style={{fontSize:9.5,color:"#f97316",marginLeft:6}}>{item.intraDayTimes.map(h=>`${h}h`).join(" ")}</span>}
+                </div>
+                <div style={{display:"flex",gap:4}}>
+                  <button onClick={()=>startEdit(item)} style={{padding:"2px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>✎</button>
+                  {invConfig.items.length>1&&<button onClick={()=>removeItem(item.id)} style={{padding:"2px 8px",borderRadius:5,border:"none",background:"rgba(239,68,68,0.08)",color:"#ef4444",cursor:"pointer",fontSize:11}}>✕</button>}
+                </div>
+              </div>)}
+        </div>
+      ))}
+      {!addOpen
+        ?<button onClick={()=>setAddOpen(true)} style={{fontSize:11,padding:"5px 14px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.06)",color:"#f97316",cursor:"pointer",fontWeight:700,width:"100%",marginTop:2}}>{T.cfgInvAdd}</button>
+        :(<div style={{background:t.section,border:`1px solid rgba(249,115,22,0.2)`,borderRadius:7,padding:10,marginTop:6}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#f97316",marginBottom:6}}>{T.cfgInvAddTitle}</div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
+              <div style={{flex:"2 1 120px"}}>
+                <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.cfgInvNom} *</div>
+                <input value={newForm.nom} onChange={e=>setNewForm(f=>({...f,nom:e.target.value}))} autoFocus placeholder="ex: Pâte à pizza" style={{width:"100%",background:t.inputBg,border:`1px solid rgba(249,115,22,0.2)`,borderRadius:5,color:t.text,fontSize:12,padding:"4px 7px",outline:"none",boxSizing:"border-box"}}/>
+              </div>
+              <div style={{flex:"1 1 100px"}}>
+                <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.cfgInvUnite}</div>
+                <select value={UNITE_OPTIONS.includes(newForm.unite)&&!newForm.customUnite?newForm.unite:"__custom__"} onChange={e=>setNewForm(f=>e.target.value==="__custom__"?{...f,customUnite:""}:{...f,unite:e.target.value,customUnite:""})} style={{width:"100%",background:t.inputBg,border:`1px solid rgba(249,115,22,0.2)`,borderRadius:5,color:t.text,fontSize:12,padding:"4px 7px",outline:"none",boxSizing:"border-box"}}>
+                  {UNITE_OPTIONS.map(u=>(<option key={u} value={u} style={{background:t.optionBg}}>{u}</option>))}
+                  <option value="__custom__" style={{background:t.optionBg}}>— {T.cfgInvCustom} —</option>
+                </select>
+              </div>
+              <div style={{flex:"1 1 80px"}}>
+                <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.cfgInvSeuil}</div>
+                <input type="number" value={newForm.seuil??""} onChange={e=>setNewForm(f=>({...f,seuil:e.target.value===""?null:parseFloat(e.target.value)}))} style={{width:"100%",background:t.inputBg,border:`1px solid rgba(249,115,22,0.2)`,borderRadius:5,color:t.text,fontSize:12,padding:"4px 7px",outline:"none",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
+              </div>
+            </div>
+            {newForm.customUnite!==undefined&&!UNITE_OPTIONS.includes(newForm.unite)&&(
+              <input placeholder={T.cfgInvCustomUnite} value={newForm.customUnite} onChange={e=>setNewForm(f=>({...f,customUnite:e.target.value}))} style={{width:"100%",background:t.inputBg,border:`1px solid rgba(249,115,22,0.2)`,borderRadius:5,color:t.text,fontSize:12,padding:"4px 7px",outline:"none",boxSizing:"border-box",marginBottom:6}}/>
+            )}
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+              <span style={{fontSize:11,color:t.textSub}}>{T.cfgInvIntraDay}</span>
+              <button onClick={()=>setNewForm(f=>({...f,intraDayEnabled:!f.intraDayEnabled}))} style={{padding:"2px 10px",borderRadius:10,border:"none",background:newForm.intraDayEnabled?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.08)",color:newForm.intraDayEnabled?"#fff":t.textSub,cursor:"pointer",fontWeight:700,fontSize:10}}>{newForm.intraDayEnabled?T.cfgToggleOn:T.cfgToggleOff}</button>
+            </div>
+            {newForm.intraDayEnabled&&(<div style={{marginBottom:6}}>
+              <div style={{fontSize:10,color:t.textMuted,marginBottom:4}}>{T.cfgInvCheckTimes}</div>
+              <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>
+                {newForm.intraDayTimes.map(h=>(<span key={h} style={{display:"flex",alignItems:"center",gap:2,background:"rgba(249,115,22,0.1)",border:"1px solid rgba(249,115,22,0.2)",borderRadius:12,padding:"2px 8px",fontSize:11,color:"#f97316"}}>{h}h<button onClick={()=>setNewForm(f=>({...f,intraDayTimes:f.intraDayTimes.filter(x=>x!==h)}))} style={{background:"none",border:"none",color:"#f97316",cursor:"pointer",padding:0,fontSize:11}}>✕</button></span>))}
+              </div>
+              <div style={{display:"flex",gap:4}}>
+                <input type="number" placeholder="ex: 14" value={newTimeInput} onChange={e=>setNewTimeInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){const h=parseInt(newTimeInput);if(!isNaN(h)&&h>=0&&h<=23&&!newForm.intraDayTimes.includes(h)){setNewForm(f=>({...f,intraDayTimes:[...f.intraDayTimes,h].sort((a,b)=>a-b)}));setNewTimeInput("");}}}} style={{width:70,background:t.inputBg,border:`1px solid rgba(249,115,22,0.2)`,borderRadius:5,color:t.text,fontSize:12,padding:"3px 6px",outline:"none",fontFamily:"'DM Mono',monospace"}}/>
+                <button onClick={()=>{const h=parseInt(newTimeInput);if(!isNaN(h)&&h>=0&&h<=23&&!newForm.intraDayTimes.includes(h)){setNewForm(f=>({...f,intraDayTimes:[...f.intraDayTimes,h].sort((a,b)=>a-b)}));setNewTimeInput("");}}} style={{padding:"3px 8px",borderRadius:5,border:"1px solid rgba(249,115,22,0.2)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontSize:11}}>+ {T.cfgInvAddTime}</button>
+              </div>
+            </div>)}
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={addItem} disabled={!newForm.nom.trim()} style={{padding:"5px 14px",borderRadius:6,border:"none",background:newForm.nom.trim()?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:newForm.nom.trim()?"#fff":t.textDim,cursor:newForm.nom.trim()?"pointer":"default",fontWeight:700,fontSize:11}}>{T.cfgInvAddBtn}</button>
+              <button onClick={()=>{setAddOpen(false);setNewForm({nom:"",unite:"douzaines",seuil:5,intraDayEnabled:false,intraDayTimes:[14,17,19,20],customUnite:""}); }} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>{T.cancel}</button>
+            </div>
+          </div>)}
+    </>)}
+  </div>);
+}
+
 // ── MAIN ──
 export default function App(){
   const [demoData]=useState(()=>genDemo());
@@ -5577,6 +5728,7 @@ export default function App(){
   const [facFactures,setFacFactures]=useState([]);
   const [facCreditNotes,setFacCreditNotes]=useState([]);
   const [facRecurrents,setFacRecurrents]=useState([]);
+  const [invConfig,setInvConfig]=useState(DEFAULT_INV_CONFIG);
 
   const t=theme;
 
@@ -5607,6 +5759,7 @@ export default function App(){
     try{const r17=await window.api.storage.get("dicann-fac-factures");if(r17?.value)setFacFactures(JSON.parse(r17.value))}catch(e){}
     try{const r18=await window.api.storage.get("dicann-fac-creditnotes");if(r18?.value)setFacCreditNotes(JSON.parse(r18.value))}catch(e){}
     try{const r19=await window.api.storage.get("dicann-fac-recurrents");if(r19?.value)setFacRecurrents(JSON.parse(r19.value))}catch(e){}
+    try{const rIC=await window.api.storage.get("dicann-inv-config");if(rIC?.value){const p=JSON.parse(rIC.value);setInvConfig({...DEFAULT_INV_CONFIG,...p,items:p.items||DEFAULT_INV_CONFIG.items});}}catch(e){}
     setLoading(false);
     // Load auto-backup info after a short delay (backup runs at t+3s)
     setTimeout(async()=>{try{const info=await window.api.backup.getInfo();setBackupInfo(info)}catch(_){}},4000);
@@ -5673,6 +5826,7 @@ export default function App(){
   const saveRoyaltyConfig=useCallback(cfg=>{setRoyaltyConfig(cfg);window.api.storage.set("balanceiq-royalty-config",JSON.stringify(cfg)).catch(()=>{})},[]);
   const saveWhiteLabel=useCallback(cfg=>{setWhiteLabelConfig(cfg);window.api.storage.set("balanceiq-whitelabel",JSON.stringify(cfg)).catch(()=>{})},[]);
   const saveLockConfig=useCallback(cfg=>{setLockConfig(cfg);window.api.storage.set("balanceiq-lock",JSON.stringify(cfg)).catch(()=>{})},[]);
+  const saveInvConfig=useCallback(cfg=>{setInvConfig(cfg);window.api.storage.set("dicann-inv-config",JSON.stringify(cfg)).catch(()=>{})},[]);
   const showUpgradePrompt=useCallback(featureName=>{if(shouldShowUpgradePrompt(featureName))setUpgradePromptOpen(true)},[]);
   const saveCompanyInfo=useCallback(info=>{setCompanyInfo(info);window.api.storage.set("dicann-company-info",JSON.stringify(info)).catch(()=>{})},[]);
   const saveInvoiceTemplate=useCallback(tpl=>{setInvoiceTemplate(tpl);window.api.storage.set("dicann-invoice-template",JSON.stringify(tpl)).catch(()=>{})},[]);
@@ -5767,18 +5921,34 @@ export default function App(){
   const getIC=useCallback(dt=>{const p=liveData[prevDk(dt)];return p?{hamEnd:p.hamEnd??null,hotEnd:p.hotEnd??null}:{hamEnd:null,hotEnd:null}},[liveData]);
   const computeDay=useCallback(dt=>{
     const r=getLR(dt);const carry=getIC(dt);
-    const hamS=r.hamStartOverride!=null?r.hamStartOverride:(carry.hamEnd??null);const hotS=r.hotStartOverride!=null?r.hotStartOverride:(carry.hotEnd??null);
-    const hR=r.hamReceived||0,hoR=r.hotReceived||0;
-    const hamU=(hamS!=null&&r.hamEnd!=null)?hamS+hR-r.hamEnd:null;const hotU=(hotS!=null&&r.hotEnd!=null)?hotS+hoR-r.hotEnd:null;
-    const tDoz=(hamU||0)+(hotU||0);const cashes=r.cashes||[];
+    // Dynamic per-item calculations
+    const itemResults={};
+    let tDoz=0;
+    (invConfig.items||DEFAULT_INV_CONFIG.items).forEach(item=>{
+      const{id}=item;
+      const startV=r[`${id}StartOverride`]!=null?r[`${id}StartOverride`]:(carry[`${id}End`]??null);
+      const received=r[`${id}Received`]||0;
+      const endV=r[`${id}End`]??null;
+      const used=(startV!=null&&endV!=null)?startV+received-endV:null;
+      itemResults[id]={start:startV,received,end:endV,used};
+      if(used!=null)tDoz+=used;
+    });
+    // Backward compat aliases
+    const hamS=itemResults.ham?.start??null;
+    const hotS=itemResults.hot?.start??null;
+    const hamU=itemResults.ham?.used??null;
+    const hotU=itemResults.hot?.used??null;
+    const hR=itemResults.ham?.received??0;
+    const hoR=itemResults.hot?.received??0;
+    const cashes=r.cashes||[];
     let vN=0,allB=true,anyD=false;
     cashes.forEach(c=>{const mc=c.float!=null&&c.deposits!=null&&c.finalCash!=null;const manT=mc?(c.interac||0)+(c.livraisons||0)+(c.deposits||0)+(c.finalCash||0)-(c.float||0):0;vN+=manT;const posT=(c.posVentes||0)+(c.posTPS||0)+(c.posTVQ||0)+(c.posLivraisons||0);if(c.posVentes!=null||c.interac!=null||c.finalCash!=null)anyD=true;if(!mc||!c.posVentes||Math.abs(manT-posT)>1)allB=false});
     const tps=Math.round(vN*0.05*100)/100;const tvq=Math.round(vN*0.09975*100)/100;const tot=Math.round((vN+tps+tvq)*100)/100;
     const moy=vN>0&&tDoz>0?vN/tDoz:null;
     const emps=r.employees||[];let labC=0,labH=0;emps.forEach(e=>{if(e.hours&&e.wage){labC+=e.hours*e.wage;labH+=e.hours}});
     const labP=vN>0&&labC>0?(labC/vN)*100:null;
-    return{...r,venteNet:vN,tps,tvq,total:tot,allBal:allB,anyData:anyD,hamStart:hamS,hamEnd:r.hamEnd,hamReceived:hR,hamUsed:hamU,hotStart:hotS,hotEnd:r.hotEnd,hotReceived:hoR,hotUsed:hotU,totalDoz:tDoz,moyenne:moy,labourCost:labC,labourHrs:labH,labourPct:labP};
-  },[getLR,getIC]);
+    return{...r,venteNet:vN,tps,tvq,total:tot,allBal:allB,anyData:anyD,hamStart:hamS,hamEnd:r.hamEnd,hamReceived:hR,hamUsed:hamU,hotStart:hotS,hotEnd:r.hotEnd,hotReceived:hoR,hotUsed:hotU,totalDoz:tDoz,moyenne:moy,labourCost:labC,labourHrs:labH,labourPct:labP,itemResults};
+  },[getLR,getIC,invConfig]);
 
   const today=computeDay(selectedDate);const d=new Date(selectedDate+"T12:00:00");const holiday=getHol(d);const raw=getLR(selectedDate);const cashes=raw.cashes;const emps=raw.employees;
   const isDayComplete=today.anyData&&today.allBal&&raw.hamEnd!=null&&raw.hotEnd!=null;
@@ -6037,77 +6207,101 @@ export default function App(){
 
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
               {/* Inventory */}
-              <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+              {invConfig.enabled&&(<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
                 <span style={{fontSize:13,fontWeight:700,marginBottom:5,display:"block",color:t.text}}>{T.dailyInventory}</span>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                  {[["HAMBURGER","ham",raw.hamStartOverride!=null,today.hamStart,today.hamUsed,today.hamEnd],["HOT DOG","hot",raw.hotStartOverride!=null,today.hotStart,today.hotUsed,today.hotEnd]].map(([title,pre,hasOv,startV,usedV,endV])=>(<div key={pre}>
-                    <div style={{fontSize:10,color:"#f97316",fontWeight:700,marginBottom:2}}>{title}</div>
-                    {!hasOv
-                      ?(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"3.5px 0",borderBottom:`1px solid ${t.divider}`}}><span style={{fontSize:11.5,color:t.textSub}}>{T.inventoryStart}</span><div style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:t.text,fontWeight:600}}>{startV??"-"}</span><button onClick={()=>upd(selectedDate,`${pre}StartOverride`,startV??0)} style={{fontSize:9,padding:"1px 5px",borderRadius:3,border:"1px solid rgba(251,191,36,0.2)",background:"rgba(251,191,36,0.08)",color:t.warnText,cursor:"pointer"}}>✎</button></div></div>)
-                      :(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"3.5px 0",borderBottom:"1px solid rgba(251,191,36,0.2)"}}><span style={{fontSize:11.5,color:t.warnText}}>{T.invAdjusted}</span><div style={{display:"flex",alignItems:"center",gap:3}}><input type="number" value={raw[`${pre}StartOverride`]??""} onChange={e=>upd(selectedDate,`${pre}StartOverride`,e.target.value===""?null:parseFloat(e.target.value))} style={{width:50,padding:"2px 5px",borderRadius:4,border:"1px solid rgba(251,191,36,0.25)",background:"rgba(251,191,36,0.06)",color:t.warnText,fontFamily:"'DM Mono',monospace",fontSize:12,textAlign:"right",outline:"none"}}/><button onClick={()=>upd(selectedDate,`${pre}StartOverride`,null)} style={{fontSize:9,padding:"1px 4px",borderRadius:3,border:"none",background:"rgba(239,68,68,0.1)",color:"#ef4444",cursor:"pointer"}}>✕</button></div></div>)}
-                    <F label={T.invHamReceived} value={raw[`${pre}Received`]} onChange={v=>upd(selectedDate,`${pre}Received`,v)} warn={raw[`${pre}Received`]!=null&&raw[`${pre}Received`]<0?T.warnNegativeHours:null}/>
-                    <F label={T.inventoryEnd} value={raw[`${pre}End`]} onChange={v=>upd(selectedDate,`${pre}End`,v)} warn={endV!=null&&endV<0?T.warnNegativeHours:startV!=null&&endV!=null&&endV>(startV+(raw[`${pre}Received`]||0))?T.invWarnEndHigh:null}/>
-                    <div style={{marginTop:3,paddingTop:3,borderTop:`1px solid ${t.divider}`}}><RR label={T.inventoryUsed} value={usedV} unit=""/></div>
-                    {endV!=null&&endV<5&&endV>=0&&<div style={{fontSize:9.5,color:t.warnText,marginTop:2}}>{T.invStockLow}</div>}
-                  </div>))}
+                <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(invConfig.items.length,2)},1fr)`,gap:10}}>
+                  {invConfig.items.map(item=>{
+                    const{id,nom,unite,seuil,intraDayEnabled,intraDayTimes=[]}=item;
+                    const hasOv=raw[`${id}StartOverride`]!=null;
+                    const startV=today.itemResults?.[id]?.start??null;
+                    const usedV=today.itemResults?.[id]?.used??null;
+                    const endV=raw[`${id}End`]??null;
+                    return(<div key={id}>
+                      <div style={{fontSize:10,color:"#f97316",fontWeight:700,marginBottom:2}}>{nom.toUpperCase()}</div>
+                      {!hasOv
+                        ?(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"3.5px 0",borderBottom:`1px solid ${t.divider}`}}><span style={{fontSize:11.5,color:t.textSub}}>{T.inventoryStart}</span><div style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:t.text,fontWeight:600}}>{startV??"-"}</span><button onClick={()=>upd(selectedDate,`${id}StartOverride`,startV??0)} style={{fontSize:9,padding:"1px 5px",borderRadius:3,border:"1px solid rgba(251,191,36,0.2)",background:"rgba(251,191,36,0.08)",color:t.warnText,cursor:"pointer"}}>✎</button></div></div>)
+                        :(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"3.5px 0",borderBottom:"1px solid rgba(251,191,36,0.2)"}}><span style={{fontSize:11.5,color:t.warnText}}>{T.invAdjusted}</span><div style={{display:"flex",alignItems:"center",gap:3}}><input type="number" value={raw[`${id}StartOverride`]??""} onChange={e=>upd(selectedDate,`${id}StartOverride`,e.target.value===""?null:parseFloat(e.target.value))} style={{width:50,padding:"2px 5px",borderRadius:4,border:"1px solid rgba(251,191,36,0.25)",background:"rgba(251,191,36,0.06)",color:t.warnText,fontFamily:"'DM Mono',monospace",fontSize:12,textAlign:"right",outline:"none"}}/><button onClick={()=>upd(selectedDate,`${id}StartOverride`,null)} style={{fontSize:9,padding:"1px 4px",borderRadius:3,border:"none",background:"rgba(239,68,68,0.1)",color:"#ef4444",cursor:"pointer"}}>✕</button></div></div>)}
+                      <F label={T.invHamReceived} value={raw[`${id}Received`]} onChange={v=>upd(selectedDate,`${id}Received`,v)} warn={raw[`${id}Received`]!=null&&raw[`${id}Received`]<0?T.warnNegativeHours:null}/>
+                      <F label={T.inventoryEnd} value={raw[`${id}End`]} onChange={v=>upd(selectedDate,`${id}End`,v)} warn={endV!=null&&endV<0?T.warnNegativeHours:startV!=null&&endV!=null&&endV>(startV+(raw[`${id}Received`]||0))?T.invWarnEndHigh:null}/>
+                      <div style={{marginTop:3,paddingTop:3,borderTop:`1px solid ${t.divider}`}}><RR label={T.inventoryUsed} value={usedV} unit=""/></div>
+                      {seuil!=null&&endV!=null&&endV<seuil&&endV>=0&&<div style={{fontSize:9.5,color:t.warnText,marginTop:2}}>{T.invStockLow}</div>}
+                    </div>);
+                  })}
                 </div>
                 {today.totalDoz>0&&(<div style={{marginTop:8,padding:"8px 10px",borderRadius:7,background:"rgba(124,58,237,0.06)",border:"1px solid rgba(124,58,237,0.15)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <div><div style={{fontSize:10,color:"#7c3aed",fontWeight:700,textTransform:"uppercase"}}>$ / douzaine</div><div style={{fontSize:10,color:t.textMuted}}>{fmt(today.venteNet)} ÷ {today.totalDoz} dz</div></div>
+                  <div><div style={{fontSize:10,color:"#7c3aed",fontWeight:700,textTransform:"uppercase"}}>$ / {invConfig.items[0]?.unite||"douzaine"}</div><div style={{fontSize:10,color:t.textMuted}}>{fmt(today.venteNet)} ÷ {today.totalDoz} {invConfig.items[0]?.unite||"dz"}</div></div>
                   <span style={{fontSize:20,fontWeight:700,color:"#7c3aed",fontFamily:"'DM Mono',monospace"}}>{fmt(today.moyenne)}</span>
                 </div>)}
-                {/* ── BREAD CHECKPOINTS ── */}
+                {/* ── INTRA-DAY CHECKPOINTS ── */}
                 {(()=>{
-                  const TIMES=[[T.breadAt14,"B14"],[T.breadAt17,"B17"],[T.breadAt19,"B19"],[T.breadAt20,"B20"]];
-                  const hamAvail=(today.hamStart??0)+(today.hamReceived||0);
-                  const hotAvail=(today.hotStart??0)+(today.hotReceived||0);
-                  const showHamPassed=hamAvail>0;const showHotPassed=hotAvail>0;
+                  const itemsWithIntraDay=invConfig.items.filter(item=>item.intraDayEnabled&&item.intraDayTimes?.length>0);
+                  if(itemsWithIntraDay.length===0)return null;
+                  const allTimes=[...new Set(itemsWithIntraDay.flatMap(i=>i.intraDayTimes||[]))].sort((a,b)=>a-b);
+                  const TIMES=allTimes.map(h=>[`${h}h`,`B${h}`]);
                   const inpStyle=(val)=>({width:"100%",padding:"3px 4px",borderRadius:4,border:`1px solid rgba(249,115,22,${val!=null?0.25:0.08})`,background:t.inputBg,color:t.inputText,fontFamily:"'DM Mono',monospace",fontSize:11,textAlign:"center",outline:"none",boxSizing:"border-box"});
                   const passedStyle=(p)=>({fontSize:11,fontFamily:"'DM Mono',monospace",textAlign:"center",color:p==null?t.textDim:p<0?"#ef4444":t.text,fontWeight:p!=null?600:400});
                   return(<div style={{marginTop:8,paddingTop:8,borderTop:`1px solid ${t.divider}`}}>
                     <div style={{fontSize:10,color:"#f97316",fontWeight:700,textTransform:"uppercase",letterSpacing:0.7,marginBottom:5}}>{T.invBreadCheckpoints}</div>
-                    <div style={{display:"grid",gridTemplateColumns:"80px repeat(4,1fr)",gap:"4px 6px",alignItems:"center"}}>
-                      {/* Header */}
+                    <div style={{display:"grid",gridTemplateColumns:`80px repeat(${TIMES.length},1fr)`,gap:"4px 6px",alignItems:"center"}}>
                       <span/>
                       {TIMES.map(([h])=>(<span key={h} style={{fontSize:9.5,color:t.textMuted,fontWeight:700,textAlign:"center"}}>{h}</span>))}
-                      {/* Ham inputs */}
-                      <span style={{fontSize:10.5,color:t.textSub,fontWeight:600}}>Ham</span>
-                      {TIMES.map(([,sfx])=>{const k=`ham${sfx}`;return(<input key={k} type="number" inputMode="decimal" value={raw[k]??""} onChange={e=>upd(selectedDate,k,e.target.value===""?null:parseFloat(e.target.value))} style={inpStyle(raw[k])}/>);})}
-                      {/* Ham passed */}
-                      {showHamPassed&&<span style={{fontSize:9,color:t.textMuted}}>{T.breadPasse}</span>}
-                      {showHamPassed&&TIMES.map(([,sfx])=>{const v=raw[`ham${sfx}`];const p=v!=null?hamAvail-v:null;return(<span key={sfx} style={passedStyle(p)}>{p!=null?p:"—"}</span>);})}
-                      {/* Hot inputs */}
-                      <span style={{fontSize:10.5,color:t.textSub,fontWeight:600}}>Hot</span>
-                      {TIMES.map(([,sfx])=>{const k=`hot${sfx}`;return(<input key={k} type="number" inputMode="decimal" value={raw[k]??""} onChange={e=>upd(selectedDate,k,e.target.value===""?null:parseFloat(e.target.value))} style={inpStyle(raw[k])}/>);})}
-                      {/* Hot passed */}
-                      {showHotPassed&&<span style={{fontSize:9,color:t.textMuted}}>{T.breadPasse}</span>}
-                      {showHotPassed&&TIMES.map(([,sfx])=>{const v=raw[`hot${sfx}`];const p=v!=null?hotAvail-v:null;return(<span key={sfx} style={passedStyle(p)}>{p!=null?p:"—"}</span>);})}
+                      {itemsWithIntraDay.map(item=>{
+                        const{id,nom,intraDayTimes=[]}=item;
+                        const avail=(today.itemResults?.[id]?.start??0)+(today.itemResults?.[id]?.received||0);
+                        const showPassed=avail>0;
+                        return(<React.Fragment key={id}>
+                          <span style={{fontSize:10.5,color:t.textSub,fontWeight:600}}>{nom.slice(0,6)}</span>
+                          {TIMES.map(([hlabel,sfx])=>{
+                            const h=parseInt(sfx.slice(1));
+                            const enabled=intraDayTimes.includes(h);
+                            const k=`${id}${sfx}`;
+                            return enabled
+                              ?<input key={k} type="number" inputMode="decimal" value={raw[k]??""} onChange={e=>upd(selectedDate,k,e.target.value===""?null:parseFloat(e.target.value))} style={inpStyle(raw[k])}/>
+                              :<span key={k} style={{textAlign:"center",color:t.textDim,fontSize:10}}>—</span>;
+                          })}
+                          {showPassed&&<span style={{fontSize:9,color:t.textMuted}}>{T.breadPasse}</span>}
+                          {showPassed&&TIMES.map(([,sfx])=>{
+                            const h=parseInt(sfx.slice(1));
+                            const enabled=intraDayTimes.includes(h);
+                            const v=raw[`${id}${sfx}`];
+                            const p=enabled&&v!=null?avail-v:null;
+                            return <span key={sfx} style={passedStyle(p)}>{p!=null?p:"—"}</span>;
+                          })}
+                        </React.Fragment>);
+                      })}
                     </div>
-                    {(showHamPassed||showHotPassed)&&<div style={{fontSize:9,color:t.textDim,marginTop:3}}>{T.breadPassedNote}</div>}
+                    <div style={{fontSize:9,color:t.textDim,marginTop:3}}>{T.breadPassedNote}</div>
                   </div>);
                 })()}
                 {(()=>{
-                  const TSEQ=[["B20","20h",4/4],["B19","19h",3/4],["B17","17h",2/4],["B14","14h",1/4]];
-                  const hamAvail2=(today.hamStart??0)+(today.hamReceived||0);
-                  const hotAvail2=(today.hotStart??0)+(today.hotReceived||0);
-                  if(hamAvail2<=0&&hotAvail2<=0)return null;
-                  let latestSfx=null,latestLabel=null,latestFrac=null;
-                  for(const[sfx,label,frac] of TSEQ){if(raw[`ham${sfx}`]!=null||raw[`hot${sfx}`]!=null){latestSfx=sfx;latestLabel=label;latestFrac=frac;break;}}
-                  if(!latestSfx)return null;
-                  const hamConsumed=raw[`ham${latestSfx}`]!=null?hamAvail2-raw[`ham${latestSfx}`]:null;
-                  const hotConsumed=raw[`hot${latestSfx}`]!=null?hotAvail2-raw[`hot${latestSfx}`]:null;
-                  if(hamConsumed==null&&hotConsumed==null)return null;
-                  const hamProj=hamConsumed!=null&&latestFrac>0?Math.round(hamConsumed/latestFrac):null;
-                  const hotProj=hotConsumed!=null&&latestFrac>0?Math.round(hotConsumed/latestFrac):null;
+                  const itemsWithIntraDay=invConfig.items.filter(item=>item.intraDayEnabled&&item.intraDayTimes?.length>0);
+                  if(itemsWithIntraDay.length===0)return null;
+                  const allTimes=[...new Set(itemsWithIntraDay.flatMap(i=>i.intraDayTimes||[]))].sort((a,b)=>b-a);
+                  const fracMap={14:1/4,17:2/4,19:3/4,20:4/4};
+                  let latestH=null,latestFrac=null;
+                  for(const h of allTimes){
+                    const hasDat=itemsWithIntraDay.some(item=>raw[`${item.id}B${h}`]!=null);
+                    if(hasDat){latestH=h;latestFrac=fracMap[h]||h/24;break;}
+                  }
+                  if(latestH===null||latestFrac===null)return null;
+                  const projections=itemsWithIntraDay.map(item=>{
+                    const{id,nom}=item;
+                    const avail=(today.itemResults?.[id]?.start??0)+(today.itemResults?.[id]?.received||0);
+                    const remaining=raw[`${item.id}B${latestH}`];
+                    const consumed=remaining!=null?avail-remaining:null;
+                    const proj=consumed!=null&&latestFrac>0?Math.round(consumed/latestFrac):null;
+                    return{nom,proj,unite:item.unite};
+                  }).filter(p=>p.proj!=null);
+                  if(projections.length===0)return null;
                   return(<div style={{marginTop:6,padding:"6px 8px",borderRadius:6,background:"rgba(249,115,22,0.05)",border:"1px solid rgba(249,115,22,0.12)"}}>
                     <div style={{fontSize:9.5,color:"#f97316",fontWeight:700,textTransform:"uppercase",letterSpacing:0.6,marginBottom:4}}>{T.invProjection}</div>
                     <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-                      {hamProj!=null&&<span style={{fontSize:12,color:t.text}}>Ham: <span style={{fontWeight:700,fontFamily:"'DM Mono',monospace"}}>~{hamProj}</span> <span style={{fontSize:10,color:t.textMuted}}>dz</span></span>}
-                      {hotProj!=null&&<span style={{fontSize:12,color:t.text}}>Hot: <span style={{fontWeight:700,fontFamily:"'DM Mono',monospace"}}>~{hotProj}</span> <span style={{fontSize:10,color:t.textMuted}}>dz</span></span>}
+                      {projections.map(({nom,proj,unite})=>(<span key={nom} style={{fontSize:12,color:t.text}}>{nom.slice(0,6)}: <span style={{fontWeight:700,fontFamily:"'DM Mono',monospace"}}>~{proj}</span> <span style={{fontSize:10,color:t.textMuted}}>{unite||"dz"}</span></span>))}
                     </div>
-                    <div style={{fontSize:9,color:t.textDim,marginTop:2}}>{T.invBasedOn(latestLabel)}</div>
+                    <div style={{fontSize:9,color:t.textDim,marginTop:2}}>{T.invBasedOn(`${latestH}h`)}</div>
                   </div>);
                 })()}
-              </div>
+              </div>)}
 
               {/* Right column */}
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -6562,6 +6756,8 @@ export default function App(){
                 </>
               }
             </div>
+            {/* ── INVENTORY CONFIG ── */}
+            <InvConfigSection invConfig={invConfig} saveInvConfig={saveInvConfig} t={t} T={T}/>
             <PinLockConfig lockConfig={lockConfig} saveLockConfig={saveLockConfig}/>
             <div style={{textAlign:"center",padding:"8px 0 2px"}}>
               <span style={{fontSize:10.5,color:t.textSub,fontFamily:"'DM Mono',monospace"}}>BalanceIQ v{appVersion}</span>
