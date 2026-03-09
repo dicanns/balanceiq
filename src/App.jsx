@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo, useContext, createContext } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo, useContext, createContext } from "react";
 import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./config/features.js";
 import * as XLSX from "xlsx";
