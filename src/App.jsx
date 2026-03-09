@@ -1367,7 +1367,7 @@ function AgingReport({factures,clients}){
 }
 
 // ── FACTURATION TAB ──
-function FacturationTab({categories,saveCategories,produits,saveProduits,clients,saveClients,soumissions,saveSoumissions,commandes,saveCommandes,factures,saveFactures,creditNotes,saveCreditNotes,docNums,saveDocNums,companyInfo,encaisseData,persistEncaisse}){
+function FacturationTab({categories,saveCategories,produits,saveProduits,clients,saveClients,soumissions,saveSoumissions,commandes,saveCommandes,factures,saveFactures,creditNotes,saveCreditNotes,docNums,saveDocNums,companyInfo,encaisseData,persistEncaisse,showUpgradePrompt}){
   const t=useT();
   const [subTab,setSubTab]=useState("documents");
   const [activeDoc,setActiveDoc]=useState(null);
@@ -1433,7 +1433,7 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
     return<FactureEditor facture={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} factures={factures} saveFactures={saveFactures} onBack={closeDoc} initClientId={activeDoc.clientId} onEnregistrerPaiement={(fac)=>openDoc("encaissement",fac.clientId,{factureId:fac.id})} onCreditNote={(fac)=>setActiveDoc({type:"creditnote",doc:null,clientId:fac.clientId,factureId:fac.id})}/>;
   }
   if(activeDoc?.type==="encaissement"){
-    return<EncaissementEditor clientId={activeDoc.clientId} factureId={activeDoc.doc?.factureId||null} clients={clients} factures={factures} saveFactures={saveFactures} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData||{}} persistEncaisse={persistEncaisse} onBack={closeDoc}/>;
+    return<EncaissementEditor clientId={activeDoc.clientId} factureId={activeDoc.doc?.factureId||null} clients={clients} factures={factures} saveFactures={saveFactures} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData||{}} persistEncaisse={persistEncaisse} onBack={closeDoc} showUpgradePrompt={showUpgradePrompt}/>;
   }
   if(activeDoc?.type==="creditnote"){
     return<NoteDeCreditEditor creditNote={activeDoc.doc} clients={clients} factures={factures} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} creditNotes={creditNotes} saveCreditNotes={saveCreditNotes} saveFactures={saveFactures} onBack={closeDoc} initClientId={activeDoc.clientId} initFactureId={activeDoc.factureId||null}/>;
@@ -2144,116 +2144,246 @@ function buildReceiptHTML({numero,date,montant,mode,reference,note,client,factur
   const logo=companyInfo.logo?`<img src="${companyInfo.logo}" style="max-height:50px;object-fit:contain;" alt="Logo"/>`:"";
   return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Reçu ${numero}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:30px;font-size:13px;max-width:400px}.title{font-size:24px;font-weight:900;color:#f97316;letter-spacing:2px;margin:12px 0 4px}.num{font-size:16px;font-weight:700;margin-bottom:16px}.row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee;font-size:12px}.total{font-size:18px;font-weight:900;color:#22c55e;text-align:right;margin-top:12px}.stamp{border:3px solid #22c55e;color:#22c55e;font-weight:900;font-size:20px;text-align:center;padding:8px;margin-top:16px;letter-spacing:4px}.ftr{margin-top:20px;font-size:10px;color:#888;text-align:center}@media print{body{padding:15px}}</style></head><body>${logo}<div class="title">REÇU DE PAIEMENT</div><div class="num"># ${numero}</div><div class="row"><span>Date</span><span>${fd(date)}</span></div><div class="row"><span>Client</span><span>${client?.entreprise||"—"}</span></div>${facture?`<div class="row"><span>Facture</span><span>${facture.numero}</span></div>`:""}<div class="row"><span>Mode de paiement</span><span>${mode}</span></div>${reference?`<div class="row"><span>Référence</span><span>${reference}</span></div>`:""}<div class="total">${fc(montant)}</div>${note?`<div style="margin-top:10px;font-size:11px;color:#555">Note: ${note}</div>`:""}<div class="stamp">✓ REÇU</div><div class="ftr">${companyInfo.nom||""}</div></body></html>`;
 }
-function EncaissementEditor({clientId,factureId,clients,factures,saveFactures,docNums,saveDocNums,companyInfo,encaisseData,persistEncaisse,onBack}){
+function EncaissementEditor({clientId,factureId,clients,factures,saveFactures,docNums,saveDocNums,companyInfo,encaisseData,persistEncaisse,onBack,showUpgradePrompt}){
   const t=useT();
+  const isBulk=canUse('bulkEncaissement');
   const todayStr=dk(new Date());
   const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none"};
   const client=clients.find(c=>c.id===clientId);
-  const unpaid=useMemo(()=>factures.filter(f=>f.clientId===clientId&&!["Payée","Créditée","Annulée","Brouillon"].includes(f.statut)),[factures,clientId]);
+  const unpaid=useMemo(()=>factures.filter(f=>f.clientId===clientId&&!["Payée","Créditée","Annulée","Brouillon"].includes(f.statut)).sort((a,b)=>(a.date||"").localeCompare(b.date||"")),[factures,clientId]);
+
+  // Free tier: single selection
   const [selId,setSelId]=useState(factureId||null);
+  // Pro tier: multi-selection map + per-invoice allocation
+  const [selMap,setSelMap]=useState(()=>factureId?{[factureId]:true}:{});
+  const [allocations,setAllocations]=useState({}); // invoiceId → amount string
+  const [overflowChoice,setOverflowChoice]=useState(null); // null | 'credit' | 'remboursement'
+
   const [form,setForm]=useState({date:todayStr,montant:"",mode:"Virement/E-Transfer",reference:"",note:""});
   const [confirmation,setConfirmation]=useState(null);
+  const updF=f=>setForm(p=>({...p,...f}));
+
+  // ── Single-invoice helpers (free) ──
   const selFac=factures.find(f=>f.id===selId);
   const selTotals=selFac?computeSoumTotals(selFac.lignes):{total:0};
   const dejaPaye=selFac?(selFac.paiements||[]).reduce((s,p)=>s+(p.montant||0),0):0;
   const solde=selTotals.total-dejaPaye;
-  const upd=f=>setForm(p=>({...p,...f}));
-  const doSave=()=>{
-    if(!selFac||!form.montant||parseFloat(form.montant)<=0)return;
-    const montant=Math.min(parseFloat(form.montant),solde);
-    const id=Date.now().toString();
-    const numero=fmtDocNum(docNums.prefix,"E",docNums.encaissement);
-    const paiement={id,numero,date:form.date,montant,mode:form.mode,reference:form.reference,note:form.note};
-    const newSolde=solde-montant;
-    const newStatut=newSolde<=0.005?"Payée":"Payée partiellement";
-    const updFac={...selFac,paiements:[...(selFac.paiements||[]),paiement],statut:newStatut};
-    saveFactures(factures.map(f=>f.id===selId?updFac:f));
-    logCreate('payment','paiement',id,{...paiement,factureId:selId,factureNumero:selFac.numero});
-    logUpdate('invoice','facture',selId,'statut',selFac.statut,newStatut);
-    saveDocNums({...docNums,encaissement:docNums.encaissement+1});
-    // If Comptant → add read-only entry to Encaisse for this date
-    if(form.mode==="Comptant"&&persistEncaisse){
-      const d=form.date;
-      const prev=encaisseData[d]||{};
-      const existingEntrees=prev.autreEntrees||[];
-      persistEncaisse({...encaisseData,[d]:{...prev,autreEntrees:[...existingEntrees,{id,description:`Paiement ${updFac.numero} (Facturation)`,montant,fromFacturation:true}]}});
-    }
-    setConfirmation({numero,montant,factureNumero:selFac.numero,paiement,facture:updFac});
+
+  // ── Bulk helpers (pro) ──
+  const selectedFacs=useMemo(()=>unpaid.filter(f=>selMap[f.id]),[unpaid,selMap]);
+  const totalSoldeSelected=useMemo(()=>selectedFacs.reduce((s,f)=>{const tot=computeSoumTotals(f.lignes).total;const dp=(f.paiements||[]).reduce((a,p)=>a+(p.montant||0),0);return s+(tot-dp);},[]),[selectedFacs]);
+  const totalMontant=parseFloat(form.montant)||0;
+  const totalAlloue=useMemo(()=>Object.values(allocations).reduce((s,v)=>s+(parseFloat(v)||0),0),[allocations]);
+  const restant=totalMontant-totalAlloue;
+  const excedent=Math.max(0,totalMontant-totalSoldeSelected);
+
+  const autoApply=()=>{
+    let remaining=totalMontant;
+    const newAlloc={};
+    selectedFacs.forEach(f=>{
+      if(remaining<=0.005)return;
+      const tot=computeSoumTotals(f.lignes).total;
+      const dp=(f.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);
+      const sol=tot-dp;
+      const apply=Math.min(remaining,sol);
+      newAlloc[f.id]=apply.toFixed(2);
+      remaining-=apply;
+    });
+    setAllocations(newAlloc);
   };
+
+  const toggleSel=fId=>{
+    const alreadySel=!!selMap[fId];
+    const countSel=Object.values(selMap).filter(Boolean).length;
+    if(!alreadySel&&countSel>=1){
+      // Trying to add a second invoice
+      if(!isBulk){if(showUpgradePrompt)showUpgradePrompt('bulkEncaissement');return;}
+    }
+    setSelMap(p=>({...p,[fId]:!p[fId]}));
+    if(alreadySel){setAllocations(p=>{const n={...p};delete n[fId];return n;});}
+  };
+
+  // ── Save (single / bulk) ──
+  const _applyPayment=(updFactures,fac,montant,encNum)=>{
+    const id=Date.now().toString(36)+Math.random().toString(36).slice(2);
+    const numero=fmtDocNum(docNums.prefix,"E",encNum);
+    const paiement={id,numero,date:form.date,montant,mode:form.mode,reference:form.reference,note:form.note};
+    const dp=(fac.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);
+    const newSolde=computeSoumTotals(fac.lignes).total-dp-montant;
+    const newStatut=newSolde<=0.005?"Payée":"Payée partiellement";
+    const updFac={...fac,paiements:[...(fac.paiements||[]),paiement],statut:newStatut};
+    logCreate('payment','paiement',id,{...paiement,factureId:fac.id,factureNumero:fac.numero});
+    logUpdate('invoice','facture',fac.id,'statut',fac.statut,newStatut);
+    return{updFactures:updFactures.map(f=>f.id===fac.id?updFac:f),paiement,updFac,numero};
+  };
+
+  const doSave=()=>{
+    if(!isBulk){
+      // Free tier — single invoice
+      if(!selFac||!form.montant||parseFloat(form.montant)<=0)return;
+      const montant=Math.min(parseFloat(form.montant),solde);
+      const{updFactures,paiement,updFac,numero}=_applyPayment([...factures],selFac,montant,docNums.encaissement);
+      saveFactures(updFactures);
+      saveDocNums({...docNums,encaissement:docNums.encaissement+1});
+      if(form.mode==="Comptant"&&persistEncaisse){
+        const d=form.date;const prev=encaisseData[d]||{};
+        persistEncaisse({...encaisseData,[d]:{...prev,autreEntrees:[...(prev.autreEntrees||[]),{id:paiement.id,description:`Paiement ${updFac.numero} (Facturation)`,montant,fromFacturation:true}]}});
+      }
+      setConfirmation({single:true,numero,montant,factureNumero:selFac.numero,paiement,facture:updFac});
+      return;
+    }
+    // Pro bulk — apply allocations
+    const toApply=selectedFacs.filter(f=>parseFloat(allocations[f.id])>0);
+    if(!toApply.length||totalMontant<=0)return;
+    let updFactures=[...factures];
+    let encNum=docNums.encaissement;
+    const results=[];
+    toApply.forEach(f=>{
+      const cap=computeSoumTotals(f.lignes).total-(f.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);
+      const montant=Math.min(parseFloat(allocations[f.id])||0,cap);
+      if(montant<=0)return;
+      const{updFactures:uf,paiement,updFac,numero}=_applyPayment(updFactures,f,montant,encNum++);
+      updFactures=uf;
+      results.push({numero,montant,factureNumero:f.numero,facture:updFac});
+      if(form.mode==="Comptant"&&persistEncaisse){
+        const d=form.date;const prev=encaisseData[d]||{};
+        persistEncaisse({...encaisseData,[d]:{...prev,autreEntrees:[...(prev.autreEntrees||[]),{id:paiement.id,description:`Paiement ${updFac.numero} (Facturation)`,montant,fromFacturation:true}]}});
+      }
+    });
+    saveFactures(updFactures);
+    saveDocNums({...docNums,encaissement:encNum});
+    setConfirmation({bulk:true,results,totalMontant:totalAlloue,overflowChoice,excedent});
+  };
+
   if(confirmation){
     return(<div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={{display:"flex",alignItems:"center",gap:8}}>
         <button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>
-        <span style={{fontSize:14,fontWeight:700,color:t.text}}>Paiement enregistré</span>
+        <span style={{fontSize:14,fontWeight:700,color:t.text}}>{confirmation.bulk?"Paiements enregistrés":"Paiement enregistré"}</span>
       </div>
-      <div style={{background:"rgba(34,197,94,0.08)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:9,padding:16,textAlign:"center"}}>
-        <div style={{fontSize:22,marginBottom:4}}>✓</div>
-        <div style={{fontSize:14,fontWeight:700,color:"#22c55e"}}>Paiement de {fmt(confirmation.montant)} enregistré</div>
-        <div style={{fontSize:12,color:t.textSub,marginTop:4}}>sur facture {confirmation.factureNumero} — reçu {confirmation.numero}</div>
-        <div style={{fontSize:11,color:t.textMuted,marginTop:4}}>Statut facture : <strong style={{color:STATUT_FAC_C[confirmation.facture.statut]}}>{confirmation.facture.statut}</strong></div>
+      <div style={{background:"rgba(34,197,94,0.08)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:9,padding:16}}>
+        <div style={{textAlign:"center",marginBottom:8}}>
+          <div style={{fontSize:22,marginBottom:4}}>✓</div>
+          <div style={{fontSize:14,fontWeight:700,color:"#22c55e"}}>{confirmation.bulk?`${fmt(confirmation.totalMontant)} réparti sur ${confirmation.results.length} facture${confirmation.results.length>1?"s":""}`:  `Paiement de ${fmt(confirmation.montant)} enregistré`}</div>
+          {!confirmation.bulk&&<div style={{fontSize:12,color:t.textSub,marginTop:4}}>sur facture {confirmation.factureNumero} — reçu {confirmation.numero}</div>}
+        </div>
+        {confirmation.bulk&&confirmation.results.map(r=>(
+          <div key={r.numero} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:t.textSub,borderTop:`1px solid ${t.divider}`,padding:"4px 0"}}>
+            <span>Facture {r.factureNumero} — reçu {r.numero}</span>
+            <span style={{fontFamily:"'DM Mono',monospace",color:"#22c55e",fontWeight:700}}>{fmt(r.montant)}</span>
+          </div>
+        ))}
+        {confirmation.bulk&&confirmation.excedent>0&&(<div style={{marginTop:8,padding:"6px 10px",borderRadius:6,background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.2)",fontSize:11,color:"#f59e0b"}}>
+          Excédent de {fmt(confirmation.excedent)} — {confirmation.overflowChoice==="credit"?"conservé en crédit client":"remboursement manuel requis"}
+        </div>)}
       </div>
       <div style={{display:"flex",gap:8,justifyContent:"center"}}>
-        <button onClick={()=>openPDF(buildReceiptHTML({...confirmation.paiement,numero:confirmation.numero,montant:confirmation.montant,client,facture:selFac,companyInfo}))} style={{padding:"7px 16px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12}}>🖨️ Imprimer le reçu</button>
+        {!confirmation.bulk&&<button onClick={()=>openPDF(buildReceiptHTML({...confirmation.paiement,numero:confirmation.numero,montant:confirmation.montant,client,facture:selFac,companyInfo}))} style={{padding:"7px 16px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12}}>🖨️ Imprimer le reçu</button>}
         <button onClick={onBack} style={{padding:"7px 16px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>Terminer</button>
       </div>
     </div>);
   }
+
+  const colsPro="24px 80px 100px 90px 90px 90px";
+  const colsFree="24px 80px 100px 1fr 90px 90px";
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
-    <div style={{display:"flex",alignItems:"center",gap:8}}>
+    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
       <button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>
       <span style={{fontSize:14,fontWeight:700,color:t.text}}>Enregistrer un paiement</span>
       {client&&<span style={{fontSize:12,color:t.textMuted}}>— {client.entreprise}</span>}
+      {isBulk&&<span style={{fontSize:9.5,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"2px 7px",borderRadius:8}}>PRO · Multi-factures</span>}
     </div>
-    {/* Invoice selector */}
+
+    {/* ① Invoice selector */}
     <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
-      <div style={{fontSize:12,fontWeight:700,color:t.text,marginBottom:8}}>① Choisir la facture</div>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+        <span style={{fontSize:12,fontWeight:700,color:t.text}}>① {isBulk?"Choisir les factures":"Choisir la facture"}</span>
+        {isBulk&&selectedFacs.length>0&&<button onClick={autoApply} disabled={!totalMontant} style={{padding:"3px 10px",borderRadius:5,border:"none",background:totalMontant?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:totalMontant?"#fff":t.textDim,cursor:totalMontant?"pointer":"default",fontWeight:700,fontSize:10,fontFamily:"'Outfit',sans-serif"}}>⚡ Appliquer automatiquement</button>}
+      </div>
       {unpaid.length===0
         ?<div style={{textAlign:"center",padding:"16px 0",color:t.textMuted,fontSize:12}}>Aucune facture impayée pour ce client.</div>
         :<div style={{display:"flex",flexDirection:"column",gap:4}}>
-          <div style={{display:"grid",gridTemplateColumns:"24px 80px 100px 1fr 90px 90px",gap:6,padding:"2px 6px",borderBottom:`1px solid ${t.dividerMid}`}}>
-            {["","# Facture","Date","Total","Déjà payé","Solde"].map((h,i)=><span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i>=3?"right":"left"}}>{h}</span>)}
+          <div style={{display:"grid",gridTemplateColumns:isBulk?colsPro:colsFree,gap:6,padding:"2px 6px",borderBottom:`1px solid ${t.dividerMid}`}}>
+            {(isBulk?["","# Facture","Date","Total","Solde","À appliquer"]:["","# Facture","Date","Total","Déjà payé","Solde"]).map((h,i)=><span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i>=3?"right":"left"}}>{h}</span>)}
           </div>
-          {unpaid.map(f=>{const tot=computeSoumTotals(f.lignes).total;const dp=(f.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);const sol=tot-dp;return(
-            <div key={f.id} onClick={()=>setSelId(f.id)} style={{display:"grid",gridTemplateColumns:"24px 80px 100px 1fr 90px 90px",gap:6,padding:"5px 6px",borderRadius:6,background:selId===f.id?"rgba(249,115,22,0.08)":t.card,border:`1px solid ${selId===f.id?"#f97316":t.cardBorder}`,cursor:"pointer",alignItems:"center"}}>
-              <input type="radio" checked={selId===f.id} onChange={()=>setSelId(f.id)} style={{accentColor:"#f97316"}}/>
-              <span style={{fontSize:11,fontFamily:"'DM Mono',monospace",color:t.text,fontWeight:600}}>{f.numero}</span>
-              <span style={{fontSize:11,color:t.textSub}}>{f.date}</span>
-              <span style={{fontSize:11,color:t.textSub,textAlign:"right",fontFamily:"'DM Mono',monospace"}}>{fmt(tot)}</span>
-              <span style={{fontSize:11,color:"#22c55e",textAlign:"right",fontFamily:"'DM Mono',monospace"}}>{dp>0?fmt(dp):"—"}</span>
-              <span style={{fontSize:12,fontWeight:700,color:"#f97316",textAlign:"right",fontFamily:"'DM Mono',monospace"}}>{fmt(sol)}</span>
+          {unpaid.map(f=>{
+            const tot=computeSoumTotals(f.lignes).total;
+            const dp=(f.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);
+            const sol=tot-dp;
+            const isSel=isBulk?!!selMap[f.id]:selId===f.id;
+            return(
+              <div key={f.id} style={{display:"grid",gridTemplateColumns:isBulk?colsPro:colsFree,gap:6,padding:"5px 6px",borderRadius:6,background:isSel?"rgba(249,115,22,0.08)":t.card,border:`1px solid ${isSel?"#f97316":t.cardBorder}`,alignItems:"center"}}>
+                {isBulk
+                  ?<input type="checkbox" checked={!!selMap[f.id]} onChange={()=>toggleSel(f.id)} style={{accentColor:"#f97316",cursor:"pointer"}}/>
+                  :<input type="radio" checked={selId===f.id} onChange={()=>setSelId(f.id)} style={{accentColor:"#f97316",cursor:"pointer"}}/>}
+                <span onClick={()=>isBulk?toggleSel(f.id):setSelId(f.id)} style={{fontSize:11,fontFamily:"'DM Mono',monospace",color:t.text,fontWeight:600,cursor:"pointer"}}>{f.numero}</span>
+                <span onClick={()=>isBulk?toggleSel(f.id):setSelId(f.id)} style={{fontSize:11,color:t.textSub,cursor:"pointer"}}>{f.date}</span>
+                <span style={{fontSize:11,color:t.textSub,textAlign:"right",fontFamily:"'DM Mono',monospace"}}>{fmt(tot)}</span>
+                {isBulk
+                  ?<span style={{fontSize:12,fontWeight:700,color:"#f97316",textAlign:"right",fontFamily:"'DM Mono',monospace"}}>{fmt(sol)}</span>
+                  :<span style={{fontSize:11,color:"#22c55e",textAlign:"right",fontFamily:"'DM Mono',monospace"}}>{dp>0?fmt(dp):"—"}</span>}
+                {isBulk
+                  ?<input type="number" min="0" step="0.01" value={selMap[f.id]?(allocations[f.id]||""):""}
+                      onChange={e=>{if(!selMap[f.id])return;setAllocations(p=>({...p,[f.id]:e.target.value}));}}
+                      disabled={!selMap[f.id]}
+                      placeholder={selMap[f.id]?sol.toFixed(2):"—"}
+                      style={{...inputS,padding:"3px 5px",textAlign:"right",fontFamily:"'DM Mono',monospace",fontSize:11,width:"100%",boxSizing:"border-box",opacity:selMap[f.id]?1:0.3}}/>
+                  :<span style={{fontSize:12,fontWeight:700,color:"#f97316",textAlign:"right",fontFamily:"'DM Mono',monospace"}}>{fmt(sol)}</span>}
+              </div>
+            );
+          })}
+          {/* Bulk running totals */}
+          {isBulk&&selectedFacs.length>0&&totalMontant>0&&(
+            <div style={{display:"flex",gap:12,padding:"8px 6px",borderTop:`1px solid ${t.dividerMid}`,marginTop:2,flexWrap:"wrap"}}>
+              <span style={{fontSize:11,color:t.textSub}}>Montant reçu: <strong style={{fontFamily:"'DM Mono',monospace",color:t.text}}>{fmt(totalMontant)}</strong></span>
+              <span style={{fontSize:11,color:t.textSub}}>Appliqué: <strong style={{fontFamily:"'DM Mono',monospace",color:"#22c55e"}}>{fmt(totalAlloue)}</strong></span>
+              <span style={{fontSize:11,color:t.textSub}}>Restant: <strong style={{fontFamily:"'DM Mono',monospace",color:Math.abs(restant)<0.005?"#22c55e":restant<0?"#ef4444":"#f97316"}}>{fmt(restant)}</strong></span>
+              {excedent>0.005&&<span style={{fontSize:11,color:"#f59e0b",background:"rgba(245,158,11,0.1)",padding:"1px 7px",borderRadius:5}}>Excédent: {fmt(excedent)}</span>}
             </div>
-          );})}
+          )}
+          {/* Overflow choice for Pro */}
+          {isBulk&&excedent>0.005&&totalAlloue>0&&(
+            <div style={{display:"flex",gap:6,padding:"6px 6px 2px",alignItems:"center"}}>
+              <span style={{fontSize:11,color:"#f59e0b"}}>Excédent de {fmt(excedent)} :</span>
+              <button onClick={()=>setOverflowChoice('credit')} style={{padding:"3px 10px",borderRadius:5,border:`1px solid ${overflowChoice==="credit"?"#f97316":t.cardBorder}`,background:overflowChoice==="credit"?"rgba(249,115,22,0.1)":t.section,color:overflowChoice==="credit"?"#f97316":t.textSub,cursor:"pointer",fontSize:10,fontWeight:overflowChoice==="credit"?700:400}}>Garder en crédit</button>
+              <button onClick={()=>setOverflowChoice('remboursement')} style={{padding:"3px 10px",borderRadius:5,border:`1px solid ${overflowChoice==="remboursement"?"#f97316":t.cardBorder}`,background:overflowChoice==="remboursement"?"rgba(249,115,22,0.1)":t.section,color:overflowChoice==="remboursement"?"#f97316":t.textSub,cursor:"pointer",fontSize:10,fontWeight:overflowChoice==="remboursement"?700:400}}>Rembourser</button>
+            </div>
+          )}
         </div>}
     </div>
-    {/* Payment form */}
-    {selFac&&<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
+
+    {/* ② Payment form */}
+    {(isBulk?selectedFacs.length>0:!!selFac)&&<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
       <div style={{fontSize:12,fontWeight:700,color:t.text,marginBottom:8}}>② Détails du paiement</div>
       <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
         <div style={{flex:"1 1 120px"}}>
           <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Date du versement</div>
-          <input type="date" value={form.date} onChange={e=>upd({date:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
+          <input type="date" value={form.date} onChange={e=>updF({date:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
         </div>
         <div style={{flex:"1 1 130px"}}>
-          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Montant reçu <span style={{color:t.textDim,fontSize:9}}>(solde: {fmt(solde)})</span></div>
-          <input type="number" min="0.01" step="0.01" value={form.montant} onChange={e=>upd({montant:e.target.value})} placeholder={solde.toFixed(2)} style={{...inputS,width:"100%",boxSizing:"border-box",textAlign:"right",fontFamily:"'DM Mono',monospace"}}/>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Montant reçu{!isBulk&&<span style={{color:t.textDim,fontSize:9}}> (solde: {fmt(solde)})</span>}</div>
+          <input type="number" min="0.01" step="0.01" value={form.montant} onChange={e=>updF({montant:e.target.value})} placeholder={isBulk?totalSoldeSelected.toFixed(2):solde.toFixed(2)} style={{...inputS,width:"100%",boxSizing:"border-box",textAlign:"right",fontFamily:"'DM Mono',monospace"}}/>
         </div>
         <div style={{flex:"1 1 160px"}}>
           <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Mode de paiement</div>
-          <select value={form.mode} onChange={e=>upd({mode:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box"}}>
+          <select value={form.mode} onChange={e=>updF({mode:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box"}}>
             {MODES_PAIEMENT.map(m=><option key={m}>{m}</option>)}
           </select>
         </div>
         <div style={{flex:"1 1 140px"}}>
           <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Numéro de référence</div>
-          <input value={form.reference} onChange={e=>upd({reference:e.target.value})} placeholder="Optionnel" style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
+          <input value={form.reference} onChange={e=>updF({reference:e.target.value})} placeholder="Optionnel" style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
         </div>
         <div style={{flex:"2 1 200px"}}>
           <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Note</div>
-          <input value={form.note} onChange={e=>upd({note:e.target.value})} placeholder="Optionnel" style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+          <input value={form.note} onChange={e=>updF({note:e.target.value})} placeholder="Optionnel" style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
         </div>
       </div>
       {form.mode==="Comptant"&&<div style={{fontSize:10,color:"#f59e0b",background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.2)",borderRadius:5,padding:"4px 8px",marginBottom:8}}>💵 Paiement comptant — une entrée sera ajoutée automatiquement dans l'onglet Encaisse.</div>}
-      <button onClick={doSave} disabled={!form.montant||parseFloat(form.montant)<=0} style={{padding:"7px 20px",borderRadius:6,border:"none",background:form.montant&&parseFloat(form.montant)>0?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:form.montant&&parseFloat(form.montant)>0?"#fff":t.textDim,cursor:form.montant&&parseFloat(form.montant)>0?"pointer":"default",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>✓ Enregistrer le paiement</button>
+      {(()=>{
+        const canSave=isBulk?(totalAlloue>0&&totalMontant>0&&(excedent<=0.005||overflowChoice!=null)):(!!selFac&&parseFloat(form.montant)>0);
+        return<button onClick={doSave} disabled={!canSave} style={{padding:"7px 20px",borderRadius:6,border:"none",background:canSave?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:canSave?"#fff":t.textDim,cursor:canSave?"pointer":"default",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>✓ {isBulk&&selectedFacs.length>1?`Enregistrer ${selectedFacs.length} paiements`:"Enregistrer le paiement"}</button>;
+      })()}
     </div>}
   </div>);
 }
@@ -4102,7 +4232,7 @@ export default function App(){
 
           {activeTab==="monthly"&&<MonthlyPL computeDay={computeDay} suppliers={suppliers} liveData={liveData} platforms={platforms}/>}
           {activeTab==="encaisse"&&<EncaisseTab liveData={liveData} encaisseData={encaisseData} persistEncaisse={persistEncaisse} encaisseConfig={encaisseConfig} saveEncaisseConfig={saveEncaisseConfig}/>}
-          {activeTab==="facturation"&&<FacturationTab categories={facCategories} saveCategories={saveFacCategories} produits={facProduits} saveProduits={saveFacProduits} clients={facClients} saveClients={saveFacClients} soumissions={facSoumissions} saveSoumissions={saveFacSoumissions} commandes={facCommandes} saveCommandes={saveFacCommandes} factures={facFactures} saveFactures={saveFacFactures} creditNotes={facCreditNotes} saveCreditNotes={saveFacCreditNotes} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData} persistEncaisse={persistEncaisse}/>}
+          {activeTab==="facturation"&&<FacturationTab categories={facCategories} saveCategories={saveFacCategories} produits={facProduits} saveProduits={saveFacProduits} clients={facClients} saveClients={saveFacClients} soumissions={facSoumissions} saveSoumissions={saveFacSoumissions} commandes={facCommandes} saveCommandes={saveFacCommandes} factures={facFactures} saveFactures={saveFacFactures} creditNotes={facCreditNotes} saveCreditNotes={saveFacCreditNotes} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData} persistEncaisse={persistEncaisse} showUpgradePrompt={showUpgradePrompt}/>}
           {activeTab==="intelligence"&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR} platforms={platforms} encaisseData={encaisseData} encaisseConfig={encaisseConfig}/>}
 
           {/* SETTINGS TAB */}
