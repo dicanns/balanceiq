@@ -3269,6 +3269,126 @@ function WelcomeScreen({onSelect}){
   );
 }
 
+// ── AUDIT VIEWER ──
+const MODULE_LABELS={daily:"Quotidien",inventory:"Inventaire",caisse:"Caisse",employee:"Employé",encaisse:"Encaisse",pl:"P&L",livraisons:"Livraisons",invoice:"Facturation",payment:"Paiement",client:"Client",product:"Produit",config:"Config"};
+const ACTION_LABELS={create:"Création",update:"Modification",void:"Annulation",correct:"Correction",restore:"Restauration"};
+const ACTION_COLORS={create:"#22c55e",update:"#3b82f6",void:"#ef4444",correct:"#f59e0b",restore:"#8b5cf6"};
+
+function AuditViewer(){
+  const t=useT();
+  const [entries,setEntries]=useState([]);
+  const [loading,setLoading]=useState(false);
+  const [filters,setFilters]=useState({module:"",action:"",dateFrom:"",dateTo:""});
+  const [search,setSearch]=useState("");
+  const [page,setPage]=useState(0);
+  const PAGE=50;
+
+  const load=useCallback(async()=>{
+    setLoading(true);
+    try{
+      const q={};
+      if(filters.module)q.module=filters.module;
+      if(filters.action)q.action=filters.action;
+      if(filters.dateFrom)q.dateFrom=filters.dateFrom+" 00:00:00";
+      if(filters.dateTo)q.dateTo=filters.dateTo+" 23:59:59";
+      const rows=await window.api.audit.query(q);
+      setEntries(rows||[]);setPage(0);
+    }catch(e){setEntries([]);}
+    setLoading(false);
+  },[filters]);
+
+  useEffect(()=>{load();},[load]);
+
+  const filtered=useMemo(()=>{
+    if(!search.trim())return entries;
+    const s=search.toLowerCase();
+    return entries.filter(r=>[r.module,r.action,r.record_type,r.record_id,r.field_name,r.old_value,r.new_value,r.reason].some(v=>v&&String(v).toLowerCase().includes(s)));
+  },[entries,search]);
+
+  const paged=filtered.slice(page*PAGE,(page+1)*PAGE);
+  const totalPages=Math.ceil(filtered.length/PAGE);
+
+  const exportCSV=()=>{
+    const BOM="\uFEFF";
+    const hdr="Horodatage,Appareil,Module,Action,Type,ID,Champ,Ancienne valeur,Nouvelle valeur,Raison\n";
+    const rows=filtered.map(r=>[r.timestamp,r.device_id,r.module,r.action,r.record_type,r.record_id,r.field_name||"",r.old_value||"",r.new_value||"",r.reason||""].map(v=>`"${String(v||"").replace(/"/g,'""')}"`).join(",")).join("\n");
+    const blob=new Blob([BOM+hdr+rows],{type:"text/csv;charset=utf-8"});
+    const url=URL.createObjectURL(blob);const a=document.createElement("a");
+    a.href=url;a.download=`audit-${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+  };
+
+  const sel={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:11,padding:"4px 7px",outline:"none"};
+  const inp={...sel,width:120};
+
+  return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
+    {/* Filters */}
+    <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11,display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-end"}}>
+      <div style={{display:"flex",flexDirection:"column",gap:3}}>
+        <span style={{fontSize:9,color:t.textMuted,fontWeight:600,textTransform:"uppercase",letterSpacing:0.5}}>Module</span>
+        <select value={filters.module} onChange={e=>setFilters(p=>({...p,module:e.target.value}))} style={sel}>
+          <option value="">Tous</option>
+          {Object.entries(MODULE_LABELS).map(([k,v])=><option key={k} value={k}>{v}</option>)}
+        </select>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:3}}>
+        <span style={{fontSize:9,color:t.textMuted,fontWeight:600,textTransform:"uppercase",letterSpacing:0.5}}>Action</span>
+        <select value={filters.action} onChange={e=>setFilters(p=>({...p,action:e.target.value}))} style={sel}>
+          <option value="">Toutes</option>
+          {Object.entries(ACTION_LABELS).map(([k,v])=><option key={k} value={k}>{v}</option>)}
+        </select>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:3}}>
+        <span style={{fontSize:9,color:t.textMuted,fontWeight:600,textTransform:"uppercase",letterSpacing:0.5}}>Du</span>
+        <input type="date" value={filters.dateFrom} onChange={e=>setFilters(p=>({...p,dateFrom:e.target.value}))} style={inp}/>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:3}}>
+        <span style={{fontSize:9,color:t.textMuted,fontWeight:600,textTransform:"uppercase",letterSpacing:0.5}}>Au</span>
+        <input type="date" value={filters.dateTo} onChange={e=>setFilters(p=>({...p,dateTo:e.target.value}))} style={inp}/>
+      </div>
+      <input placeholder="Rechercher…" value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}} style={{...inp,width:140}}/>
+      <button onClick={load} style={{padding:"4px 12px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>Actualiser</button>
+      <button onClick={exportCSV} disabled={!filtered.length} style={{padding:"4px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>⬇ CSV</button>
+      <span style={{fontSize:10.5,color:t.textMuted,marginLeft:"auto"}}>{filtered.length} entr{filtered.length!==1?"ées":"ée"}</span>
+    </div>
+
+    {/* Table */}
+    <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,overflow:"hidden"}}>
+      {loading?<div style={{padding:20,textAlign:"center",color:t.textMuted,fontSize:12}}>Chargement…</div>
+      :!paged.length?<div style={{padding:20,textAlign:"center",color:t.textMuted,fontSize:12}}>Aucune entrée</div>
+      :<>
+        {/* Header */}
+        <div style={{display:"grid",gridTemplateColumns:"130px 80px 80px 90px 90px 100px 100px 1fr",gap:4,padding:"7px 10px",borderBottom:`1px solid ${t.dividerStrong}`,background:t.section}}>
+          {["Horodatage","Module","Action","Type","ID","Champ","Avant","Après / Raison"].map((h,i)=>(
+            <span key={i} style={{fontSize:9,color:t.textMuted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>{h}</span>
+          ))}
+        </div>
+        {paged.map(r=>(
+          <div key={r.id} style={{display:"grid",gridTemplateColumns:"130px 80px 80px 90px 90px 100px 100px 1fr",gap:4,padding:"5px 10px",borderBottom:`1px solid ${t.divider}`,alignItems:"start"}}>
+            <span style={{fontSize:9.5,color:t.textMuted,fontFamily:"'DM Mono',monospace"}}>{r.timestamp}</span>
+            <span style={{fontSize:10,color:t.textSub}}>{MODULE_LABELS[r.module]||r.module}</span>
+            <span style={{fontSize:10,fontWeight:700,color:ACTION_COLORS[r.action]||t.text,background:`${ACTION_COLORS[r.action]||"#888"}18`,padding:"1px 5px",borderRadius:4}}>{ACTION_LABELS[r.action]||r.action}</span>
+            <span style={{fontSize:9.5,color:t.textSub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.record_type}</span>
+            <span style={{fontSize:9,color:t.textDim,fontFamily:"'DM Mono',monospace",overflow:"hidden",textOverflow:"ellipsis"}}>{r.record_id}</span>
+            <span style={{fontSize:9.5,color:t.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.field_name||"—"}</span>
+            <span style={{fontSize:9.5,color:t.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textDecoration:r.old_value?"line-through":"none"}}>{r.old_value||"—"}</span>
+            <span style={{fontSize:9.5,color:r.action==="correct"?"#f59e0b":r.action==="void"?"#ef4444":r.action==="create"?"#22c55e":t.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={r.reason?`Raison: ${r.reason}`:undefined}>
+              {r.action==="void"?<span style={{color:"#ef4444"}}>{r.reason||"—"}</span>
+               :r.reason?<><span style={{opacity:0.7}}>{r.new_value||"—"}</span><span style={{color:"#f59e0b",marginLeft:4}}>· {r.reason}</span></>
+               :r.new_value||"—"}
+            </span>
+          </div>
+        ))}
+        {totalPages>1&&<div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:8,padding:"6px 0",borderTop:`1px solid ${t.divider}`}}>
+          <button onClick={()=>setPage(p=>Math.max(0,p-1))} disabled={page===0} style={{padding:"3px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:page===0?"default":"pointer",fontSize:11}}>←</button>
+          <span style={{fontSize:11,color:t.textSub}}>Page {page+1} / {totalPages}</span>
+          <button onClick={()=>setPage(p=>Math.min(totalPages-1,p+1))} disabled={page===totalPages-1} style={{padding:"3px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:page===totalPages-1?"default":"pointer",fontSize:11}}>→</button>
+        </div>}
+      </>}
+    </div>
+  </div>);
+}
+
 // ── MAIN ──
 export default function App(){
   const [demoData]=useState(()=>genDemo());
@@ -4070,6 +4190,12 @@ export default function App(){
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
               <span style={{fontSize:11.5,color:t.textSub}}>Jours: <strong style={{color:"#f97316"}}>{Object.keys(liveData).length}</strong> · Caissiers: <strong style={{color:"#f97316"}}>{roster.length}</strong> · Employés: <strong style={{color:"#f97316"}}>{empRoster.length}</strong> · Fournisseurs: <strong style={{color:"#f97316"}}>{suppliers.length}</strong> · Plateformes: <strong style={{color:"#f97316"}}>{platforms.length}</strong></span>
             </div>
+            {/* Audit log viewer */}
+            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:10,display:"block",color:t.text}}>📋 Journal d'audit</span>
+              <AuditViewer/>
+            </div>
+
             <div style={{textAlign:"center",padding:"4px 0 2px"}}>
               <span style={{fontSize:10.5,color:t.textSub,fontFamily:"'DM Mono',monospace"}}>BalanceIQ v{appVersion}</span>
             </div>
