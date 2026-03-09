@@ -4132,6 +4132,8 @@ export default function App(){
   const [apiConfig,setApiConfig]=useState({auphanKey:"",weatherKey:"",gasKey:""});
   const [restoreMsg,setRestoreMsg]=useState('');
   const [backupInfo,setBackupInfo]=useState(null);
+  const [configSubTab,setConfigSubTab]=useState("entreprise");
+  const [resendTestStatus,setResendTestStatus]=useState(null);
   const [updateAvailable,setUpdateAvailable]=useState(false);
   const [updating,setUpdating]=useState(false);
   const [themeName,setThemeName]=useState('dark');
@@ -4715,9 +4717,22 @@ export default function App(){
           {activeTab==="intelligence"&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR} platforms={platforms} encaisseData={encaisseData} encaisseConfig={encaisseConfig}/>}
 
           {/* SETTINGS TAB */}
-          {activeTab==="settings"&&(<div style={{display:"flex",flexDirection:"column",gap:10,maxWidth:560}}>
+          {activeTab==="settings"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {/* Config sub-tab bar */}
+            {(()=>{
+              const CTABS=[{id:"entreprise",label:"🏢 Entreprise"},{id:"personnel",label:"👥 Personnel"},{id:"fournisseurs",label:"📦 Fournisseurs"},{id:"finances",label:"💵 Finances"},{id:"integrations",label:"🔌 Intégrations"},{id:"donnees",label:"💾 Données"},{id:"apparence",label:"🎨 Apparence"},{id:"application",label:"📱 Application"}];
+              return(<div style={{display:"flex",gap:2,borderBottom:`1px solid ${t.dividerMid}`,overflowX:"auto",paddingBottom:1,marginBottom:4,flexShrink:0}}>
+                {CTABS.map(({id,label})=>(
+                  <button key={id} onClick={()=>setConfigSubTab(id)} style={{background:"none",border:"none",color:configSubTab===id?"#f97316":t.textMuted,fontSize:11,fontWeight:configSubTab===id?700:500,padding:"5px 11px",cursor:"pointer",borderBottom:configSubTab===id?"2px solid #f97316":"2px solid transparent",whiteSpace:"nowrap",flexShrink:0,fontFamily:"'Outfit',sans-serif"}}>
+                    {label}
+                  </button>
+                ))}
+              </div>);
+            })()}
+            <div style={{maxWidth:600}}>
 
-            {/* Company Info */}
+            {/* 🏢 ENTREPRISE */}
+            {configSubTab==="entreprise"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
               <span style={{fontSize:13,fontWeight:700,marginBottom:10,display:"block",color:t.text}}>🏢 Informations de l'entreprise</span>
               <div style={{display:"flex",flexDirection:"column",gap:6}}>
@@ -4782,21 +4797,13 @@ export default function App(){
             {/* Document numbering */}
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
               <span style={{fontSize:13,fontWeight:700,marginBottom:10,display:"block",color:t.text}}>🔢 Numérotation des documents</span>
-              {/* Prefix */}
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
                 <span style={{fontSize:11,color:t.textSub,minWidth:160}}>Préfixe (optionnel)</span>
                 <input value={docNums.prefix||""} onChange={e=>saveDocNums({...docNums,prefix:e.target.value})} placeholder='ex: BIQ-' style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.inputText,fontSize:12,padding:"3.5px 6px",outline:"none",width:100,fontFamily:"'DM Mono',monospace"}}/>
                 <span style={{fontSize:10,color:t.textMuted}}>Apparaîtra avant chaque numéro de document</span>
               </div>
-              {/* Doc types */}
               <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                {[
-                  {key:"soumission",label:"Soumission",code:"S"},
-                  {key:"commande",label:"Commande",code:"C"},
-                  {key:"facture",label:"Facture",code:"F"},
-                  {key:"creditNote",label:"Note de crédit",code:"NC"},
-                  {key:"encaissement",label:"Encaissement",code:"E"},
-                ].map(({key,label,code})=>(
+                {[{key:"soumission",label:"Soumission",code:"S"},{key:"commande",label:"Commande",code:"C"},{key:"facture",label:"Facture",code:"F"},{key:"creditNote",label:"Note de crédit",code:"NC"},{key:"encaissement",label:"Encaissement",code:"E"}].map(({key,label,code})=>(
                   <div key={key} style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                     <span style={{fontSize:11,color:t.textSub,minWidth:160}}>{label}</span>
                     <div style={{display:"flex",alignItems:"center",gap:4}}>
@@ -4809,8 +4816,193 @@ export default function App(){
               </div>
               <div style={{fontSize:10,color:t.textMuted,marginTop:10}}>Les numéros s'incrémentent automatiquement à la création de chaque document.</div>
             </div>
+            </div>)}
 
-            {/* App Mode */}
+            {/* 👥 PERSONNEL */}
+            {configSubTab==="personnel"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Caissiers</span>
+              {roster.map(r=>(<div key={r.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:5,marginBottom:3}}><span style={{fontSize:12,color:t.text}}>{r.name}</span><button onClick={()=>{const n=roster.filter(x=>x.id!==r.id);setRoster(n);saveRoster(n)}} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:4,color:"#ef4444",fontSize:10,padding:"2px 6px",cursor:"pointer"}}>✕</button></div>))}
+              <div style={{display:"flex",gap:6,marginTop:4}}>
+                <input value={newCN} onChange={e=>setNewCN(e.target.value)} placeholder="Nom..." onKeyDown={e=>e.key==="Enter"&&addRC()} style={{...inputStyle,flex:1}}/>
+                <button onClick={addRC} style={{padding:"5px 14px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>+</button>
+              </div>
+            </div>
+            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Employés</span>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:6}}>Taux horaire auto-rempli dans le rapport quotidien.</div>
+              {empRoster.map(r=>(<div key={r.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:5,marginBottom:3}}>
+                <span style={{fontSize:12,color:t.text}}>{r.name} <span style={{fontSize:11,color:t.textSub,fontFamily:"'DM Mono',monospace"}}>{r.wage?`${r.wage.toFixed(2)}$/h`:""}</span></span>
+                <button onClick={()=>{const n=empRoster.filter(x=>x.id!==r.id);setEmpRoster(n);saveEmpRoster(n)}} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:4,color:"#ef4444",fontSize:10,padding:"2px 6px",cursor:"pointer"}}>✕</button>
+              </div>))}
+              <div style={{display:"flex",gap:4,marginTop:4}}>
+                <input value={newEN} onChange={e=>setNewEN(e.target.value)} placeholder="Nom..." style={{...inputStyle,flex:2}}/>
+                <input value={newEW} onChange={e=>setNewEW(e.target.value)} placeholder="$/h" type="number" style={{...inputStyle,flex:1,fontFamily:"'DM Mono',monospace",textAlign:"right"}}/>
+                <button onClick={()=>{if(!newEN.trim())return;const nr=[...empRoster,{id:Date.now().toString(),name:newEN.trim(),wage:newEW?parseFloat(newEW):null}];setEmpRoster(nr);saveEmpRoster(nr);setNewEN("");setNewEW("")}} style={{padding:"5px 14px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>+</button>
+              </div>
+            </div>
+            </div>)}
+
+            {/* 📦 FOURNISSEURS & PRODUITS */}
+            {configSubTab==="fournisseurs"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Fournisseurs (P&L)</span>
+              {suppliers.map(s=>(<div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:5,marginBottom:3}}>
+                {editingSupId===s.id
+                  ?(<input value={editingSupName} onChange={e=>setEditingSupName(e.target.value)} onBlur={()=>{if(editingSupName.trim()){const ns=suppliers.map(x=>x.id===s.id?{...x,name:editingSupName.trim()}:x);setSuppliers(ns);saveSup(ns)}setEditingSupId(null)}} onKeyDown={e=>{if(e.key==="Enter")e.target.blur();if(e.key==="Escape")setEditingSupId(null)}} autoFocus style={{flex:1,...inputStyle,border:"1px solid rgba(249,115,22,0.3)",marginRight:6}}/>)
+                  :(<span style={{fontSize:12,cursor:"pointer",color:t.text}} onClick={()=>{setEditingSupId(s.id);setEditingSupName(s.name)}}>{s.name} <span style={{fontSize:9,color:t.textDim}}>✎</span></span>)}
+                <button onClick={()=>{const ns=suppliers.filter(x=>x.id!==s.id);setSuppliers(ns);saveSup(ns)}} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:4,color:"#ef4444",fontSize:10,padding:"2px 6px",cursor:"pointer"}}>✕</button>
+              </div>))}
+              <div style={{display:"flex",gap:6,marginTop:4}}>
+                <input placeholder="Nouveau fournisseur..." onKeyDown={e=>{if(e.key==="Enter"&&e.target.value.trim()){const ns=[...suppliers,{id:Date.now().toString(),name:e.target.value.trim()}];setSuppliers(ns);saveSup(ns);e.target.value=""}}} style={{...inputStyle,flex:1}}/>
+              </div>
+            </div>
+            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Plateformes de livraison</span>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:6}}>Commissions suivies dans le rapport quotidien, P&L et Intelligence.</div>
+              {platforms.map(p=>(<div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:5,marginBottom:3}}>
+                <span style={{fontSize:12,color:t.text}}>{p.emoji} {p.name}</span>
+                <button onClick={()=>{const np=platforms.filter(x=>x.id!==p.id);setPlatforms(np);savePlatforms(np)}} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:4,color:"#ef4444",fontSize:10,padding:"2px 6px",cursor:"pointer"}}>✕</button>
+              </div>))}
+              <div style={{display:"flex",gap:6,marginTop:4}}>
+                <input value={newPlatformName} onChange={e=>setNewPlatformName(e.target.value)} placeholder="Nom de la plateforme..." onKeyDown={e=>{if(e.key==="Enter"&&newPlatformName.trim()){const np=[...platforms,{id:Date.now().toString(),name:newPlatformName.trim(),emoji:"📦"}];setPlatforms(np);savePlatforms(np);setNewPlatformName("")}}} style={{...inputStyle,flex:1}}/>
+                <button onClick={()=>{if(!newPlatformName.trim())return;const np=[...platforms,{id:Date.now().toString(),name:newPlatformName.trim(),emoji:"📦"}];setPlatforms(np);savePlatforms(np);setNewPlatformName("")}} style={{padding:"5px 14px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>+</button>
+              </div>
+            </div>
+            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Catégories de facturation</span>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>Gérez les catégories utilisées dans vos factures et soumissions.</div>
+              <ProduitsSection produits={facProduits} saveProduits={saveFacProduits} categories={facCategories} configOnly/>
+            </div>
+            </div>)}
+
+            {/* 💵 FINANCES */}
+            {configSubTab==="finances"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Catégories de sorties — Encaisse</span>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>Catégories disponibles lors de l'enregistrement de sorties de caisse.</div>
+              {encaisseConfig.sortieCategories.map(c=>(<div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 6px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:4,marginBottom:3}}>
+                {editCatId===c.id
+                  ?<input autoFocus value={editCatName} onChange={e=>setEditCatName(e.target.value)} style={{flex:1,background:t.inputBg,border:`1px solid rgba(249,115,22,0.3)`,borderRadius:4,color:t.inputText,fontSize:11,padding:"2px 6px",outline:"none"}} onBlur={()=>{if(editCatName.trim()){saveEncaisseConfig({...encaisseConfig,sortieCategories:encaisseConfig.sortieCategories.map(x=>x.id===c.id?{...x,name:editCatName.trim()}:x)})}setEditCatId(null)}} onKeyDown={e=>{if(e.key==="Enter")e.target.blur()}}/>
+                  :<span style={{fontSize:11,color:t.text,cursor:"pointer",flex:1}} onClick={()=>{setEditCatId(c.id);setEditCatName(c.name)}}>{c.name} <span style={{fontSize:9,color:t.textDim}}>✎</span></span>}
+                <button onClick={()=>saveEncaisseConfig({...encaisseConfig,sortieCategories:encaisseConfig.sortieCategories.filter(x=>x.id!==c.id)})} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:3,color:"#ef4444",fontSize:9,padding:"1px 5px",cursor:"pointer"}}>✕</button>
+              </div>))}
+              <input value={newCatName} onChange={e=>setNewCatName(e.target.value)} placeholder="Nouvelle catégorie..." style={{flex:1,background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.inputText,fontSize:11,padding:"3px 6px",outline:"none",width:"100%",boxSizing:"border-box",marginTop:4}} onKeyDown={e=>{if(e.key==="Enter"&&newCatName.trim()){saveEncaisseConfig({...encaisseConfig,sortieCategories:[...encaisseConfig.sortieCategories,{id:Date.now().toString(),name:newCatName.trim()}]});setNewCatName("")}}}/>
+            </div>
+            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                <span style={{fontSize:13,fontWeight:700,color:t.text}}>Modèle de facture</span>
+                {canUse("customTemplates")?<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"1px 6px",borderRadius:6}}>PRO</span>:<span style={{fontSize:9,fontWeight:700,color:"#6b7280",background:"rgba(255,255,255,0.06)",padding:"1px 6px",borderRadius:6}}>Pro</span>}
+              </div>
+              {canUse("customTemplates")
+                ?<div style={{fontSize:11,color:t.textMuted}}>Personnalisation des modèles — disponible dans Step 9.</div>
+                :<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                  <span style={{fontSize:11,color:t.textSub}}>Personnalisez les couleurs, logo et pied de page de vos documents.</span>
+                  <button onClick={()=>showUpgradePrompt("customTemplates")} style={{padding:"4px 12px",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:10,whiteSpace:"nowrap"}}>Passer à Pro</button>
+                </div>}
+            </div>
+            </div>)}
+
+            {/* 🔌 INTÉGRATIONS */}
+            {configSubTab==="integrations"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:4,display:"block",color:t.text}}>Coordonnées météo</span>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>Recherchez votre ville pour auto-remplir la météo sur le rapport quotidien.</div>
+              <GeoSearch apiConfig={apiConfig} saveApiCfg={nc=>{setApiConfig(nc);saveApiCfg(nc);}}/>
+            </div>
+            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Intégrations API</span>
+              {[["auphanKey","Auphan POS","Clé API ou URL...","À venir — contacter Auphan pour documentation"],["gasKey","Prix essence","URL...","Auto-rempli du dernier prix connu."]].map(([key,label,ph,note])=>(
+                <div key={key} style={{marginBottom:8}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}><span style={{fontSize:12,fontWeight:600,color:t.text}}>{label}</span><Pill ok={apiConfig[key]?.length>0} label={apiConfig[key]?.length>0?"Configuré":"Non configuré"}/></div>
+                  <input value={apiConfig[key]||""} onChange={e=>{const nc={...apiConfig,[key]:e.target.value};setApiConfig(nc);saveApiCfg(nc)}} placeholder={ph} style={{...inputStyle,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
+                  <div style={{fontSize:10,color:t.textDim,marginTop:2}}>{note}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                <span style={{fontSize:13,fontWeight:700,color:t.text}}>Service courriel (Resend)</span>
+                {canUse("directEmailSend")?<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"1px 6px",borderRadius:6}}>PRO</span>:<span style={{fontSize:9,color:"#6b7280"}}>Pro</span>}
+              </div>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>Envoi direct de factures et états de compte sans ouvrir votre client courriel.</div>
+              <div style={{marginBottom:8}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
+                  <span style={{fontSize:12,fontWeight:600,color:t.text}}>Clé API Resend</span>
+                  <Pill ok={apiConfig.resendKey?.length>0} label={apiConfig.resendKey?.length>0?"Configuré":"Non configuré"}/>
+                </div>
+                <input value={apiConfig.resendKey||""} onChange={e=>{const nc={...apiConfig,resendKey:e.target.value};setApiConfig(nc);saveApiCfg(nc);}} placeholder="re_xxxxxxxxxxxxxxxxxxxxxxxx" style={{...inputStyle,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}} type="password"/>
+              </div>
+              <div style={{marginBottom:10}}>
+                <div style={{fontSize:12,fontWeight:600,color:t.text,marginBottom:2}}>Courriel d'envoi</div>
+                <input value={apiConfig.resendFrom||""} onChange={e=>{const nc={...apiConfig,resendFrom:e.target.value};setApiConfig(nc);saveApiCfg(nc);}} placeholder="noreply@balanceiq.ca" style={{...inputStyle,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
+                <div style={{fontSize:10,color:t.textDim,marginTop:2}}>Doit correspondre à un domaine vérifié dans Resend.</div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <button onClick={async()=>{
+                  if(!apiConfig.resendKey){setResendTestStatus({err:"Clé API manquante."});return;}
+                  setResendTestStatus("testing");
+                  const r=await window.api.email.sendResend({apiKey:apiConfig.resendKey,from:apiConfig.resendFrom||"noreply@balanceiq.ca",to:apiConfig.resendFrom||"test@balanceiq.ca",subject:"Test BalanceIQ",html:"<p>Connexion Resend réussie.</p>",attachments:[]});
+                  if(r?.success)setResendTestStatus({ok:true});
+                  else setResendTestStatus({err:r?.error||"Erreur inconnue"});
+                }} disabled={!apiConfig.resendKey||resendTestStatus==="testing"} style={{padding:"5px 14px",borderRadius:5,border:`1px solid ${apiConfig.resendKey?"rgba(249,115,22,0.3)":t.cardBorder}`,background:apiConfig.resendKey?"rgba(249,115,22,0.08)":t.section,color:apiConfig.resendKey?"#f97316":t.textDim,cursor:apiConfig.resendKey?"pointer":"default",fontWeight:600,fontSize:11}}>
+                  {resendTestStatus==="testing"?"Test en cours…":"Tester la connexion"}
+                </button>
+                {resendTestStatus&&resendTestStatus!=="testing"&&(resendTestStatus.ok
+                  ?<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>✓ Connexion réussie</span>
+                  :<span style={{fontSize:11,color:"#ef4444",fontWeight:600}}>✗ {resendTestStatus.err}</span>)}
+              </div>
+            </div>
+            </div>)}
+
+            {/* 💾 DONNÉES */}
+            {configSubTab==="donnees"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+              <span style={{fontSize:11.5,color:t.textSub}}>Jours: <strong style={{color:"#f97316"}}>{Object.keys(liveData).length}</strong> · Caissiers: <strong style={{color:"#f97316"}}>{roster.length}</strong> · Employés: <strong style={{color:"#f97316"}}>{empRoster.length}</strong> · Fournisseurs: <strong style={{color:"#f97316"}}>{suppliers.length}</strong> · Plateformes: <strong style={{color:"#f97316"}}>{platforms.length}</strong></span>
+            </div>
+            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Export</span>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                <button onClick={()=>{const h="Date,Vente Nette,Total Brut,TPS,TVQ\n";let r="";Object.keys(liveData).sort().forEach(k=>{const c=computeDay(k);if(c.venteNet>0)r+=`${k},${c.venteNet},${c.total},${c.tps},${c.tvq}\n`});const b=new Blob([h+r],{type:"text/csv"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="balanceiq.csv";document.body.appendChild(a);a.click();document.body.removeChild(a)}} style={{padding:"7px 14px",borderRadius:6,border:"1px solid rgba(34,197,94,0.2)",background:"rgba(34,197,94,0.08)",color:"#16a34a",cursor:"pointer",fontWeight:600,fontSize:12}}>CSV</button>
+                <button onClick={()=>{let h=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>BalanceIQ</title><style>body{font:12px Arial;margin:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:3px 6px;text-align:right}th{background:#f5f5f5}td:first-child{text-align:left}h1{color:#ea580c}</style></head><body><h1>Rapport BalanceIQ</h1><table><tr><th>Date</th><th>Vente Nette</th><th>Total</th></tr>`;Object.keys(liveData).sort().forEach(k=>{const c=computeDay(k);if(c.venteNet>0)h+=`<tr><td>${k}</td><td>${c.venteNet.toFixed(2)}</td><td>${c.total.toFixed(2)}</td></tr>`});h+=`</table></body></html>`;openPDF(h)}} style={{padding:"7px 14px",borderRadius:6,border:`1px solid rgba(${t.posRgb},0.2)`,background:`rgba(${t.posRgb},0.08)`,color:t.posColor,cursor:"pointer",fontWeight:600,fontSize:12}}>PDF</button>
+                <button onClick={()=>{const b=new Blob([JSON.stringify({liveData,roster,empRoster,suppliers,apiConfig},null,2)],{type:"application/json"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="balanceiq-backup.json";document.body.appendChild(a);a.click();document.body.removeChild(a)}} style={{padding:"7px 14px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12}}>Backup JSON</button>
+                <button onClick={async()=>{setRestoreMsg('');const r=await window.api.backup.restore();if(r?.error)setRestoreMsg(r.error);}} style={{padding:"7px 14px",borderRadius:6,border:"1px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontWeight:600,fontSize:12}}>Restaurer depuis backup</button>
+              </div>
+              {restoreMsg&&<div style={{marginTop:6,fontSize:12,color:"#ef4444"}}>{restoreMsg}</div>}
+            </div>
+            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Sauvegardes automatiques</span>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>1 fichier par jour · 30 jours conservés · dossier Documents</div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}>
+                <span style={{fontSize:11.5,color:t.textSub}}>{backupInfo==null?"Chargement...":backupInfo.lastBackup?`✓ Dernière: ${backupInfo.lastBackup} · ${backupInfo.count} fichier${backupInfo.count!==1?"s":""}`:"Aucune sauvegarde encore"}</span>
+                <button onClick={()=>window.api.backup.openDir()} style={{padding:"5px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>📁 Ouvrir le dossier</button>
+              </div>
+              {backupInfo?.dir&&<div style={{marginTop:5,fontSize:9.5,color:t.textMuted,fontFamily:"'DM Mono',monospace",wordBreak:"break-all"}}>{backupInfo.dir}</div>}
+            </div>
+            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:10,display:"block",color:t.text}}>📋 Journal d'audit</span>
+              <AuditSection/>
+            </div>
+            </div>)}
+
+            {/* 🎨 APPARENCE */}
+            {configSubTab==="apparence"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:8,display:"block",color:t.text}}>Thème</span>
+              <div style={{display:"flex",gap:8}}>
+                {[['dark','☾ Foncé'],['light','☀ Clair — Chaleureux']].map(([name,label])=>(
+                  <button key={name} onClick={()=>setThemeTo(name)} style={{flex:1,padding:"8px 12px",borderRadius:7,border:`2px solid ${themeName===name?"#f97316":t.cardBorder}`,background:themeName===name?"rgba(249,115,22,0.08)":t.section,color:themeName===name?"#f97316":t.textSub,cursor:"pointer",fontWeight:themeName===name?700:500,fontSize:12,transition:"all 0.15s"}}>{label}</button>
+                ))}
+              </div>
+            </div>
+            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Langue</span>
+              <div style={{fontSize:11,color:t.textMuted}}>Français uniquement pour l'instant. Version bilingue FR/EN à venir.</div>
+            </div>
+            </div>)}
+
+            {/* 📱 APPLICATION */}
+            {configSubTab==="application"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
               <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Mode de l'application</span>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
@@ -4825,173 +5017,19 @@ export default function App(){
               </div>
               <div style={{fontSize:10.5,color:t.textMuted,marginTop:8}}>Mode Franchiseur / Siège social disponible prochainement.</div>
             </div>
-
-            {/* Theme */}
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:8,display:"block",color:t.text}}>Apparence</span>
-              <div style={{display:"flex",gap:8}}>
-                {[['dark','☾ Foncé'],['light','☀ Clair — Chaleureux']].map(([name,label])=>(
-                  <button key={name} onClick={()=>setThemeTo(name)} style={{flex:1,padding:"8px 12px",borderRadius:7,border:`2px solid ${themeName===name?"#f97316":t.cardBorder}`,background:themeName===name?"rgba(249,115,22,0.08)":t.section,color:themeName===name?"#f97316":t.textSub,cursor:"pointer",fontWeight:themeName===name?700:500,fontSize:12,transition:"all 0.15s"}}>
-                    {label}
-                  </button>
-                ))}
+              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Plan actif</span>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:11,color:t.textSub}}>Plan actuel :</span>
+                <span style={{fontSize:12,fontWeight:700,color:"#f97316",fontFamily:"'DM Mono',monospace"}}>{CURRENT_PLAN.toUpperCase()}</span>
               </div>
+              <div style={{fontSize:10,color:t.textDim,marginTop:4}}>Pour changer de plan, communiquez avec BalanceIQ.</div>
             </div>
-
-            {/* Cashier roster */}
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Caissiers</span>
-              {roster.map(r=>(<div key={r.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:5,marginBottom:3}}><span style={{fontSize:12,color:t.text}}>{r.name}</span><button onClick={()=>{const n=roster.filter(x=>x.id!==r.id);setRoster(n);saveRoster(n)}} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:4,color:"#ef4444",fontSize:10,padding:"2px 6px",cursor:"pointer"}}>✕</button></div>))}
-              <div style={{display:"flex",gap:6,marginTop:4}}>
-                <input value={newCN} onChange={e=>setNewCN(e.target.value)} placeholder="Nom..." onKeyDown={e=>e.key==="Enter"&&addRC()} style={{...inputStyle,flex:1}}/>
-                <button onClick={addRC} style={{padding:"5px 14px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>+</button>
-              </div>
-            </div>
-
-            {/* Employee roster */}
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Employés</span>
-              <div style={{fontSize:11,color:t.textMuted,marginBottom:6}}>Ajoutez vos employés avec leur taux horaire. Le salaire sera auto-rempli dans le rapport quotidien.</div>
-              {empRoster.map(r=>(<div key={r.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:5,marginBottom:3}}>
-                <span style={{fontSize:12,color:t.text}}>{r.name} <span style={{fontSize:11,color:t.textSub,fontFamily:"'DM Mono',monospace"}}>{r.wage?`${r.wage.toFixed(2)}$/h`:""}</span></span>
-                <button onClick={()=>{const n=empRoster.filter(x=>x.id!==r.id);setEmpRoster(n);saveEmpRoster(n)}} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:4,color:"#ef4444",fontSize:10,padding:"2px 6px",cursor:"pointer"}}>✕</button>
-              </div>))}
-              <div style={{display:"flex",gap:4,marginTop:4}}>
-                <input value={newEN} onChange={e=>setNewEN(e.target.value)} placeholder="Nom..." style={{...inputStyle,flex:2}}/>
-                <input value={newEW} onChange={e=>setNewEW(e.target.value)} placeholder="$/h" type="number" style={{...inputStyle,flex:1,fontFamily:"'DM Mono',monospace",textAlign:"right"}}/>
-                <button onClick={()=>{if(!newEN.trim())return;const nr=[...empRoster,{id:Date.now().toString(),name:newEN.trim(),wage:newEW?parseFloat(newEW):null}];setEmpRoster(nr);saveEmpRoster(nr);setNewEN("");setNewEW("")}} style={{padding:"5px 14px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>+</button>
-              </div>
-            </div>
-
-            {/* Suppliers */}
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Fournisseurs (P&L)</span>
-              {suppliers.map(s=>(<div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:5,marginBottom:3}}>
-                {editingSupId===s.id
-                  ?(<input value={editingSupName} onChange={e=>setEditingSupName(e.target.value)}
-                      onBlur={()=>{if(editingSupName.trim()){const ns=suppliers.map(x=>x.id===s.id?{...x,name:editingSupName.trim()}:x);setSuppliers(ns);saveSup(ns)}setEditingSupId(null)}}
-                      onKeyDown={e=>{if(e.key==="Enter")e.target.blur();if(e.key==="Escape")setEditingSupId(null)}}
-                      autoFocus style={{flex:1,...inputStyle,border:"1px solid rgba(249,115,22,0.3)",marginRight:6}}/>)
-                  :(<span style={{fontSize:12,cursor:"pointer",color:t.text}} onClick={()=>{setEditingSupId(s.id);setEditingSupName(s.name)}}>{s.name} <span style={{fontSize:9,color:t.textDim}}>✎</span></span>)}
-                <button onClick={()=>{const ns=suppliers.filter(x=>x.id!==s.id);setSuppliers(ns);saveSup(ns)}} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:4,color:"#ef4444",fontSize:10,padding:"2px 6px",cursor:"pointer"}}>✕</button>
-              </div>))}
-              <div style={{display:"flex",gap:6,marginTop:4}}>
-                <input placeholder="Nouveau fournisseur..." onKeyDown={e=>{if(e.key==="Enter"&&e.target.value.trim()){const ns=[...suppliers,{id:Date.now().toString(),name:e.target.value.trim()}];setSuppliers(ns);saveSup(ns);e.target.value=""}}} style={{...inputStyle,flex:1}}/>
-              </div>
-            </div>
-
-            {/* Plateformes de livraison */}
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Plateformes de livraison</span>
-              <div style={{fontSize:11,color:t.textMuted,marginBottom:6}}>Configurez vos plateformes. Les commissions sont suivies dans le rapport quotidien, le P&L et l'Intelligence.</div>
-              {platforms.map(p=>(<div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:5,marginBottom:3}}>
-                <span style={{fontSize:12,color:t.text}}>{p.emoji} {p.name}</span>
-                <button onClick={()=>{const np=platforms.filter(x=>x.id!==p.id);setPlatforms(np);savePlatforms(np)}} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:4,color:"#ef4444",fontSize:10,padding:"2px 6px",cursor:"pointer"}}>✕</button>
-              </div>))}
-              <div style={{display:"flex",gap:6,marginTop:4}}>
-                <input value={newPlatformName} onChange={e=>setNewPlatformName(e.target.value)} placeholder="Nom de la plateforme..." onKeyDown={e=>{if(e.key==="Enter"&&newPlatformName.trim()){const np=[...platforms,{id:Date.now().toString(),name:newPlatformName.trim(),emoji:"📦"}];setPlatforms(np);savePlatforms(np);setNewPlatformName("")}}} style={{...inputStyle,flex:1}}/>
-                <button onClick={()=>{if(!newPlatformName.trim())return;const np=[...platforms,{id:Date.now().toString(),name:newPlatformName.trim(),emoji:"📦"}];setPlatforms(np);savePlatforms(np);setNewPlatformName("")}} style={{padding:"5px 14px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>+</button>
-              </div>
-            </div>
-
-            {/* Coordonnées météo */}
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:4,display:"block",color:t.text}}>Coordonnées météo</span>
-              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>Recherchez votre ville pour auto-remplir la météo sur le rapport quotidien. Défaut: Montréal.</div>
-              <GeoSearch apiConfig={apiConfig} saveApiCfg={nc=>{setApiConfig(nc);saveApiCfg(nc);}}/>
-            </div>
-
-            {/* API Config */}
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Intégrations API</span>
-              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>Entrer vos clés API ici. Les données seront importées automatiquement une fois configurées.</div>
-              {[["auphanKey","Auphan POS","Clé API ou URL...","À venir — contacter Auphan pour documentation"],
-                ["gasKey","Prix essence (Régie de l'énergie)","URL de scraping...","Auto-rempli du dernier prix connu."]].map(([key,label,ph,note])=>(
-                <div key={key} style={{marginBottom:8}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}><span style={{fontSize:12,fontWeight:600,color:t.text}}>{label}</span><Pill ok={apiConfig[key]?.length>0} label={apiConfig[key]?.length>0?"Configuré":"Non configuré"}/></div>
-                  <input value={apiConfig[key]||""} onChange={e=>{const nc={...apiConfig,[key]:e.target.value};setApiConfig(nc);saveApiCfg(nc)}} placeholder={ph} style={{...inputStyle,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
-                  <div style={{fontSize:10,color:t.textDim,marginTop:2}}>{note}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Service courriel — Pro Step 6 */}
-            {(()=>{
-              const [testStatus,setTestStatus]=useState(null);
-              const testResend=async()=>{
-                if(!apiConfig.resendKey){setTestStatus({err:"Clé API manquante."});return;}
-                setTestStatus("testing");
-                const r=await window.api.email.sendResend({apiKey:apiConfig.resendKey,from:apiConfig.resendFrom||"noreply@balanceiq.ca",to:apiConfig.resendFrom||"test@balanceiq.ca",subject:"Test BalanceIQ",html:"<p>Connexion Resend réussie.</p>",attachments:[]});
-                if(r?.success)setTestStatus({ok:true});
-                else setTestStatus({err:r?.error||"Erreur inconnue"});
-              };
-              return(<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-                  <span style={{fontSize:13,fontWeight:700,color:t.text}}>Service courriel</span>
-                  {canUse("directEmailSend")
-                    ?<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"1px 6px",borderRadius:6}}>PRO</span>
-                    :<span style={{fontSize:9,fontWeight:700,color:"#6b7280",background:"rgba(255,255,255,0.06)",padding:"1px 6px",borderRadius:6}}>Disponible avec Pro</span>}
-                </div>
-                <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>Permet l'envoi direct de factures, soumissions et états de compte sans ouvrir votre client courriel.</div>
-                <div style={{marginBottom:8}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
-                    <span style={{fontSize:12,fontWeight:600,color:t.text}}>Clé API Resend</span>
-                    <Pill ok={apiConfig.resendKey?.length>0} label={apiConfig.resendKey?.length>0?"Configuré":"Non configuré"}/>
-                  </div>
-                  <input value={apiConfig.resendKey||""} onChange={e=>{const nc={...apiConfig,resendKey:e.target.value};setApiConfig(nc);saveApiCfg(nc);}} placeholder="re_xxxxxxxxxxxxxxxxxxxxxxxx" style={{...inputStyle,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}} type="password"/>
-                </div>
-                <div style={{marginBottom:8}}>
-                  <div style={{fontSize:12,fontWeight:600,color:t.text,marginBottom:2}}>Courriel d'envoi</div>
-                  <input value={apiConfig.resendFrom||""} onChange={e=>{const nc={...apiConfig,resendFrom:e.target.value};setApiConfig(nc);saveApiCfg(nc);}} placeholder="noreply@balanceiq.ca" style={{...inputStyle,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
-                  <div style={{fontSize:10,color:t.textDim,marginTop:2}}>Doit correspondre à un domaine vérifié dans Resend.</div>
-                </div>
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <button onClick={testResend} disabled={!apiConfig.resendKey||testStatus==="testing"} style={{padding:"5px 14px",borderRadius:5,border:`1px solid ${apiConfig.resendKey?"rgba(249,115,22,0.3)":t.cardBorder}`,background:apiConfig.resendKey?"rgba(249,115,22,0.08)":t.section,color:apiConfig.resendKey?"#f97316":t.textDim,cursor:apiConfig.resendKey?"pointer":"default",fontWeight:600,fontSize:11}}>
-                    {testStatus==="testing"?"Test en cours…":"Tester la connexion"}
-                  </button>
-                  {testStatus&&testStatus!=="testing"&&(testStatus.ok
-                    ?<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>✓ Connexion réussie</span>
-                    :<span style={{fontSize:11,color:"#ef4444",fontWeight:600}}>✗ {testStatus.err}</span>)}
-                </div>
-              </div>);
-            })()}
-
-            {/* Export */}
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Export</span>
-              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                <button onClick={()=>{const h="Date,Vente Nette,Total Brut,TPS,TVQ\n";let r="";Object.keys(liveData).sort().forEach(k=>{const c=computeDay(k);if(c.venteNet>0)r+=`${k},${c.venteNet},${c.total},${c.tps},${c.tvq}\n`});const b=new Blob([h+r],{type:"text/csv"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="balanceiq.csv";document.body.appendChild(a);a.click();document.body.removeChild(a)}} style={{padding:"7px 14px",borderRadius:6,border:"1px solid rgba(34,197,94,0.2)",background:"rgba(34,197,94,0.08)",color:"#16a34a",cursor:"pointer",fontWeight:600,fontSize:12}}>CSV</button>
-                <button onClick={()=>{let h=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>BalanceIQ</title><style>body{font:12px Arial;margin:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:3px 6px;text-align:right}th{background:#f5f5f5}td:first-child{text-align:left}h1{color:#ea580c}</style></head><body><h1>Rapport BalanceIQ</h1><table><tr><th>Date</th><th>Vente Nette</th><th>Total</th></tr>`;Object.keys(liveData).sort().forEach(k=>{const c=computeDay(k);if(c.venteNet>0)h+=`<tr><td>${k}</td><td>${c.venteNet.toFixed(2)}</td><td>${c.total.toFixed(2)}</td></tr>`});h+=`</table></body></html>`;openPDF(h)}} style={{padding:"7px 14px",borderRadius:6,border:`1px solid rgba(${t.posRgb},0.2)`,background:`rgba(${t.posRgb},0.08)`,color:t.posColor,cursor:"pointer",fontWeight:600,fontSize:12}}>PDF</button>
-                <button onClick={()=>{const b=new Blob([JSON.stringify({liveData,roster,empRoster,suppliers,apiConfig},null,2)],{type:"application/json"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="balanceiq-backup.json";document.body.appendChild(a);a.click();document.body.removeChild(a)}} style={{padding:"7px 14px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12}}>Backup JSON</button>
-                <button onClick={async()=>{setRestoreMsg('');const r=await window.api.backup.restore();if(r?.error)setRestoreMsg(r.error);}} style={{padding:"7px 14px",borderRadius:6,border:"1px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontWeight:600,fontSize:12}}>Restaurer depuis backup</button>
-              </div>
-              {restoreMsg&&<div style={{marginTop:6,fontSize:12,color:"#ef4444"}}>{restoreMsg}</div>}
-            </div>
-
-            {/* Auto-backup info */}
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Sauvegardes automatiques</span>
-              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>1 fichier par jour · 30 jours conservés · dossier Documents</div>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}>
-                <span style={{fontSize:11.5,color:t.textSub}}>
-                  {backupInfo==null?"Chargement...":backupInfo.lastBackup?`✓ Dernière: ${backupInfo.lastBackup} · ${backupInfo.count} fichier${backupInfo.count!==1?"s":""}`:"Aucune sauvegarde encore"}
-                </span>
-                <button onClick={()=>window.api.backup.openDir()} style={{padding:"5px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>📁 Ouvrir le dossier</button>
-              </div>
-              {backupInfo?.dir&&<div style={{marginTop:5,fontSize:9.5,color:t.textMuted,fontFamily:"'DM Mono',monospace",wordBreak:"break-all"}}>{backupInfo.dir}</div>}
-            </div>
-
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:11.5,color:t.textSub}}>Jours: <strong style={{color:"#f97316"}}>{Object.keys(liveData).length}</strong> · Caissiers: <strong style={{color:"#f97316"}}>{roster.length}</strong> · Employés: <strong style={{color:"#f97316"}}>{empRoster.length}</strong> · Fournisseurs: <strong style={{color:"#f97316"}}>{suppliers.length}</strong> · Plateformes: <strong style={{color:"#f97316"}}>{platforms.length}</strong></span>
-            </div>
-            {/* Audit log viewer */}
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:10,display:"block",color:t.text}}>📋 Journal d'audit</span>
-              <AuditSection/>
-            </div>
-
-            <div style={{textAlign:"center",padding:"4px 0 2px"}}>
+            <div style={{textAlign:"center",padding:"8px 0 2px"}}>
               <span style={{fontSize:10.5,color:t.textSub,fontFamily:"'DM Mono',monospace"}}>BalanceIQ v{appVersion}</span>
+            </div>
+            </div>)}
+
             </div>
           </div>)}
 
