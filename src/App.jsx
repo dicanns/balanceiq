@@ -1574,7 +1574,7 @@ function AgingReport({factures,clients,creditNotes,companyInfo,apiConfig,showUpg
 
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
-      <span style={{fontSize:13.5,fontWeight:700,color:t.text}}>Âge des comptes</span>
+      <span style={{fontSize:13.5,fontWeight:700,color:t.text}}>{T.agingTitle}</span>
       <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
         {isBulkEmail&&selClients.size>0&&(
           <button onClick={sendBulkStatements} style={{padding:"4px 12px",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:10.5,fontFamily:"'Outfit',sans-serif"}}>
@@ -1587,8 +1587,8 @@ function AgingReport({factures,clients,creditNotes,companyInfo,apiConfig,showUpg
           </button>
         )}
         <div style={{display:"flex",gap:4}}>
-          <TabBtn active={viewMode==="sommaire"} onClick={()=>setViewMode("sommaire")}>Sommaire</TabBtn>
-          <TabBtn active={viewMode==="detail"} onClick={switchToDetail}>Détaillé{!isDetailed&&" 🔒"}</TabBtn>
+          <TabBtn active={viewMode==="sommaire"} onClick={()=>setViewMode("sommaire")}>{T.agingSummary}</TabBtn>
+          <TabBtn active={viewMode==="detail"} onClick={switchToDetail}>{T.agingDetailed}{!isDetailed&&" 🔒"}</TabBtn>
         </div>
         <span style={{fontSize:11,color:t.textMuted}}>au :</span>
         <input type="date" value={asOf} onChange={e=>setAsOf(e.target.value)} style={inputS}/>
@@ -1822,25 +1822,25 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
       {/* Header row */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
-          <span style={{fontSize:13.5,fontWeight:700,color:t.text}}>Catégories</span>
-          <span style={{fontSize:11,color:t.textMuted}}>{categories.filter(c=>c.actif!==false).length} active{categories.filter(c=>c.actif!==false).length!==1?"s":""}</span>
+          <span style={{fontSize:13.5,fontWeight:700,color:t.text}}>{T.factCategories}</span>
+          <span style={{fontSize:11,color:t.textMuted}}>{T.catActiveCount(categories.filter(c=>c.actif!==false).length)}</span>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
           <button onClick={()=>setSortAZ(s=>!s)} style={{fontSize:10,padding:"3px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600}}>
             {sortAZ?"A → Z":"Z → A"}
           </button>
           <button onClick={()=>setShowInactive(s=>!s)} style={{fontSize:10,padding:"3px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:showInactive?"rgba(249,115,22,0.08)":t.section,color:showInactive?"#f97316":t.textSub,cursor:"pointer",fontWeight:600}}>
-            {showInactive?"Masquer inactives":"Afficher inactives"}
+            {showInactive?T.catHideInactive:T.catShowInactive}
           </button>
           <button onClick={()=>setAddOpen(o=>!o)} style={{fontSize:11,padding:"4px 12px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontWeight:700}}>
-            + Nouvelle catégorie
+            {T.catNewBtn}
           </button>
         </div>
       </div>
 
       {/* Add form */}
       {addOpen&&(<div style={{background:t.card,border:`1px solid rgba(249,115,22,0.2)`,borderRadius:9,padding:12}}>
-        <span style={{fontSize:12,fontWeight:700,color:"#f97316",display:"block",marginBottom:8}}>Nouvelle catégorie</span>
+        <span style={{fontSize:12,fontWeight:700,color:"#f97316",display:"block",marginBottom:8}}>{T.catNewTitle}</span>
         <div style={{display:"flex",flexDirection:"column",gap:5}}>
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
             <div style={{flex:"2 1 160px"}}>
@@ -1874,7 +1874,7 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
 
       {/* Category rows */}
       {visibleCats.length===0&&(<div style={{textAlign:"center",padding:"24px 0",color:t.textMuted,fontSize:12}}>
-        Aucune catégorie — cliquez sur "+ Nouvelle catégorie" pour commencer.
+        {T.catEmpty}
       </div>)}
       {visibleCats.map(cat=>(
         <div key={cat.id} style={{background:t.card,border:`1px solid ${cat.actif===false?"rgba(239,68,68,0.12)":t.cardBorder}`,borderRadius:7,padding:"6px 8px",opacity:cat.actif===false?0.55:1}}>
