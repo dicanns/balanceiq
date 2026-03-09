@@ -2459,16 +2459,16 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
         <textarea value={form.notes||""} onChange={e=>upd({notes:e.target.value})} rows={4} placeholder={T.facNotesPlaceholder} style={{...inputS,width:"100%",boxSizing:"border-box",resize:"vertical",fontFamily:"'Outfit',sans-serif"}}/>
       </div>
       <div style={{flex:"1 1 180px",background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12,display:"flex",flexDirection:"column",gap:5,justifyContent:"flex-end"}}>
-        {[["Sous-total",totals.sousTotal],["TPS (5%)",totals.tpsTotal],["TVQ (9.975%)",totals.tvqTotal]].map(([label,val])=>(
+        {[[T.facSubTotal,totals.sousTotal],[T.facTPS,totals.tpsTotal],[T.facTVQ,totals.tvqTotal]].map(([label,val])=>(
           <div key={label} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:t.textSub}}>
             <span>{label}</span><span style={{fontFamily:"'DM Mono',monospace"}}>{fmt(val)}</span>
           </div>
         ))}
         <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:800,color:t.text,borderTop:`2px solid ${t.dividerMid}`,paddingTop:6,marginTop:2}}>
-          <span>TOTAL</span><span style={{fontFamily:"'DM Mono',monospace",color:"#f97316"}}>{fmt(totals.total)}</span>
+          <span>{T.facTotal}</span><span style={{fontFamily:"'DM Mono',monospace",color:"#f97316"}}>{fmt(totals.total)}</span>
         </div>
         {acomptes.length>0&&<>
-          <div style={{fontSize:10,color:t.textMuted,borderTop:`1px dashed ${t.dividerMid}`,paddingTop:5,marginTop:2,textTransform:"uppercase",letterSpacing:"0.5px"}}>Dépôts / Acomptes</div>
+          <div style={{fontSize:10,color:t.textMuted,borderTop:`1px dashed ${t.dividerMid}`,paddingTop:5,marginTop:2,textTransform:"uppercase",letterSpacing:"0.5px"}}>{T.facDepositSection}</div>
           {acomptes.map(a=>(
             <div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11,color:"#22c55e"}}>
               <span style={{flex:1}}>{a.date}{a.mode?` (${a.mode})`:""}</span>
@@ -2477,12 +2477,12 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
             </div>
           ))}
           <div style={{display:"flex",justifyContent:"space-between",fontSize:13,fontWeight:800,color:totalAcomptes>=totals.total?"#22c55e":"#f97316",borderTop:`1px solid ${t.dividerMid}`,paddingTop:4,marginTop:2}}>
-            <span>Solde à payer</span><span style={{fontFamily:"'DM Mono',monospace"}}>{fmt(Math.max(0,totals.total-totalAcomptes))}</span>
+            <span>{T.facBalanceToPay}</span><span style={{fontFamily:"'DM Mono',monospace"}}>{fmt(Math.max(0,totals.total-totalAcomptes))}</span>
           </div>
         </>}
         {!locked&&(showDepotForm
           ?<div style={{borderTop:`1px solid ${t.dividerMid}`,paddingTop:8,marginTop:4,display:"flex",flexDirection:"column",gap:5}}>
-            <div style={{fontSize:11,fontWeight:700,color:t.text}}>Enregistrer un dépôt</div>
+            <div style={{fontSize:11,fontWeight:700,color:t.text}}>{T.facRecordDeposit}</div>
             <input type="date" value={depotForm.date} onChange={e=>setDepotForm(p=>({...p,date:e.target.value}))} style={{...inputS,fontSize:11}}/>
             <input type="number" value={depotForm.montant} onChange={e=>setDepotForm(p=>({...p,montant:e.target.value}))} placeholder="Montant" style={{...inputS,fontSize:11}}/>
             <select value={depotForm.mode} onChange={e=>setDepotForm(p=>({...p,mode:e.target.value}))} style={{...inputS,fontSize:11}}>
@@ -2490,12 +2490,12 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
             </select>
             <input value={depotForm.reference} onChange={e=>setDepotForm(p=>({...p,reference:e.target.value}))} placeholder={T.facRefOptional} style={{...inputS,fontSize:11}}/>
             <div style={{display:"flex",gap:6}}>
-              <button onClick={addDepot} style={{flex:1,padding:"4px 0",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>✓ Enregistrer</button>
-              <button onClick={()=>setShowDepotForm(false)} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>Annuler</button>
+              <button onClick={addDepot} style={{flex:1,padding:"4px 0",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>✓ {T.save}</button>
+              <button onClick={()=>setShowDepotForm(false)} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>{T.cancel}</button>
             </div>
           </div>
           :<button onClick={()=>{if(!canUse('depositTracking')){if(showUpgradePrompt)showUpgradePrompt('depositTracking');return;}setShowDepotForm(true);}} style={{marginTop:6,padding:"5px 10px",borderRadius:6,border:`1px solid ${canUse('depositTracking')?"rgba(249,115,22,0.3)":t.cardBorder}`,background:canUse('depositTracking')?"rgba(249,115,22,0.07)":t.section,color:canUse('depositTracking')?"#f97316":t.textDim,cursor:"pointer",fontWeight:600,fontSize:11,display:"flex",alignItems:"center",gap:5}}>
-            + Enregistrer un dépôt{!canUse('depositTracking')&&<span style={{fontSize:9,fontWeight:700,color:"#6b7280",background:"rgba(255,255,255,0.06)",padding:"1px 5px",borderRadius:4}}>Pro</span>}
+            {T.facRecordDeposit}{!canUse('depositTracking')&&<span style={{fontSize:9,fontWeight:700,color:"#6b7280",background:"rgba(255,255,255,0.06)",padding:"1px 5px",borderRadius:4}}>Pro</span>}
           </button>
         )}
       </div>
@@ -3795,7 +3795,7 @@ function ClientsSection({clients,saveClients,onNewDoc,onOpenDoc,soumissions,comm
             <button key={v} onClick={()=>setFilterStatut(v)} style={{fontSize:10,padding:"3px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:filterStatut===v?"rgba(249,115,22,0.08)":t.section,color:filterStatut===v?"#f97316":t.textSub,cursor:"pointer",fontWeight:600}}>{l}</button>
           ))}
         </div>
-        <button onClick={()=>{setAddOpen(o=>!o);setForm(BLANK);}} style={{fontSize:11,padding:"4px 12px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ Nouveau client</button>
+        <button onClick={()=>{setAddOpen(o=>!o);setForm(BLANK);}} style={{fontSize:11,padding:"4px 12px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontWeight:700}}>{T.facNewClient}</button>
       </div>
     </div>
     {addOpen&&(<div style={{background:t.card,border:"1px solid rgba(249,115,22,0.2)",borderRadius:9,padding:12}}>
@@ -3844,10 +3844,10 @@ function ProdForm({form,setForm,customU,setCustomU,onSave,onCancel,isNew,activeC
     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
       <div style={{flex:"1 1 100px"}}>
         <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Code produit</div>
-        <input value={form.code||""} onChange={e=>setForm(f=>({...f,code:e.target.value}))} placeholder={isNew?"auto-généré":""} style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
+        <input value={form.code||""} onChange={e=>setForm(f=>({...f,code:e.target.value}))} placeholder={isNew?T.facAutoGenerated:""} style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
       </div>
       <div style={{flex:"3 1 200px"}}>
-        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Description <span style={{color:"#f97316"}}>*</span></div>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.description} <span style={{color:"#f97316"}}>*</span></div>
         <input value={form.description||""} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="ex: Hamburger 1/4 lb" autoFocus={isNew} style={{...inputS,width:"100%",boxSizing:"border-box"}} onKeyDown={e=>{if(e.key==="Enter"&&isNew)onSave()}}/>
       </div>
     </div>
@@ -3963,7 +3963,7 @@ function ProduitsSection({produits,saveProduits,categories}){
           {showInactive?"Masquer inactifs":"Afficher inactifs"}
         </button>
         <button onClick={()=>{setAddOpen(o=>!o);setNewForm(BLANK);setCustomUnite("");}} style={{fontSize:11,padding:"4px 12px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontWeight:700}}>
-          + Nouveau produit
+          {T.facNewProduct}
         </button>
       </div>
     </div>
