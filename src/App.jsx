@@ -1721,10 +1721,10 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
     return<SoumissionEditor soumission={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} soumissions={soumissions} saveSoumissions={saveSoumissions} onBack={closeDoc} initClientId={activeDoc.clientId} onConvertToCommande={convertSoumToCommande} onConvertToFacture={soum=>convertToFacture(soum,"soumission")} apiConfig={apiConfig}/>;
   }
   if(activeDoc?.type==="commande"){
-    return<CommandeEditor commande={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} commandes={commandes} saveCommandes={saveCommandes} onBack={closeDoc} initClientId={activeDoc.clientId} onConvertToFacture={cmd=>convertToFacture(cmd,"commande")} apiConfig={apiConfig}/>;
+    return<CommandeEditor commande={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} commandes={commandes} saveCommandes={saveCommandes} onBack={closeDoc} initClientId={activeDoc.clientId} onConvertToFacture={cmd=>convertToFacture(cmd,"commande")} apiConfig={apiConfig} showUpgradePrompt={showUpgradePrompt}/>;
   }
   if(activeDoc?.type==="facture"){
-    return<FactureEditor facture={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} factures={factures} saveFactures={saveFactures} onBack={closeDoc} initClientId={activeDoc.clientId} onEnregistrerPaiement={(fac)=>openDoc("encaissement",fac.clientId,{factureId:fac.id})} onCreditNote={(fac)=>setActiveDoc({type:"creditnote",doc:null,clientId:fac.clientId,factureId:fac.id})} apiConfig={apiConfig}/>;
+    return<FactureEditor facture={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} factures={factures} saveFactures={saveFactures} onBack={closeDoc} initClientId={activeDoc.clientId} onEnregistrerPaiement={(fac)=>openDoc("encaissement",fac.clientId,{factureId:fac.id})} onCreditNote={(fac)=>setActiveDoc({type:"creditnote",doc:null,clientId:fac.clientId,factureId:fac.id})} apiConfig={apiConfig} showUpgradePrompt={showUpgradePrompt}/>;
   }
   if(activeDoc?.type==="encaissement"){
     return<EncaissementEditor clientId={activeDoc.clientId} factureId={activeDoc.doc?.factureId||null} clients={clients} factures={factures} saveFactures={saveFactures} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData||{}} persistEncaisse={persistEncaisse} onBack={closeDoc} showUpgradePrompt={showUpgradePrompt}/>;
@@ -2082,18 +2082,23 @@ function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveD
   </div>);
 }
 
+const MODES_PAIEMENT=["Chèque","Virement/E-Transfer","Carte de crédit","Carte de débit","Comptant","Autre"];
+
 // ── COMMANDE ──
 const STATUTS_COMMANDE=["Brouillon","Confirmée","En cours","Complétée","Annulée"];
 const STATUT_CMD_C={"Brouillon":"#6b7280","Confirmée":"#3b82f6","En cours":"#f59e0b","Complétée":"#22c55e","Annulée":"#ef4444"};
-function buildCommandeHTML({numero,date,dateLivraison,statut,client,referenceClient,lignes,notes,totals,companyInfo,sourceNumero}){
+function buildCommandeHTML({numero,date,dateLivraison,statut,client,referenceClient,lignes,notes,totals,companyInfo,sourceNumero,acomptes=[]}){
   const fd=d=>{if(!d)return"—";const dt=new Date(d+"T12:00:00");return`${dt.getDate()} ${["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"][dt.getMonth()]} ${dt.getFullYear()}`};
   const fc=n=>(n||0).toLocaleString("fr-CA",{style:"currency",currency:"CAD"});
   const logo=companyInfo.logo?`<img src="${companyInfo.logo}" style="max-height:55px;max-width:110px;object-fit:contain;" alt="Logo"/>`:"";
   const rows=lignes.map((l,i)=>{const lt=(l.quantite||0)*(l.prixUnitaire||0)*(1-(l.remise||0)/100);return`<tr style="background:${i%2?"#f9f9f9":"#fff"}"><td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:12px">${l.description||""}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:center;font-size:12px">${l.quantite||1}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:right;font-size:12px">${fc(l.prixUnitaire||0)}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:center;font-size:12px">${l.remise?l.remise+"%":"—"}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:right;font-size:12px;font-weight:700">${fc(lt)}</td></tr>`}).join("");
   const cli=client?`<div style="font-weight:700;font-size:13px">${client.entreprise}</div>${client.contact?`<div>${client.contact}</div>`:""}${client.adresse?`<div>${client.adresse}</div>`:""}${client.ville?`<div>${[client.ville,client.province,client.codePostal].filter(Boolean).join(", ")}</div>`:""}${client.courriel?`<div>${client.courriel}</div>`:""}${client.tel1?`<div>${client.tel1}</div>`:""}`:""` "(aucun client)"`;
-  return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Commande ${numero}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}.hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px}.title{font-size:26px;font-weight:900;color:#f97316;letter-spacing:2px}.meta{font-size:11px;color:#555;margin-top:3px}table{width:100%;border-collapse:collapse}th{background:#f97316;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.tot{margin-left:auto;width:260px;margin-top:12px}.tr{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}.tf{font-weight:900;font-size:15px;border-top:2px solid #1a1a1a;margin-top:4px;padding-top:4px}.notes{background:#f9f9f9;border-left:3px solid #f97316;padding:10px 12px;margin-top:16px;font-size:12px}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}</style></head><body><div class="hdr"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${companyInfo.nom||""}</div><div class="meta">${[companyInfo.adresse,companyInfo.ville,companyInfo.province].filter(Boolean).join(", ")}</div>${companyInfo.telephone?`<div class="meta">${companyInfo.telephone}</div>`:""}${companyInfo.courriel?`<div class="meta">${companyInfo.courriel}</div>`:""}</div><div style="text-align:right"><div class="title">BON DE COMMANDE</div><div style="font-size:18px;font-weight:700;margin-top:4px"># ${numero}</div><div class="meta">Date: ${fd(date)}</div>${dateLivraison?`<div class="meta">Livraison: ${fd(dateLivraison)}</div>`:""}<div class="meta">Statut: <strong>${statut}</strong></div>${referenceClient?`<div class="meta">Réf.: ${referenceClient}</div>`:""}${sourceNumero?`<div class="meta">Soumission: ${sourceNumero}</div>`:""}</div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Facturé à</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>Description</th><th style="width:55px;text-align:center">Qté</th><th style="width:100px;text-align:right">Prix unit.</th><th style="width:65px;text-align:center">Remise</th><th style="width:100px;text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><div class="tot"><div class="tr"><span>Sous-total</span><span>${fc(totals.sousTotal)}</span></div><div class="tr"><span>TPS (5%)</span><span>${fc(totals.tpsTotal)}</span></div><div class="tr"><span>TVQ (9.975%)</span><span>${fc(totals.tvqTotal)}</span></div><div class="tr tf"><span>TOTAL</span><span>${fc(totals.total)}</span></div></div>${notes?`<div class="notes"><strong>Notes / Conditions</strong><br/>${notes}</div>`:""}<div class="ftr">${companyInfo.numeroTPS?`N° TPS: ${companyInfo.numeroTPS}`:""}${companyInfo.numeroTVQ?` &nbsp;|&nbsp; N° TVQ: ${companyInfo.numeroTVQ}`:""}</div></body></html>`;
+  const totalAcomptes=acomptes.reduce((s,a)=>s+(a.montant||0),0);
+  const soldeRestant=totals.total-totalAcomptes;
+  const depotSection=acomptes.length>0?`<div style="margin-top:6px;border-top:1px dashed #ccc;padding-top:6px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Dépôts / Acomptes</div>${acomptes.map(a=>`<div class="tr" style="color:#16a34a"><span>Dépôt reçu — ${a.date||""}${a.mode?` (${a.mode})`:""}</span><span>−${fc(a.montant||0)}</span></div>`).join("")}<div class="tr tf" style="color:#ea580c"><span>SOLDE À PAYER</span><span>${fc(soldeRestant)}</span></div></div>`:""
+  return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Commande ${numero}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}.hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px}.title{font-size:26px;font-weight:900;color:#f97316;letter-spacing:2px}.meta{font-size:11px;color:#555;margin-top:3px}table{width:100%;border-collapse:collapse}th{background:#f97316;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.tot{margin-left:auto;width:260px;margin-top:12px}.tr{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}.tf{font-weight:900;font-size:15px;border-top:2px solid #1a1a1a;margin-top:4px;padding-top:4px}.notes{background:#f9f9f9;border-left:3px solid #f97316;padding:10px 12px;margin-top:16px;font-size:12px}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}</style></head><body><div class="hdr"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${companyInfo.nom||""}</div><div class="meta">${[companyInfo.adresse,companyInfo.ville,companyInfo.province].filter(Boolean).join(", ")}</div>${companyInfo.telephone?`<div class="meta">${companyInfo.telephone}</div>`:""}${companyInfo.courriel?`<div class="meta">${companyInfo.courriel}</div>`:""}</div><div style="text-align:right"><div class="title">BON DE COMMANDE</div><div style="font-size:18px;font-weight:700;margin-top:4px"># ${numero}</div><div class="meta">Date: ${fd(date)}</div>${dateLivraison?`<div class="meta">Livraison: ${fd(dateLivraison)}</div>`:""}<div class="meta">Statut: <strong>${statut}</strong></div>${referenceClient?`<div class="meta">Réf.: ${referenceClient}</div>`:""}${sourceNumero?`<div class="meta">Soumission: ${sourceNumero}</div>`:""}</div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Facturé à</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>Description</th><th style="width:55px;text-align:center">Qté</th><th style="width:100px;text-align:right">Prix unit.</th><th style="width:65px;text-align:center">Remise</th><th style="width:100px;text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><div class="tot"><div class="tr"><span>Sous-total</span><span>${fc(totals.sousTotal)}</span></div><div class="tr"><span>TPS (5%)</span><span>${fc(totals.tpsTotal)}</span></div><div class="tr"><span>TVQ (9.975%)</span><span>${fc(totals.tvqTotal)}</span></div><div class="tr tf"><span>TOTAL</span><span>${fc(totals.total)}</span></div>${depotSection}</div>${notes?`<div class="notes"><strong>Notes / Conditions</strong><br/>${notes}</div>`:""}<div class="ftr">${companyInfo.numeroTPS?`N° TPS: ${companyInfo.numeroTPS}`:""}${companyInfo.numeroTVQ?` &nbsp;|&nbsp; N° TVQ: ${companyInfo.numeroTVQ}`:""}</div></body></html>`;
 }
-function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNums,commandes,saveCommandes,onBack,initClientId,onConvertToFacture,apiConfig}){ // eslint-disable-line
+function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNums,commandes,saveCommandes,onBack,initClientId,onConvertToFacture,apiConfig,showUpgradePrompt}){ // eslint-disable-line
   const t=useT();
   const isNew=!commande?.id;
   const todayStr=dk(new Date());
@@ -2105,6 +2110,10 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
   const [savedNumero,setSavedNumero]=useState(commande?.numero||null);
   const [confirmDel,setConfirmDel]=useState(false);
   const [flash,setFlash]=useState(false);
+  const [acomptes,setAcomptes]=useState(commande?.acomptes||[]);
+  const [showDepotForm,setShowDepotForm]=useState(false);
+  const [depotForm,setDepotForm]=useState({date:todayStr,montant:"",mode:"Virement/E-Transfer",reference:""});
+  const totalAcomptes=useMemo(()=>acomptes.reduce((s,a)=>s+(a.montant||0),0),[acomptes]);
   const totals=useMemo(()=>computeSoumTotals(lignes),[lignes]);
   const client=clients.find(c=>c.id===form.clientId);
   const upd=f=>setForm(p=>({...p,...f}));
@@ -2114,6 +2123,13 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
     const p=produits.find(x=>x.id===pid);
     if(p)updL(lid,{produitId:pid,description:p.description,prixUnitaire:parseFloat(p.prixUnitaire)||0,tps:p.tps!==false,tvq:p.tvq!==false});
   };
+  const addDepot=()=>{
+    if(!canUse('depositTracking')){if(showUpgradePrompt)showUpgradePrompt('depositTracking');return;}
+    const mt=parseFloat(depotForm.montant);if(!mt||mt<=0)return;
+    setAcomptes(prev=>[...prev,{id:Date.now().toString(),...depotForm,montant:mt}]);
+    setDepotForm({date:todayStr,montant:"",mode:"Virement/E-Transfer",reference:""});
+    setShowDepotForm(false);
+  };
   const doSave=()=>{
     let id=savedId,numero=savedNumero;const isNew=!id;
     if(!id){
@@ -2121,7 +2137,7 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
       saveDocNums({...docNums,commande:docNums.commande+1});
       setSavedId(id);setSavedNumero(numero);
     }
-    const doc={...form,id,numero,lignes};
+    const doc={...form,id,numero,lignes,acomptes};
     saveCommandes(commandes.some(c=>c.id===id)?commandes.map(c=>c.id===id?doc:c):[...commandes,doc]);
     if(isNew)logCreate('invoice','commande',id,doc);
     else logUpdate('invoice','commande',id,'document',null,JSON.stringify(doc));
@@ -2137,7 +2153,7 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
   };
   const doPrint=()=>{
     const numero=savedNumero||fmtDocNum(docNums.prefix,"C",docNums.commande);
-    openPDF(buildCommandeHTML({...form,numero,lignes,totals,client,companyInfo}));
+    openPDF(buildCommandeHTML({...form,numero,lignes,totals,client,companyInfo,acomptes}));
   };
   const {sendDoc:sendCmd,EmailStatusBadge:CmdEmailBadge}=useDirectEmail(apiConfig);
   const doEmail=()=>{
@@ -2257,6 +2273,37 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
         <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:800,color:t.text,borderTop:`2px solid ${t.dividerMid}`,paddingTop:6,marginTop:2}}>
           <span>TOTAL</span><span style={{fontFamily:"'DM Mono',monospace",color:"#f97316"}}>{fmt(totals.total)}</span>
         </div>
+        {acomptes.length>0&&<>
+          <div style={{fontSize:10,color:t.textMuted,borderTop:`1px dashed ${t.dividerMid}`,paddingTop:5,marginTop:2,textTransform:"uppercase",letterSpacing:"0.5px"}}>Dépôts / Acomptes</div>
+          {acomptes.map(a=>(
+            <div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11,color:"#22c55e"}}>
+              <span style={{flex:1}}>{a.date}{a.mode?` (${a.mode})`:""}</span>
+              <span style={{fontFamily:"'DM Mono',monospace",marginRight:4}}>−{fmt(a.montant)}</span>
+              {!locked&&<button onClick={()=>setAcomptes(p=>p.filter(x=>x.id!==a.id))} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:10,padding:0}}>✕</button>}
+            </div>
+          ))}
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,fontWeight:800,color:totalAcomptes>=totals.total?"#22c55e":"#f97316",borderTop:`1px solid ${t.dividerMid}`,paddingTop:4,marginTop:2}}>
+            <span>Solde à payer</span><span style={{fontFamily:"'DM Mono',monospace"}}>{fmt(Math.max(0,totals.total-totalAcomptes))}</span>
+          </div>
+        </>}
+        {!locked&&(showDepotForm
+          ?<div style={{borderTop:`1px solid ${t.dividerMid}`,paddingTop:8,marginTop:4,display:"flex",flexDirection:"column",gap:5}}>
+            <div style={{fontSize:11,fontWeight:700,color:t.text}}>Enregistrer un dépôt</div>
+            <input type="date" value={depotForm.date} onChange={e=>setDepotForm(p=>({...p,date:e.target.value}))} style={{...inputS,fontSize:11}}/>
+            <input type="number" value={depotForm.montant} onChange={e=>setDepotForm(p=>({...p,montant:e.target.value}))} placeholder="Montant" style={{...inputS,fontSize:11}}/>
+            <select value={depotForm.mode} onChange={e=>setDepotForm(p=>({...p,mode:e.target.value}))} style={{...inputS,fontSize:11}}>
+              {MODES_PAIEMENT.map(m=><option key={m} value={m}>{m}</option>)}
+            </select>
+            <input value={depotForm.reference} onChange={e=>setDepotForm(p=>({...p,reference:e.target.value}))} placeholder="Référence (optionnel)" style={{...inputS,fontSize:11}}/>
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={addDepot} style={{flex:1,padding:"4px 0",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>✓ Enregistrer</button>
+              <button onClick={()=>setShowDepotForm(false)} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>Annuler</button>
+            </div>
+          </div>
+          :<button onClick={()=>{if(!canUse('depositTracking')){if(showUpgradePrompt)showUpgradePrompt('depositTracking');return;}setShowDepotForm(true);}} style={{marginTop:6,padding:"5px 10px",borderRadius:6,border:`1px solid ${canUse('depositTracking')?"rgba(249,115,22,0.3)":t.cardBorder}`,background:canUse('depositTracking')?"rgba(249,115,22,0.07)":t.section,color:canUse('depositTracking')?"#f97316":t.textDim,cursor:"pointer",fontWeight:600,fontSize:11,display:"flex",alignItems:"center",gap:5}}>
+            + Enregistrer un dépôt{!canUse('depositTracking')&&<span style={{fontSize:9,fontWeight:700,color:"#6b7280",background:"rgba(255,255,255,0.06)",padding:"1px 5px",borderRadius:4}}>Pro</span>}
+          </button>
+        )}
       </div>
     </div>
   </div>);
@@ -2271,16 +2318,18 @@ function calcDateEcheance(dateStr,conditions,nbJours){
   const days=conditions==="Net 15"?15:conditions==="Net 30"?30:conditions==="Net 45"?45:conditions==="Net 60"?60:conditions==="Personnalisé"?(parseInt(nbJours)||0):0;
   d.setDate(d.getDate()+days);return dk(d);
 }
-function buildFactureHTML({numero,date,dateEcheance,statut,client,referenceClient,lignes,notes,totals,companyInfo,sourceNumero,sourceType,montantPaye}){
+function buildFactureHTML({numero,date,dateEcheance,statut,client,referenceClient,lignes,notes,totals,companyInfo,sourceNumero,sourceType,montantPaye,acomptes=[]}){
   const fd=d=>{if(!d)return"—";const dt=new Date(d+"T12:00:00");return`${dt.getDate()} ${["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"][dt.getMonth()]} ${dt.getFullYear()}`};
   const fc=n=>(n||0).toLocaleString("fr-CA",{style:"currency",currency:"CAD"});
   const logo=companyInfo.logo?`<img src="${companyInfo.logo}" style="max-height:55px;max-width:110px;object-fit:contain;" alt="Logo"/>`:"";
   const rows=lignes.map((l,i)=>{const lt=(l.quantite||0)*(l.prixUnitaire||0)*(1-(l.remise||0)/100);return`<tr style="background:${i%2?"#f9f9f9":"#fff"}"><td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:12px">${l.description||""}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:center;font-size:12px">${l.quantite||1}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:right;font-size:12px">${fc(l.prixUnitaire||0)}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:center;font-size:12px">${l.remise?l.remise+"%":"—"}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:right;font-size:12px;font-weight:700">${fc(lt)}</td></tr>`}).join("");
   const cli=client?`<div style="font-weight:700;font-size:13px">${client.entreprise}</div>${client.contact?`<div>${client.contact}</div>`:""}${client.adresse?`<div>${client.adresse}</div>`:""}${client.ville?`<div>${[client.ville,client.province,client.codePostal].filter(Boolean).join(", ")}</div>`:""}${client.courriel?`<div>${client.courriel}</div>`:""}${client.tel1?`<div>${client.tel1}</div>`:""}`:""` "(aucun client)"`;
-  const solde=totals.total-(montantPaye||0);
-  return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Facture ${numero}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}table{width:100%;border-collapse:collapse}th{background:#f97316;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.tot{margin-left:auto;width:280px;margin-top:12px}.tr{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}.tf{font-weight:900;font-size:15px;border-top:2px solid #1a1a1a;margin-top:4px;padding-top:4px}.due{background:#fff3cd;border:1px solid #f97316;borderRadius:4px;padding:6px 10px;margin-bottom:12px;font-size:12px;font-weight:700}.notes{background:#f9f9f9;border-left:3px solid #f97316;padding:10px 12px;margin-top:16px;font-size:12px}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${companyInfo.nom||""}</div><div style="font-size:11px;color:#555">${[companyInfo.adresse,companyInfo.ville,companyInfo.province].filter(Boolean).join(", ")}</div>${companyInfo.telephone?`<div style="font-size:11px;color:#555">${companyInfo.telephone}</div>`:""}${companyInfo.courriel?`<div style="font-size:11px;color:#555">${companyInfo.courriel}</div>`:""}</div><div style="text-align:right"><div style="font-size:30px;font-weight:900;color:#f97316;letter-spacing:2px">FACTURE</div><div style="font-size:18px;font-weight:700;margin-top:4px"># ${numero}</div><div style="font-size:11px;color:#555;margin-top:3px">Date: ${fd(date)}</div><div style="font-size:12px;font-weight:700;color:${statut==="En retard"?"#ef4444":"#1a1a1a"};margin-top:4px;padding:4px 8px;background:${statut==="En retard"?"#fee2e2":"#f3f4f6"};borderRadius:4px;display:inline-block">Échéance: ${fd(dateEcheance)}</div><div style="font-size:11px;color:#555;margin-top:3px">Statut: <strong>${statut}</strong></div>${referenceClient?`<div style="font-size:11px;color:#555">Réf.: ${referenceClient}</div>`:""}${sourceNumero?`<div style="font-size:11px;color:#555">${sourceType==="commande"?"Commande":"Soumission"}: ${sourceNumero}</div>`:""}</div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Facturé à</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>Description</th><th style="width:55px;text-align:center">Qté</th><th style="width:100px;text-align:right">Prix unit.</th><th style="width:65px;text-align:center">Remise</th><th style="width:100px;text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><div class="tot"><div class="tr"><span>Sous-total</span><span>${fc(totals.sousTotal)}</span></div><div class="tr"><span>TPS (5%)</span><span>${fc(totals.tpsTotal)}</span></div><div class="tr"><span>TVQ (9.975%)</span><span>${fc(totals.tvqTotal)}</span></div><div class="tr tf"><span>TOTAL</span><span>${fc(totals.total)}</span></div>${(montantPaye||0)>0?`<div class="tr" style="color:#22c55e"><span>Montant payé</span><span>${fc(montantPaye)}</span></div><div class="tr tf" style="color:#ef4444"><span>SOLDE DÛ</span><span>${fc(solde)}</span></div>`:""}</div>${notes?`<div class="notes"><strong>Notes</strong><br/>${notes}</div>`:""}<div class="ftr">${companyInfo.numeroTPS?`N° TPS: ${companyInfo.numeroTPS}`:""}${companyInfo.numeroTVQ?` &nbsp;|&nbsp; N° TVQ: ${companyInfo.numeroTVQ}`:""}</div></body></html>`;
+  const totalAcomptes=acomptes.reduce((s,a)=>s+(a.montant||0),0);
+  const solde=totals.total-totalAcomptes-(montantPaye||0);
+  const depotSection=acomptes.length>0?`<div style="margin-top:6px;border-top:1px dashed #ccc;padding-top:6px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Dépôts / Acomptes</div>${acomptes.map(a=>`<div class="tr" style="color:#16a34a"><span>Dépôt reçu — ${a.date||""}${a.mode?` (${a.mode})`:""}</span><span>−${fc(a.montant||0)}</span></div>`).join("")}</div>`:""
+  return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Facture ${numero}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}table{width:100%;border-collapse:collapse}th{background:#f97316;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.tot{margin-left:auto;width:280px;margin-top:12px}.tr{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}.tf{font-weight:900;font-size:15px;border-top:2px solid #1a1a1a;margin-top:4px;padding-top:4px}.due{background:#fff3cd;border:1px solid #f97316;borderRadius:4px;padding:6px 10px;margin-bottom:12px;font-size:12px;font-weight:700}.notes{background:#f9f9f9;border-left:3px solid #f97316;padding:10px 12px;margin-top:16px;font-size:12px}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${companyInfo.nom||""}</div><div style="font-size:11px;color:#555">${[companyInfo.adresse,companyInfo.ville,companyInfo.province].filter(Boolean).join(", ")}</div>${companyInfo.telephone?`<div style="font-size:11px;color:#555">${companyInfo.telephone}</div>`:""}${companyInfo.courriel?`<div style="font-size:11px;color:#555">${companyInfo.courriel}</div>`:""}</div><div style="text-align:right"><div style="font-size:30px;font-weight:900;color:#f97316;letter-spacing:2px">FACTURE</div><div style="font-size:18px;font-weight:700;margin-top:4px"># ${numero}</div><div style="font-size:11px;color:#555;margin-top:3px">Date: ${fd(date)}</div><div style="font-size:12px;font-weight:700;color:${statut==="En retard"?"#ef4444":"#1a1a1a"};margin-top:4px;padding:4px 8px;background:${statut==="En retard"?"#fee2e2":"#f3f4f6"};borderRadius:4px;display:inline-block">Échéance: ${fd(dateEcheance)}</div><div style="font-size:11px;color:#555;margin-top:3px">Statut: <strong>${statut}</strong></div>${referenceClient?`<div style="font-size:11px;color:#555">Réf.: ${referenceClient}</div>`:""}${sourceNumero?`<div style="font-size:11px;color:#555">${sourceType==="commande"?"Commande":"Soumission"}: ${sourceNumero}</div>`:""}</div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Facturé à</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>Description</th><th style="width:55px;text-align:center">Qté</th><th style="width:100px;text-align:right">Prix unit.</th><th style="width:65px;text-align:center">Remise</th><th style="width:100px;text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><div class="tot"><div class="tr"><span>Sous-total</span><span>${fc(totals.sousTotal)}</span></div><div class="tr"><span>TPS (5%)</span><span>${fc(totals.tpsTotal)}</span></div><div class="tr"><span>TVQ (9.975%)</span><span>${fc(totals.tvqTotal)}</span></div><div class="tr tf"><span>TOTAL</span><span>${fc(totals.total)}</span></div>${depotSection}${(montantPaye||0)>0?`<div class="tr" style="color:#22c55e"><span>Paiements reçus</span><span>−${fc(montantPaye)}</span></div>`:""}<div class="tr tf" style="color:#ef4444"><span>SOLDE DÛ</span><span>${fc(Math.max(0,solde))}</span></div></div>${notes?`<div class="notes"><strong>Notes</strong><br/>${notes}</div>`:""}<div class="ftr">${companyInfo.numeroTPS?`N° TPS: ${companyInfo.numeroTPS}`:""}${companyInfo.numeroTVQ?` &nbsp;|&nbsp; N° TVQ: ${companyInfo.numeroTVQ}`:""}</div></body></html>`;
 }
-function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums,factures,saveFactures,onBack,initClientId,onEnregistrerPaiement,onCreditNote,apiConfig}){
+function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums,factures,saveFactures,onBack,initClientId,onEnregistrerPaiement,onCreditNote,apiConfig,showUpgradePrompt}){
   const t=useT();
   const isNew=!facture?.id;
   const todayStr=dk(new Date());
@@ -2291,6 +2340,10 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
   const [savedNumero,setSavedNumero]=useState(facture?.numero||null);
   const [confirmDel,setConfirmDel]=useState(false);
   const [flash,setFlash]=useState(false);
+  const [acomptes,setAcomptes]=useState(facture?.acomptes||[]);
+  const [showDepotForm,setShowDepotForm]=useState(false);
+  const [depotForm,setDepotForm]=useState({date:todayStr,montant:"",mode:"Virement/E-Transfer",reference:""});
+  const totalAcomptes=useMemo(()=>acomptes.reduce((s,a)=>s+(a.montant||0),0),[acomptes]);
   const totals=useMemo(()=>computeSoumTotals(lignes),[lignes]);
   const client=clients.find(c=>c.id===form.clientId);
   const locked=form.statut!=="Brouillon";
@@ -2298,7 +2351,14 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
   const regularPaiements=useMemo(()=>(form.paiements||[]).filter(p=>!p.fromCredit),[form.paiements]);
   const montantCredit=useMemo(()=>creditPaiements.reduce((s,p)=>s+(p.montant||0),0),[creditPaiements]);
   const montantPaye=useMemo(()=>(form.paiements||[]).reduce((s,p)=>s+(p.montant||0),0),[form.paiements]);
-  const soldeDu=totals.total-montantPaye;
+  const soldeDu=totals.total-totalAcomptes-montantPaye;
+  const addDepot=()=>{
+    if(!canUse('depositTracking')){if(showUpgradePrompt)showUpgradePrompt('depositTracking');return;}
+    const mt=parseFloat(depotForm.montant);if(!mt||mt<=0)return;
+    setAcomptes(prev=>[...prev,{id:Date.now().toString(),...depotForm,montant:mt}]);
+    setDepotForm({date:todayStr,montant:"",mode:"Virement/E-Transfer",reference:""});
+    setShowDepotForm(false);
+  };
   // Auto-detect overdue
   const isOverdue=form.statut==="Envoyée"&&form.dateEcheance&&dk(new Date())>form.dateEcheance;
   const displayStatut=isOverdue?"En retard":form.statut;
@@ -2327,7 +2387,7 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
       saveDocNums({...docNums,facture:docNums.facture+1});
       setSavedId(id);setSavedNumero(numero);
     }
-    const doc={...form,id,numero,lignes};
+    const doc={...form,id,numero,lignes,acomptes};
     saveFactures(factures.some(f=>f.id===id)?factures.map(f=>f.id===id?doc:f):[...factures,doc]);
     if(isNew)logCreate('invoice','facture',id,doc);
     else logUpdate('invoice','facture',id,'document',null,JSON.stringify(doc));
@@ -2343,7 +2403,7 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
   };
   const doPrint=()=>{
     const numero=savedNumero||fmtDocNum(docNums.prefix,"F",docNums.facture);
-    openPDF(buildFactureHTML({...form,numero,lignes,totals,client,companyInfo,montantPaye}));
+    openPDF(buildFactureHTML({...form,numero,lignes,totals,client,companyInfo,montantPaye,acomptes}));
   };
   const {sendDoc:sendFac,EmailStatusBadge:FacEmailBadge}=useDirectEmail(apiConfig);
   const doEmail=()=>{
@@ -2458,6 +2518,16 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
         <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:800,color:t.text,borderTop:`2px solid ${t.dividerMid}`,paddingTop:6,marginTop:2}}>
           <span>TOTAL</span><span style={{fontFamily:"'DM Mono',monospace",color:"#f97316"}}>{fmt(totals.total)}</span>
         </div>
+        {acomptes.length>0&&<>
+          <div style={{fontSize:10,color:t.textMuted,borderTop:`1px dashed ${t.dividerMid}`,paddingTop:5,marginTop:2,textTransform:"uppercase",letterSpacing:"0.5px"}}>Dépôts / Acomptes</div>
+          {acomptes.map(a=>(
+            <div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11,color:"#22c55e"}}>
+              <span style={{flex:1}}>{a.date}{a.mode?` (${a.mode})`:""}</span>
+              <span style={{fontFamily:"'DM Mono',monospace",marginRight:4}}>−{fmt(a.montant)}</span>
+              {!locked&&<button onClick={()=>setAcomptes(p=>p.filter(x=>x.id!==a.id))} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:10,padding:0}}>✕</button>}
+            </div>
+          ))}
+        </>}
         {regularPaiements.length>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#22c55e"}}>
           <span>Paiements reçus</span><span style={{fontFamily:"'DM Mono',monospace"}}>−{fmt(regularPaiements.reduce((s,p)=>s+(p.montant||0),0))}</span>
         </div>}
@@ -2466,17 +2536,34 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
             <span>Note de crédit {p.reference||p.numero}</span><span style={{fontFamily:"'DM Mono',monospace"}}>−{fmt(p.montant)}</span>
           </div>)}
         </div>}
-        {montantPaye>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:13,fontWeight:800,color:soldeDu<=0?"#22c55e":"#ef4444",borderTop:`1px solid ${t.dividerMid}`,paddingTop:5,marginTop:2}}>
-          <span>Solde dû</span><span style={{fontFamily:"'DM Mono',monospace"}}>{fmt(soldeDu)}</span>
+        {(montantPaye>0||totalAcomptes>0)&&<div style={{display:"flex",justifyContent:"space-between",fontSize:13,fontWeight:800,color:soldeDu<=0?"#22c55e":"#ef4444",borderTop:`1px solid ${t.dividerMid}`,paddingTop:5,marginTop:2}}>
+          <span>Solde dû</span><span style={{fontFamily:"'DM Mono',monospace"}}>{fmt(Math.max(0,soldeDu))}</span>
         </div>}
-        {montantPaye===0&&<div style={{fontSize:10,color:t.textMuted,textAlign:"center",marginTop:4}}>Aucun paiement enregistré</div>}
+        {montantPaye===0&&totalAcomptes===0&&<div style={{fontSize:10,color:t.textMuted,textAlign:"center",marginTop:4}}>Aucun paiement enregistré</div>}
+        {!locked&&(showDepotForm
+          ?<div style={{borderTop:`1px solid ${t.dividerMid}`,paddingTop:8,marginTop:4,display:"flex",flexDirection:"column",gap:5}}>
+            <div style={{fontSize:11,fontWeight:700,color:t.text}}>Enregistrer un dépôt</div>
+            <input type="date" value={depotForm.date} onChange={e=>setDepotForm(p=>({...p,date:e.target.value}))} style={{...inputS,fontSize:11}}/>
+            <input type="number" value={depotForm.montant} onChange={e=>setDepotForm(p=>({...p,montant:e.target.value}))} placeholder="Montant" style={{...inputS,fontSize:11}}/>
+            <select value={depotForm.mode} onChange={e=>setDepotForm(p=>({...p,mode:e.target.value}))} style={{...inputS,fontSize:11}}>
+              {MODES_PAIEMENT.map(m=><option key={m} value={m}>{m}</option>)}
+            </select>
+            <input value={depotForm.reference} onChange={e=>setDepotForm(p=>({...p,reference:e.target.value}))} placeholder="Référence (optionnel)" style={{...inputS,fontSize:11}}/>
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={addDepot} style={{flex:1,padding:"4px 0",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>✓ Enregistrer</button>
+              <button onClick={()=>setShowDepotForm(false)} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>Annuler</button>
+            </div>
+          </div>
+          :<button onClick={()=>{if(!canUse('depositTracking')){if(showUpgradePrompt)showUpgradePrompt('depositTracking');return;}setShowDepotForm(true);}} style={{marginTop:6,padding:"5px 10px",borderRadius:6,border:`1px solid ${canUse('depositTracking')?"rgba(249,115,22,0.3)":t.cardBorder}`,background:canUse('depositTracking')?"rgba(249,115,22,0.07)":t.section,color:canUse('depositTracking')?"#f97316":t.textDim,cursor:"pointer",fontWeight:600,fontSize:11,display:"flex",alignItems:"center",gap:5}}>
+            + Enregistrer un dépôt{!canUse('depositTracking')&&<span style={{fontSize:9,fontWeight:700,color:"#6b7280",background:"rgba(255,255,255,0.06)",padding:"1px 5px",borderRadius:4}}>Pro</span>}
+          </button>
+        )}
       </div>
     </div>
   </div>);
 }
 
 // ── ENCAISSEMENT ──
-const MODES_PAIEMENT=["Chèque","Virement/E-Transfer","Carte de crédit","Carte de débit","Comptant","Autre"];
 function buildReceiptHTML({numero,date,montant,mode,reference,note,client,facture,companyInfo}){
   const fd=d=>{if(!d)return"—";const dt=new Date(d+"T12:00:00");return`${dt.getDate()} ${["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"][dt.getMonth()]} ${dt.getFullYear()}`};
   const fc=n=>(n||0).toLocaleString("fr-CA",{style:"currency",currency:"CAD"});
