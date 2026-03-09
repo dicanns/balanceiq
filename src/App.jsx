@@ -3389,6 +3389,132 @@ function AuditViewer(){
   </div>);
 }
 
+// ── AUDIT REPORTS (Step 8) ──
+
+function CorrectionReport(){
+  const t=useT();
+  const [entries,setEntries]=useState([]);const [loading,setLoading]=useState(true);
+  useEffect(()=>{(async()=>{try{const rows=await window.api.audit.query({action:"correct"});setEntries(rows||[]);}catch(e){setEntries([]);}setLoading(false)})()},[]);
+  if(loading)return<div style={{padding:12,color:t.textMuted,fontSize:12}}>Chargement…</div>;
+  if(!entries.length)return<div style={{padding:12,color:t.textMuted,fontSize:12}}>Aucune correction enregistrée.</div>;
+  // Group by date (YYYY-MM-DD)
+  const byDate={};
+  entries.forEach(r=>{const day=r.timestamp.slice(0,10);if(!byDate[day])byDate[day]=[];byDate[day].push(r);});
+  return(<div style={{display:"flex",flexDirection:"column",gap:6}}>
+    {Object.keys(byDate).sort().reverse().map(day=>(
+      <div key={day} style={{background:t.section,border:`1px solid ${t.sectionBorder}`,borderRadius:7,padding:8}}>
+        <div style={{fontSize:10,fontWeight:700,color:"#f59e0b",marginBottom:5}}>{day} — {byDate[day].length} correction{byDate[day].length>1?"s":""}</div>
+        {byDate[day].map(r=>(
+          <div key={r.id} style={{fontSize:10,color:t.text,padding:"3px 0",borderTop:`1px solid ${t.divider}`,display:"grid",gridTemplateColumns:"80px 80px 1fr 80px 80px 1fr",gap:4,alignItems:"center"}}>
+            <span style={{color:t.textMuted,fontFamily:"'DM Mono',monospace"}}>{r.timestamp.slice(11,16)}</span>
+            <span style={{color:t.textSub}}>{MODULE_LABELS[r.module]||r.module}</span>
+            <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.record_type} {r.record_id}</span>
+            <span style={{color:t.textMuted,textDecoration:"line-through"}}>{r.old_value||"—"}</span>
+            <span style={{color:"#f59e0b"}}>{r.new_value||"—"}</span>
+            <span style={{color:t.textSub,fontStyle:"italic",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.reason||"—"}</span>
+          </div>
+        ))}
+      </div>
+    ))}
+  </div>);
+}
+
+function VoidReport(){
+  const t=useT();
+  const [entries,setEntries]=useState([]);const [loading,setLoading]=useState(true);
+  useEffect(()=>{(async()=>{try{const rows=await window.api.audit.query({action:"void"});setEntries(rows||[]);}catch(e){setEntries([]);}setLoading(false)})()},[]);
+  if(loading)return<div style={{padding:12,color:t.textMuted,fontSize:12}}>Chargement…</div>;
+  if(!entries.length)return<div style={{padding:12,color:t.textMuted,fontSize:12}}>Aucune annulation enregistrée.</div>;
+  return(<div style={{display:"flex",flexDirection:"column",gap:0}}>
+    <div style={{display:"grid",gridTemplateColumns:"130px 80px 100px 1fr 1fr",gap:4,padding:"5px 8px",background:t.section,borderRadius:"7px 7px 0 0",borderBottom:`1px solid ${t.dividerStrong}`}}>
+      {["Date/heure","Module","Type","ID","Raison"].map((h,i)=><span key={i} style={{fontSize:9,color:t.textMuted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>{h}</span>)}
+    </div>
+    {entries.map(r=>(
+      <div key={r.id} style={{display:"grid",gridTemplateColumns:"130px 80px 100px 1fr 1fr",gap:4,padding:"5px 8px",borderBottom:`1px solid ${t.divider}`,alignItems:"center"}}>
+        <span style={{fontSize:9.5,color:t.textMuted,fontFamily:"'DM Mono',monospace"}}>{r.timestamp}</span>
+        <span style={{fontSize:10,color:t.textSub}}>{MODULE_LABELS[r.module]||r.module}</span>
+        <span style={{fontSize:9.5,color:t.text}}>{r.record_type}</span>
+        <span style={{fontSize:9,color:t.textDim,fontFamily:"'DM Mono',monospace",overflow:"hidden",textOverflow:"ellipsis"}}>{r.record_id}</span>
+        <span style={{fontSize:10,color:"#ef4444",fontStyle:"italic"}}>{r.reason||"—"}</span>
+      </div>
+    ))}
+  </div>);
+}
+
+function IntegrityCheck(){
+  const t=useT();
+  const [results,setResults]=useState(null);const [loading,setLoading]=useState(false);
+  const run=async()=>{
+    setLoading(true);setResults(null);
+    try{
+      const dates=await window.api.snapshot.listDates();
+      const diffs=[];
+      for(const row of dates){
+        const snap=await window.api.snapshot.getLatest(row.date);
+        if(!snap)continue;
+        const live=await window.api.storage.get("dicann-v7");
+        if(!live?.value)continue;
+        const allData=JSON.parse(live.value);
+        const current=allData[row.date];
+        if(!current)continue;
+        const snapData=JSON.parse(snap.data);
+        // Compare all top-level financial fields
+        const WATCH=["hamEnd","hotEnd","hamReceived","hotReceived"];
+        WATCH.forEach(f=>{
+          if(snapData[f]!==current[f])diffs.push({date:row.date,field:f,snapValue:snapData[f],current:current[f],snapTime:snap.snapshot_timestamp});
+        });
+        // Compare caisses
+        const snapC=snapData.cashes||[];const curC=current.cashes||[];
+        snapC.forEach((sc,i)=>{
+          const cc=curC[i];if(!cc)return;
+          ["posVentes","posTPS","posTVQ","finalCash","float","interac"].forEach(f=>{
+            if(sc[f]!==cc[f])diffs.push({date:row.date,field:`caisse[${i}].${f}`,snapValue:sc[f],current:cc[f],snapTime:snap.snapshot_timestamp});
+          });
+        });
+      }
+      setResults(diffs);
+    }catch(e){setResults([]);}
+    setLoading(false);
+  };
+  return(<div style={{display:"flex",flexDirection:"column",gap:8}}>
+    <div style={{display:"flex",alignItems:"center",gap:8}}>
+      <button onClick={run} disabled={loading} style={{padding:"6px 16px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:loading?"default":"pointer",fontWeight:700,fontSize:11}}>{loading?"Vérification…":"🔍 Lancer la vérification"}</button>
+      {results&&<span style={{fontSize:11,color:results.length?'#ef4444':'#22c55e',fontWeight:700}}>{results.length?`${results.length} divergence${results.length>1?"s":""} détectée${results.length>1?"s":""}`:"✓ Aucune divergence"}</span>}
+    </div>
+    {results&&results.length>0&&(<div style={{background:t.card,border:`1px solid rgba(239,68,68,0.2)`,borderRadius:7,overflow:"hidden"}}>
+      <div style={{display:"grid",gridTemplateColumns:"90px 150px 1fr 1fr 130px",gap:4,padding:"5px 8px",background:t.section,borderBottom:`1px solid ${t.dividerStrong}`}}>
+        {["Date","Champ","Valeur snapshot","Valeur actuelle","Snapshot pris le"].map((h,i)=><span key={i} style={{fontSize:9,color:t.textMuted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>{h}</span>)}
+      </div>
+      {results.map((r,i)=>(
+        <div key={i} style={{display:"grid",gridTemplateColumns:"90px 150px 1fr 1fr 130px",gap:4,padding:"5px 8px",borderBottom:`1px solid ${t.divider}`,alignItems:"center"}}>
+          <span style={{fontSize:10,fontFamily:"'DM Mono',monospace",color:t.text}}>{r.date}</span>
+          <span style={{fontSize:10,color:t.text}}>{r.field}</span>
+          <span style={{fontSize:10,color:"#22c55e",fontFamily:"'DM Mono',monospace"}}>{r.snapValue??'—'}</span>
+          <span style={{fontSize:10,color:"#ef4444",fontFamily:"'DM Mono',monospace",fontWeight:700}}>{r.current??'—'}</span>
+          <span style={{fontSize:9,color:t.textMuted,fontFamily:"'DM Mono',monospace"}}>{r.snapTime}</span>
+        </div>
+      ))}
+    </div>)}
+  </div>);
+}
+
+// Enhanced AuditViewer with sub-tabs that wraps the existing viewer + reports
+function AuditSection(){
+  const t=useT();
+  const [sub,setSub]=useState("journal");
+  const TABS=[["journal","📋 Journal"],["corrections","⚠ Corrections"],["annulations","🚫 Annulations"],["integrite","🔍 Intégrité"]];
+  const btnStyle=active=>({padding:"5px 12px",borderRadius:"6px 6px 0 0",border:`1px solid ${active?t.cardBorder:"transparent"}`,borderBottom:active?"none":"transparent",background:active?t.card:t.section,color:active?"#f97316":t.textSub,cursor:"pointer",fontWeight:active?700:400,fontSize:11,marginBottom:active?"-1px":"0"});
+  return(<div>
+    <div style={{display:"flex",gap:4,borderBottom:`1px solid ${t.cardBorder}`,marginBottom:10}}>
+      {TABS.map(([id,label])=><button key={id} onClick={()=>setSub(id)} style={btnStyle(sub===id)}>{label}</button>)}
+    </div>
+    {sub==="journal"&&<AuditViewer/>}
+    {sub==="corrections"&&<CorrectionReport/>}
+    {sub==="annulations"&&<VoidReport/>}
+    {sub==="integrite"&&<IntegrityCheck/>}
+  </div>);
+}
+
 // ── MAIN ──
 export default function App(){
   const [demoData]=useState(()=>genDemo());
@@ -4210,7 +4336,7 @@ export default function App(){
             {/* Audit log viewer */}
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
               <span style={{fontSize:13,fontWeight:700,marginBottom:10,display:"block",color:t.text}}>📋 Journal d'audit</span>
-              <AuditViewer/>
+              <AuditSection/>
             </div>
 
             <div style={{textAlign:"center",padding:"4px 0 2px"}}>
