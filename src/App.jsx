@@ -99,6 +99,8 @@ const LIGHT = {
 
 const ThemeCtx = createContext(DARK);
 const useT = () => useContext(ThemeCtx);
+const LangCtx = createContext(FR);
+const useL = () => useContext(LangCtx);
 
 // ── CONSTANTS ──
 const DAYS_FR=["dimanche","lundi","mardi","mercredi","jeudi","vendredi","samedi"];
@@ -214,7 +216,8 @@ function ReconLine({label,value,negative,bold,accent,borderTop}){
 }
 
 // ── CASH BLOCK ──
-function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,roster,T}){
+function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,roster}){
+  const T=useL();
   const t=useT();
   const posOk=cash.posVentes!=null;const posT=(cash.posVentes||0)+(cash.posTPS||0)+(cash.posTVQ||0)+(cash.posLivraisons||0);
   const mc=cash.float!=null&&cash.deposits!=null&&cash.finalCash!=null;
@@ -518,6 +521,7 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
 
 // ── BILL ENTRY (accumulating bills for P&L) ──
 function BillEntry({label,baseKey,plData,updPL,accent="249,115,22"}){
+  const T=useL();
   const t=useT();
   const [open,setOpen]=useState(false);
   const [newDate,setNewDate]=useState('');
@@ -579,7 +583,7 @@ function BillEntry({label,baseKey,plData,updPL,accent="249,115,22"}){
           style={{padding:"3px 5px",borderRadius:3,border:`1px solid ${accentRgb+"0.25)"}`,background:t.inputBg,color:t.inputText,fontFamily:"'DM Mono',monospace",fontSize:10,textAlign:"right",outline:"none"}}/>
         <button onClick={addBill} style={{fontSize:10,padding:"3px 8px",borderRadius:3,border:`1px solid ${accentRgb+"0.25)"}`,background:accentRgb+"0.08)",color:`rgb(${accent})`,cursor:"pointer",fontWeight:700}}>+</button>
       </div>
-      {amtBlurred&&newAmt!==""&&(()=>{const n=parseFloat(newAmt);return n<0?<div style={{fontSize:10,color:"#f97316",padding:"1px 0 2px"}}>⚠️ Le montant ne peut pas être négatif</div>:n>50000?<div style={{fontSize:10,color:"#f97316",padding:"1px 0 2px"}}>⚠️ Montant inhabituellement élevé</div>:null})()}
+      {amtBlurred&&newAmt!==""&&(()=>{const n=parseFloat(newAmt);return n<0?<div style={{fontSize:10,color:"#f97316",padding:"1px 0 2px"}}>{T.warnNegativeAmount}</div>:n>50000?<div style={{fontSize:10,color:"#f97316",padding:"1px 0 2px"}}>{T.warnHighAmount}</div>:null})()}
       <div style={{fontSize:9,color:t.textDim,marginTop:3}}>Tous les montants avant taxes (HT)</div>
     </div>)}
   </div>);
@@ -610,7 +614,8 @@ function PDFPreviewModal({html,onClose}){
 }
 
 // ── EMPLOYEE ROW (daily tab) ──
-function EmpRow({emp,index,empRoster,selectedDate,updEmp,rmEmp,T}){
+function EmpRow({emp,index,empRoster,selectedDate,updEmp,rmEmp}){
+  const T=useL();
   const t=useT();
   const [hTouched,setHTouched]=useState(false);
   const cost=(emp.hours||0)*(emp.wage||0);
@@ -691,6 +696,7 @@ function GeoSearch({apiConfig,saveApiCfg}){
 // ── P&L MONTHLY ──
 function MonthlyPL({computeDay,suppliers,liveData,platforms}){
   const t=useT();
+  const T=useL();
   const [month,setMonth]=useState(()=>{const n=new Date();return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`});
   const [plData,setPlData]=useState({});const [saved,setSaved]=useState(false);const [loaded,setLoaded]=useState(false);const saveRef=useRef(null);
   const [revTouched,setRevTouched]=useState(false);
@@ -746,7 +752,7 @@ function MonthlyPL({computeDay,suppliers,liveData,platforms}){
   };
 
   const handleReset=()=>{
-    if(!window.confirm(`Réinitialiser toutes les données P&L pour ${MONTHS_FR[m-1]} ${y} ?\n\nCette action est irréversible.`))return;
+    if(!window.confirm(T.plResetConfirm))return;
     setPlData({});
     window.api.storage.set(`dicann-pl-${month}`,JSON.stringify({})).catch(()=>{});
   };
@@ -760,64 +766,64 @@ function MonthlyPL({computeDay,suppliers,liveData,platforms}){
     </div>);
   };
 
-  if(!loaded)return(<div style={{padding:20,textAlign:"center",color:t.textMuted}}>Chargement...</div>);
+  if(!loaded)return(<div style={{padding:20,textAlign:"center",color:t.textMuted}}>{T.loading}</div>);
 
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
       <input type="month" value={month} onChange={e=>setMonth(e.target.value)} style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,padding:"5px 8px",fontSize:12,fontFamily:"'DM Mono',monospace"}}/>
       <span style={{fontSize:14,fontWeight:700,textTransform:"capitalize",color:t.text}}>{MONTHS_FR[m-1]} {y}</span>
     </div>
-    <div style={{display:"flex",gap:5,flexWrap:"wrap"}}><MC label="Revenus" value={fmt(revenue)} accent="#22c55e"/><MC label="F&P" value={fmt(fpT)} sub={`${fpP.toFixed(1)}%`} accent={fpP>35?"#ef4444":"#f97316"}/><MC label="Main d'œuvre" value={fmt(labC)} sub={`${labP.toFixed(1)}%`} accent={labP>35?"#ef4444":"#38bdf8"}/><MC label="Profit" value={fmt(np)} sub={`${npP.toFixed(1)}%`} accent={np>=0?"#22c55e":"#ef4444"}/></div>
-    <Sec title="Revenus" color="34,197,94">
+    <div style={{display:"flex",gap:5,flexWrap:"wrap"}}><MC label={T.plRevenue} value={fmt(revenue)} accent="#22c55e"/><MC label="F&P" value={fmt(fpT)} sub={`${fpP.toFixed(1)}%`} accent={fpP>35?"#ef4444":"#f97316"}/><MC label={T.plLabour} value={fmt(labC)} sub={`${labP.toFixed(1)}%`} accent={labP>35?"#ef4444":"#38bdf8"}/><MC label="Profit" value={fmt(np)} sub={`${npP.toFixed(1)}%`} accent={np>=0?"#22c55e":"#ef4444"}/></div>
+    <Sec title={T.plRevenue} color="34,197,94">
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 0"}}>
-        <span style={{fontSize:12,color:t.textSub}}>Ventes nettes <span style={{fontSize:10,color:t.textMuted}}>(auto: {fmt(autoRev)})</span></span>
+        <span style={{fontSize:12,color:t.textSub}}>Ventes nettes <span style={{fontSize:10,color:t.textMuted}}>({T.plRevenueAuto}: {fmt(autoRev)})</span></span>
         {plData._revenueOverride==null
           ?(<div style={{display:"flex",gap:4,alignItems:"center"}}><span style={{fontFamily:"'DM Mono',monospace",fontSize:14,fontWeight:700,color:"#22c55e"}}>{fmt(autoRev)}</span><button onClick={()=>updPL("_revenueOverride",autoRev)} style={{fontSize:9,padding:"1px 5px",borderRadius:3,border:"1px solid rgba(251,191,36,0.2)",background:"rgba(251,191,36,0.08)",color:t.warnText,cursor:"pointer"}}>✎</button></div>)
-          :(<div><div style={{display:"flex",gap:4,alignItems:"center"}}><input type="number" value={plData._revenueOverride??""} onChange={e=>updPL("_revenueOverride",e.target.value===""?null:parseFloat(e.target.value))} onBlur={()=>setRevTouched(true)} style={{width:100,padding:"3px 6px",borderRadius:4,border:"1px solid rgba(251,191,36,0.25)",background:"rgba(251,191,36,0.06)",color:t.warnText,fontFamily:"'DM Mono',monospace",fontSize:13,textAlign:"right",outline:"none"}}/><button onClick={()=>{updPL("_revenueOverride",null);setRevTouched(false)}} style={{fontSize:9,padding:"1px 4px",borderRadius:3,border:"none",background:"rgba(239,68,68,0.1)",color:"#ef4444",cursor:"pointer"}}>✕</button></div>{revTouched&&plData._revenueOverride!=null&&plData._revenueOverride<0&&<div style={{fontSize:10,color:"#f97316",padding:"1px 0 2px"}}>⚠️ Le montant ne peut pas être négatif</div>}</div>)}
+          :(<div><div style={{display:"flex",gap:4,alignItems:"center"}}><input type="number" value={plData._revenueOverride??""} onChange={e=>updPL("_revenueOverride",e.target.value===""?null:parseFloat(e.target.value))} onBlur={()=>setRevTouched(true)} style={{width:100,padding:"3px 6px",borderRadius:4,border:"1px solid rgba(251,191,36,0.25)",background:"rgba(251,191,36,0.06)",color:t.warnText,fontFamily:"'DM Mono',monospace",fontSize:13,textAlign:"right",outline:"none"}}/><button onClick={()=>{updPL("_revenueOverride",null);setRevTouched(false)}} style={{fontSize:9,padding:"1px 4px",borderRadius:3,border:"none",background:"rgba(239,68,68,0.1)",color:"#ef4444",cursor:"pointer"}}>✕</button></div>{revTouched&&plData._revenueOverride!=null&&plData._revenueOverride<0&&<div style={{fontSize:10,color:"#f97316",padding:"1px 0 2px"}}>{T.warnNegativeAmount}</div>}</div>)}
       </div>
     </Sec>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-      <Sec title="Coût marchandises (F&P)" color="249,115,22">
-        <BillEntry label="Petite caisse F&P" baseKey="pettyCashFP" plData={plData} updPL={updPL} accent="249,115,22"/>
+      <Sec title={T.plCOGS} color="249,115,22">
+        <BillEntry label={T.plPettyCashFP} baseKey="pettyCashFP" plData={plData} updPL={updPL} accent="249,115,22"/>
         {suppliers.map(s=>(<BillEntry key={s.id} label={s.name} baseKey={`sup_${s.id}`} plData={plData} updPL={updPL} accent="249,115,22"/>))}
-        <div style={{marginTop:6,paddingTop:6,borderTop:`1px solid rgba(249,115,22,0.15)`}}><RR label="Total F&P" value={fpT} accent="#f97316" bold/>{revenue>0&&<RR label="F&P %" value={`${fpP.toFixed(1)}%`} unit="" accent={fpP>35?"#ef4444":fpP>30?t.warnText:"#22c55e"}/>}</div>
+        <div style={{marginTop:6,paddingTop:6,borderTop:`1px solid rgba(249,115,22,0.15)`}}><RR label={T.plTotalFP} value={fpT} accent="#f97316" bold/>{revenue>0&&<RR label={T.plFPPct} value={`${fpP.toFixed(1)}%`} unit="" accent={fpP>35?"#ef4444":fpP>30?t.warnText:"#22c55e"}/>}</div>
       </Sec>
-      <Sec title="Dépenses d'exploitation" color="129,140,248">
-        <BillEntry label="Petite caisse Misc" baseKey="pettyCashMisc" plData={plData} updPL={updPL} accent="129,140,248"/>
+      <Sec title={T.plOpExp} color="129,140,248">
+        <BillEntry label={T.plPettyCashMisc} baseKey="pettyCashMisc" plData={plData} updPL={updPL} accent="129,140,248"/>
         {EXPENSE_ITEMS.map(([k,l])=>(<BillEntry key={k} label={l} baseKey={`exp_${k}`} plData={plData} updPL={updPL} accent="129,140,248"/>))}
-        <div style={{marginTop:6,paddingTop:6,borderTop:`1px solid rgba(129,140,248,0.15)`}}><RR label="Total dépenses" value={expT} accent="#818cf8" bold/></div>
+        <div style={{marginTop:6,paddingTop:6,borderTop:`1px solid rgba(129,140,248,0.15)`}}><RR label={T.plTotalExp} value={expT} accent="#818cf8" bold/></div>
       </Sec>
     </div>
-    <Sec title="Main d'œuvre" color="56,189,248">
-      <div style={{fontSize:11,color:t.textMuted,marginBottom:4}}>Auto (rapports quotidiens): {fmt(autoLab)}</div>
-      <PL label="Override mensuel" value={plData.labourOverride} onChange={v=>updPL("labourOverride",v)} prefix="$" warn={plData.labourOverride!=null&&plData.labourOverride<0?"⚠️ Le montant ne peut pas être négatif":null}/>
-      <RR label="Total" value={labC} accent="#38bdf8" bold/>{revenue>0&&<RR label="%" value={`${labP.toFixed(1)}%`} unit="" accent={labP>35?"#ef4444":labP>28?t.warnText:"#22c55e"}/>}
+    <Sec title={T.plLabour} color="56,189,248">
+      <div style={{fontSize:11,color:t.textMuted,marginBottom:4}}>{T.plLabourAuto}: {fmt(autoLab)}</div>
+      <PL label={T.plMonthlyOverride} value={plData.labourOverride} onChange={v=>updPL("labourOverride",v)} prefix="$" warn={plData.labourOverride!=null&&plData.labourOverride<0?T.warnNegativeAmount:null}/>
+      <RR label="Total" value={labC} accent="#38bdf8" bold/>{revenue>0&&<RR label={T.plExpPct} value={`${labP.toFixed(1)}%`} unit="" accent={labP>35?"#ef4444":labP>28?t.warnText:"#22c55e"}/>}
     </Sec>
-    {deliveryStats.length>0&&delGrandV>0&&(<Sec title="📱 Plateformes de livraison" color="249,115,22">
-      <div style={{fontSize:10,color:t.textMuted,marginBottom:6,fontStyle:"italic"}}>Informatif — commission payée aux plateformes. Non inclus dans le calcul P&L.</div>
+    {deliveryStats.length>0&&delGrandV>0&&(<Sec title={T.plDeliveries} color="249,115,22">
+      <div style={{fontSize:10,color:t.textMuted,marginBottom:6,fontStyle:"italic"}}>{T.plDeliveryInfo}</div>
       {deliveryStats.filter(p=>p.totalVentes>0||p.totalDepots>0).map(p=>(<div key={p.id} style={{marginBottom:5,paddingBottom:5,borderBottom:`1px solid ${t.divider}`}}>
         <div style={{fontSize:11,fontWeight:700,color:t.text,marginBottom:2}}>{p.emoji} {p.name}</div>
-        <RR label="Ventes" value={p.totalVentes}/>
+        <RR label={T.plRevenue} value={p.totalVentes}/>
         <RR label="Dépôts reçus" value={p.totalDepots}/>
-        {p.totalVentes>0&&p.totalDepots>0&&<RR label="Commission" value={p.commission} accent="#f97316"/>}
-        {p.totalVentes>0&&<RR label="Commission %" value={`${p.commPct.toFixed(1)}%`} unit="" accent="#f97316"/>}
+        {p.totalVentes>0&&p.totalDepots>0&&<RR label={T.plCommission} value={p.commission} accent="#f97316"/>}
+        {p.totalVentes>0&&<RR label={T.plCommissionPct} value={`${p.commPct.toFixed(1)}%`} unit="" accent="#f97316"/>}
       </div>))}
       {deliveryStats.filter(p=>p.totalVentes>0).length>1&&(<div style={{paddingTop:4,borderTop:`1px solid rgba(249,115,22,0.15)`}}>
-        <RR label="Total ventes plateformes" value={delGrandV} bold/>
-        <RR label="Commission totale payée" value={delGrandComm} accent="#f97316" bold/>
-        {delGrandV>0&&<RR label="Commission %" value={`${delGrandPct.toFixed(1)}%`} unit="" accent="#f97316"/>}
+        <RR label={T.plTotalPlatSales} value={delGrandV} bold/>
+        <RR label={T.plTotalCommission} value={delGrandComm} accent="#f97316" bold/>
+        {delGrandV>0&&<RR label={T.plCommissionPct} value={`${delGrandPct.toFixed(1)}%`} unit="" accent="#f97316"/>}
       </div>)}
     </Sec>)}
     <div style={{background:np>=0?t.reconBalBg:t.reconErrBg,border:`1px solid ${np>=0?t.reconBalBorder:t.reconErrBorder}`,borderRadius:10,padding:14}}>
-      <div style={{fontSize:11,color:t.textSub,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,marginBottom:8}}>Résultat — {MONTHS_FR[m-1]} {y}</div>
-      <RR label="Revenus" value={revenue} accent="#22c55e" bold/><RR label="− F&P" value={fpT} accent="#f97316"/><div style={{paddingTop:4,borderTop:`1px solid ${t.dividerMid}`}}><RR label="= Profit brut" value={gp} bold/></div><RR label="− Main d'œuvre" value={labC} accent="#38bdf8"/><RR label="− Dépenses" value={expT} accent="#818cf8"/>
-      <div style={{paddingTop:6,marginTop:4,borderTop:`2px solid ${t.dividerStrong}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{fontSize:14,fontWeight:700,color:np>=0?"#16a34a":"#dc2626"}}>{np>=0?"PROFIT NET":"PERTE NETTE"}</span><div style={{textAlign:"right"}}><span style={{fontSize:22,fontWeight:700,color:np>=0?"#16a34a":"#dc2626",fontFamily:"'DM Mono',monospace"}}>{fmt(Math.abs(np))}</span>{revenue>0&&<div style={{fontSize:11,color:np>=0?"#16a34a":"#dc2626"}}>{npP.toFixed(1)}%</div>}</div></div>
+      <div style={{fontSize:11,color:t.textSub,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,marginBottom:8}}>{T.plResult} — {MONTHS_FR[m-1]} {y}</div>
+      <RR label={T.plRevenue} value={revenue} accent="#22c55e" bold/><RR label={T.plSubtractFP} value={fpT} accent="#f97316"/><div style={{paddingTop:4,borderTop:`1px solid ${t.dividerMid}`}}><RR label={T.plGrossProfit} value={gp} bold/></div><RR label={T.plSubtractLabour} value={labC} accent="#38bdf8"/><RR label={T.plSubtractExp} value={expT} accent="#818cf8"/>
+      <div style={{paddingTop:6,marginTop:4,borderTop:`2px solid ${t.dividerStrong}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{fontSize:14,fontWeight:700,color:np>=0?"#16a34a":"#dc2626"}}>{np>=0?T.plNetProfit:T.plNetLoss}</span><div style={{textAlign:"right"}}><span style={{fontSize:22,fontWeight:700,color:np>=0?"#16a34a":"#dc2626",fontFamily:"'DM Mono',monospace"}}>{fmt(Math.abs(np))}</span>{revenue>0&&<div style={{fontSize:11,color:np>=0?"#16a34a":"#dc2626"}}>{npP.toFixed(1)}%</div>}</div></div>
     </div>
     <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-      <button onClick={handleSave} style={{padding:"9px 20px",borderRadius:7,border:"none",cursor:"pointer",fontWeight:700,fontSize:13,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>Sauvegarder & Imprimer PDF</button>
-      <button onClick={handleEmail} style={{padding:"9px 16px",borderRadius:7,border:"1px solid rgba(34,197,94,0.2)",background:"rgba(34,197,94,0.08)",color:"#16a34a",cursor:"pointer",fontWeight:600,fontSize:12}}>Envoyer à {OWNER_EMAIL}</button>
-      {saved&&<span style={{fontSize:12,color:"#16a34a",fontWeight:600}}>✓ Sauvegardé</span>}
-      <button onClick={handleReset} style={{padding:"9px 16px",borderRadius:7,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.08)",color:"#ef4444",cursor:"pointer",fontWeight:600,fontSize:12,marginLeft:"auto"}}>Réinitialiser le mois</button>
+      <button onClick={handleSave} style={{padding:"9px 20px",borderRadius:7,border:"none",cursor:"pointer",fontWeight:700,fontSize:13,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>{T.plSaveAndPrint}</button>
+      <button onClick={handleEmail} style={{padding:"9px 16px",borderRadius:7,border:"1px solid rgba(34,197,94,0.2)",background:"rgba(34,197,94,0.08)",color:"#16a34a",cursor:"pointer",fontWeight:600,fontSize:12}}>{T.plSendEmail(OWNER_EMAIL)}</button>
+      {saved&&<span style={{fontSize:12,color:"#16a34a",fontWeight:600}}>{T.saved}</span>}
+      <button onClick={handleReset} style={{padding:"9px 16px",borderRadius:7,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.08)",color:"#ef4444",cursor:"pointer",fontWeight:600,fontSize:12,marginLeft:"auto"}}>{T.plResetMonth}</button>
     </div>
   </div>);
 }
@@ -5882,6 +5888,7 @@ export default function App(){
   if(!appMode)return(<WelcomeScreen onSelect={saveAppMode}/>);
 
   return(
+    <LangCtx.Provider value={T}>
     <ThemeCtx.Provider value={theme}>
       {upgradePromptOpen&&<UpgradePrompt onClose={()=>setUpgradePromptOpen(false)}/>}
       {pdfPreview&&<PDFPreviewModal html={pdfPreview} onClose={()=>setPdfPreview(null)}/>}
@@ -5984,7 +5991,7 @@ export default function App(){
                 <button onClick={()=>addCash(selectedDate)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.18)",background:"rgba(249,115,22,0.06)",color:"#f97316",cursor:"pointer",fontWeight:600}}>{T.dailyNewCaisse}</button>
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {cashes.map((c,i)=>(<CashBlock key={`${selectedDate}-${i}-${cashes.length}`} cash={c} index={i} onChange={c=>updCash(selectedDate,i,c)} onRemove={()=>rmCash(selectedDate,i)} canRemove={cashes.length>1} collapsed={!!collapseMap[`${selectedDate}-${i}`]} onToggle={()=>togC(i)} roster={roster} T={T}/>))}
+                {cashes.map((c,i)=>(<CashBlock key={`${selectedDate}-${i}-${cashes.length}`} cash={c} index={i} onChange={c=>updCash(selectedDate,i,c)} onRemove={()=>rmCash(selectedDate,i)} canRemove={cashes.length>1} collapsed={!!collapseMap[`${selectedDate}-${i}`]} onToggle={()=>togC(i)} roster={roster}/>))}
               </div>
             </div>
 
@@ -6110,7 +6117,7 @@ export default function App(){
                 <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr auto",gap:6,padding:"4px 0",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:4}}>
                   {[T.empName,T.empHours,T.empWage,T.empCost,""].map((h,i)=>(<span key={i} style={{fontSize:10,color:t.textMuted,fontWeight:600,textAlign:i>0&&i<4?"right":"left"}}>{h}</span>))}
                 </div>
-                {emps.map((emp,i)=>(<EmpRow key={i} emp={emp} index={i} empRoster={empRoster} selectedDate={selectedDate} updEmp={updEmp} rmEmp={rmEmp} T={T}/>))}
+                {emps.map((emp,i)=>(<EmpRow key={i} emp={emp} index={i} empRoster={empRoster} selectedDate={selectedDate} updEmp={updEmp} rmEmp={rmEmp}/>))}
                 <div style={{display:"flex",gap:6,marginTop:6,flexWrap:"wrap"}}>
                   <select id="addEmpSelect" style={{background:t.inputBg,border:`1px solid rgba(249,115,22,0.18)`,borderRadius:5,color:t.text,fontSize:12,padding:"4px 8px",outline:"none"}}>
                     <option value="" style={{background:t.optionBg}}>— Ajouter un employé —</option>
@@ -6550,5 +6557,6 @@ export default function App(){
         </div>
       </div>
     </ThemeCtx.Provider>
+    </LangCtx.Provider>
   );
 }
