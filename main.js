@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, net, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
-const { storageGet, storageSet, storageGetAll } = require('./src/db/database.js');
+const { storageGet, storageSet, storageGetAll, auditInsert, auditQuery, getDeviceId } = require('./src/db/database.js');
 
 const BACKUP_DIR = () => path.join(app.getPath('documents'), 'BalanceIQ Backups');
 const BACKUP_KEEP_DAYS = 30;
@@ -47,6 +47,19 @@ async function performAutoBackup() {
       });
   } catch (_) {}
 }
+
+// IPC handlers — audit log (append-only, never update/delete)
+ipcMain.handle('audit:log', (event, entry) => {
+  return auditInsert(entry);
+});
+
+ipcMain.handle('audit:query', (event, filters) => {
+  return auditQuery(filters || {});
+});
+
+ipcMain.handle('audit:deviceId', () => {
+  return getDeviceId();
+});
 
 // IPC handlers for storage
 ipcMain.handle('storage:get', (event, key) => {
