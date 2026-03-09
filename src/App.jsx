@@ -3,6 +3,7 @@ import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./config/features.js";
 import * as XLSX from "xlsx";
 import { logCreate, logUpdate, logVoid, logCorrection, isFinancialField, promptCorrectionReason } from "./services/auditLogger.js";
+import { initCloudSync, signIn as cloudSignIn, signUp as cloudSignUp, signOut as cloudSignOut, schedulePush, onSyncStatus, onPlanChange, refreshPlan } from "./services/cloudSync.js";
 import { FR, EN } from "./i18n/translations.js";
 
 // ── THEME ──
@@ -5089,7 +5090,7 @@ function PinLockScreen({lockConfig,onUnlock,saveLockConfig}){
           {T.cfgForgotPin}
         </div>
       </div>
-      <style>{`@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}`}</style>
+      <style>{`@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}@keyframes biq-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 }
@@ -5516,6 +5517,77 @@ function AuditSection(){
   </div>);
 }
 
+// ── CLOUD ACCOUNT SECTION ──
+function CloudAccountSection({cloudUser,syncStatus,onSignIn,onSignUp,onSignOut,t,T}){
+  const [mode,setMode]=useState("idle"); // idle | signin | signup
+  const [form,setForm]=useState({email:"",password:"",fullName:"",orgName:""});
+  const [loading,setLoading]=useState(false);
+  const [msg,setMsg]=useState(null); // {ok:bool, text:str}
+
+  const inp={width:"100%",background:t.inputBg,border:`1px solid rgba(249,115,22,0.2)`,borderRadius:5,color:t.text,fontSize:12,padding:"5px 8px",outline:"none",boxSizing:"border-box",marginBottom:5};
+
+  const doSignIn=async()=>{
+    setLoading(true);setMsg(null);
+    try{await onSignIn({email:form.email,password:form.password});setMode("idle");}
+    catch(e){setMsg({ok:false,text:T.cfgCloudAuthError});}
+    finally{setLoading(false);}
+  };
+  const doSignUp=async()=>{
+    setLoading(true);setMsg(null);
+    try{await onSignUp({email:form.email,password:form.password,fullName:form.fullName,orgName:form.orgName});setMsg({ok:true,text:T.cfgCloudEmailConf});}
+    catch(e){setMsg({ok:false,text:e.message||T.cfgCloudAuthError});}
+    finally{setLoading(false);}
+  };
+
+  const syncColor=syncStatus==="synced"?"#22c55e":syncStatus==="syncing"?"#f97316":syncStatus==="offline"||syncStatus==="error"?"#ef4444":"#888";
+  const syncIcon=syncStatus==="synced"?"✓":syncStatus==="syncing"?"⟳":syncStatus==="offline"||syncStatus==="error"?"✗":"";
+  const syncLabel=syncStatus==="synced"?T.cfgCloudSynced:syncStatus==="syncing"?T.cfgCloudSyncing:syncStatus==="offline"?T.cfgCloudOffline:syncStatus==="error"?T.cfgCloudError:"";
+
+  return(<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+      <span style={{fontSize:13,fontWeight:700,color:t.text}}>{T.cfgCloudTitle}</span>
+      {cloudUser&&syncStatus&&<span style={{fontSize:10,fontWeight:700,color:syncColor,display:"flex",alignItems:"center",gap:3}}><span style={{display:"inline-block",animation:syncStatus==="syncing"?"biq-spin 1s linear infinite":"none"}}>{syncIcon}</span>{syncLabel}</span>}
+    </div>
+
+    {cloudUser
+      ?(<>
+          <div style={{fontSize:11.5,color:t.text,marginBottom:8}}>{T.cfgCloudConnected(cloudUser.email, cloudUser.plan?.toUpperCase()||"FREE")}</div>
+          <button onClick={onSignOut} style={{fontSize:11,padding:"4px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600}}>{T.cfgCloudSignOut}</button>
+        </>)
+      :mode==="idle"
+        ?(<>
+            <div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{T.cfgCloudFreeNote}</div>
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={()=>{setMode("signin");setMsg(null);}} style={{padding:"5px 14px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>{T.cfgCloudSignIn}</button>
+              <button onClick={()=>{setMode("signup");setMsg(null);}} style={{padding:"5px 14px",borderRadius:6,border:`1px solid rgba(249,115,22,0.3)`,background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11}}>{T.cfgCloudSignUp}</button>
+            </div>
+          </>)
+        :mode==="signin"
+          ?(<div>
+              <div style={{fontSize:11.5,fontWeight:700,color:"#f97316",marginBottom:8}}>{T.cfgCloudSignIn}</div>
+              <input style={inp} placeholder={T.cfgCloudEmail} type="email" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} autoFocus/>
+              <input style={inp} placeholder={T.cfgCloudPassword} type="password" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doSignIn()}/>
+              {msg&&<div style={{fontSize:10.5,color:msg.ok?"#22c55e":"#ef4444",marginBottom:6}}>{msg.text}</div>}
+              <div style={{display:"flex",gap:6,marginTop:4}}>
+                <button onClick={doSignIn} disabled={loading||!form.email||!form.password} style={{padding:"5px 14px",borderRadius:6,border:"none",background:loading||!form.email||!form.password?"rgba(255,255,255,0.05)":"linear-gradient(135deg,#f97316,#ea580c)",color:loading||!form.email||!form.password?t.textDim:"#fff",cursor:loading?"default":"pointer",fontWeight:700,fontSize:11}}>{loading?T.cfgCloudLoading:T.cfgCloudSignIn}</button>
+                <button onClick={()=>setMode("idle")} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>{T.cancel}</button>
+              </div>
+            </div>)
+          :(<div>
+              <div style={{fontSize:11.5,fontWeight:700,color:"#f97316",marginBottom:8}}>{T.cfgCloudSignUp}</div>
+              <input style={inp} placeholder={T.cfgCloudFullName} value={form.fullName} onChange={e=>setForm(f=>({...f,fullName:e.target.value}))} autoFocus/>
+              <input style={inp} placeholder={T.cfgCloudOrgName} value={form.orgName} onChange={e=>setForm(f=>({...f,orgName:e.target.value}))}/>
+              <input style={inp} placeholder={T.cfgCloudEmail} type="email" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))}/>
+              <input style={inp} placeholder={T.cfgCloudPassword} type="password" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doSignUp()}/>
+              {msg&&<div style={{fontSize:10.5,color:msg.ok?"#22c55e":"#ef4444",marginBottom:6}}>{msg.text}</div>}
+              <div style={{display:"flex",gap:6,marginTop:4}}>
+                <button onClick={doSignUp} disabled={loading||!form.email||!form.password||!form.fullName} style={{padding:"5px 14px",borderRadius:6,border:"none",background:loading||!form.email||!form.password||!form.fullName?"rgba(255,255,255,0.05)":"linear-gradient(135deg,#f97316,#ea580c)",color:loading||!form.email||!form.password||!form.fullName?t.textDim:"#fff",cursor:loading?"default":"pointer",fontWeight:700,fontSize:11}}>{loading?T.cfgCloudLoading:T.cfgCloudSignUp}</button>
+                <button onClick={()=>setMode("idle")} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>{T.cancel}</button>
+              </div>
+            </div>)}
+  </div>);
+}
+
 // ── INVENTORY CONFIG SECTION ──
 function InvConfigSection({invConfig,saveInvConfig,t,T}){
   const UNITE_OPTIONS=["douzaines","unités","kg","litres","portions","boîtes"];
@@ -5707,6 +5779,8 @@ export default function App(){
   const encaisseTimer=useRef(null);
   const [appMode,setAppMode]=useState(null);
   const [lang,setLang]=useState("fr");
+  const [cloudUser,setCloudUser]=useState(null); // {email, plan} or null
+  const [syncStatus,setSyncStatus]=useState(null); // 'synced'|'syncing'|'offline'|'error'|null
   const [lockConfig,setLockConfig]=useState({enabled:false,pin:"",lockedUntil:null});
   const [appLocked,setAppLocked]=useState(false);
   const [locations,setLocations]=useState([]);
@@ -5763,6 +5837,15 @@ export default function App(){
     setLoading(false);
     // Load auto-backup info after a short delay (backup runs at t+3s)
     setTimeout(async()=>{try{const info=await window.api.backup.getInfo();setBackupInfo(info)}catch(_){}},4000);
+    // Init cloud sync — non-blocking, won't affect app if offline
+    setTimeout(async()=>{
+      try{
+        onSyncStatus(setSyncStatus);
+        onPlanChange(p=>{setPlan(p);setActivePlan(p);});
+        const cloud=await initCloudSync();
+        if(cloud?.session){setCloudUser({email:cloud.session.user.email,plan:cloud.plan});}
+      }catch(_){}
+    },1000);
   })()},[]);
 
   useEffect(()=>{
@@ -5813,9 +5896,9 @@ export default function App(){
   // T = active translation object — use T.keyName throughout UI
   const T=lang==="en"?EN:FR;
 
-  const persist=useCallback(data=>{if(saveTimer.current)clearTimeout(saveTimer.current);setSaving(true);saveTimer.current=setTimeout(async()=>{try{await window.api.storage.set("dicann-v7",JSON.stringify(data))}catch(e){}setSaving(false)},600)},[]);
-  const saveRoster=useCallback(async r=>{try{await window.api.storage.set("dicann-roster",JSON.stringify(r))}catch(e){}},[]);
-  const saveEmpRoster=useCallback(async r=>{try{await window.api.storage.set("dicann-emp-roster",JSON.stringify(r))}catch(e){}},[]);
+  const persist=useCallback(data=>{if(saveTimer.current)clearTimeout(saveTimer.current);setSaving(true);saveTimer.current=setTimeout(async()=>{const s=JSON.stringify(data);try{await window.api.storage.set("dicann-v7",s)}catch(e){}setSaving(false);schedulePush("dicann-v7",s);},600)},[]);
+  const saveRoster=useCallback(async r=>{const s=JSON.stringify(r);try{await window.api.storage.set("dicann-roster",s)}catch(e){}schedulePush("dicann-roster",s);},[]);
+  const saveEmpRoster=useCallback(async r=>{const s=JSON.stringify(r);try{await window.api.storage.set("dicann-emp-roster",s)}catch(e){}schedulePush("dicann-emp-roster",s);},[]);
   const saveSup=useCallback(async s=>{try{await window.api.storage.set("dicann-suppliers-v2",JSON.stringify(s))}catch(e){}},[]);
   const savePlatforms=useCallback(async p=>{try{await window.api.storage.set("dicann-platforms",JSON.stringify(p))}catch(e){}},[]);
   const saveApiCfg=useCallback(async c=>{try{await window.api.storage.set("dicann-api-config",JSON.stringify(c))}catch(e){}},[]);
@@ -5827,6 +5910,9 @@ export default function App(){
   const saveWhiteLabel=useCallback(cfg=>{setWhiteLabelConfig(cfg);window.api.storage.set("balanceiq-whitelabel",JSON.stringify(cfg)).catch(()=>{})},[]);
   const saveLockConfig=useCallback(cfg=>{setLockConfig(cfg);window.api.storage.set("balanceiq-lock",JSON.stringify(cfg)).catch(()=>{})},[]);
   const saveInvConfig=useCallback(cfg=>{setInvConfig(cfg);window.api.storage.set("dicann-inv-config",JSON.stringify(cfg)).catch(()=>{})},[]);
+  const handleCloudSignIn=useCallback(async(creds)=>{const res=await cloudSignIn(creds);setCloudUser({email:res.session.user.email,plan:res.plan});if(res.plan!=='free'){setPlan(res.plan);setActivePlan(res.plan);}},[]);
+  const handleCloudSignUp=useCallback(async(creds)=>{const res=await cloudSignUp(creds);if(res?.session)setCloudUser({email:res.session.user.email,plan:res.plan});},[]);
+  const handleCloudSignOut=useCallback(async()=>{await cloudSignOut();setCloudUser(null);setSyncStatus(null);},[]);
   const showUpgradePrompt=useCallback(featureName=>{if(shouldShowUpgradePrompt(featureName))setUpgradePromptOpen(true)},[]);
   const saveCompanyInfo=useCallback(info=>{setCompanyInfo(info);window.api.storage.set("dicann-company-info",JSON.stringify(info)).catch(()=>{})},[]);
   const saveInvoiceTemplate=useCallback(tpl=>{setInvoiceTemplate(tpl);window.api.storage.set("dicann-invoice-template",JSON.stringify(tpl)).catch(()=>{})},[]);
@@ -6114,6 +6200,7 @@ export default function App(){
             </div>
             <div style={{display:"flex",alignItems:"center",gap:6}}>
               {saving&&<span style={{fontSize:9,color:"#f97316",fontFamily:"'DM Mono',monospace"}}>sauvegarde...</span>}
+              {cloudUser&&syncStatus&&(()=>{const sc=syncStatus==="synced"?"#22c55e":syncStatus==="syncing"?"#f97316":"#ef4444";const si=syncStatus==="synced"?"✓":syncStatus==="syncing"?"⟳":"✗";return<span title={cloudUser.email} style={{fontSize:11,color:sc,fontWeight:700,cursor:"default",display:"flex",alignItems:"center",gap:2}}><span style={{display:"inline-block",animation:syncStatus==="syncing"?"biq-spin 1.2s linear infinite":"none"}}>☁</span>{si}</span>;})()}
               {hasL&&<Pill ok label={T.entryMode}/>}
               <button onClick={()=>{saveAppMode(null)}} title="Changer de mode" style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textMuted,fontSize:10,padding:"3px 8px",cursor:"pointer",fontWeight:600}}>
                 ⇄ {T.modeToggle}
@@ -6756,6 +6843,8 @@ export default function App(){
                 </>
               }
             </div>
+            {/* ── CLOUD ACCOUNT ── */}
+            <CloudAccountSection cloudUser={cloudUser} syncStatus={syncStatus} onSignIn={handleCloudSignIn} onSignUp={handleCloudSignUp} onSignOut={handleCloudSignOut} t={t} T={T}/>
             {/* ── INVENTORY CONFIG ── */}
             <InvConfigSection invConfig={invConfig} saveInvConfig={saveInvConfig} t={t} T={T}/>
             <PinLockConfig lockConfig={lockConfig} saveLockConfig={saveLockConfig}/>
