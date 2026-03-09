@@ -312,6 +312,7 @@ function parseAmountStr(s){
 
 // ── LIVRAISONS SECTION ──
 function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,saveApiCfg}){
+  const T=useL();
   const t=useT();
   const [collapsed,setCollapsed]=useState(false);
   const [importPid,setImportPid]=useState(null);
@@ -399,7 +400,7 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
       <span style={{fontSize:10,color:t.textMuted,fontStyle:'italic'}}>Informatif seulement</span>
     </div>
     {!collapsed&&(<div style={{padding:11}}>
-      <div style={{fontSize:10,color:t.textMuted,marginBottom:8,fontStyle:'italic'}}>N'affecte pas la réconciliation des caisses</div>
+      <div style={{fontSize:10,color:t.textMuted,marginBottom:8,fontStyle:'italic'}}>{T.livInfoOnly}</div>
 
       {/* Import done message */}
       {importStep==='done'&&importMsg&&(<div style={{marginBottom:10,padding:'6px 10px',borderRadius:6,background:'rgba(34,197,94,0.06)',border:'1px solid rgba(34,197,94,0.2)',fontSize:12,color:'#16a34a',fontWeight:600}}>{importMsg}</div>)}
@@ -465,7 +466,7 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
 
         {/* Step: conflict */}
         {importStep==='conflict'&&(<div>
-          <div style={{fontSize:11,color:'#f97316',marginBottom:6}}>Des dépôts existent déjà pour {conflictItems.length} date{conflictItems.length!==1?'s':''} :</div>
+          <div style={{fontSize:11,color:'#f97316',marginBottom:6}}>{T.livConflictMsg(conflictItems.length)}</div>
           <div style={{marginBottom:8}}>
             {conflictItems.map(({date,amount},i)=>{
               const dd=new Date(date+'T12:00:00');
@@ -476,14 +477,14 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
             })}
           </div>
           <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-            <button onClick={()=>handleConflict(true)} style={btnP}>Remplacer tout</button>
-            <button onClick={()=>handleConflict(false)} style={{...btnS,border:'1px solid rgba(249,115,22,0.2)',background:'rgba(249,115,22,0.06)',color:'#f97316'}}>Ignorer les conflits</button>
+            <button onClick={()=>handleConflict(true)} style={btnP}>{T.livReplaceAll}</button>
+            <button onClick={()=>handleConflict(false)} style={{...btnS,border:'1px solid rgba(249,115,22,0.2)',background:'rgba(249,115,22,0.06)',color:'#f97316'}}>{T.livIgnoreConflicts}</button>
             <button onClick={cancelImport} style={btnS}>Annuler</button>
           </div>
         </div>)}
       </div>)}
 
-      {platforms.length===0&&<div style={{fontSize:12,color:t.textMuted,textAlign:'center',padding:8}}>Aucune plateforme configurée — ajouter dans Config</div>}
+      {platforms.length===0&&<div style={{fontSize:12,color:t.textMuted,textAlign:'center',padding:8}}>{T.livNoPlatforms}</div>}
 
       {platforms.map(platform=>{
         const pd=getPD(platform.id);const hasV=pd.ventes!=null;const hasD=pd.depot!=null;
@@ -493,23 +494,23 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
         return(<div key={platform.id} style={{marginBottom:8,padding:10,borderRadius:7,background:t.section,border:`1px solid ${active?'rgba(56,189,248,0.35)':t.sectionBorder}`}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
             <span style={{fontSize:12,fontWeight:700,color:t.text}}>{platform.emoji} {platform.name}</span>
-            <button onClick={e=>{e.stopPropagation();openImport(platform.id);}} style={{fontSize:9.5,padding:'2px 8px',borderRadius:4,border:'1px solid rgba(56,189,248,0.2)',background:'rgba(56,189,248,0.06)',color:'#38bdf8',cursor:'pointer',fontWeight:600,whiteSpace:'nowrap'}}>📥 Importer relevé</button>
+            <button onClick={e=>{e.stopPropagation();openImport(platform.id);}} style={{fontSize:9.5,padding:'2px 8px',borderRadius:4,border:'1px solid rgba(56,189,248,0.2)',background:'rgba(56,189,248,0.06)',color:'#38bdf8',cursor:'pointer',fontWeight:600,whiteSpace:'nowrap'}}>{T.livImportStatement}</button>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-            <F label="Ventes plateforme" value={pd.ventes} onChange={v=>updPD(platform.id,'ventes',v)} prefix="$"/>
-            <F label="Dépôt reçu" value={pd.depot} onChange={v=>updPD(platform.id,'depot',v)} prefix="$"/>
+            <F label={T.livPlatformSales} value={pd.ventes} onChange={v=>updPD(platform.id,'ventes',v)} prefix="$"/>
+            <F label={T.livDepositReceived} value={pd.depot} onChange={v=>updPD(platform.id,'depot',v)} prefix="$"/>
           </div>
           <div style={{marginTop:5,fontSize:11}}>
             {ecart!=null?(<span style={{color:'#f97316',fontWeight:600,fontFamily:"'DM Mono',monospace"}}>Écart: {fmt(ecart)}{ecartPct!=null?` (${ecartPct.toFixed(1)}%)`:''}
-            </span>):hasV?(<span style={{color:t.textMuted}}>⏳ En attente du dépôt</span>):null}
+            </span>):hasV?(<span style={{color:t.textMuted}}>{T.livPending}</span>):null}
           </div>
         </div>);
       })}
 
       {platforms.length>0&&(<div style={{marginTop:4,padding:'8px 10px',borderRadius:7,background:t.reconNeutralBg,border:`1px solid ${t.reconNeutralBorder}`}}>
         <div style={{fontSize:9.5,color:t.textMuted,fontWeight:700,textTransform:'uppercase',letterSpacing:0.7,marginBottom:4}}>Sommaire du jour — informatif</div>
-        <RR label="Total ventes plateformes" value={totalVentes>0?totalVentes:null}/>
-        <RR label="Total dépôts reçus" value={totalDepots>0?totalDepots:null}/>
+        <RR label={T.livTotalSales} value={totalVentes>0?totalVentes:null}/>
+        <RR label={T.livTotalDeposits} value={totalDepots>0?totalDepots:null}/>
         {totalVentes>0&&totalDepots>0&&(<div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'3.5px 0',borderTop:`1px solid ${t.divider}`,marginTop:2}}>
           <span style={{fontSize:11.5,color:t.textSub,fontWeight:500}}>Commission totale</span>
           <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:'#f97316',fontWeight:700}}>{fmt(totalComm)} ({totalCommPct.toFixed(1)}%)</span>
@@ -841,6 +842,7 @@ function SH({label,children}){
 
 // ── ENCAISSE TAB ──
 function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveEncaisseConfig}){
+  const T=useL();
   const t=useT();
   const [selDate,setSelDate]=useState(()=>dk(new Date()));
   const [month,setMonth]=useState(()=>{const n=new Date();return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`});
@@ -925,7 +927,7 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
     {/* Monthly summary */}
     <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none"}} onClick={()=>setSummaryOpen(o=>!o)}>
-        <span style={{fontSize:13,fontWeight:700,color:t.text}}>Sommaire mensuel</span>
+        <span style={{fontSize:13,fontWeight:700,color:t.text}}>{T.encMonthlySummary}</span>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <input type="month" value={month} onChange={e=>e.target.value&&setMonth(e.target.value)} onClick={e=>e.stopPropagation()} style={{...inputS,fontFamily:"'DM Mono',monospace",fontSize:11}}/>
           <span style={{fontSize:9,color:t.textDim,display:"inline-block",transform:summaryOpen?"rotate(0deg)":"rotate(-90deg)",transition:"transform 0.15s"}}>▾</span>
@@ -933,31 +935,31 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
       </div>
       {summaryOpen&&(<div style={{marginTop:8}}>
         <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
-          <MC label="Cash des ventes" value={fmt(mSummary.totalCV)} accent={t.posColor}/>
-          <MC label="Dépôts banque" value={fmt(mSummary.totalDep)} accent="#f97316"/>
-          <MC label="Sorties cash" value={fmt(mSummary.totalSort)} accent="#7c3aed"/>
-          <MC label="Position actuelle" value={fmt(mSummary.currentPos)}/>
-          <MC label="Jours balancés" value={`${mSummary.bal}j`} accent="#22c55e" sub={mSummary.notBal>0?`${mSummary.notBal} non bal.`:undefined}/>
+          <MC label={T.encSalesCash} value={fmt(mSummary.totalCV)} accent={t.posColor}/>
+          <MC label={T.encDeposits} value={fmt(mSummary.totalDep)} accent="#f97316"/>
+          <MC label={T.encOutflows} value={fmt(mSummary.totalSort)} accent="#7c3aed"/>
+          <MC label={T.encTitle} value={fmt(mSummary.currentPos)}/>
+          <MC label={T.encDaysBalanced} value={`${mSummary.bal}j`} accent="#22c55e" sub={mSummary.notBal>0?`${mSummary.notBal} ${T.encNotBalanced}`:undefined}/>
         </div>
         {mSummary.bigE.length>0&&(<div style={{padding:"7px 10px",borderRadius:7,background:t.reconErrBg,border:`1px solid ${t.reconErrBorder}`}}>
-          <span style={{fontSize:11,fontWeight:600,color:"#dc2626"}}>⚠ Écarts &gt; 10$ :</span>
-          {mSummary.bigE.map(x=>(<span key={x.date} style={{display:"inline-block",marginLeft:8,fontSize:10,color:"#dc2626",fontFamily:"'DM Mono',monospace"}}>{x.date}: {x.ecart>0?"surplus":"manque"} {fmt(Math.abs(x.ecart))}</span>))}
+          <span style={{fontSize:11,fontWeight:600,color:"#dc2626"}}>{T.warnVariancesOver10}</span>
+          {mSummary.bigE.map(x=>(<span key={x.date} style={{display:"inline-block",marginLeft:8,fontSize:10,color:"#dc2626",fontFamily:"'DM Mono',monospace"}}>{x.date}: {x.ecart>0?T.dailySurplus:T.dailyShortage} {fmt(Math.abs(x.ecart))}</span>))}
         </div>)}
       </div>)}
     </div>
 
     {/* S1: Solde d'ouverture */}
-    <SH label="① Solde d'ouverture">
+    <SH label={T.encOpening}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 0"}}>
         {enc.openingOverride!=null
-          ?(<><span style={{fontSize:11,color:t.textSub}}>Solde d'ouverture (manuel)</span>
+          ?(<><span style={{fontSize:11,color:t.textSub}}>{T.encOpening} (manuel)</span>
             <div style={{display:"flex",alignItems:"center",gap:6}}>
               <span style={{fontFamily:"'DM Mono',monospace",fontSize:14,fontWeight:700,color:t.text}}>{fmt(enc.openingOverride)}</span>
               <button onClick={()=>updEnc("openingOverride",null)} style={{fontSize:9.5,padding:"2px 7px",borderRadius:4,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer"}}>✕ Retirer</button>
             </div></>)
           :(<><div>
-              <span style={{fontSize:11,color:t.textSub}}>Solde d'ouverture</span>
-              {dr.opening==null&&<div style={{fontSize:9.5,color:t.textMuted,marginTop:1}}>Aucun historique — entrer manuellement pour la première journée</div>}
+              <span style={{fontSize:11,color:t.textSub}}>{T.encOpening}</span>
+              {dr.opening==null&&<div style={{fontSize:9.5,color:t.textMuted,marginTop:1}}>{T.encNoHistory}</div>}
             </div>
             <div style={{display:"flex",alignItems:"center",gap:6}}>
               <span style={{fontFamily:"'DM Mono',monospace",fontSize:14,fontWeight:700,color:dr.opening!=null?t.text:t.textDim}}>{dr.opening!=null?fmt(dr.opening):"—"}</span>
@@ -973,10 +975,10 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
     </SH>
 
     {/* S2: Entrées de cash */}
-    <SH label="② Entrées de cash">
+    <SH label={T.encInflows}>
       <div style={{padding:"5px 0",borderBottom:`1px solid ${t.divider}`}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <span style={{fontSize:11,color:t.textSub}}>Cash des ventes <span style={{fontSize:9,color:t.textDim}}>(auto — depuis les caisses)</span></span>
+          <span style={{fontSize:11,color:t.textSub}}>{T.encSalesCash} <span style={{fontSize:9,color:t.textDim}}>{T.encAutoFromReg}</span></span>
           <span style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:600,color:dr.hasCaisseData?t.posColor:t.textDim}}>{dr.hasCaisseData?fmt(dr.cashVentes):"⏳ Remplir les caisses d'abord"}</span>
         </div>
       </div>
@@ -988,22 +990,22 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
         </div>
       </div>))}
       <div style={{display:"flex",gap:4,marginTop:6,alignItems:"center"}}>
-        <input value={newEntreeDesc} onChange={e=>setNewEntreeDesc(e.target.value)} placeholder="Description..." style={{...inputS,flex:1}}/>
+        <input value={newEntreeDesc} onChange={e=>setNewEntreeDesc(e.target.value)} placeholder={T.encDescPlaceholder} style={{...inputS,flex:1}}/>
         <input type="number" inputMode="decimal" value={newEntreeMt} onChange={e=>setNewEntreeMt(e.target.value)} placeholder="Montant" style={{...inputS,width:80,textAlign:"right",fontFamily:"'DM Mono',monospace"}} onKeyDown={e=>{if(e.key==="Enter")addEntree()}}/>
-        <button onClick={addEntree} style={{padding:"5px 10px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>+ Autre entrée</button>
+        <button onClick={addEntree} style={{padding:"5px 10px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>{T.encAddInflow}</button>
       </div>
     </SH>
 
     {/* S3: Dépôts à la banque */}
-    <SH label="③ Dépôts à la banque">
+    <SH label={T.encDeposits}>
       <div style={{padding:"5px 0",borderBottom:`1px solid ${t.divider}`}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <span style={{fontSize:11,color:t.textSub}}>Dépôt Interac / Crédit <span style={{fontSize:9,color:t.textDim}}>(auto — depuis les caisses)</span></span>
+          <span style={{fontSize:11,color:t.textSub}}>{T.encCreditDeposit} <span style={{fontSize:9,color:t.textDim}}>{T.encAutoFromReg}</span></span>
           <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,fontWeight:600,color:dr.hasCaisseData?t.text:t.textDim}}>{dr.hasCaisseData?fmt(dr.totalInterac):"—"}</span>
         </div>
       </div>
       {enc.deposits.map(dep=>(<div key={dep.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 0",borderBottom:`1px solid ${t.divider}`}}>
-        <span style={{fontSize:11,color:t.textSub}}>{dep.note||"Dépôt comptant"}{dep.slip&&<span style={{fontSize:9,color:t.textDim,marginLeft:4}}>#{dep.slip}</span>}</span>
+        <span style={{fontSize:11,color:t.textSub}}>{dep.note||T.encCashDeposits}{dep.slip&&<span style={{fontSize:9,color:t.textDim,marginLeft:4}}>#{dep.slip}</span>}</span>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:"#ef4444"}}>−{fmt(dep.montant)}</span>
           <button onClick={()=>rmDeposit(dep.id)} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:3,color:"#ef4444",fontSize:9,padding:"1px 5px",cursor:"pointer"}}>✕</button>
@@ -1012,13 +1014,13 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
       <div style={{display:"flex",gap:4,marginTop:6,flexWrap:"wrap",alignItems:"center"}}>
         <input type="number" inputMode="decimal" value={newDepMt} onChange={e=>setNewDepMt(e.target.value)} placeholder="Montant" style={{...inputS,width:80,textAlign:"right",fontFamily:"'DM Mono',monospace"}}/>
         <input value={newDepNote} onChange={e=>setNewDepNote(e.target.value)} placeholder="Note..." style={{...inputS,flex:1,minWidth:80}}/>
-        <input value={newDepSlip} onChange={e=>setNewDepSlip(e.target.value)} placeholder="# bordereau" style={{...inputS,width:90}}/>
-        <button onClick={addDeposit} style={{padding:"5px 10px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>+ Dépôt</button>
+        <input value={newDepSlip} onChange={e=>setNewDepSlip(e.target.value)} placeholder={T.encSlipNumber} style={{...inputS,width:90}}/>
+        <button onClick={addDeposit} style={{padding:"5px 10px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>{T.encAddDeposit}</button>
       </div>
     </SH>
 
     {/* S4: Sorties de cash */}
-    <SH label="④ Sorties de cash">
+    <SH label={T.encOutflows}>
       {enc.sorties.map(s=>(<div key={s.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 0",borderBottom:`1px solid ${t.divider}`}}>
         <div>
           <span style={{fontSize:11,color:t.textSub}}>{s.description||"—"}</span>
@@ -1031,17 +1033,17 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
       </div>))}
       <div style={{display:"flex",gap:4,marginTop:6,flexWrap:"wrap",alignItems:"center"}}>
         <select value={newSortCat} onChange={e=>setNewSortCat(e.target.value)} style={{...inputS,flex:"0 0 auto",minWidth:160}}>
-          <option value="">-- Catégorie --</option>
+          <option value="">{T.encCategory}</option>
           {encaisseConfig.sortieCategories.map(c=>(<option key={c.id} value={c.id}>{c.name}</option>))}
         </select>
-        <input value={newSortDesc} onChange={e=>setNewSortDesc(e.target.value)} placeholder="Description..." style={{...inputS,flex:1,minWidth:80}}/>
+        <input value={newSortDesc} onChange={e=>setNewSortDesc(e.target.value)} placeholder={T.encDescPlaceholder} style={{...inputS,flex:1,minWidth:80}}/>
         <input type="number" inputMode="decimal" value={newSortMt} onChange={e=>setNewSortMt(e.target.value)} placeholder="Montant" style={{...inputS,width:80,textAlign:"right",fontFamily:"'DM Mono',monospace"}} onKeyDown={e=>{if(e.key==="Enter")addSortie()}}/>
-        <button onClick={addSortie} style={{padding:"5px 10px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>+ Sortie</button>
+        <button onClick={addSortie} style={{padding:"5px 10px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>{T.encAddOutflow}</button>
       </div>
     </SH>
 
     {/* S5: Comptage physique */}
-    <SH label="⑤ Comptage physique">
+    <SH label={T.encPhysical}>
       {encaisseConfig.cashLocations.map(loc=>(<F key={loc.id} label={loc.name} value={enc.physicalCount[loc.id]??null} onChange={v=>updEnc("physicalCount",{...enc.physicalCount,[loc.id]:v})} wide/>))}
       {dr.physEntered&&(<div style={{display:"flex",justifyContent:"space-between",padding:"5px 0",marginTop:4,borderTop:`1px solid ${t.dividerStrong}`}}>
         <span style={{fontSize:12,fontWeight:700,color:t.text}}>Total physique</span>
@@ -1051,25 +1053,25 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
 
     {/* S6: Réconciliation */}
     <div style={{background:dr.physEntered?(dr.balanced?t.reconBalBg:t.reconErrBg):t.reconNeutralBg,border:`1px solid ${dr.physEntered?(dr.balanced?t.reconBalBorder:t.reconErrBorder):t.reconNeutralBorder}`,borderRadius:9,padding:11}}>
-      <span style={{fontSize:13,fontWeight:700,marginBottom:8,display:"block",color:t.text}}>⑥ Réconciliation</span>
-      <ReconLine label="Solde d'ouverture" value={dr.opening??0}/>
-      <ReconLine label="+ Cash des ventes" value={dr.cashVentes}/>
-      {dr.autreEntreesTotal>0&&<ReconLine label="+ Autres entrées" value={dr.autreEntreesTotal}/>}
-      {dr.depositsTotal>0&&<ReconLine label="− Dépôts banque (comptant)" value={dr.depositsTotal} negative/>}
-      {dr.sortiesTotal>0&&<ReconLine label="− Sorties de cash" value={dr.sortiesTotal} negative/>}
-      <ReconLine label="= Solde calculé" value={dr.calculated} bold borderTop/>
+      <span style={{fontSize:13,fontWeight:700,marginBottom:8,display:"block",color:t.text}}>{T.encReconciliation}</span>
+      <ReconLine label={T.encOpening} value={dr.opening??0}/>
+      <ReconLine label={T.encSalesCash} value={dr.cashVentes}/>
+      {dr.autreEntreesTotal>0&&<ReconLine label={T.encOtherInflows} value={dr.autreEntreesTotal}/>}
+      {dr.depositsTotal>0&&<ReconLine label={`− ${T.encDeposits}`} value={dr.depositsTotal} negative/>}
+      {dr.sortiesTotal>0&&<ReconLine label={`− ${T.encOutflows}`} value={dr.sortiesTotal} negative/>}
+      <ReconLine label={T.encCalcBalance} value={dr.calculated} bold borderTop/>
       {dr.physEntered&&(<>
-        <ReconLine label="Comptage physique" value={dr.physTotal}/>
+        <ReconLine label={T.encPhysicalCount} value={dr.physTotal}/>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",marginTop:4,borderTop:`1.5px solid ${t.dividerStrong}`}}>
-          <span style={{fontSize:12,fontWeight:700,color:t.reconLabelBold}}>ÉCART</span>
-          <span style={{fontFamily:"'DM Mono',monospace",fontSize:14,fontWeight:800,color:dr.balanced?"#16a34a":"#dc2626"}}>{dr.balanced?"✓ BALANCÉ":`✗ ${(dr.ecart||0)>0?"surplus":"manque"} ${fmt(Math.abs(dr.ecart||0))}`}</span>
+          <span style={{fontSize:12,fontWeight:700,color:t.reconLabelBold}}>{T.encVariance}</span>
+          <span style={{fontFamily:"'DM Mono',monospace",fontSize:14,fontWeight:800,color:dr.balanced?"#16a34a":"#dc2626"}}>{dr.balanced?T.encBalancedOK:`✗ ${(dr.ecart||0)>0?T.dailySurplus:T.dailyShortage} ${fmt(Math.abs(dr.ecart||0))}`}</span>
         </div>
       </>)}
-      {!dr.physEntered&&<div style={{fontSize:10.5,color:t.textMuted,marginTop:6}}>Entrer le comptage physique (section ⑤) pour voir l'écart.</div>}
+      {!dr.physEntered&&<div style={{fontSize:10.5,color:t.textMuted,marginTop:6}}>{T.encPhysicalNeeded}</div>}
       <div style={{marginTop:10,paddingTop:8,borderTop:`1px solid ${t.divider}`}}>
         <span style={{fontSize:11,color:t.textSub,display:"block",marginBottom:5}}>Reporter au lendemain :</span>
         <div style={{display:"flex",gap:6}}>
-          {[["calculated","Solde calculé"],["physical","Comptage physique"]].map(([v,label])=>(
+          {[["calculated",T.encCarryCalc],["physical",T.encCarryPhys]].map(([v,label])=>(
             <button key={v} onClick={()=>updEnc("carryForwardMode",v)} style={{flex:1,padding:"5px 8px",borderRadius:6,border:`1.5px solid ${enc.carryForwardMode===v?"#f97316":t.cardBorder}`,background:enc.carryForwardMode===v?"rgba(249,115,22,0.08)":t.section,color:enc.carryForwardMode===v?"#f97316":t.textSub,cursor:"pointer",fontWeight:enc.carryForwardMode===v?700:500,fontSize:11,transition:"all 0.15s"}}>{label}</button>
           ))}
         </div>
@@ -1084,7 +1086,7 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
       </div>
       {configOpen&&(<>
         <div style={{marginTop:10}}>
-          <span style={{fontSize:11.5,fontWeight:700,color:t.textSub,display:"block",marginBottom:5}}>Catégories de sorties</span>
+          <span style={{fontSize:11.5,fontWeight:700,color:t.textSub,display:"block",marginBottom:5}}>{T.encOutflowCategories}</span>
           {encaisseConfig.sortieCategories.map(c=>(<div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 6px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:4,marginBottom:3}}>
             {editCatId===c.id
               ?(<input value={editCatName} onChange={e=>setEditCatName(e.target.value)} autoFocus
@@ -1095,7 +1097,7 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
             <button onClick={()=>saveEncaisseConfig({...encaisseConfig,sortieCategories:encaisseConfig.sortieCategories.filter(x=>x.id!==c.id)})} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:3,color:"#ef4444",fontSize:9,padding:"1px 5px",cursor:"pointer"}}>✕</button>
           </div>))}
           <div style={{display:"flex",gap:4,marginTop:3}}>
-            <input value={newCatName} onChange={e=>setNewCatName(e.target.value)} placeholder="Nouvelle catégorie..." style={{flex:1,background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.inputText,fontSize:11,padding:"3px 6px",outline:"none"}} onKeyDown={e=>{if(e.key==="Enter"&&newCatName.trim()){saveEncaisseConfig({...encaisseConfig,sortieCategories:[...encaisseConfig.sortieCategories,{id:Date.now().toString(),name:newCatName.trim()}]});setNewCatName("")}}}/>
+            <input value={newCatName} onChange={e=>setNewCatName(e.target.value)} placeholder={T.encNewCategory} style={{flex:1,background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.inputText,fontSize:11,padding:"3px 6px",outline:"none"}} onKeyDown={e=>{if(e.key==="Enter"&&newCatName.trim()){saveEncaisseConfig({...encaisseConfig,sortieCategories:[...encaisseConfig.sortieCategories,{id:Date.now().toString(),name:newCatName.trim()}]});setNewCatName("")}}}/>
             <button onClick={()=>{if(!newCatName.trim())return;saveEncaisseConfig({...encaisseConfig,sortieCategories:[...encaisseConfig.sortieCategories,{id:Date.now().toString(),name:newCatName.trim()}]});setNewCatName("")}} style={{padding:"3px 10px",borderRadius:4,border:"none",cursor:"pointer",fontWeight:700,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>+</button>
           </div>
         </div>
@@ -1106,7 +1108,7 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
             <button onClick={()=>saveEncaisseConfig({...encaisseConfig,cashLocations:encaisseConfig.cashLocations.filter(x=>x.id!==loc.id)})} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:3,color:"#ef4444",fontSize:9,padding:"1px 5px",cursor:"pointer"}}>✕</button>
           </div>))}
           <div style={{display:"flex",gap:4,marginTop:3}}>
-            <input value={newLocName} onChange={e=>setNewLocName(e.target.value)} placeholder="Nouvel emplacement..." style={{flex:1,background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.inputText,fontSize:11,padding:"3px 6px",outline:"none"}} onKeyDown={e=>{if(e.key==="Enter"&&newLocName.trim()){saveEncaisseConfig({...encaisseConfig,cashLocations:[...encaisseConfig.cashLocations,{id:Date.now().toString(),name:newLocName.trim()}]});setNewLocName("")}}}/>
+            <input value={newLocName} onChange={e=>setNewLocName(e.target.value)} placeholder={T.encNewLocation} style={{flex:1,background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.inputText,fontSize:11,padding:"3px 6px",outline:"none"}} onKeyDown={e=>{if(e.key==="Enter"&&newLocName.trim()){saveEncaisseConfig({...encaisseConfig,cashLocations:[...encaisseConfig.cashLocations,{id:Date.now().toString(),name:newLocName.trim()}]});setNewLocName("")}}}/>
             <button onClick={()=>{if(!newLocName.trim())return;saveEncaisseConfig({...encaisseConfig,cashLocations:[...encaisseConfig.cashLocations,{id:Date.now().toString(),name:newLocName.trim()}]});setNewLocName("")}} style={{padding:"3px 10px",borderRadius:4,border:"none",cursor:"pointer",fontWeight:700,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>+</button>
           </div>
         </div>
@@ -3995,6 +3997,7 @@ function ProduitsSection({produits,saveProduits,categories}){
 
 // ── INTELLIGENCE TAB ──
 function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProfiles,getLR,platforms,encaisseData,encaisseConfig}){
+  const T=useL();
   const t=useT();
   const d=new Date(selectedDate+"T12:00:00");
   const dowProfiles=useMemo(()=>{
@@ -4085,23 +4088,23 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
     <ICard>
       <span style={{fontSize:13,fontWeight:700,marginBottom:5,display:"block",color:t.text}}>Projections — {DAYS_FR[dow]} {d.getDate()} {MONTHS_FR[d.getMonth()]}</span>
       {hasProj?(<div style={{display:"flex",flexDirection:"column",gap:8}}>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><MC label="Projeté" value={fmt(proj)} sub={`${samples.length} ${DAYS_FR[dow]}s`} accent="#f97316"/><MC label="Moyenne" value={fmt(avg)} accent={t.posColor}/></div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><MC label={T.intelProjected} value={fmt(proj)} sub={`${samples.length} ${DAYS_FR[dow]}s`} accent="#f97316"/><MC label={T.intelAverage} value={fmt(avg)} accent={t.posColor}/></div>
         <div style={{background:t.section,borderRadius:6,padding:8}}>
-          <div style={{fontSize:9.5,color:t.textSub,fontWeight:600,textTransform:"uppercase",letterSpacing:0.7,marginBottom:4}}>Commande suggérée</div>
-          <span style={{fontSize:13,color:t.text}}><span style={{color:"#f97316",fontWeight:700}}>{aH+3}</span> <span style={{color:t.textMuted}}>dz Ham</span></span>
-          <span style={{fontSize:13,marginLeft:14,color:t.text}}><span style={{color:"#f97316",fontWeight:700}}>{aHo+2}</span> <span style={{color:t.textMuted}}>dz Hot</span></span>
+          <div style={{fontSize:9.5,color:t.textSub,fontWeight:600,textTransform:"uppercase",letterSpacing:0.7,marginBottom:4}}>{T.intelSuggestedOrder}</div>
+          <span style={{fontSize:13,color:t.text}}><span style={{color:"#f97316",fontWeight:700}}>{aH+3}</span> <span style={{color:t.textMuted}}>{T.intelDozHam}</span></span>
+          <span style={{fontSize:13,marginLeft:14,color:t.text}}><span style={{color:"#f97316",fontWeight:700}}>{aHo+2}</span> <span style={{color:t.textMuted}}>{T.intelDozHot}</span></span>
         </div>
-      </div>):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>Besoin de 2+ semaines de données</div>)}
+      </div>):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>{T.intelInsufficientData}</div>)}
     </ICard>
     <ICard>
-      <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Profil par jour de la semaine</span>
+      <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.intelDOWProfile}</span>
       {hasDowData?(<div>
         <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr",gap:4,padding:"4px 0",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:3}}>
-          {["Jour","Données","Ventes moy.","Ham moy.","Hot moy."].map((h,i)=>(<span key={i} style={{fontSize:10,color:t.textMuted,fontWeight:600,textAlign:i>0?"right":"left"}}>{h}</span>))}
+          {[T.intelColDay,T.intelColData,T.intelColAvgSales,T.intelColAvgHam,T.intelColAvgHot].map((h,i)=>(<span key={i} style={{fontSize:10,color:t.textMuted,fontWeight:600,textAlign:i>0?"right":"left"}}>{h}</span>))}
         </div>
         {dowProfiles.map((p,i)=>p.n>0&&(<div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr",gap:4,padding:"3px 0",borderBottom:`1px solid ${t.divider}`,alignItems:"center"}}>
           <span style={{fontSize:12,textTransform:"capitalize",fontWeight:d.getDay()===i?700:400,color:d.getDay()===i?"#f97316":t.text}}>{p.day}</span>
-          <span style={{fontSize:11,color:t.textMuted,textAlign:"right"}}>{p.n} jrs</span>
+          <span style={{fontSize:11,color:t.textMuted,textAlign:"right"}}>{p.n} {T.intelDaysAbbr}</span>
           <span style={{fontSize:12,fontFamily:"'DM Mono',monospace",textAlign:"right",color:t.posColor}}>{fmt(p.avgSales)}</span>
           <span style={{fontSize:12,fontFamily:"'DM Mono',monospace",textAlign:"right",color:t.text}}>{p.avgHam}</span>
           <span style={{fontSize:12,fontFamily:"'DM Mono',monospace",textAlign:"right",color:t.text}}>{p.avgHot}</span>
@@ -4109,21 +4112,21 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
       </div>):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>Entrer des données quotidiennes pour voir les tendances</div>)}
     </ICard>
     <ICard>
-      <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Anomalies détectées (14 derniers jours)</span>
+      <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.intelAnomalies} (14 derniers jours)</span>
       {anomalies.length>0?anomalies.map((a,i)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderBottom:`1px solid ${t.divider}`}}>
         <span style={{fontSize:12,textTransform:"capitalize",color:t.text}}>{a.day} {a.date}</span>
         <div style={{display:"flex",gap:8,alignItems:"center"}}><span style={{fontSize:11,color:t.textMuted}}>Moy: {fmt(a.avg)}</span><span style={{fontSize:11,color:t.textSub}}>→</span><span style={{fontSize:12,fontWeight:600,fontFamily:"'DM Mono',monospace",color:t.text}}>{fmt(a.venteNet)}</span><span style={{fontSize:11,fontWeight:700,color:a.pct>0?"#22c55e":"#ef4444",fontFamily:"'DM Mono',monospace"}}>{a.pct>0?"+":""}{a.pct.toFixed(0)}%</span></div>
       </div>)):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>Aucune anomalie — besoin de 3+ jours du même type</div>)}
     </ICard>
     <ICard>
-      <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Historique écarts de caisse</span>
+      <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.intelCashVariance}</span>
       {Object.keys(cashierVariances).length>0?Object.entries(cashierVariances).map(([id,data])=>(<div key={id} style={{marginBottom:8}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}><span style={{fontSize:12,fontWeight:600,color:t.text}}>{id.length>8?`Caissier ${id.slice(-4)}`:id}</span><span style={{fontSize:12,fontFamily:"'DM Mono',monospace",color:data.total>=0?"#16a34a":"#dc2626",fontWeight:700}}>Total: {data.total>=0?"+":""}{fmt(data.total)}</span></div>
         {data.ecarts.slice(-5).map((e,i)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",padding:"2px 0",fontSize:11}}><span style={{color:t.textMuted}}>{e.date}</span><span style={{fontFamily:"'DM Mono',monospace",color:Math.abs(e.ecart)<=1?"#16a34a":"#dc2626"}}>{Math.abs(e.ecart)<=1?"✓ OK":e.ecart>0?`+${fmt(e.ecart)}`:fmt(e.ecart)}</span></div>))}
       </div>)):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>Aucune donnée — les écarts apparaîtront après réconciliation</div>)}
     </ICard>
     <ICard>
-      <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Vélocité de consommation — {DAYS_FR[dow]}</span>
+      <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.intelVelocity} — {DAYS_FR[dow]}</span>
       {velocityData.some(v=>v.n>0)?(<div>
         <div style={{display:"grid",gridTemplateColumns:"1.8fr 0.6fr 1fr 1fr",gap:4,padding:"3px 0",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:3}}>
           {["Fenêtre","n","Ham moy.","Hot moy."].map((h,i)=>(<span key={i} style={{fontSize:10,color:t.textMuted,fontWeight:600,textAlign:i>0?"right":"left"}}>{h}</span>))}
@@ -4190,7 +4193,7 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
       })()}
     </ICard>
     <ICard>
-      <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>💵 Encaisse — analyse mensuelle</span>
+      <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.intelEncaisseSorties}</span>
       {(()=>{
         const n=new Date();const y=n.getFullYear();const m=String(n.getMonth()+1).padStart(2,"0");const dim=new Date(y,n.getMonth()+1,0).getDate();
         const catTotals={};(encaisseConfig?.sortieCategories||DEFAULT_SORTIE_CATS).forEach(c=>{catTotals[c.id]={name:c.name,total:0,prevTotal:0}});
@@ -4953,6 +4956,7 @@ function AuditReseauPanel({locations}){
 
 // ── PIN LOCK SCREEN ──
 function PinLockScreen({lockConfig,onUnlock,saveLockConfig}){
+  const T=useL();
   const [input,setInput]=useState("");
   const [attempts,setAttempts]=useState(0);
   const [lockedUntil,setLockedUntil]=useState(lockConfig.lockedUntil?new Date(lockConfig.lockedUntil):null);
@@ -5022,7 +5026,7 @@ function PinLockScreen({lockConfig,onUnlock,saveLockConfig}){
       <div style={{textAlign:"center",maxWidth:320,width:"100%",padding:24}}>
         <div style={{fontSize:36,marginBottom:8}}>🔒</div>
         <div style={{fontSize:22,fontWeight:700,color:"#fff",marginBottom:4}}>BalanceIQ</div>
-        <div style={{fontSize:13,color:"#6b7280",marginBottom:32}}>Entrez votre NIP pour continuer</div>
+        <div style={{fontSize:13,color:"#6b7280",marginBottom:32}}>{T.pinEnterPrompt}</div>
 
         {/* Dots */}
         <div style={{display:"flex",justifyContent:"center",gap:14,marginBottom:28,animation:shake?"shake 0.4s":undefined}}>
@@ -5032,9 +5036,9 @@ function PinLockScreen({lockConfig,onUnlock,saveLockConfig}){
         </div>
 
         {lockedUntil&&timeLeft>0?(
-          <div style={{color:"#ef4444",fontSize:13,marginBottom:20}}>Trop de tentatives — réessayez dans {fmtTime(timeLeft)}</div>
+          <div style={{color:"#ef4444",fontSize:13,marginBottom:20}}>{T.pinLocked(fmtTime(timeLeft))}</div>
         ):attempts>0?(
-          <div style={{color:"#f87171",fontSize:12,marginBottom:12}}>NIP incorrect ({attempts}/{MAX_ATTEMPTS} tentatives)</div>
+          <div style={{color:"#f87171",fontSize:12,marginBottom:12}}>{T.pinWrong(attempts,MAX_ATTEMPTS)}</div>
         ):null}
 
         {/* Number pad */}
@@ -5050,7 +5054,7 @@ function PinLockScreen({lockConfig,onUnlock,saveLockConfig}){
         </div>
 
         <div style={{fontSize:11,color:"#4b5563",marginTop:8}}>
-          Mot de passe oublié ? Restaurez depuis un backup JSON via le menu principal.
+          {T.cfgForgotPin}
         </div>
       </div>
       <style>{`@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}`}</style>
@@ -5060,6 +5064,7 @@ function PinLockScreen({lockConfig,onUnlock,saveLockConfig}){
 
 // ── PIN LOCK CONFIG ──
 function PinLockConfig({lockConfig,saveLockConfig}){
+  const T=useL();
   const t=useContext(ThemeCtx);
   const [mode,setMode]=useState("view"); // view | setup | change | disable
   const [step,setStep]=useState(1); // 1=enter pin, 2=confirm
@@ -5082,23 +5087,23 @@ function PinLockConfig({lockConfig,saveLockConfig}){
   const handleSetupSubmit=async()=>{
     setErr("");
     if(step===1){
-      if(pin1.length<4||pin1.length>6){setErr("Le NIP doit contenir 4 à 6 chiffres.");return;}
-      if(!/^\d+$/.test(pin1)){setErr("Chiffres seulement.");return;}
+      if(pin1.length<4||pin1.length>6){setErr(T.cfgPinDigits);return;}
+      if(!/^\d+$/.test(pin1)){setErr(T.cfgPinDigitsOnly);return;}
       setStep(2);
     } else {
-      if(pin1!==pin2){setErr("Les NIP ne correspondent pas.");setPin2("");return;}
+      if(pin1!==pin2){setErr(T.cfgPinMismatch);setPin2("");return;}
       const h=await hashPin(pin1);
       saveLockConfig({enabled:true,pin:h,pinLength:pin1.length,lockedUntil:null});
-      setMode("view");setPin1("");setPin2("");setSuccess("NIP activé ✓");
+      setMode("view");setPin1("");setPin2("");setSuccess(T.cfgPinActivated);
       setTimeout(()=>setSuccess(""),3000);
     }
   };
 
   const handleDisableSubmit=async()=>{
     const h=await hashPin(currentPin);
-    if(h!==lockConfig.pin){setErr("NIP incorrect.");setCurrentPin("");return;}
+    if(h!==lockConfig.pin){setErr(T.cfgPinWrong);setCurrentPin("");return;}
     saveLockConfig({enabled:false,pin:"",pinLength:null,lockedUntil:null});
-    setMode("view");setCurrentPin("");setSuccess("Verrou désactivé ✓");
+    setMode("view");setCurrentPin("");setSuccess(T.cfgPinDisabled);
     setTimeout(()=>setSuccess(""),3000);
   };
 
@@ -5108,13 +5113,13 @@ function PinLockConfig({lockConfig,saveLockConfig}){
     <div style={{background:t.card,border:`1px solid ${t.divider}`,borderRadius:8,padding:"14px 18px",marginTop:12}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:mode!=="view"?12:0}}>
         <div>
-          <div style={{fontSize:13,fontWeight:600,color:t.text}}>🔒 Verrou de l'application</div>
-          <div style={{fontSize:11,color:t.textMuted}}>NIP requis au démarrage</div>
+          <div style={{fontSize:13,fontWeight:600,color:t.text}}>{T.cfgPinLock}</div>
+          <div style={{fontSize:11,color:t.textMuted}}>{T.cfgPinLockDesc}</div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           {lockConfig.enabled&&mode==="view"&&(
             <button onClick={()=>{setMode("change");setStep(1);setCurrentPin("");setPin1("");setPin2("");setErr("");}}
-              style={{fontSize:11,color:"#f97316",background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>Changer le NIP</button>
+              style={{fontSize:11,color:"#f97316",background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>{T.cfgChangePin}</button>
           )}
           <div onClick={handleToggle} style={{width:40,height:22,borderRadius:11,background:lockConfig.enabled?"#f97316":"#374151",cursor:"pointer",position:"relative",transition:"background 0.2s"}}>
             <div style={{position:"absolute",top:3,left:lockConfig.enabled?20:3,width:16,height:16,borderRadius:"50%",background:"#fff",transition:"left 0.2s"}}/>
@@ -5126,7 +5131,7 @@ function PinLockConfig({lockConfig,saveLockConfig}){
 
       {mode==="setup"&&(
         <div style={{marginTop:8}}>
-          <div style={{fontSize:12,color:t.textSub,marginBottom:6}}>{step===1?"Choisissez un NIP (4 à 6 chiffres) :":"Confirmez votre NIP :"}</div>
+          <div style={{fontSize:12,color:t.textSub,marginBottom:6}}>{step===1?T.cfgSetupPin:T.cfgConfirmPin}</div>
           <input type="password" inputMode="numeric" maxLength={6} value={step===1?pin1:pin2}
             onChange={e=>{const v=e.target.value.replace(/\D/g,"");step===1?setPin1(v):setPin2(v);}}
             onKeyDown={e=>{if(e.key==="Enter")handleSetupSubmit();}}
@@ -5134,16 +5139,16 @@ function PinLockConfig({lockConfig,saveLockConfig}){
           {err&&<div style={{fontSize:11,color:"#ef4444",marginTop:4}}>{err}</div>}
           <div style={{display:"flex",gap:8,marginTop:8}}>
             <button onClick={()=>{setMode("view");setPin1("");setPin2("");setErr("");setStep(1);}}
-              style={{flex:1,padding:"6px 0",fontSize:12,background:"none",border:`1px solid ${t.divider}`,borderRadius:5,color:t.textSub,cursor:"pointer"}}>Annuler</button>
+              style={{flex:1,padding:"6px 0",fontSize:12,background:"none",border:`1px solid ${t.divider}`,borderRadius:5,color:t.textSub,cursor:"pointer"}}>{T.cancel}</button>
             <button onClick={handleSetupSubmit}
-              style={{flex:1,padding:"6px 0",fontSize:12,background:"#f97316",border:"none",borderRadius:5,color:"#fff",cursor:"pointer",fontWeight:600}}>{step===1?"Suivant →":"Activer"}</button>
+              style={{flex:1,padding:"6px 0",fontSize:12,background:"#f97316",border:"none",borderRadius:5,color:"#fff",cursor:"pointer",fontWeight:600}}>{step===1?T.next:T.activate}</button>
           </div>
         </div>
       )}
 
       {mode==="change"&&(
         <div style={{marginTop:8}}>
-          <div style={{fontSize:12,color:t.textSub,marginBottom:6}}>{step===1?"NIP actuel :":(step===2?"Nouveau NIP (4-6 chiffres) :":"Confirmez le nouveau NIP :")}</div>
+          <div style={{fontSize:12,color:t.textSub,marginBottom:6}}>{step===1?T.cfgCurrentPin:(step===2?T.cfgNewPin:T.cfgConfirmNewPin)}</div>
           <input type="password" inputMode="numeric" maxLength={6}
             value={step===1?currentPin:(step===2?pin1:pin2)}
             onChange={e=>{const v=e.target.value.replace(/\D/g,"");if(step===1)setCurrentPin(v);else if(step===2)setPin1(v);else setPin2(v);}}
@@ -5151,16 +5156,16 @@ function PinLockConfig({lockConfig,saveLockConfig}){
               if(e.key!=="Enter")return;
               if(step===1){
                 const h=await hashPin(currentPin);
-                if(h!==lockConfig.pin){setErr("NIP incorrect.");setCurrentPin("");return;}
+                if(h!==lockConfig.pin){setErr(T.cfgPinWrong);setCurrentPin("");return;}
                 setErr("");setStep(2);
               } else if(step===2){
-                if(pin1.length<4||!/^\d+$/.test(pin1)){setErr("4 à 6 chiffres requis.");return;}
+                if(pin1.length<4||!/^\d+$/.test(pin1)){setErr(T.cfgPin4to6);return;}
                 setErr("");setStep(3);
               } else {
-                if(pin1!==pin2){setErr("Les NIP ne correspondent pas.");setPin2("");return;}
+                if(pin1!==pin2){setErr(T.cfgPinMismatch);setPin2("");return;}
                 const h=await hashPin(pin1);
                 saveLockConfig({...lockConfig,pin:h,pinLength:pin1.length,lockedUntil:null});
-                setMode("view");setCurrentPin("");setPin1("");setPin2("");setSuccess("NIP modifié ✓");
+                setMode("view");setCurrentPin("");setPin1("");setPin2("");setSuccess(T.cfgPinChanged);
                 setTimeout(()=>setSuccess(""),3000);
               }
             }}
@@ -5168,19 +5173,19 @@ function PinLockConfig({lockConfig,saveLockConfig}){
           {err&&<div style={{fontSize:11,color:"#ef4444",marginTop:4}}>{err}</div>}
           <div style={{display:"flex",gap:8,marginTop:8}}>
             <button onClick={()=>{setMode("view");setCurrentPin("");setPin1("");setPin2("");setErr("");setStep(1);}}
-              style={{flex:1,padding:"6px 0",fontSize:12,background:"none",border:`1px solid ${t.divider}`,borderRadius:5,color:t.textSub,cursor:"pointer"}}>Annuler</button>
+              style={{flex:1,padding:"6px 0",fontSize:12,background:"none",border:`1px solid ${t.divider}`,borderRadius:5,color:t.textSub,cursor:"pointer"}}>{T.cancel}</button>
             <button onClick={async()=>{
-              if(step===1){const h=await hashPin(currentPin);if(h!==lockConfig.pin){setErr("NIP incorrect.");setCurrentPin("");return;}setErr("");setStep(2);}
-              else if(step===2){if(pin1.length<4||!/^\d+$/.test(pin1)){setErr("4 à 6 chiffres requis.");return;}setErr("");setStep(3);}
-              else{if(pin1!==pin2){setErr("Les NIP ne correspondent pas.");setPin2("");return;}const h=await hashPin(pin1);saveLockConfig({...lockConfig,pin:h,pinLength:pin1.length,lockedUntil:null});setMode("view");setCurrentPin("");setPin1("");setPin2("");setSuccess("NIP modifié ✓");setTimeout(()=>setSuccess(""),3000);}
-            }} style={{flex:1,padding:"6px 0",fontSize:12,background:"#f97316",border:"none",borderRadius:5,color:"#fff",cursor:"pointer",fontWeight:600}}>{step===3?"Enregistrer":"Suivant →"}</button>
+              if(step===1){const h=await hashPin(currentPin);if(h!==lockConfig.pin){setErr(T.cfgPinWrong);setCurrentPin("");return;}setErr("");setStep(2);}
+              else if(step===2){if(pin1.length<4||!/^\d+$/.test(pin1)){setErr(T.cfgPin4to6);return;}setErr("");setStep(3);}
+              else{if(pin1!==pin2){setErr(T.cfgPinMismatch);setPin2("");return;}const h=await hashPin(pin1);saveLockConfig({...lockConfig,pin:h,pinLength:pin1.length,lockedUntil:null});setMode("view");setCurrentPin("");setPin1("");setPin2("");setSuccess(T.cfgPinChanged);setTimeout(()=>setSuccess(""),3000);}
+            }} style={{flex:1,padding:"6px 0",fontSize:12,background:"#f97316",border:"none",borderRadius:5,color:"#fff",cursor:"pointer",fontWeight:600}}>{step===3?"Enregistrer":T.next}</button>
           </div>
         </div>
       )}
 
       {mode==="disable"&&(
         <div style={{marginTop:8}}>
-          <div style={{fontSize:12,color:t.textSub,marginBottom:6}}>Confirmez votre NIP pour désactiver le verrou :</div>
+          <div style={{fontSize:12,color:t.textSub,marginBottom:6}}>{T.cfgConfirmDisable}</div>
           <input type="password" inputMode="numeric" maxLength={6} value={currentPin}
             onChange={e=>setCurrentPin(e.target.value.replace(/\D/g,""))}
             onKeyDown={e=>{if(e.key==="Enter")handleDisableSubmit();}}
@@ -5188,9 +5193,9 @@ function PinLockConfig({lockConfig,saveLockConfig}){
           {err&&<div style={{fontSize:11,color:"#ef4444",marginTop:4}}>{err}</div>}
           <div style={{display:"flex",gap:8,marginTop:8}}>
             <button onClick={()=>{setMode("view");setCurrentPin("");setErr("");}}
-              style={{flex:1,padding:"6px 0",fontSize:12,background:"none",border:`1px solid ${t.divider}`,borderRadius:5,color:t.textSub,cursor:"pointer"}}>Annuler</button>
+              style={{flex:1,padding:"6px 0",fontSize:12,background:"none",border:`1px solid ${t.divider}`,borderRadius:5,color:t.textSub,cursor:"pointer"}}>{T.cancel}</button>
             <button onClick={handleDisableSubmit}
-              style={{flex:1,padding:"6px 0",fontSize:12,background:"#ef4444",border:"none",borderRadius:5,color:"#fff",cursor:"pointer",fontWeight:600}}>Désactiver</button>
+              style={{flex:1,padding:"6px 0",fontSize:12,background:"#ef4444",border:"none",borderRadius:5,color:"#fff",cursor:"pointer",fontWeight:600}}>{T.cfgDisableLock}</button>
           </div>
         </div>
       )}
@@ -6158,15 +6163,15 @@ export default function App(){
             {/* Config sub-tab bar */}
             {(()=>{
               const CTABS=[
-                {id:"entreprise",label:"🏢 Entreprise"},
-                {id:"personnel",label:"👥 Personnel"},
-                {id:"fournisseurs",label:"📦 Fournisseurs"},
-                {id:"finances",label:"💵 Finances"},
-                {id:"integrations",label:"🔌 Intégrations"},
-                {id:"donnees",label:"💾 Données"},
-                {id:"apparence",label:"🎨 Apparence"},
-                {id:"application",label:"📱 Application"},
-                ...(appMode==="franchiseur"?[{id:"succursales",label:"📍 Succursales"},{id:"redevances",label:"💰 Redevances"},{id:"marqueblanche",label:"🏷️ Marque blanche"}]:[]),
+                {id:"entreprise",label:T.cfgBusiness},
+                {id:"personnel",label:T.cfgStaff},
+                {id:"fournisseurs",label:T.cfgSuppliers},
+                {id:"finances",label:T.cfgFinances},
+                {id:"integrations",label:T.cfgIntegrations},
+                {id:"donnees",label:T.cfgData},
+                {id:"apparence",label:T.cfgAppearance},
+                {id:"application",label:T.cfgApplication},
+                ...(appMode==="franchiseur"?[{id:"succursales",label:T.cfgLocations},{id:"redevances",label:T.cfgRoyalties},{id:"marqueblanche",label:T.cfgWhiteLabel}]:[]),
               ];
               return(<div style={{display:"flex",gap:2,borderBottom:`1px solid ${t.dividerMid}`,overflowX:"auto",paddingBottom:1,marginBottom:4,flexShrink:0}}>
                 {CTABS.map(({id,label})=>(
@@ -6399,7 +6404,7 @@ export default function App(){
               <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Intégrations API</span>
               {[["auphanKey","Auphan POS","Clé API ou URL...","À venir — contacter Auphan pour documentation"],["gasKey","Prix essence","URL...","Auto-rempli du dernier prix connu."]].map(([key,label,ph,note])=>(
                 <div key={key} style={{marginBottom:8}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}><span style={{fontSize:12,fontWeight:600,color:t.text}}>{label}</span><Pill ok={apiConfig[key]?.length>0} label={apiConfig[key]?.length>0?"Configuré":"Non configuré"}/></div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}><span style={{fontSize:12,fontWeight:600,color:t.text}}>{label}</span><Pill ok={apiConfig[key]?.length>0} label={apiConfig[key]?.length>0?T.statusConfigured:T.statusNotConfigured}/></div>
                   <input value={apiConfig[key]||""} onChange={e=>{const nc={...apiConfig,[key]:e.target.value};setApiConfig(nc);saveApiCfg(nc)}} placeholder={ph} style={{...inputStyle,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
                   <div style={{fontSize:10,color:t.textDim,marginTop:2}}>{note}</div>
                 </div>
@@ -6414,7 +6419,7 @@ export default function App(){
               <div style={{marginBottom:8}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
                   <span style={{fontSize:12,fontWeight:600,color:t.text}}>Clé API Resend</span>
-                  <Pill ok={apiConfig.resendKey?.length>0} label={apiConfig.resendKey?.length>0?"Configuré":"Non configuré"}/>
+                  <Pill ok={apiConfig.resendKey?.length>0} label={apiConfig.resendKey?.length>0?T.statusConfigured:T.statusNotConfigured}/>
                 </div>
                 <input value={apiConfig.resendKey||""} onChange={e=>{const nc={...apiConfig,resendKey:e.target.value};setApiConfig(nc);saveApiCfg(nc);}} placeholder="re_xxxxxxxxxxxxxxxxxxxxxxxx" style={{...inputStyle,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}} type="password"/>
               </div>
@@ -6431,10 +6436,10 @@ export default function App(){
                   if(r?.success)setResendTestStatus({ok:true});
                   else setResendTestStatus({err:r?.error||"Erreur inconnue"});
                 }} disabled={!apiConfig.resendKey||resendTestStatus==="testing"} style={{padding:"5px 14px",borderRadius:5,border:`1px solid ${apiConfig.resendKey?"rgba(249,115,22,0.3)":t.cardBorder}`,background:apiConfig.resendKey?"rgba(249,115,22,0.08)":t.section,color:apiConfig.resendKey?"#f97316":t.textDim,cursor:apiConfig.resendKey?"pointer":"default",fontWeight:600,fontSize:11}}>
-                  {resendTestStatus==="testing"?"Test en cours…":"Tester la connexion"}
+                  {resendTestStatus==="testing"?T.cfgTestInProgress:T.cfgTestConnection}
                 </button>
                 {resendTestStatus&&resendTestStatus!=="testing"&&(resendTestStatus.ok
-                  ?<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>✓ Connexion réussie</span>
+                  ?<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>{T.cfgTestSuccess}</span>
                   :<span style={{fontSize:11,color:"#ef4444",fontWeight:600}}>✗ {resendTestStatus.err}</span>)}
               </div>
             </div>
@@ -6450,22 +6455,22 @@ export default function App(){
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                 <button onClick={()=>{const h="Date,Vente Nette,Total Brut,TPS,TVQ\n";let r="";Object.keys(liveData).sort().forEach(k=>{const c=computeDay(k);if(c.venteNet>0)r+=`${k},${c.venteNet},${c.total},${c.tps},${c.tvq}\n`});const b=new Blob([h+r],{type:"text/csv"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="balanceiq.csv";document.body.appendChild(a);a.click();document.body.removeChild(a)}} style={{padding:"7px 14px",borderRadius:6,border:"1px solid rgba(34,197,94,0.2)",background:"rgba(34,197,94,0.08)",color:"#16a34a",cursor:"pointer",fontWeight:600,fontSize:12}}>CSV</button>
                 <button onClick={()=>{let h=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>BalanceIQ</title><style>body{font:12px Arial;margin:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:3px 6px;text-align:right}th{background:#f5f5f5}td:first-child{text-align:left}h1{color:#ea580c}</style></head><body><h1>Rapport BalanceIQ</h1><table><tr><th>Date</th><th>Vente Nette</th><th>Total</th></tr>`;Object.keys(liveData).sort().forEach(k=>{const c=computeDay(k);if(c.venteNet>0)h+=`<tr><td>${k}</td><td>${c.venteNet.toFixed(2)}</td><td>${c.total.toFixed(2)}</td></tr>`});h+=`</table></body></html>`;openPDF(h)}} style={{padding:"7px 14px",borderRadius:6,border:`1px solid rgba(${t.posRgb},0.2)`,background:`rgba(${t.posRgb},0.08)`,color:t.posColor,cursor:"pointer",fontWeight:600,fontSize:12}}>PDF</button>
-                <button onClick={()=>{const b=new Blob([JSON.stringify({liveData,roster,empRoster,suppliers,apiConfig},null,2)],{type:"application/json"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="balanceiq-backup.json";document.body.appendChild(a);a.click();document.body.removeChild(a)}} style={{padding:"7px 14px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12}}>Backup JSON</button>
-                <button onClick={async()=>{setRestoreMsg('');const r=await window.api.backup.restore();if(r?.error)setRestoreMsg(r.error);}} style={{padding:"7px 14px",borderRadius:6,border:"1px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontWeight:600,fontSize:12}}>Restaurer depuis backup</button>
+                <button onClick={()=>{const b=new Blob([JSON.stringify({liveData,roster,empRoster,suppliers,apiConfig},null,2)],{type:"application/json"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="balanceiq-backup.json";document.body.appendChild(a);a.click();document.body.removeChild(a)}} style={{padding:"7px 14px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12}}>{T.cfgBackupJSON}</button>
+                <button onClick={async()=>{setRestoreMsg('');const r=await window.api.backup.restore();if(r?.error)setRestoreMsg(r.error);}} style={{padding:"7px 14px",borderRadius:6,border:"1px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontWeight:600,fontSize:12}}>{T.cfgRestoreBackup}</button>
               </div>
               {restoreMsg&&<div style={{marginTop:6,fontSize:12,color:"#ef4444"}}>{restoreMsg}</div>}
             </div>
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Sauvegardes automatiques</span>
-              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>1 fichier par jour · 30 jours conservés · dossier Documents</div>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.cfgAutoBackup}</span>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{T.cfgAutoBackupDesc}</div>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}>
-                <span style={{fontSize:11.5,color:t.textSub}}>{backupInfo==null?"Chargement...":backupInfo.lastBackup?`✓ Dernière: ${backupInfo.lastBackup} · ${backupInfo.count} fichier${backupInfo.count!==1?"s":""}`:"Aucune sauvegarde encore"}</span>
-                <button onClick={()=>window.api.backup.openDir()} style={{padding:"5px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>📁 Ouvrir le dossier</button>
+                <span style={{fontSize:11.5,color:t.textSub}}>{backupInfo==null?T.statusLoading:backupInfo.lastBackup?`✓ Dernière: ${backupInfo.lastBackup} · ${backupInfo.count} fichier${backupInfo.count!==1?"s":""}`:"Aucune sauvegarde encore"}</span>
+                <button onClick={()=>window.api.backup.openDir()} style={{padding:"5px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>{T.cfgOpenFolder}</button>
               </div>
               {backupInfo?.dir&&<div style={{marginTop:5,fontSize:9.5,color:t.textMuted,fontFamily:"'DM Mono',monospace",wordBreak:"break-all"}}>{backupInfo.dir}</div>}
             </div>
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:10,display:"block",color:t.text}}>📋 Journal d'audit</span>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:10,display:"block",color:t.text}}>{T.cfgAuditLog}</span>
               <AuditSection/>
             </div>
             </div>)}
@@ -6473,9 +6478,9 @@ export default function App(){
             {/* 🎨 APPARENCE */}
             {configSubTab==="apparence"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:8,display:"block",color:t.text}}>Thème</span>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:8,display:"block",color:t.text}}>{T.cfgTheme}</span>
               <div style={{display:"flex",gap:8}}>
-                {[['dark','☾ Foncé'],['light','☀ Clair — Chaleureux']].map(([name,label])=>(
+                {[['dark',T.cfgThemeDark],['light',T.cfgThemeLight]].map(([name,label])=>(
                   <button key={name} onClick={()=>setThemeTo(name)} style={{flex:1,padding:"8px 12px",borderRadius:7,border:`2px solid ${themeName===name?"#f97316":t.cardBorder}`,background:themeName===name?"rgba(249,115,22,0.08)":t.section,color:themeName===name?"#f97316":t.textSub,cursor:"pointer",fontWeight:themeName===name?700:500,fontSize:12,transition:"all 0.15s"}}>{label}</button>
                 ))}
               </div>
@@ -6493,23 +6498,23 @@ export default function App(){
             {/* 📱 APPLICATION */}
             {configSubTab==="application"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Mode de l'application</span>
+              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.cfgAppMode}</span>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <span style={{fontSize:18}}>{appMode==="franchiseur"?"🏢":"🏪"}</span>
                   <div>
-                    <div style={{fontSize:12,fontWeight:600,color:t.text}}>{appMode==="franchiseur"?"Franchiseur / Siège social":"Restaurant / Franchisé"}</div>
-                    <div style={{fontSize:10.5,color:t.textMuted}}>{appMode==="franchiseur"?"Dashboard réseau, redevances, succursales":"Fermeture de caisse, P&L, facturation"}</div>
+                    <div style={{fontSize:12,fontWeight:600,color:t.text}}>{appMode==="franchiseur"?T.cfgModeFranchisor:T.cfgModeRestaurant}</div>
+                    <div style={{fontSize:10.5,color:t.textMuted}}>{appMode==="franchiseur"?T.cfgModeFranDesc:T.cfgModeRestDesc}</div>
                   </div>
                 </div>
                 <span style={{fontSize:10,fontWeight:700,color:"#16a34a",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:10,padding:"2px 8px"}}>Actif</span>
               </div>
-              <div style={{fontSize:10.5,color:t.textMuted,marginTop:8}}>Pour changer de mode, cliquez le bouton "⇄ Mode" dans l'en-tête.</div>
+              <div style={{fontSize:10.5,color:t.textMuted,marginTop:8}}>{T.cfgModeChangeBtn}</div>
             </div>
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                <span style={{fontSize:13,fontWeight:700,color:t.text}}>Plan actif</span>
-                {import.meta.env.DEV&&<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"2px 7px",borderRadius:8,letterSpacing:"0.3px"}}>MODE DEV</span>}
+                <span style={{fontSize:13,fontWeight:700,color:t.text}}>{T.cfgActivePlan}</span>
+                {import.meta.env.DEV&&<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"2px 7px",borderRadius:8,letterSpacing:"0.3px"}}>{T.cfgDevMode}</span>}
               </div>
               {import.meta.env.DEV
                 ?<>
@@ -6526,7 +6531,7 @@ export default function App(){
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     <span style={{fontSize:12,fontWeight:700,color:"#f97316",fontFamily:"'DM Mono',monospace",textTransform:"uppercase"}}>{activePlan}</span>
                   </div>
-                  <div style={{fontSize:10,color:t.textDim,marginTop:4}}>Pour changer de plan, communiquez avec BalanceIQ.</div>
+                  <div style={{fontSize:10,color:t.textDim,marginTop:4}}>{T.cfgPlanChangeNote}</div>
                 </>
               }
             </div>
