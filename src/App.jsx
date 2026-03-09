@@ -2147,6 +2147,7 @@ function buildReceiptHTML({numero,date,montant,mode,reference,note,client,factur
 function EncaissementEditor({clientId,factureId,clients,factures,saveFactures,docNums,saveDocNums,companyInfo,encaisseData,persistEncaisse,onBack,showUpgradePrompt}){
   const t=useT();
   const isBulk=canUse('bulkEncaissement');
+  const isAutoApply=canUse('autoApplyPayments');
   const todayStr=dk(new Date());
   const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none"};
   const client=clients.find(c=>c.id===clientId);
@@ -2161,6 +2162,7 @@ function EncaissementEditor({clientId,factureId,clients,factures,saveFactures,do
 
   const [form,setForm]=useState({date:todayStr,montant:"",mode:"Virement/E-Transfer",reference:"",note:""});
   const [confirmation,setConfirmation]=useState(null);
+  const [autoPreview,setAutoPreview]=useState(null); // null | [{fac, montant}, ...]
   const updF=f=>setForm(p=>({...p,...f}));
 
   // ── Single-invoice helpers (free) ──
@@ -2177,19 +2179,25 @@ function EncaissementEditor({clientId,factureId,clients,factures,saveFactures,do
   const restant=totalMontant-totalAlloue;
   const excedent=Math.max(0,totalMontant-totalSoldeSelected);
 
-  const autoApply=()=>{
+  const handleAutoApply=()=>{
+    if(!isAutoApply){if(showUpgradePrompt)showUpgradePrompt('autoApplyPayments');return;}
     let remaining=totalMontant;
-    const newAlloc={};
-    selectedFacs.forEach(f=>{
+    const preview=[];
+    [...unpaid].sort((a,b)=>(a.date||'').localeCompare(b.date||'')).forEach(f=>{
       if(remaining<=0.005)return;
       const tot=computeSoumTotals(f.lignes).total;
       const dp=(f.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);
       const sol=tot-dp;
       const apply=Math.min(remaining,sol);
-      newAlloc[f.id]=apply.toFixed(2);
+      preview.push({fac:f,montant:apply});
       remaining-=apply;
     });
-    setAllocations(newAlloc);
+    setAutoPreview(preview);
+  };
+  const confirmAutoPreview=()=>{
+    const newSelMap={};const newAlloc={};
+    autoPreview.forEach(({fac,montant})=>{newSelMap[fac.id]=true;newAlloc[fac.id]=montant.toFixed(2);});
+    setSelMap(newSelMap);setAllocations(newAlloc);setAutoPreview(null);
   };
 
   const toggleSel=fId=>{
@@ -2298,7 +2306,7 @@ function EncaissementEditor({clientId,factureId,clients,factures,saveFactures,do
     <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
         <span style={{fontSize:12,fontWeight:700,color:t.text}}>① {isBulk?"Choisir les factures":"Choisir la facture"}</span>
-        {isBulk&&selectedFacs.length>0&&<button onClick={autoApply} disabled={!totalMontant} style={{padding:"3px 10px",borderRadius:5,border:"none",background:totalMontant?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:totalMontant?"#fff":t.textDim,cursor:totalMontant?"pointer":"default",fontWeight:700,fontSize:10,fontFamily:"'Outfit',sans-serif"}}>⚡ Appliquer automatiquement</button>}
+        {unpaid.length>0&&<button onClick={handleAutoApply} disabled={!totalMontant} style={{padding:"3px 10px",borderRadius:5,border:"none",background:totalMontant?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:totalMontant?"#fff":t.textDim,cursor:totalMontant?"pointer":"default",fontWeight:700,fontSize:10,fontFamily:"'Outfit',sans-serif"}}>⚡ Auto-appliquer{!isAutoApply&&<span style={{fontSize:8,marginLeft:4,opacity:0.7}}>PRO</span>}</button>}
       </div>
       {unpaid.length===0
         ?<div style={{textAlign:"center",padding:"16px 0",color:t.textMuted,fontSize:12}}>Aucune facture impayée pour ce client.</div>
@@ -2349,6 +2357,23 @@ function EncaissementEditor({clientId,factureId,clients,factures,saveFactures,do
               <button onClick={()=>setOverflowChoice('remboursement')} style={{padding:"3px 10px",borderRadius:5,border:`1px solid ${overflowChoice==="remboursement"?"#f97316":t.cardBorder}`,background:overflowChoice==="remboursement"?"rgba(249,115,22,0.1)":t.section,color:overflowChoice==="remboursement"?"#f97316":t.textSub,cursor:"pointer",fontSize:10,fontWeight:overflowChoice==="remboursement"?700:400}}>Rembourser</button>
             </div>
           )}
+          {/* Auto-apply preview */}
+          {autoPreview&&(<div style={{marginTop:8,background:"rgba(249,115,22,0.06)",border:"1px solid rgba(249,115,22,0.25)",borderRadius:7,padding:12}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#f97316",marginBottom:8}}>⚡ Aperçu — Répartition automatique ({fmt(totalMontant)})</div>
+            {autoPreview.map(({fac,montant})=>(
+              <div key={fac.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:t.textSub,borderTop:`1px solid ${t.divider}`,padding:"4px 0"}}>
+                <span style={{fontFamily:"'DM Mono',monospace"}}>{fac.numero}</span>
+                <span style={{color:"#f97316",fontWeight:700,fontFamily:"'DM Mono',monospace"}}>{fmt(montant)}</span>
+              </div>
+            ))}
+            {autoPreview.reduce((s,{montant})=>s+montant,0)<totalMontant&&(
+              <div style={{fontSize:10,color:"#f59e0b",marginTop:4}}>Excédent de {fmt(totalMontant-autoPreview.reduce((s,{montant})=>s+montant,0))} non réparti.</div>
+            )}
+            <div style={{display:"flex",gap:8,marginTop:10}}>
+              <button onClick={confirmAutoPreview} style={{padding:"5px 16px",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'Outfit',sans-serif"}}>✓ Confirmer</button>
+              <button onClick={()=>setAutoPreview(null)} style={{padding:"5px 12px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>Ajuster manuellement</button>
+            </div>
+          </div>)}
         </div>}
     </div>
 
