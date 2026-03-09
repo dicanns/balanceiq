@@ -1284,13 +1284,16 @@ function FacturationDashboard({soumissions,commandes,factures,creditNotes,client
 }
 
 // ── AGING REPORT ──
-function AgingReport({factures,clients}){
+function AgingReport({factures,clients,showUpgradePrompt}){
   const t=useT();
   const [asOf,setAsOf]=useState(dk(new Date()));
   const [sortCol,setSortCol]=useState("montantDu");
   const [sortDir,setSortDir]=useState(-1);
-  const [upgradeMsg,setUpgradeMsg]=useState(false);
+  const [viewMode,setViewMode]=useState("sommaire"); // "sommaire" | "detail"
+  const [expanded,setExpanded]=useState(new Set());
+  const isDetailed=canUse("detailedAging");
   const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:11,padding:"3px 6px",outline:"none",fontFamily:"'DM Mono',monospace"};
+
   const data=useMemo(()=>{
     const asOfDate=new Date(asOf+"T12:00:00");
     const byClient={};
@@ -1298,26 +1301,38 @@ function AgingReport({factures,clients}){
       const paye=(fac.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);
       const solde=computeSoumTotals(fac.lignes).total-paye;
       if(solde<=0.005)continue;
-      if(!byClient[fac.clientId])byClient[fac.clientId]={courant:0,j30:0,j60:0,j90:0};
+      if(!byClient[fac.clientId])byClient[fac.clientId]={courant:0,j30:0,j60:0,j90:0,factures:[]};
       let days=0;
       if(fac.dateEcheance){const due=new Date(fac.dateEcheance+"T12:00:00");days=Math.floor((asOfDate-due)/86400000);}
       const b=byClient[fac.clientId];
       if(days<=0)b.courant+=solde;else if(days<=30)b.j30+=solde;else if(days<=60)b.j60+=solde;else b.j90+=solde;
+      b.factures.push({...fac,solde,days,bucket:days<=0?"courant":days<=30?"j30":days<=60?"j60":"j90"});
     }
-    return Object.entries(byClient).map(([cid,b])=>({clientId:cid,client:clients.find(c=>c.id===cid),montantDu:b.courant+b.j30+b.j60+b.j90,...b}));
+    return Object.entries(byClient).map(([cid,b])=>({clientId:cid,client:clients.find(c=>c.id===cid),montantDu:b.courant+b.j30+b.j60+b.j90,courant:b.courant,j30:b.j30,j60:b.j60,j90:b.j90,factures:b.factures.sort((a,x)=>(a.date||"").localeCompare(x.date||""))}));
   },[factures,clients,asOf]);
+
   const sorted=useMemo(()=>[...data].sort((a,b)=>{
     if(sortCol==="client")return sortDir*(a.client?.entreprise||"").localeCompare(b.client?.entreprise||"","fr");
     return sortDir*((b[sortCol]||0)-(a[sortCol]||0));
   }),[data,sortCol,sortDir]);
   const totals=useMemo(()=>sorted.reduce((acc,r)=>({montantDu:acc.montantDu+r.montantDu,courant:acc.courant+r.courant,j30:acc.j30+r.j30,j60:acc.j60+r.j60,j90:acc.j90+r.j90}),{montantDu:0,courant:0,j30:0,j60:0,j90:0}),[sorted]);
   const toggleSort=col=>{if(sortCol===col)setSortDir(d=>-d);else{setSortCol(col);setSortDir(-1);}};
+  const toggleExpanded=cid=>setExpanded(prev=>{const n=new Set(prev);if(n.has(cid))n.delete(cid);else n.add(cid);return n;});
+  const switchToDetail=()=>{if(!isDetailed){if(showUpgradePrompt)showUpgradePrompt("detailedAging");return;}setViewMode("detail");};
   const SortHd=({col,align,color,children})=>(<span onClick={()=>toggleSort(col)} style={{cursor:"pointer",userSelect:"none",fontWeight:600,fontSize:10,color:sortCol===col?"#f97316":(color||t.textMuted),display:"block",textAlign:align||"left"}}>{children}{sortCol===col?(sortDir<0?" ↓":" ↑"):""}</span>);
   const MonoCell=({val,color,bold})=>(<td style={{padding:"6px 8px",textAlign:"right",fontFamily:"'DM Mono',monospace",color:val>0?(color||t.textSub):t.textDim,fontWeight:bold?700:400}}>{val>0.005?fmt(val):"—"}</td>);
+  const bucketColor=b=>b==="j90"?"#ef4444":b==="j60"?"#f97316":b==="j30"?"#eab308":t.textSub;
+
+  const TabBtn=({active,onClick,children})=>(<button onClick={onClick} style={{padding:"3px 12px",borderRadius:5,border:`1px solid ${active?"#f97316":t.cardBorder}`,background:active?"rgba(249,115,22,0.1)":t.section,color:active?"#f97316":t.textSub,cursor:"pointer",fontSize:10.5,fontWeight:active?700:400}}>{children}</button>);
+
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
       <span style={{fontSize:13.5,fontWeight:700,color:t.text}}>Âge des comptes</span>
-      <div style={{display:"flex",alignItems:"center",gap:6}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+        <div style={{display:"flex",gap:4}}>
+          <TabBtn active={viewMode==="sommaire"} onClick={()=>setViewMode("sommaire")}>Sommaire</TabBtn>
+          <TabBtn active={viewMode==="detail"} onClick={switchToDetail}>Détaillé{!isDetailed&&" 🔒"}</TabBtn>
+        </div>
         <span style={{fontSize:11,color:t.textMuted}}>au :</span>
         <input type="date" value={asOf} onChange={e=>setAsOf(e.target.value)} style={inputS}/>
       </div>
@@ -1325,44 +1340,89 @@ function AgingReport({factures,clients}){
     {sorted.length===0
       ?<div style={{textAlign:"center",padding:"32px 0",color:t.textMuted,fontSize:12}}>Aucune facture impayée au {asOf}.</div>
       :<div style={{overflowX:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
-          <thead><tr style={{borderBottom:`2px solid ${t.dividerMid}`}}>
-            <th style={{textAlign:"left",padding:"5px 8px"}}><SortHd col="client">Client</SortHd></th>
-            <th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="montantDu" align="right">Montant dû</SortHd></th>
-            <th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="courant" align="right" color="#9ca3af">Courant</SortHd></th>
-            <th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="j30" align="right" color="#eab308">30 jours</SortHd></th>
-            <th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="j60" align="right" color="#f97316">60 jours</SortHd></th>
-            <th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="j90" align="right" color="#ef4444">90+ jours</SortHd></th>
-            <th style={{padding:"5px 8px"}}/>
-          </tr></thead>
-          <tbody>
-            {sorted.map(row=>(<tr key={row.clientId} style={{borderBottom:`1px solid ${t.divider}`}}>
-              <td style={{padding:"6px 8px",color:t.text,fontWeight:600}}>{row.client?.entreprise||"Client inconnu"}<span style={{fontSize:9,color:t.textMuted,fontFamily:"'DM Mono',monospace",marginLeft:5}}>{row.client?.code||""}</span></td>
-              <td style={{padding:"6px 8px",textAlign:"right",fontFamily:"'DM Mono',monospace",fontWeight:700,color:t.text}}>{fmt(row.montantDu)}</td>
-              <MonoCell val={row.courant} color={t.textSub}/>
-              <MonoCell val={row.j30} color="#eab308" bold={row.j30>0}/>
-              <MonoCell val={row.j60} color="#f97316" bold={row.j60>0}/>
-              <MonoCell val={row.j90} color="#ef4444" bold={row.j90>0}/>
-              <td style={{padding:"6px 8px",textAlign:"right"}}>
-                <button onClick={()=>{if(!canUse("detailedAging"))setUpgradeMsg(true);}} style={{fontSize:9,padding:"2px 7px",borderRadius:4,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"pointer",fontWeight:600}}>Détail 🔒</button>
-              </td>
-            </tr>))}
-          </tbody>
-          <tfoot><tr style={{borderTop:`2px solid ${t.dividerMid}`,background:t.section}}>
-            <td style={{padding:"6px 8px",fontWeight:700,fontSize:12,color:t.text}}>TOTAL</td>
-            <td style={{padding:"6px 8px",textAlign:"right",fontFamily:"'DM Mono',monospace",fontWeight:900,fontSize:12,color:t.text}}>{fmt(totals.montantDu)}</td>
-            <MonoCell val={totals.courant} color={t.textSub} bold/>
-            <MonoCell val={totals.j30} color="#eab308" bold/>
-            <MonoCell val={totals.j60} color="#f97316" bold/>
-            <MonoCell val={totals.j90} color="#ef4444" bold/>
-            <td/>
-          </tr></tfoot>
-        </table>
+        {viewMode==="sommaire"
+          ?<table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+            <thead><tr style={{borderBottom:`2px solid ${t.dividerMid}`}}>
+              <th style={{textAlign:"left",padding:"5px 8px"}}><SortHd col="client">Client</SortHd></th>
+              <th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="montantDu" align="right">Montant dû</SortHd></th>
+              <th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="courant" align="right" color="#9ca3af">Courant</SortHd></th>
+              <th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="j30" align="right" color="#eab308">30 jours</SortHd></th>
+              <th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="j60" align="right" color="#f97316">60 jours</SortHd></th>
+              <th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="j90" align="right" color="#ef4444">90+ jours</SortHd></th>
+            </tr></thead>
+            <tbody>
+              {sorted.map(row=>(<tr key={row.clientId} style={{borderBottom:`1px solid ${t.divider}`}}>
+                <td style={{padding:"6px 8px",color:t.text,fontWeight:600}}>{row.client?.entreprise||"Client inconnu"}<span style={{fontSize:9,color:t.textMuted,fontFamily:"'DM Mono',monospace",marginLeft:5}}>{row.client?.code||""}</span></td>
+                <td style={{padding:"6px 8px",textAlign:"right",fontFamily:"'DM Mono',monospace",fontWeight:700,color:t.text}}>{fmt(row.montantDu)}</td>
+                <MonoCell val={row.courant} color={t.textSub}/>
+                <MonoCell val={row.j30} color="#eab308" bold={row.j30>0}/>
+                <MonoCell val={row.j60} color="#f97316" bold={row.j60>0}/>
+                <MonoCell val={row.j90} color="#ef4444" bold={row.j90>0}/>
+              </tr>))}
+            </tbody>
+            <tfoot><tr style={{borderTop:`2px solid ${t.dividerMid}`,background:t.section}}>
+              <td style={{padding:"6px 8px",fontWeight:700,fontSize:12,color:t.text}}>TOTAL</td>
+              <td style={{padding:"6px 8px",textAlign:"right",fontFamily:"'DM Mono',monospace",fontWeight:900,fontSize:12,color:t.text}}>{fmt(totals.montantDu)}</td>
+              <MonoCell val={totals.courant} color={t.textSub} bold/>
+              <MonoCell val={totals.j30} color="#eab308" bold/>
+              <MonoCell val={totals.j60} color="#f97316" bold/>
+              <MonoCell val={totals.j90} color="#ef4444" bold/>
+            </tr></tfoot>
+          </table>
+          :<table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+            <thead><tr style={{borderBottom:`2px solid ${t.dividerMid}`}}>
+              <th style={{textAlign:"left",padding:"5px 8px",color:t.textMuted,fontWeight:600,fontSize:10}}>Client / # Facture</th>
+              <th style={{textAlign:"left",padding:"5px 8px",color:t.textMuted,fontWeight:600,fontSize:10}}>Date</th>
+              <th style={{textAlign:"right",padding:"5px 8px",color:t.textMuted,fontWeight:600,fontSize:10}}>Total</th>
+              <th style={{textAlign:"right",padding:"5px 8px",color:"#9ca3af",fontWeight:600,fontSize:10}}>Courant</th>
+              <th style={{textAlign:"right",padding:"5px 8px",color:"#eab308",fontWeight:600,fontSize:10}}>30j</th>
+              <th style={{textAlign:"right",padding:"5px 8px",color:"#f97316",fontWeight:600,fontSize:10}}>60j</th>
+              <th style={{textAlign:"right",padding:"5px 8px",color:"#ef4444",fontWeight:600,fontSize:10}}>90j+</th>
+            </tr></thead>
+            <tbody>
+              {sorted.map(row=>{
+                const isExp=expanded.has(row.clientId);
+                return(<React.Fragment key={row.clientId}>
+                  {/* Client summary row — click to expand */}
+                  <tr onClick={()=>toggleExpanded(row.clientId)} style={{borderBottom:`1px solid ${t.dividerMid}`,background:isExp?"rgba(249,115,22,0.04)":t.card,cursor:"pointer"}}>
+                    <td style={{padding:"7px 8px",color:t.text,fontWeight:700}}>
+                      <span style={{marginRight:6,fontSize:10,color:"#f97316"}}>{isExp?"▼":"▶"}</span>
+                      {row.client?.entreprise||"Client inconnu"}
+                      <span style={{fontSize:9,color:t.textMuted,fontFamily:"'DM Mono',monospace",marginLeft:6}}>{row.client?.code||""}</span>
+                      <span style={{fontSize:9,color:t.textDim,marginLeft:6}}>({row.factures.length} facture{row.factures.length>1?"s":""})</span>
+                    </td>
+                    <td style={{padding:"7px 8px",color:t.textDim,fontSize:10}}>—</td>
+                    <td style={{padding:"7px 8px",textAlign:"right",fontFamily:"'DM Mono',monospace",fontWeight:700,color:t.text}}>{fmt(row.montantDu)}</td>
+                    <MonoCell val={row.courant} color={t.textSub}/>
+                    <MonoCell val={row.j30} color="#eab308" bold={row.j30>0}/>
+                    <MonoCell val={row.j60} color="#f97316" bold={row.j60>0}/>
+                    <MonoCell val={row.j90} color="#ef4444" bold={row.j90>0}/>
+                  </tr>
+                  {/* Invoice detail rows (shown when expanded) */}
+                  {isExp&&row.factures.map(fac=>(
+                    <tr key={fac.id} style={{borderBottom:`1px solid ${t.divider}`,background:"rgba(249,115,22,0.02)"}}>
+                      <td style={{padding:"4px 8px 4px 28px",fontFamily:"'DM Mono',monospace",color:bucketColor(fac.bucket),fontSize:10.5,fontWeight:600}}>{fac.numero}</td>
+                      <td style={{padding:"4px 8px",color:t.textSub,fontSize:10.5}}>{fac.date||"—"}</td>
+                      <td style={{padding:"4px 8px",textAlign:"right",fontFamily:"'DM Mono',monospace",color:t.textSub,fontSize:10.5}}>{fmt(fac.solde)}</td>
+                      <MonoCell val={fac.bucket==="courant"?fac.solde:0} color={t.textSub}/>
+                      <MonoCell val={fac.bucket==="j30"?fac.solde:0} color="#eab308" bold/>
+                      <MonoCell val={fac.bucket==="j60"?fac.solde:0} color="#f97316" bold/>
+                      <MonoCell val={fac.bucket==="j90"?fac.solde:0} color="#ef4444" bold/>
+                    </tr>
+                  ))}
+                </React.Fragment>);
+              })}
+            </tbody>
+            <tfoot><tr style={{borderTop:`2px solid ${t.dividerMid}`,background:t.section}}>
+              <td style={{padding:"6px 8px",fontWeight:700,fontSize:12,color:t.text}} colSpan={2}>TOTAL</td>
+              <td style={{padding:"6px 8px",textAlign:"right",fontFamily:"'DM Mono',monospace",fontWeight:900,fontSize:12,color:t.text}}>{fmt(totals.montantDu)}</td>
+              <MonoCell val={totals.courant} color={t.textSub} bold/>
+              <MonoCell val={totals.j30} color="#eab308" bold/>
+              <MonoCell val={totals.j60} color="#f97316" bold/>
+              <MonoCell val={totals.j90} color="#ef4444" bold/>
+            </tr></tfoot>
+          </table>}
       </div>}
-    {upgradeMsg&&<div style={{background:"rgba(249,115,22,0.08)",border:"1px solid rgba(249,115,22,0.2)",borderRadius:8,padding:12,display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-      <span style={{fontSize:11,color:t.textSub}}>🔒 <strong style={{color:"#f97316"}}>Pro</strong> — Le détail par facture est disponible avec BalanceIQ Pro.</span>
-      <button onClick={()=>setUpgradeMsg(false)} style={{background:"none",border:"none",color:t.textDim,cursor:"pointer",fontSize:12}}>✕</button>
-    </div>}
   </div>);
 }
 
@@ -1462,7 +1522,7 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
     {subTab==="produits"&&<ProduitsSection produits={produits} saveProduits={saveProduits} categories={categories}/>}
 
     {/* Vieillissement */}
-    {subTab==="vieillissement"&&<AgingReport factures={factures} clients={clients}/>}
+    {subTab==="vieillissement"&&<AgingReport factures={factures} clients={clients} showUpgradePrompt={showUpgradePrompt}/>}
 
     {/* Categories */}
     {subTab==="categories"&&(<div style={{display:"flex",flexDirection:"column",gap:8}}>
