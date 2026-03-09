@@ -3259,7 +3259,8 @@ function WelcomeScreen({onSelect}){
         {franchiseurMsg&&(
           <div style={{marginTop:20,padding:"14px 18px",borderRadius:9,background:"rgba(251,191,36,0.08)",border:"1px solid rgba(251,191,36,0.2)",textAlign:"left"}}>
             <div style={{fontSize:13,fontWeight:600,color:"#fbbf24",marginBottom:6}}>Mode Franchiseur — disponible prochainement</div>
-            <div style={{fontSize:12,color:"#8b8fa3",marginBottom:12,lineHeight:1.5}}>Le mode Franchiseur (dashboard multi-succursales, redevances automatiques, consolidation) est en développement. Vous serez notifié dès sa disponibilité.</div>
+            <div style={{fontSize:12,color:"#8b8fa3",marginBottom:6,lineHeight:1.5}}>Le mode Franchiseur (dashboard multi-succursales, redevances automatiques, consolidation) est en développement. Vous serez notifié dès sa disponibilité.</div>
+            <div style={{fontSize:11,color:"#6b7280",marginBottom:12,padding:"8px 10px",borderRadius:6,background:"rgba(139,92,246,0.06)",border:"1px solid rgba(139,92,246,0.15)"}}>📋 Journal d'audit réseau — disponible avec synchronisation cloud</div>
             <button onClick={()=>onSelect("restaurant")} style={{padding:"8px 16px",borderRadius:7,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>Continuer en mode Restaurant</button>
           </div>
         )}
