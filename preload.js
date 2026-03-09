@@ -13,6 +13,10 @@ contextBridge.exposeInMainWorld('api', {
     getInfo: () => ipcRenderer.invoke('backup:getInfo'),
     openDir: () => ipcRenderer.invoke('backup:openDir'),
   },
+  pdf: {
+    print: (html) => ipcRenderer.invoke('pdf:print', html),
+    toPDF: (html) => ipcRenderer.invoke('pdf:toPDF', html),
+  },
   email: {
     sendResend: (opts) => ipcRenderer.invoke('email:sendResend', opts),
   },
