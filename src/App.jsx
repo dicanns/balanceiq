@@ -1630,13 +1630,13 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
   const subTabs=[{id:"documents",label:"Documents"},{id:"clients",label:"Clients"},{id:"categories",label:"Catégories"},{id:"produits",label:"Produits & Services"},{id:"vieillissement",label:"Vieillissement"}];
 
   if(activeDoc?.type==="soumission"){
-    return<SoumissionEditor soumission={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} soumissions={soumissions} saveSoumissions={saveSoumissions} onBack={closeDoc} initClientId={activeDoc.clientId} onConvertToCommande={convertSoumToCommande} onConvertToFacture={soum=>convertToFacture(soum,"soumission")}/>;
+    return<SoumissionEditor soumission={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} soumissions={soumissions} saveSoumissions={saveSoumissions} onBack={closeDoc} initClientId={activeDoc.clientId} onConvertToCommande={convertSoumToCommande} onConvertToFacture={soum=>convertToFacture(soum,"soumission")} apiConfig={apiConfig}/>;
   }
   if(activeDoc?.type==="commande"){
-    return<CommandeEditor commande={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} commandes={commandes} saveCommandes={saveCommandes} onBack={closeDoc} initClientId={activeDoc.clientId} onConvertToFacture={cmd=>convertToFacture(cmd,"commande")}/>;
+    return<CommandeEditor commande={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} commandes={commandes} saveCommandes={saveCommandes} onBack={closeDoc} initClientId={activeDoc.clientId} onConvertToFacture={cmd=>convertToFacture(cmd,"commande")} apiConfig={apiConfig}/>;
   }
   if(activeDoc?.type==="facture"){
-    return<FactureEditor facture={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} factures={factures} saveFactures={saveFactures} onBack={closeDoc} initClientId={activeDoc.clientId} onEnregistrerPaiement={(fac)=>openDoc("encaissement",fac.clientId,{factureId:fac.id})} onCreditNote={(fac)=>setActiveDoc({type:"creditnote",doc:null,clientId:fac.clientId,factureId:fac.id})}/>;
+    return<FactureEditor facture={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} factures={factures} saveFactures={saveFactures} onBack={closeDoc} initClientId={activeDoc.clientId} onEnregistrerPaiement={(fac)=>openDoc("encaissement",fac.clientId,{factureId:fac.id})} onCreditNote={(fac)=>setActiveDoc({type:"creditnote",doc:null,clientId:fac.clientId,factureId:fac.id})} apiConfig={apiConfig}/>;
   }
   if(activeDoc?.type==="encaissement"){
     return<EncaissementEditor clientId={activeDoc.clientId} factureId={activeDoc.doc?.factureId||null} clients={clients} factures={factures} saveFactures={saveFactures} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData||{}} persistEncaisse={persistEncaisse} onBack={closeDoc} showUpgradePrompt={showUpgradePrompt}/>;
@@ -1789,7 +1789,37 @@ function buildSoumissionHTML({numero,date,dateExpiration,statut,client,reference
   const cli=client?`<div style="font-weight:700;font-size:13px">${client.entreprise}</div>${client.contact?`<div>${client.contact}</div>`:""}${client.adresse?`<div>${client.adresse}</div>`:""}${client.ville?`<div>${[client.ville,client.province,client.codePostal].filter(Boolean).join(", ")}</div>`:""}${client.courriel?`<div>${client.courriel}</div>`:""}${client.tel1?`<div>${client.tel1}</div>`:""}`:""` "(aucun client)"`;
   return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Soumission ${numero}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}.hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px}.title{font-size:30px;font-weight:900;color:#f97316;letter-spacing:2px}.meta{font-size:11px;color:#555;margin-top:3px}table{width:100%;border-collapse:collapse}th{background:#f97316;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.tot{margin-left:auto;width:260px;margin-top:12px}.tr{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}.tf{font-weight:900;font-size:15px;border-top:2px solid #1a1a1a;margin-top:4px;padding-top:4px}.notes{background:#f9f9f9;border-left:3px solid #f97316;padding:10px 12px;margin-top:16px;font-size:12px}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}</style></head><body><div class="hdr"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${companyInfo.nom||""}</div><div class="meta">${[companyInfo.adresse,companyInfo.ville,companyInfo.province].filter(Boolean).join(", ")}</div>${companyInfo.telephone?`<div class="meta">${companyInfo.telephone}</div>`:""}${companyInfo.courriel?`<div class="meta">${companyInfo.courriel}</div>`:""}</div><div style="text-align:right"><div class="title">SOUMISSION</div><div style="font-size:18px;font-weight:700;margin-top:4px"># ${numero}</div><div class="meta">Date: ${fd(date)}</div><div class="meta">Expiration: ${fd(dateExpiration)}</div><div class="meta">Statut: <strong>${statut}</strong></div>${referenceClient?`<div class="meta">Réf.: ${referenceClient}</div>`:""}</div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Facturé à</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>Description</th><th style="width:55px;text-align:center">Qté</th><th style="width:100px;text-align:right">Prix unit.</th><th style="width:65px;text-align:center">Remise</th><th style="width:100px;text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><div class="tot"><div class="tr"><span>Sous-total</span><span>${fc(totals.sousTotal)}</span></div><div class="tr"><span>TPS (5%)</span><span>${fc(totals.tpsTotal)}</span></div><div class="tr"><span>TVQ (9.975%)</span><span>${fc(totals.tvqTotal)}</span></div><div class="tr tf"><span>TOTAL</span><span>${fc(totals.total)}</span></div></div>${notes?`<div class="notes"><strong>Notes / Conditions</strong><br/>${notes}</div>`:""}<div class="ftr">${companyInfo.numeroTPS?`N° TPS: ${companyInfo.numeroTPS}`:""}${companyInfo.numeroTVQ?` &nbsp;|&nbsp; N° TVQ: ${companyInfo.numeroTVQ}`:""}</div></body></html>`;
 }
-function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveDocNums,soumissions,saveSoumissions,onBack,initClientId,onConvertToCommande,onConvertToFacture}){
+// ── DIRECT EMAIL HELPER ──
+// Returns {status, send(html, to, subject, bodyHtml)} — used by all 3 editors
+function useDirectEmail(apiConfig){
+  const [emailStatus,setEmailStatus]=useState(null); // null|'sending'|{ok:email}|{err:msg}
+  const canDirect=canUse("directEmailSend");
+  const sendDoc=async({html,to,subject,introHtml})=>{
+    if(!to)return;
+    if(canDirect&&apiConfig?.resendKey){
+      setEmailStatus("sending");
+      try{
+        const body=`${introHtml||""}<hr/>${html}`;
+        const r=await window.api.email.sendResend({apiKey:apiConfig.resendKey,from:apiConfig.resendFrom||"noreply@balanceiq.ca",to,subject,html:body,attachments:[]});
+        if(r?.success)setEmailStatus({ok:to});
+        else setEmailStatus({err:r?.error||"Erreur inconnue"});
+      }catch(e){setEmailStatus({err:e.message||"Erreur"});}
+    }else{
+      // mailto: fallback (free tier or Resend not configured)
+      window.open(`mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent("Bonjour,\n\nVeuillez trouver le document en pièce jointe.\n\nMerci.")}`);
+    }
+  };
+  const EmailStatusBadge=emailStatus?(
+    emailStatus==="sending"
+      ?<span style={{fontSize:10,color:"#f97316",fontWeight:600}}>Envoi en cours…</span>
+      :emailStatus.ok
+        ?<span style={{fontSize:10,color:"#22c55e",fontWeight:600}}>✓ Envoyé à {emailStatus.ok}</span>
+        :<span style={{fontSize:10,color:"#ef4444",fontWeight:600}}>✗ {emailStatus.err}</span>
+  ):null;
+  return{sendDoc,EmailStatusBadge,isDirectEmail:canDirect&&!!apiConfig?.resendKey};
+}
+
+function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveDocNums,soumissions,saveSoumissions,onBack,initClientId,onConvertToCommande,onConvertToFacture,apiConfig}){
   const t=useT();
   const isNew=!soumission?.id;
   const todayStr=dk(new Date());
@@ -1802,6 +1832,7 @@ function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveD
   const [confirmDel,setConfirmDel]=useState(false);
   const [flash,setFlash]=useState(false);
   const totals=useMemo(()=>computeSoumTotals(lignes),[lignes]);
+  const {sendDoc:sendSoum,EmailStatusBadge:SoumEmailBadge}=useDirectEmail(apiConfig);
   const client=clients.find(c=>c.id===form.clientId);
   const upd=f=>setForm(p=>({...p,...f}));
   const updL=(id,f)=>setLignes(ls=>ls.map(l=>l.id===id?{...l,...f}:l));
@@ -1838,9 +1869,9 @@ function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveD
   const doEmail=()=>{
     if(!client?.courriel)return;
     const num=savedNumero||"—";
-    const sub=encodeURIComponent(`Soumission ${num}`);
-    const body=encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint votre soumission ${num} d'un montant de ${fmt(totals.total)}.\n\nMerci de votre confiance,\n${companyInfo.nom||""}`);
-    window.open(`mailto:${client.courriel}?subject=${sub}&body=${body}`);
+    const html=buildSoumissionHTML({...form,numero:num,lignes,totals,client,companyInfo});
+    const intro=`<p>Bonjour,</p><p>Veuillez trouver ci-joint votre soumission <strong>${num}</strong> d'un montant de <strong>${fmt(totals.total)}</strong>.</p><p>Merci de votre confiance,<br/>${companyInfo.nom||""}</p>`;
+    sendSoum({html,to:client.courriel,subject:`Soumission ${num} — ${companyInfo.nom||""}`,introHtml:intro});
   };
   const SC=STATUT_SOUM_C;
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -1854,6 +1885,7 @@ function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveD
       {flash&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>✓</span>}
       <button onClick={doPrint} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>🖨️ Imprimer</button>
       <button onClick={doEmail} disabled={!client?.courriel} title={!client?.courriel?"Aucun courriel client":""} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:!client?.courriel?t.textDim:t.textSub,cursor:!client?.courriel?"default":"pointer",fontWeight:600,fontSize:11,opacity:!client?.courriel?0.5:1}}>📧 Envoyer</button>
+      {SoumEmailBadge}
       {savedId&&!soumission?.commandeId&&onConvertToCommande
         ?<button onClick={()=>onConvertToCommande({...form,id:savedId,numero:savedNumero,lignes})} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11}}>→ Commande</button>
         :soumission?.commandeId
@@ -1973,7 +2005,7 @@ function buildCommandeHTML({numero,date,dateLivraison,statut,client,referenceCli
   const cli=client?`<div style="font-weight:700;font-size:13px">${client.entreprise}</div>${client.contact?`<div>${client.contact}</div>`:""}${client.adresse?`<div>${client.adresse}</div>`:""}${client.ville?`<div>${[client.ville,client.province,client.codePostal].filter(Boolean).join(", ")}</div>`:""}${client.courriel?`<div>${client.courriel}</div>`:""}${client.tel1?`<div>${client.tel1}</div>`:""}`:""` "(aucun client)"`;
   return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Commande ${numero}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}.hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px}.title{font-size:26px;font-weight:900;color:#f97316;letter-spacing:2px}.meta{font-size:11px;color:#555;margin-top:3px}table{width:100%;border-collapse:collapse}th{background:#f97316;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.tot{margin-left:auto;width:260px;margin-top:12px}.tr{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}.tf{font-weight:900;font-size:15px;border-top:2px solid #1a1a1a;margin-top:4px;padding-top:4px}.notes{background:#f9f9f9;border-left:3px solid #f97316;padding:10px 12px;margin-top:16px;font-size:12px}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}</style></head><body><div class="hdr"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${companyInfo.nom||""}</div><div class="meta">${[companyInfo.adresse,companyInfo.ville,companyInfo.province].filter(Boolean).join(", ")}</div>${companyInfo.telephone?`<div class="meta">${companyInfo.telephone}</div>`:""}${companyInfo.courriel?`<div class="meta">${companyInfo.courriel}</div>`:""}</div><div style="text-align:right"><div class="title">BON DE COMMANDE</div><div style="font-size:18px;font-weight:700;margin-top:4px"># ${numero}</div><div class="meta">Date: ${fd(date)}</div>${dateLivraison?`<div class="meta">Livraison: ${fd(dateLivraison)}</div>`:""}<div class="meta">Statut: <strong>${statut}</strong></div>${referenceClient?`<div class="meta">Réf.: ${referenceClient}</div>`:""}${sourceNumero?`<div class="meta">Soumission: ${sourceNumero}</div>`:""}</div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Facturé à</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>Description</th><th style="width:55px;text-align:center">Qté</th><th style="width:100px;text-align:right">Prix unit.</th><th style="width:65px;text-align:center">Remise</th><th style="width:100px;text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><div class="tot"><div class="tr"><span>Sous-total</span><span>${fc(totals.sousTotal)}</span></div><div class="tr"><span>TPS (5%)</span><span>${fc(totals.tpsTotal)}</span></div><div class="tr"><span>TVQ (9.975%)</span><span>${fc(totals.tvqTotal)}</span></div><div class="tr tf"><span>TOTAL</span><span>${fc(totals.total)}</span></div></div>${notes?`<div class="notes"><strong>Notes / Conditions</strong><br/>${notes}</div>`:""}<div class="ftr">${companyInfo.numeroTPS?`N° TPS: ${companyInfo.numeroTPS}`:""}${companyInfo.numeroTVQ?` &nbsp;|&nbsp; N° TVQ: ${companyInfo.numeroTVQ}`:""}</div></body></html>`;
 }
-function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNums,commandes,saveCommandes,onBack,initClientId,onConvertToFacture}){ // eslint-disable-line
+function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNums,commandes,saveCommandes,onBack,initClientId,onConvertToFacture,apiConfig}){ // eslint-disable-line
   const t=useT();
   const isNew=!commande?.id;
   const todayStr=dk(new Date());
@@ -2019,12 +2051,13 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
     const numero=savedNumero||fmtDocNum(docNums.prefix,"C",docNums.commande);
     openPDF(buildCommandeHTML({...form,numero,lignes,totals,client,companyInfo}));
   };
+  const {sendDoc:sendCmd,EmailStatusBadge:CmdEmailBadge}=useDirectEmail(apiConfig);
   const doEmail=()=>{
     if(!client?.courriel)return;
     const num=savedNumero||"—";
-    const sub=encodeURIComponent(`Commande ${num}`);
-    const body=encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint votre bon de commande ${num} d'un montant de ${fmt(totals.total)}.\n\nMerci de votre confiance,\n${companyInfo.nom||""}`);
-    window.open(`mailto:${client.courriel}?subject=${sub}&body=${body}`);
+    const html=buildCommandeHTML({...form,numero:num,lignes,totals,client,companyInfo});
+    const intro=`<p>Bonjour,</p><p>Veuillez trouver ci-joint votre bon de commande <strong>${num}</strong> d'un montant de <strong>${fmt(totals.total)}</strong>.</p><p>Merci de votre confiance,<br/>${companyInfo.nom||""}</p>`;
+    sendCmd({html,to:client.courriel,subject:`Commande ${num} — ${companyInfo.nom||""}`,introHtml:intro});
   };
   const SC=STATUT_CMD_C;
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -2038,6 +2071,7 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
       {flash&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>✓</span>}
       <button onClick={doPrint} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>🖨️ Imprimer</button>
       <button onClick={doEmail} disabled={!client?.courriel} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:!client?.courriel?t.textDim:t.textSub,cursor:!client?.courriel?"default":"pointer",fontWeight:600,fontSize:11,opacity:!client?.courriel?0.5:1}}>📧 Envoyer</button>
+      {CmdEmailBadge}
       {savedId&&!commande?.factureId&&onConvertToFacture
         ?<button onClick={()=>onConvertToFacture({...form,id:savedId,numero:savedNumero,lignes})} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11}}>Facturer cette commande</button>
         :commande?.factureId
@@ -2158,7 +2192,7 @@ function buildFactureHTML({numero,date,dateEcheance,statut,client,referenceClien
   const solde=totals.total-(montantPaye||0);
   return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Facture ${numero}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}table{width:100%;border-collapse:collapse}th{background:#f97316;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.tot{margin-left:auto;width:280px;margin-top:12px}.tr{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}.tf{font-weight:900;font-size:15px;border-top:2px solid #1a1a1a;margin-top:4px;padding-top:4px}.due{background:#fff3cd;border:1px solid #f97316;borderRadius:4px;padding:6px 10px;margin-bottom:12px;font-size:12px;font-weight:700}.notes{background:#f9f9f9;border-left:3px solid #f97316;padding:10px 12px;margin-top:16px;font-size:12px}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${companyInfo.nom||""}</div><div style="font-size:11px;color:#555">${[companyInfo.adresse,companyInfo.ville,companyInfo.province].filter(Boolean).join(", ")}</div>${companyInfo.telephone?`<div style="font-size:11px;color:#555">${companyInfo.telephone}</div>`:""}${companyInfo.courriel?`<div style="font-size:11px;color:#555">${companyInfo.courriel}</div>`:""}</div><div style="text-align:right"><div style="font-size:30px;font-weight:900;color:#f97316;letter-spacing:2px">FACTURE</div><div style="font-size:18px;font-weight:700;margin-top:4px"># ${numero}</div><div style="font-size:11px;color:#555;margin-top:3px">Date: ${fd(date)}</div><div style="font-size:12px;font-weight:700;color:${statut==="En retard"?"#ef4444":"#1a1a1a"};margin-top:4px;padding:4px 8px;background:${statut==="En retard"?"#fee2e2":"#f3f4f6"};borderRadius:4px;display:inline-block">Échéance: ${fd(dateEcheance)}</div><div style="font-size:11px;color:#555;margin-top:3px">Statut: <strong>${statut}</strong></div>${referenceClient?`<div style="font-size:11px;color:#555">Réf.: ${referenceClient}</div>`:""}${sourceNumero?`<div style="font-size:11px;color:#555">${sourceType==="commande"?"Commande":"Soumission"}: ${sourceNumero}</div>`:""}</div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Facturé à</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>Description</th><th style="width:55px;text-align:center">Qté</th><th style="width:100px;text-align:right">Prix unit.</th><th style="width:65px;text-align:center">Remise</th><th style="width:100px;text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><div class="tot"><div class="tr"><span>Sous-total</span><span>${fc(totals.sousTotal)}</span></div><div class="tr"><span>TPS (5%)</span><span>${fc(totals.tpsTotal)}</span></div><div class="tr"><span>TVQ (9.975%)</span><span>${fc(totals.tvqTotal)}</span></div><div class="tr tf"><span>TOTAL</span><span>${fc(totals.total)}</span></div>${(montantPaye||0)>0?`<div class="tr" style="color:#22c55e"><span>Montant payé</span><span>${fc(montantPaye)}</span></div><div class="tr tf" style="color:#ef4444"><span>SOLDE DÛ</span><span>${fc(solde)}</span></div>`:""}</div>${notes?`<div class="notes"><strong>Notes</strong><br/>${notes}</div>`:""}<div class="ftr">${companyInfo.numeroTPS?`N° TPS: ${companyInfo.numeroTPS}`:""}${companyInfo.numeroTVQ?` &nbsp;|&nbsp; N° TVQ: ${companyInfo.numeroTVQ}`:""}</div></body></html>`;
 }
-function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums,factures,saveFactures,onBack,initClientId,onEnregistrerPaiement,onCreditNote}){
+function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums,factures,saveFactures,onBack,initClientId,onEnregistrerPaiement,onCreditNote,apiConfig}){
   const t=useT();
   const isNew=!facture?.id;
   const todayStr=dk(new Date());
@@ -2223,12 +2257,13 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
     const numero=savedNumero||fmtDocNum(docNums.prefix,"F",docNums.facture);
     openPDF(buildFactureHTML({...form,numero,lignes,totals,client,companyInfo,montantPaye}));
   };
+  const {sendDoc:sendFac,EmailStatusBadge:FacEmailBadge}=useDirectEmail(apiConfig);
   const doEmail=()=>{
     if(!client?.courriel)return;
     const num=savedNumero||"—";
-    const sub=encodeURIComponent(`Facture ${num}`);
-    const body=encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint votre facture ${num} d'un montant de ${fmt(totals.total)}${soldeDu<totals.total?`, solde dû: ${fmt(soldeDu)}`:""}.\n\nMerci de votre confiance,\n${companyInfo.nom||""}`);
-    window.open(`mailto:${client.courriel}?subject=${sub}&body=${body}`);
+    const html=buildFactureHTML({...form,numero:num,lignes,totals,client,companyInfo,montantPaye});
+    const intro=`<p>Bonjour,</p><p>Veuillez trouver ci-joint votre facture <strong>${num}</strong> d'un montant de <strong>${fmt(totals.total)}</strong>${soldeDu<totals.total?`, solde dû: <strong>${fmt(soldeDu)}</strong>`:""}.</p><p>Merci de votre confiance,<br/>${companyInfo.nom||""}</p>`;
+    sendFac({html,to:client.courriel,subject:`Facture ${num} — ${companyInfo.nom||""}`,introHtml:intro});
   };
   const SC=STATUT_FAC_C;
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -2242,6 +2277,7 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
       {flash&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>✓</span>}
       <button onClick={doPrint} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>🖨️ Imprimer</button>
       <button onClick={doEmail} disabled={!client?.courriel} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:!client?.courriel?t.textDim:t.textSub,cursor:!client?.courriel?"default":"pointer",fontWeight:600,fontSize:11,opacity:!client?.courriel?0.5:1}}>📧 Envoyer</button>
+      {FacEmailBadge}
       <button onClick={()=>savedId&&onEnregistrerPaiement&&onEnregistrerPaiement(factures.find(f=>f.id===savedId)||{...form,id:savedId})} disabled={!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?t.cardBorder:"rgba(249,115,22,0.3)"}`,background:!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?t.section:"rgba(249,115,22,0.07)",color:!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?t.textDim:"#f97316",cursor:!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?"default":"pointer",fontWeight:600,fontSize:11,opacity:!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?0.4:1}}>Enregistrer un paiement</button>
       <button onClick={()=>savedId&&onCreditNote&&onCreditNote(factures.find(f=>f.id===savedId)||{...form,id:savedId})} disabled={!savedId||!onCreditNote||["Annulée"].includes(form.statut)} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${!savedId||!onCreditNote||["Annulée"].includes(form.statut)?t.cardBorder:"rgba(239,68,68,0.3)"}`,background:!savedId||!onCreditNote||["Annulée"].includes(form.statut)?t.section:"rgba(239,68,68,0.07)",color:!savedId||!onCreditNote||["Annulée"].includes(form.statut)?t.textDim:"#ef4444",cursor:!savedId||!onCreditNote||["Annulée"].includes(form.statut)?"default":"pointer",fontWeight:600,fontSize:11,opacity:!savedId||!onCreditNote||["Annulée"].includes(form.statut)?0.4:1}}>→ Note de crédit</button>
       {savedId&&!locked&&(
@@ -4878,6 +4914,47 @@ export default function App(){
                 </div>
               ))}
             </div>
+
+            {/* Service courriel — Pro Step 6 */}
+            {(()=>{
+              const [testStatus,setTestStatus]=useState(null);
+              const testResend=async()=>{
+                if(!apiConfig.resendKey){setTestStatus({err:"Clé API manquante."});return;}
+                setTestStatus("testing");
+                const r=await window.api.email.sendResend({apiKey:apiConfig.resendKey,from:apiConfig.resendFrom||"noreply@balanceiq.ca",to:apiConfig.resendFrom||"test@balanceiq.ca",subject:"Test BalanceIQ",html:"<p>Connexion Resend réussie.</p>",attachments:[]});
+                if(r?.success)setTestStatus({ok:true});
+                else setTestStatus({err:r?.error||"Erreur inconnue"});
+              };
+              return(<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                  <span style={{fontSize:13,fontWeight:700,color:t.text}}>Service courriel</span>
+                  {canUse("directEmailSend")
+                    ?<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"1px 6px",borderRadius:6}}>PRO</span>
+                    :<span style={{fontSize:9,fontWeight:700,color:"#6b7280",background:"rgba(255,255,255,0.06)",padding:"1px 6px",borderRadius:6}}>Disponible avec Pro</span>}
+                </div>
+                <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>Permet l'envoi direct de factures, soumissions et états de compte sans ouvrir votre client courriel.</div>
+                <div style={{marginBottom:8}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
+                    <span style={{fontSize:12,fontWeight:600,color:t.text}}>Clé API Resend</span>
+                    <Pill ok={apiConfig.resendKey?.length>0} label={apiConfig.resendKey?.length>0?"Configuré":"Non configuré"}/>
+                  </div>
+                  <input value={apiConfig.resendKey||""} onChange={e=>{const nc={...apiConfig,resendKey:e.target.value};setApiConfig(nc);saveApiCfg(nc);}} placeholder="re_xxxxxxxxxxxxxxxxxxxxxxxx" style={{...inputStyle,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}} type="password"/>
+                </div>
+                <div style={{marginBottom:8}}>
+                  <div style={{fontSize:12,fontWeight:600,color:t.text,marginBottom:2}}>Courriel d'envoi</div>
+                  <input value={apiConfig.resendFrom||""} onChange={e=>{const nc={...apiConfig,resendFrom:e.target.value};setApiConfig(nc);saveApiCfg(nc);}} placeholder="noreply@balanceiq.ca" style={{...inputStyle,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
+                  <div style={{fontSize:10,color:t.textDim,marginTop:2}}>Doit correspondre à un domaine vérifié dans Resend.</div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <button onClick={testResend} disabled={!apiConfig.resendKey||testStatus==="testing"} style={{padding:"5px 14px",borderRadius:5,border:`1px solid ${apiConfig.resendKey?"rgba(249,115,22,0.3)":t.cardBorder}`,background:apiConfig.resendKey?"rgba(249,115,22,0.08)":t.section,color:apiConfig.resendKey?"#f97316":t.textDim,cursor:apiConfig.resendKey?"pointer":"default",fontWeight:600,fontSize:11}}>
+                    {testStatus==="testing"?"Test en cours…":"Tester la connexion"}
+                  </button>
+                  {testStatus&&testStatus!=="testing"&&(testStatus.ok
+                    ?<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>✓ Connexion réussie</span>
+                    :<span style={{fontSize:11,color:"#ef4444",fontWeight:600}}>✗ {testStatus.err}</span>)}
+                </div>
+              </div>);
+            })()}
 
             {/* Export */}
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
