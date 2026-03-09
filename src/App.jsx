@@ -4944,6 +4944,253 @@ function AuditReseauPanel({locations}){
   );
 }
 
+// ── PIN LOCK SCREEN ──
+function PinLockScreen({lockConfig,onUnlock,saveLockConfig}){
+  const [input,setInput]=useState("");
+  const [attempts,setAttempts]=useState(0);
+  const [lockedUntil,setLockedUntil]=useState(lockConfig.lockedUntil?new Date(lockConfig.lockedUntil):null);
+  const [timeLeft,setTimeLeft]=useState(0);
+  const [shake,setShake]=useState(false);
+  const MAX_ATTEMPTS=5;
+  const LOCKOUT_MS=5*60*1000;
+
+  useEffect(()=>{
+    if(!lockedUntil)return;
+    const tick=()=>{
+      const now=Date.now();
+      const remaining=lockedUntil.getTime()-now;
+      if(remaining<=0){setLockedUntil(null);setAttempts(0);setTimeLeft(0);const upd={...lockConfig,lockedUntil:null};saveLockConfig(upd);}
+      else setTimeLeft(Math.ceil(remaining/1000));
+    };
+    tick();
+    const id=setInterval(tick,1000);
+    return()=>clearInterval(id);
+  },[lockedUntil]);
+
+  const pinLen=lockConfig.pinLength||4;
+
+  const hashPin=async(pin)=>{
+    const buf=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(pin));
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+  };
+
+  const handleDigit=async(d)=>{
+    if(lockedUntil)return;
+    const next=input+d;
+    if(next.length>6)return;
+    setInput(next);
+    if(next.length===pinLen){
+      const h=await hashPin(next);
+      if(h===lockConfig.pin){
+        onUnlock();
+      } else {
+        const newAttempts=attempts+1;
+        setAttempts(newAttempts);
+        setInput("");
+        setShake(true);
+        setTimeout(()=>setShake(false),600);
+        if(newAttempts>=MAX_ATTEMPTS){
+          const until=new Date(Date.now()+LOCKOUT_MS);
+          setLockedUntil(until);
+          const upd={...lockConfig,lockedUntil:until.toISOString()};
+          saveLockConfig(upd);
+        }
+      }
+    }
+  };
+
+  const handleBackspace=()=>{if(!lockedUntil)setInput(i=>i.slice(0,-1));};
+  const handleKey=useCallback((e)=>{
+    if(e.key>="0"&&e.key<="9")handleDigit(e.key);
+    else if(e.key==="Backspace")handleBackspace();
+  },[input,lockedUntil,attempts]);
+  useEffect(()=>{window.addEventListener("keydown",handleKey);return()=>window.removeEventListener("keydown",handleKey);},[handleKey]);
+
+  const dots=Array(pinLen).fill(0);
+
+  const fmtTime=(s)=>`${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
+
+  return(
+    <div style={{minHeight:"100vh",background:DARK.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Outfit','Helvetica Neue',sans-serif"}}>
+      <div style={{textAlign:"center",maxWidth:320,width:"100%",padding:24}}>
+        <div style={{fontSize:36,marginBottom:8}}>🔒</div>
+        <div style={{fontSize:22,fontWeight:700,color:"#fff",marginBottom:4}}>BalanceIQ</div>
+        <div style={{fontSize:13,color:"#6b7280",marginBottom:32}}>Entrez votre NIP pour continuer</div>
+
+        {/* Dots */}
+        <div style={{display:"flex",justifyContent:"center",gap:14,marginBottom:28,animation:shake?"shake 0.4s":undefined}}>
+          {dots.map((_,i)=>(
+            <div key={i} style={{width:14,height:14,borderRadius:"50%",background:i<input.length?"#f97316":"#374151",border:"2px solid",borderColor:i<input.length?"#f97316":"#4b5563",transition:"background 0.15s"}}/>
+          ))}
+        </div>
+
+        {lockedUntil&&timeLeft>0?(
+          <div style={{color:"#ef4444",fontSize:13,marginBottom:20}}>Trop de tentatives — réessayez dans {fmtTime(timeLeft)}</div>
+        ):attempts>0?(
+          <div style={{color:"#f87171",fontSize:12,marginBottom:12}}>NIP incorrect ({attempts}/{MAX_ATTEMPTS} tentatives)</div>
+        ):null}
+
+        {/* Number pad */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:16}}>
+          {[1,2,3,4,5,6,7,8,9,"",0,"⌫"].map((d,i)=>(
+            <button key={i} onClick={()=>d==="⌫"?handleBackspace():d!==""?handleDigit(String(d)):null}
+              disabled={!!lockedUntil}
+              style={{padding:"16px 0",fontSize:20,fontWeight:600,background:d===""?"transparent":"#1f2937",border:"1px solid #374151",borderRadius:10,color:d===""?"transparent":"#fff",cursor:d===""?"default":"pointer",opacity:lockedUntil?0.4:1,transition:"background 0.1s"}}
+              onMouseEnter={e=>{if(d!==""&&!lockedUntil)e.target.style.background="#374151";}}
+              onMouseLeave={e=>{if(d!==""&&!lockedUntil)e.target.style.background="#1f2937";}}
+            >{d}</button>
+          ))}
+        </div>
+
+        <div style={{fontSize:11,color:"#4b5563",marginTop:8}}>
+          Mot de passe oublié ? Restaurez depuis un backup JSON via le menu principal.
+        </div>
+      </div>
+      <style>{`@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}`}</style>
+    </div>
+  );
+}
+
+// ── PIN LOCK CONFIG ──
+function PinLockConfig({lockConfig,saveLockConfig}){
+  const t=useContext(ThemeCtx);
+  const [mode,setMode]=useState("view"); // view | setup | change | disable
+  const [step,setStep]=useState(1); // 1=enter pin, 2=confirm
+  const [pin1,setPin1]=useState("");
+  const [pin2,setPin2]=useState("");
+  const [err,setErr]=useState("");
+  const [success,setSuccess]=useState("");
+  const [currentPin,setCurrentPin]=useState("");
+
+  const hashPin=async(pin)=>{
+    const buf=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(pin));
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+  };
+
+  const handleToggle=async()=>{
+    if(lockConfig.enabled){setMode("disable");setStep(1);setCurrentPin("");}
+    else{setMode("setup");setStep(1);setPin1("");setPin2("");setErr("");}
+  };
+
+  const handleSetupSubmit=async()=>{
+    setErr("");
+    if(step===1){
+      if(pin1.length<4||pin1.length>6){setErr("Le NIP doit contenir 4 à 6 chiffres.");return;}
+      if(!/^\d+$/.test(pin1)){setErr("Chiffres seulement.");return;}
+      setStep(2);
+    } else {
+      if(pin1!==pin2){setErr("Les NIP ne correspondent pas.");setPin2("");return;}
+      const h=await hashPin(pin1);
+      saveLockConfig({enabled:true,pin:h,pinLength:pin1.length,lockedUntil:null});
+      setMode("view");setPin1("");setPin2("");setSuccess("NIP activé ✓");
+      setTimeout(()=>setSuccess(""),3000);
+    }
+  };
+
+  const handleDisableSubmit=async()=>{
+    const h=await hashPin(currentPin);
+    if(h!==lockConfig.pin){setErr("NIP incorrect.");setCurrentPin("");return;}
+    saveLockConfig({enabled:false,pin:"",pinLength:null,lockedUntil:null});
+    setMode("view");setCurrentPin("");setSuccess("Verrou désactivé ✓");
+    setTimeout(()=>setSuccess(""),3000);
+  };
+
+  const inp={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:13,padding:"6px 10px",outline:"none",width:"100%",textAlign:"center",letterSpacing:6,fontFamily:"'DM Mono',monospace"};
+
+  return(
+    <div style={{background:t.card,border:`1px solid ${t.divider}`,borderRadius:8,padding:"14px 18px",marginTop:12}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:mode!=="view"?12:0}}>
+        <div>
+          <div style={{fontSize:13,fontWeight:600,color:t.text}}>🔒 Verrou de l'application</div>
+          <div style={{fontSize:11,color:t.textMuted}}>NIP requis au démarrage</div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          {lockConfig.enabled&&mode==="view"&&(
+            <button onClick={()=>{setMode("change");setStep(1);setCurrentPin("");setPin1("");setPin2("");setErr("");}}
+              style={{fontSize:11,color:"#f97316",background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>Changer le NIP</button>
+          )}
+          <div onClick={handleToggle} style={{width:40,height:22,borderRadius:11,background:lockConfig.enabled?"#f97316":"#374151",cursor:"pointer",position:"relative",transition:"background 0.2s"}}>
+            <div style={{position:"absolute",top:3,left:lockConfig.enabled?20:3,width:16,height:16,borderRadius:"50%",background:"#fff",transition:"left 0.2s"}}/>
+          </div>
+        </div>
+      </div>
+
+      {success&&<div style={{fontSize:12,color:"#22c55e",marginBottom:8}}>{success}</div>}
+
+      {mode==="setup"&&(
+        <div style={{marginTop:8}}>
+          <div style={{fontSize:12,color:t.textSub,marginBottom:6}}>{step===1?"Choisissez un NIP (4 à 6 chiffres) :":"Confirmez votre NIP :"}</div>
+          <input type="password" inputMode="numeric" maxLength={6} value={step===1?pin1:pin2}
+            onChange={e=>{const v=e.target.value.replace(/\D/g,"");step===1?setPin1(v):setPin2(v);}}
+            onKeyDown={e=>{if(e.key==="Enter")handleSetupSubmit();}}
+            style={inp} autoFocus placeholder="••••"/>
+          {err&&<div style={{fontSize:11,color:"#ef4444",marginTop:4}}>{err}</div>}
+          <div style={{display:"flex",gap:8,marginTop:8}}>
+            <button onClick={()=>{setMode("view");setPin1("");setPin2("");setErr("");setStep(1);}}
+              style={{flex:1,padding:"6px 0",fontSize:12,background:"none",border:`1px solid ${t.divider}`,borderRadius:5,color:t.textSub,cursor:"pointer"}}>Annuler</button>
+            <button onClick={handleSetupSubmit}
+              style={{flex:1,padding:"6px 0",fontSize:12,background:"#f97316",border:"none",borderRadius:5,color:"#fff",cursor:"pointer",fontWeight:600}}>{step===1?"Suivant →":"Activer"}</button>
+          </div>
+        </div>
+      )}
+
+      {mode==="change"&&(
+        <div style={{marginTop:8}}>
+          <div style={{fontSize:12,color:t.textSub,marginBottom:6}}>{step===1?"NIP actuel :":(step===2?"Nouveau NIP (4-6 chiffres) :":"Confirmez le nouveau NIP :")}</div>
+          <input type="password" inputMode="numeric" maxLength={6}
+            value={step===1?currentPin:(step===2?pin1:pin2)}
+            onChange={e=>{const v=e.target.value.replace(/\D/g,"");if(step===1)setCurrentPin(v);else if(step===2)setPin1(v);else setPin2(v);}}
+            onKeyDown={async e=>{
+              if(e.key!=="Enter")return;
+              if(step===1){
+                const h=await hashPin(currentPin);
+                if(h!==lockConfig.pin){setErr("NIP incorrect.");setCurrentPin("");return;}
+                setErr("");setStep(2);
+              } else if(step===2){
+                if(pin1.length<4||!/^\d+$/.test(pin1)){setErr("4 à 6 chiffres requis.");return;}
+                setErr("");setStep(3);
+              } else {
+                if(pin1!==pin2){setErr("Les NIP ne correspondent pas.");setPin2("");return;}
+                const h=await hashPin(pin1);
+                saveLockConfig({...lockConfig,pin:h,pinLength:pin1.length,lockedUntil:null});
+                setMode("view");setCurrentPin("");setPin1("");setPin2("");setSuccess("NIP modifié ✓");
+                setTimeout(()=>setSuccess(""),3000);
+              }
+            }}
+            style={inp} autoFocus placeholder="••••"/>
+          {err&&<div style={{fontSize:11,color:"#ef4444",marginTop:4}}>{err}</div>}
+          <div style={{display:"flex",gap:8,marginTop:8}}>
+            <button onClick={()=>{setMode("view");setCurrentPin("");setPin1("");setPin2("");setErr("");setStep(1);}}
+              style={{flex:1,padding:"6px 0",fontSize:12,background:"none",border:`1px solid ${t.divider}`,borderRadius:5,color:t.textSub,cursor:"pointer"}}>Annuler</button>
+            <button onClick={async()=>{
+              if(step===1){const h=await hashPin(currentPin);if(h!==lockConfig.pin){setErr("NIP incorrect.");setCurrentPin("");return;}setErr("");setStep(2);}
+              else if(step===2){if(pin1.length<4||!/^\d+$/.test(pin1)){setErr("4 à 6 chiffres requis.");return;}setErr("");setStep(3);}
+              else{if(pin1!==pin2){setErr("Les NIP ne correspondent pas.");setPin2("");return;}const h=await hashPin(pin1);saveLockConfig({...lockConfig,pin:h,pinLength:pin1.length,lockedUntil:null});setMode("view");setCurrentPin("");setPin1("");setPin2("");setSuccess("NIP modifié ✓");setTimeout(()=>setSuccess(""),3000);}
+            }} style={{flex:1,padding:"6px 0",fontSize:12,background:"#f97316",border:"none",borderRadius:5,color:"#fff",cursor:"pointer",fontWeight:600}}>{step===3?"Enregistrer":"Suivant →"}</button>
+          </div>
+        </div>
+      )}
+
+      {mode==="disable"&&(
+        <div style={{marginTop:8}}>
+          <div style={{fontSize:12,color:t.textSub,marginBottom:6}}>Confirmez votre NIP pour désactiver le verrou :</div>
+          <input type="password" inputMode="numeric" maxLength={6} value={currentPin}
+            onChange={e=>setCurrentPin(e.target.value.replace(/\D/g,""))}
+            onKeyDown={e=>{if(e.key==="Enter")handleDisableSubmit();}}
+            style={inp} autoFocus placeholder="••••"/>
+          {err&&<div style={{fontSize:11,color:"#ef4444",marginTop:4}}>{err}</div>}
+          <div style={{display:"flex",gap:8,marginTop:8}}>
+            <button onClick={()=>{setMode("view");setCurrentPin("");setErr("");}}
+              style={{flex:1,padding:"6px 0",fontSize:12,background:"none",border:`1px solid ${t.divider}`,borderRadius:5,color:t.textSub,cursor:"pointer"}}>Annuler</button>
+            <button onClick={handleDisableSubmit}
+              style={{flex:1,padding:"6px 0",fontSize:12,background:"#ef4444",border:"none",borderRadius:5,color:"#fff",cursor:"pointer",fontWeight:600}}>Désactiver</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── WELCOME SCREEN ──
 function WelcomeScreen({onSelect}){
   return(
@@ -5269,6 +5516,8 @@ export default function App(){
   const [cfgNewCatName,setCfgNewCatName]=useState("");
   const encaisseTimer=useRef(null);
   const [appMode,setAppMode]=useState(null);
+  const [lockConfig,setLockConfig]=useState({enabled:false,pin:"",lockedUntil:null});
+  const [appLocked,setAppLocked]=useState(false);
   const [locations,setLocations]=useState([]);
   const [activeLocationId,setActiveLocationId]=useState("all");
   const [royaltyConfig,setRoyaltyConfig]=useState({type:'percent',structure:'fixed',rate:6,adRate:2,frequency:'monthly',categoryId:null,produitId:null,tranches:[{from:0,to:50000,rate:6},{from:50000,to:null,rate:5}]});
@@ -5305,6 +5554,7 @@ export default function App(){
     try{const rL=await window.api.storage.get("balanceiq-locations");if(rL?.value)setLocations(JSON.parse(rL.value))}catch(e){}
     try{const rR=await window.api.storage.get("balanceiq-royalty-config");if(rR?.value)setRoyaltyConfig(prev=>({...prev,...JSON.parse(rR.value)}))}catch(e){}
     try{const rWL=await window.api.storage.get("balanceiq-whitelabel");if(rWL?.value)setWhiteLabelConfig(prev=>({...prev,...JSON.parse(rWL.value)}))}catch(e){}
+    try{const rLock=await window.api.storage.get("balanceiq-lock");if(rLock?.value){const lc=JSON.parse(rLock.value);setLockConfig(lc);if(lc.enabled&&lc.pin)setAppLocked(true);}}catch(e){}
     try{const r10=await window.api.storage.get("dicann-company-info");if(r10?.value)setCompanyInfo(prev=>({...DEFAULT_COMPANY_INFO,...JSON.parse(r10.value)}))}catch(e){}
     try{const rTpl=await window.api.storage.get("dicann-invoice-template");if(rTpl?.value)setInvoiceTemplate(prev=>({...DEFAULT_INVOICE_TEMPLATE,...JSON.parse(rTpl.value)}))}catch(e){}
     try{const r11=await window.api.storage.get("dicann-fac-categories");if(r11?.value)setFacCategories(JSON.parse(r11.value))}catch(e){}
@@ -5373,6 +5623,7 @@ export default function App(){
   const saveLocations=useCallback(list=>{setLocations(list);window.api.storage.set("balanceiq-locations",JSON.stringify(list)).catch(()=>{})},[]);
   const saveRoyaltyConfig=useCallback(cfg=>{setRoyaltyConfig(cfg);window.api.storage.set("balanceiq-royalty-config",JSON.stringify(cfg)).catch(()=>{})},[]);
   const saveWhiteLabel=useCallback(cfg=>{setWhiteLabelConfig(cfg);window.api.storage.set("balanceiq-whitelabel",JSON.stringify(cfg)).catch(()=>{})},[]);
+  const saveLockConfig=useCallback(cfg=>{setLockConfig(cfg);window.api.storage.set("balanceiq-lock",JSON.stringify(cfg)).catch(()=>{})},[]);
   const showUpgradePrompt=useCallback(featureName=>{if(shouldShowUpgradePrompt(featureName))setUpgradePromptOpen(true)},[]);
   const saveCompanyInfo=useCallback(info=>{setCompanyInfo(info);window.api.storage.set("dicann-company-info",JSON.stringify(info)).catch(()=>{})},[]);
   const saveInvoiceTemplate=useCallback(tpl=>{setInvoiceTemplate(tpl);window.api.storage.set("dicann-invoice-template",JSON.stringify(tpl)).catch(()=>{})},[]);
@@ -5403,7 +5654,7 @@ export default function App(){
     const isExisting=initialDatesRef.current.has(dt);
     if(!isExisting&&!sessionCreatedRef.current.has(dt)){
       logCreate('daily','jour',dt,{[f]:v});sessionCreatedRef.current.add(dt);
-    }else if(isExisting&&isFinancialField('daily',f)){
+    }else if(isExisting&&isFinancialField('daily',f)&&oldVal!=null&&oldVal!==""&&oldVal!==0){
       if(sessionCorrectionRef.current.has(dt)){
         logCorrection('daily','jour',dt,f,oldVal,v,sessionCorrectionRef.current.get(dt));
       }else{
@@ -5616,6 +5867,7 @@ export default function App(){
   const inputStyle={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:12,padding:"5px 8px",outline:"none"};
 
   if(loading)return(<div style={{minHeight:"100vh",background:DARK.bg,display:"flex",alignItems:"center",justifyContent:"center",color:"#4a4e5e",fontFamily:"'Outfit',sans-serif"}}>Chargement...</div>);
+  if(appLocked)return(<PinLockScreen lockConfig={lockConfig} onUnlock={()=>setAppLocked(false)} saveLockConfig={saveLockConfig}/>);
   if(!appMode)return(<WelcomeScreen onSelect={saveAppMode}/>);
 
   return(
@@ -5646,6 +5898,9 @@ export default function App(){
               <button onClick={()=>{saveAppMode(null)}} title="Changer de mode" style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textMuted,fontSize:10,padding:"3px 8px",cursor:"pointer",fontWeight:600}}>
                 ⇄ Mode
               </button>
+              {lockConfig.enabled&&lockConfig.pin&&(
+                <button onClick={()=>setAppLocked(true)} title="Verrouiller l'application" style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textMuted,fontSize:11,padding:"3px 8px",cursor:"pointer",fontWeight:600}}>🔒</button>
+              )}
               <button onClick={toggleTheme} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 8px",cursor:"pointer",fontWeight:600,fontFamily:"'DM Mono',monospace"}}>
                 {themeName==='dark'?'☀ Clair':'☾ Foncé'}
               </button>
@@ -6253,6 +6508,7 @@ export default function App(){
                 </>
               }
             </div>
+            <PinLockConfig lockConfig={lockConfig} saveLockConfig={saveLockConfig}/>
             <div style={{textAlign:"center",padding:"8px 0 2px"}}>
               <span style={{fontSize:10.5,color:t.textSub,fontFamily:"'DM Mono',monospace"}}>BalanceIQ v{appVersion}</span>
             </div>
