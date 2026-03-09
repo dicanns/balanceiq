@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useContext, createContext } from "react";
 import { version as appVersion } from "../package.json";
-import { canUse, shouldShowUpgradePrompt } from "./config/features.js";
+import { canUse, shouldShowUpgradePrompt, CURRENT_PLAN } from "./config/features.js";
 import { logCreate, logUpdate, logVoid, logCorrection, isFinancialField, promptCorrectionReason } from "./services/auditLogger.js";
 
 // ── THEME ──
@@ -4162,6 +4162,9 @@ export default function App(){
   const [gasCheckMsg,setGasCheckMsg]=useState(null);
   const [encaisseData,setEncaisseData]=useState({});
   const [encaisseConfig,setEncaisseConfig]=useState(DEFAULT_ENCAISSE_CONFIG);
+  const [cfgEditCatId,setCfgEditCatId]=useState(null);
+  const [cfgEditCatName,setCfgEditCatName]=useState("");
+  const [cfgNewCatName,setCfgNewCatName]=useState("");
   const encaisseTimer=useRef(null);
   const [appMode,setAppMode]=useState(null);
   const [upgradePromptOpen,setUpgradePromptOpen]=useState(false);
@@ -4882,12 +4885,12 @@ export default function App(){
               <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Catégories de sorties — Encaisse</span>
               <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>Catégories disponibles lors de l'enregistrement de sorties de caisse.</div>
               {encaisseConfig.sortieCategories.map(c=>(<div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 6px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:4,marginBottom:3}}>
-                {editCatId===c.id
-                  ?<input autoFocus value={editCatName} onChange={e=>setEditCatName(e.target.value)} style={{flex:1,background:t.inputBg,border:`1px solid rgba(249,115,22,0.3)`,borderRadius:4,color:t.inputText,fontSize:11,padding:"2px 6px",outline:"none"}} onBlur={()=>{if(editCatName.trim()){saveEncaisseConfig({...encaisseConfig,sortieCategories:encaisseConfig.sortieCategories.map(x=>x.id===c.id?{...x,name:editCatName.trim()}:x)})}setEditCatId(null)}} onKeyDown={e=>{if(e.key==="Enter")e.target.blur()}}/>
-                  :<span style={{fontSize:11,color:t.text,cursor:"pointer",flex:1}} onClick={()=>{setEditCatId(c.id);setEditCatName(c.name)}}>{c.name} <span style={{fontSize:9,color:t.textDim}}>✎</span></span>}
+                {cfgEditCatId===c.id
+                  ?<input autoFocus value={cfgEditCatName} onChange={e=>setCfgEditCatName(e.target.value)} style={{flex:1,background:t.inputBg,border:`1px solid rgba(249,115,22,0.3)`,borderRadius:4,color:t.inputText,fontSize:11,padding:"2px 6px",outline:"none"}} onBlur={()=>{if(cfgEditCatName.trim()){saveEncaisseConfig({...encaisseConfig,sortieCategories:encaisseConfig.sortieCategories.map(x=>x.id===c.id?{...x,name:cfgEditCatName.trim()}:x)})}setCfgEditCatId(null)}} onKeyDown={e=>{if(e.key==="Enter")e.target.blur()}}/>
+                  :<span style={{fontSize:11,color:t.text,cursor:"pointer",flex:1}} onClick={()=>{setCfgEditCatId(c.id);setCfgEditCatName(c.name)}}>{c.name} <span style={{fontSize:9,color:t.textDim}}>✎</span></span>}
                 <button onClick={()=>saveEncaisseConfig({...encaisseConfig,sortieCategories:encaisseConfig.sortieCategories.filter(x=>x.id!==c.id)})} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:3,color:"#ef4444",fontSize:9,padding:"1px 5px",cursor:"pointer"}}>✕</button>
               </div>))}
-              <input value={newCatName} onChange={e=>setNewCatName(e.target.value)} placeholder="Nouvelle catégorie..." style={{flex:1,background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.inputText,fontSize:11,padding:"3px 6px",outline:"none",width:"100%",boxSizing:"border-box",marginTop:4}} onKeyDown={e=>{if(e.key==="Enter"&&newCatName.trim()){saveEncaisseConfig({...encaisseConfig,sortieCategories:[...encaisseConfig.sortieCategories,{id:Date.now().toString(),name:newCatName.trim()}]});setNewCatName("")}}}/>
+              <input value={cfgNewCatName} onChange={e=>setCfgNewCatName(e.target.value)} placeholder="Nouvelle catégorie..." style={{flex:1,background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.inputText,fontSize:11,padding:"3px 6px",outline:"none",width:"100%",boxSizing:"border-box",marginTop:4}} onKeyDown={e=>{if(e.key==="Enter"&&cfgNewCatName.trim()){saveEncaisseConfig({...encaisseConfig,sortieCategories:[...encaisseConfig.sortieCategories,{id:Date.now().toString(),name:cfgNewCatName.trim()}]});setCfgNewCatName("")}}}/>
             </div>
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
