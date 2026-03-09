@@ -1570,10 +1570,13 @@ function AgingReport({factures,clients,creditNotes,companyInfo,apiConfig,showUpg
 }
 
 // ── FACTURATION TAB ──
-function FacturationTab({categories,saveCategories,produits,saveProduits,clients,saveClients,soumissions,saveSoumissions,commandes,saveCommandes,factures,saveFactures,creditNotes,saveCreditNotes,docNums,saveDocNums,companyInfo,encaisseData,persistEncaisse,showUpgradePrompt,apiConfig}){
+function FacturationTab({categories,saveCategories,produits,saveProduits,clients,saveClients,soumissions,saveSoumissions,commandes,saveCommandes,factures,saveFactures,creditNotes,saveCreditNotes,docNums,saveDocNums,companyInfo,encaisseData,persistEncaisse,showUpgradePrompt,apiConfig,recurrents,saveRecurrents}){
   const t=useT();
   const [subTab,setSubTab]=useState("documents");
   const [activeDoc,setActiveDoc]=useState(null);
+  const [showRecurringModal,setShowRecurringModal]=useState(false);
+  const today=dk(new Date());
+  const dueCount=useMemo(()=>(recurrents||[]).filter(r=>isRecurringDue(r,today)).length,[recurrents,today]);
   // activeDoc: null | { type, doc: obj|null, clientId: str|null }
   const openDoc=(type,clientId,doc)=>setActiveDoc({type,doc:doc||null,clientId:clientId||null});
   const closeDoc=()=>setActiveDoc(null);
@@ -1655,11 +1658,20 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
       <button onClick={()=>openDoc("creditnote",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:700,marginBottom:2}}>+ Note de crédit</button>
     </div>
 
+    {/* Recurring invoices alert banner */}
+    {canUse("recurringInvoices")&&dueCount>0&&<div style={{background:"rgba(249,115,22,0.08)",border:"1px solid rgba(249,115,22,0.3)",borderRadius:8,padding:"8px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+      <span style={{fontSize:11.5,color:"#f97316",fontWeight:600}}>🔄 {dueCount} facture{dueCount!==1?"s":""} récurrente{dueCount!==1?"s":""} à générer</span>
+      <button onClick={()=>setShowRecurringModal(true)} style={{padding:"4px 14px",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'Outfit',sans-serif"}}>Générer</button>
+    </div>}
+
+    {/* Recurring generate modal */}
+    {showRecurringModal&&<RecurringGenerateModal recurrents={recurrents||[]} saveRecurrents={saveRecurrents} factures={factures} saveFactures={saveFactures} docNums={docNums} saveDocNums={saveDocNums} clients={clients} companyInfo={companyInfo} apiConfig={apiConfig} onClose={()=>setShowRecurringModal(false)}/>}
+
     {/* Dashboard */}
     {subTab==="documents"&&<FacturationDashboard soumissions={soumissions} commandes={commandes} factures={factures} creditNotes={creditNotes} clients={clients} produits={produits} categories={categories} openDoc={openDoc}/>}
 
     {/* Clients */}
-    {subTab==="clients"&&<ClientsSection clients={clients} saveClients={saveClients} onNewDoc={(type,clientId)=>openDoc(type,clientId,null)} onOpenDoc={openDoc} soumissions={soumissions} commandes={commandes} factures={factures}/>}
+    {subTab==="clients"&&<ClientsSection clients={clients} saveClients={saveClients} onNewDoc={(type,clientId)=>openDoc(type,clientId,null)} onOpenDoc={openDoc} soumissions={soumissions} commandes={commandes} factures={factures} recurrents={recurrents} saveRecurrents={saveRecurrents} showUpgradePrompt={showUpgradePrompt}/>}
 
     {/* Produits */}
     {subTab==="produits"&&<ProduitsSection produits={produits} saveProduits={saveProduits} categories={categories}/>}
@@ -2947,7 +2959,205 @@ function ClientForm({form,setForm,inputS,t,autoFocusEntreprise}){
     </div>
   </div>);
 }
-function ClientProfile({client,saveClient,onBack,onNewDoc,onOpenDoc,soumissions,commandes,factures,inputS,t}){
+// ── RECURRING INVOICES ──
+const FREQ_MONTHS={Mensuel:1,Bimensuel:2,Trimestriel:3,Annuel:12};
+function isRecurringDue(rec,today){
+  if(!rec.actif)return false;
+  if(rec.dateDebut>today)return false;
+  if(rec.dateFin&&rec.dateFin<today)return false;
+  if(!rec.lastGenerated)return true;
+  const last=new Date(rec.lastGenerated+"T12:00:00");
+  const todayD=new Date(today+"T12:00:00");
+  const diff=(todayD.getFullYear()-last.getFullYear())*12+(todayD.getMonth()-last.getMonth());
+  return diff>=(FREQ_MONTHS[rec.frequence]||1);
+}
+function getNextDueDate(rec,today){
+  const yr=today.slice(0,4);const mo=today.slice(5,7);
+  const day=String(rec.jourFacturation||1).padStart(2,"0");
+  return`${yr}-${mo}-${day}`;
+}
+
+function RecurringTab({clientId,recurrents,saveRecurrents,produits,showUpgradePrompt,t,inputS}){
+  const isRecurring=canUse("recurringInvoices");
+  const BLANK_REC={clientId,description:"",lignes:[{description:"",quantite:1,prixUnitaire:0,taxable:true,remise:0}],frequence:"Mensuel",jourFacturation:1,dateDebut:dk(new Date()),dateFin:null,autoEnvoyer:false,actif:true};
+  const myRecs=useMemo(()=>recurrents.filter(r=>r.clientId===clientId),[recurrents,clientId]);
+  const [adding,setAdding]=useState(false);
+  const [form,setForm]=useState(BLANK_REC);
+  const updF=p=>setForm(prev=>({...prev,...p}));
+  const updLigne=(i,p)=>setForm(prev=>{const ls=[...prev.lignes];ls[i]={...ls[i],...p};return{...prev,lignes:ls};});
+  const addLigne=()=>setForm(prev=>({...prev,lignes:[...prev.lignes,{description:"",quantite:1,prixUnitaire:0,taxable:true,remise:0}]}));
+  const rmLigne=i=>setForm(prev=>({...prev,lignes:prev.lignes.filter((_,j)=>j!==i)}));
+  const saveNew=()=>{
+    if(!form.lignes[0]?.description?.trim())return;
+    const newRec={...form,id:Date.now().toString(),lastGenerated:null};
+    saveRecurrents([...recurrents,newRec]);
+    setAdding(false);setForm(BLANK_REC);
+  };
+  const toggleActif=id=>saveRecurrents(recurrents.map(r=>r.id===id?{...r,actif:!r.actif}:r));
+  const deleteRec=id=>saveRecurrents(recurrents.filter(r=>r.id!==id));
+  if(!isRecurring){
+    return(<div style={{textAlign:"center",padding:"24px 0"}}>
+      <div style={{fontSize:13,color:"#f97316",fontWeight:700,marginBottom:6}}>🔒 Fonctionnalité Pro</div>
+      <div style={{fontSize:11,color:t.textMuted,marginBottom:12}}>Les factures récurrentes sont disponibles avec BalanceIQ Pro.</div>
+      <button onClick={()=>showUpgradePrompt&&showUpgradePrompt("recurringInvoices")} style={{padding:"6px 18px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>Passer à Pro</button>
+    </div>);
+  }
+  return(<div style={{display:"flex",flexDirection:"column",gap:8}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+      <span style={{fontSize:11,fontWeight:700,color:t.text}}>Factures récurrentes ({myRecs.length})</span>
+      <button onClick={()=>setAdding(o=>!o)} style={{fontSize:10,padding:"3px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ Nouvelle</button>
+    </div>
+    {adding&&(<div style={{background:"rgba(249,115,22,0.04)",border:"1px solid rgba(249,115,22,0.2)",borderRadius:8,padding:12}}>
+      <div style={{fontSize:11,fontWeight:700,color:"#f97316",marginBottom:8}}>Nouvelle facture récurrente</div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+        <div style={{flex:"1 1 130px"}}>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Fréquence</div>
+          <select value={form.frequence} onChange={e=>updF({frequence:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box"}}>
+            {["Mensuel","Bimensuel","Trimestriel","Annuel"].map(f=><option key={f}>{f}</option>)}
+          </select>
+        </div>
+        <div style={{flex:"1 1 100px"}}>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Jour de facturation (1–28)</div>
+          <input type="number" min="1" max="28" value={form.jourFacturation} onChange={e=>updF({jourFacturation:parseInt(e.target.value)||1})} style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+        </div>
+        <div style={{flex:"1 1 120px"}}>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Date de début</div>
+          <input type="date" value={form.dateDebut} onChange={e=>updF({dateDebut:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+        </div>
+        <div style={{flex:"1 1 120px"}}>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Date de fin</div>
+          <input type="date" value={form.dateFin||""} onChange={e=>updF({dateFin:e.target.value||null})} style={{...inputS,width:"100%",boxSizing:"border-box"}} placeholder="Indéfinie"/>
+        </div>
+        <div style={{flex:"1 1 140px",display:"flex",alignItems:"center",gap:6,paddingTop:14}}>
+          <input type="checkbox" id="autoenv" checked={form.autoEnvoyer} onChange={e=>updF({autoEnvoyer:e.target.checked})} style={{accentColor:"#f97316"}}/>
+          <label htmlFor="autoenv" style={{fontSize:11,color:t.textSub,cursor:"pointer"}}>Auto-envoyer par courriel</label>
+        </div>
+      </div>
+      <div style={{fontSize:10,color:t.textMuted,fontWeight:600,marginBottom:4}}>Lignes de la facture</div>
+      {form.lignes.map((l,i)=>(
+        <div key={i} style={{display:"flex",gap:6,marginBottom:4,alignItems:"center"}}>
+          <input value={l.description} onChange={e=>updLigne(i,{description:e.target.value})} placeholder="Description" style={{...inputS,flex:3}}/>
+          <input type="number" value={l.quantite} onChange={e=>updLigne(i,{quantite:parseFloat(e.target.value)||0})} style={{...inputS,width:50,textAlign:"right"}}/>
+          <input type="number" value={l.prixUnitaire} onChange={e=>updLigne(i,{prixUnitaire:parseFloat(e.target.value)||0})} style={{...inputS,width:80,textAlign:"right"}} placeholder="Prix"/>
+          {form.lignes.length>1&&<button onClick={()=>rmLigne(i)} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:14,lineHeight:1}}>×</button>}
+        </div>
+      ))}
+      <button onClick={addLigne} style={{fontSize:9.5,color:"#f97316",background:"none",border:"none",cursor:"pointer",fontWeight:600,marginBottom:8}}>+ Ajouter une ligne</button>
+      <div style={{display:"flex",gap:6}}>
+        <button onClick={saveNew} disabled={!form.lignes[0]?.description?.trim()} style={{padding:"5px 14px",borderRadius:5,border:"none",background:form.lignes[0]?.description?.trim()?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:form.lignes[0]?.description?.trim()?"#fff":t.textDim,cursor:form.lignes[0]?.description?.trim()?"pointer":"default",fontWeight:700,fontSize:11}}>Enregistrer</button>
+        <button onClick={()=>setAdding(false)} style={{padding:"5px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>Annuler</button>
+      </div>
+    </div>)}
+    {myRecs.length===0&&!adding&&<div style={{textAlign:"center",padding:"16px 0",color:t.textMuted,fontSize:11}}>Aucune facture récurrente configurée.</div>}
+    {myRecs.map(r=>{
+      const tot=computeSoumTotals(r.lignes).total;
+      const today=dk(new Date());
+      const due=isRecurringDue(r,today);
+      return(<div key={r.id} style={{background:t.section,border:`1px solid ${due?"rgba(249,115,22,0.3)":t.cardBorder}`,borderRadius:7,padding:"8px 10px",opacity:r.actif?1:0.5}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:4}}>
+          <div>
+            <span style={{fontSize:11,fontWeight:700,color:t.text}}>{r.lignes[0]?.description||"—"}</span>
+            {r.lignes.length>1&&<span style={{fontSize:9.5,color:t.textMuted,marginLeft:4}}>+{r.lignes.length-1} ligne{r.lignes.length-1>1?"s":""}</span>}
+            <div style={{fontSize:10,color:t.textMuted,marginTop:2}}>{r.frequence} · Jour {r.jourFacturation} · {fmt(tot)}{r.autoEnvoyer?" · Auto-envoi":""}  {r.dateFin?`· Fin ${r.dateFin}`:""}</div>
+            {r.lastGenerated&&<div style={{fontSize:9.5,color:t.textDim}}>Dernière génération: {r.lastGenerated}</div>}
+          </div>
+          <div style={{display:"flex",gap:4,alignItems:"center"}}>
+            {due&&<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"2px 7px",borderRadius:8}}>À générer</span>}
+            <button onClick={()=>toggleActif(r.id)} style={{fontSize:9.5,padding:"2px 7px",borderRadius:4,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer"}}>{r.actif?"Désactiver":"Activer"}</button>
+            <button onClick={()=>deleteRec(r.id)} style={{fontSize:9.5,padding:"2px 7px",borderRadius:4,border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer"}}>Supprimer</button>
+          </div>
+        </div>
+      </div>);
+    })}
+  </div>);
+}
+
+function RecurringGenerateModal({recurrents,saveRecurrents,factures,saveFactures,docNums,saveDocNums,clients,companyInfo,apiConfig,onClose}){
+  const t=useT();
+  const today=dk(new Date());
+  const due=useMemo(()=>recurrents.filter(r=>isRecurringDue(r,today)),[recurrents,today]);
+  const [generating,setGenerating]=useState(false);
+  const [results,setResults]=useState(null);
+  const doGenerate=async()=>{
+    setGenerating(true);
+    let updFactures=[...factures];
+    let encNum=docNums.facture;
+    const newRecs=[...recurrents];
+    const done=[];
+    for(const rec of due){
+      const fac={
+        id:Date.now().toString(36)+Math.random().toString(36).slice(2),
+        clientId:rec.clientId,
+        lignes:rec.lignes.map(l=>({...l})),
+        date:today,
+        dateEcheance:"",
+        statut:"Envoyée",
+        notes:"",
+        paiements:[],
+        numero:fmtDocNum(docNums.prefix,"F",encNum++),
+      };
+      updFactures=[...updFactures,fac];
+      const ri=newRecs.findIndex(r=>r.id===rec.id);
+      if(ri>=0)newRecs[ri]={...newRecs[ri],lastGenerated:today};
+      const client=clients.find(c=>c.id===rec.clientId);
+      done.push({fac,rec,client});
+      if(rec.autoEnvoyer&&client?.courriel&&apiConfig?.resendKey){
+        try{
+          const html=buildFactureHTML({facture:fac,clients,companyInfo,produits:[]});
+          await window.api.email.sendResend({apiKey:apiConfig.resendKey,from:apiConfig.resendFrom||"noreply@balanceiq.ca",to:client.courriel,subject:`Facture ${fac.numero} — ${companyInfo.nom||""}`,html,attachments:[]});
+        }catch(_){}
+      }
+    }
+    saveFactures(updFactures);
+    saveDocNums({...docNums,facture:encNum});
+    saveRecurrents(newRecs);
+    setGenerating(false);
+    setResults(done);
+  };
+  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}>
+    <div style={{background:"#1a1d26",border:"1px solid rgba(249,115,22,0.3)",borderRadius:12,padding:24,maxWidth:540,width:"90%",maxHeight:"80vh",overflowY:"auto"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <span style={{fontSize:14,fontWeight:700,color:"#fff"}}>🔄 Factures récurrentes à générer</span>
+        <button onClick={onClose} style={{background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:16}}>✕</button>
+      </div>
+      {results
+        ?(<div>
+          <div style={{fontSize:12,color:"#22c55e",fontWeight:700,marginBottom:12}}>✓ {results.length} facture{results.length!==1?"s":""} créée{results.length!==1?"s":""}</div>
+          {results.map(({fac,client})=>(
+            <div key={fac.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#9ca3af",borderTop:"1px solid rgba(255,255,255,0.05)",padding:"5px 0"}}>
+              <span>{fac.numero} — {client?.entreprise||"—"}</span>
+              <span style={{fontFamily:"'DM Mono',monospace",color:"#f97316"}}>{fmt(computeSoumTotals(fac.lignes).total)}</span>
+            </div>
+          ))}
+          <button onClick={onClose} style={{marginTop:16,padding:"7px 20px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>Terminer</button>
+        </div>)
+        :(<div>
+          {due.length===0
+            ?<div style={{textAlign:"center",padding:"20px 0",color:"#9ca3af",fontSize:12}}>Aucune facture récurrente en attente.</div>
+            :<div>
+              {due.map(r=>{const client=clients.find(c=>c.id===r.clientId);return(
+                <div key={r.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#9ca3af",borderTop:"1px solid rgba(255,255,255,0.05)",padding:"6px 0"}}>
+                  <div>
+                    <span style={{color:"#fff",fontWeight:600}}>{client?.entreprise||"—"}</span>
+                    <span style={{color:"#6b7280",marginLeft:8}}>{r.lignes[0]?.description}</span>
+                    {r.autoEnvoyer&&<span style={{fontSize:9,color:"#f97316",marginLeft:6}}>Auto-envoi</span>}
+                  </div>
+                  <span style={{fontFamily:"'DM Mono',monospace",color:"#f97316",fontWeight:700}}>{fmt(computeSoumTotals(r.lignes).total)}</span>
+                </div>
+              );})}
+              <div style={{display:"flex",gap:8,marginTop:16}}>
+                <button onClick={doGenerate} disabled={generating} style={{padding:"7px 20px",borderRadius:6,border:"none",background:generating?"rgba(255,255,255,0.1)":"linear-gradient(135deg,#f97316,#ea580c)",color:generating?"#6b7280":"#fff",cursor:generating?"default":"pointer",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>
+                  {generating?"Génération…":`Créer ${due.length} facture${due.length!==1?"s":""}`}
+                </button>
+                <button onClick={onClose} style={{padding:"7px 14px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:"#9ca3af",cursor:"pointer",fontSize:12}}>Annuler</button>
+              </div>
+            </div>}
+        </div>)}
+    </div>
+  </div>);
+}
+
+function ClientProfile({client,saveClient,onBack,onNewDoc,onOpenDoc,soumissions,commandes,factures,inputS,t,recurrents,saveRecurrents,showUpgradePrompt}){
   const [form,setForm]=useState({...client});
   const [profileTab,setProfileTab]=useState("factures");
   const [saved,setSaved]=useState(false);
@@ -2963,7 +3173,8 @@ function ClientProfile({client,saveClient,onBack,onNewDoc,onOpenDoc,soumissions,
   const SC=(type,statut)=>type==="soumission"?STATUT_SOUM_C[statut]||"#6b7280":type==="commande"?STATUT_CMD_C[statut]||"#6b7280":STATUT_FAC_C[statut]||"#6b7280";
   const rowS={display:"grid",gap:6,padding:"6px 6px",borderBottom:`1px solid ${t.divider}`,cursor:"pointer",alignItems:"center"};
   const EmptyMsg=()=><div style={{textAlign:"center",padding:"20px 0",color:t.textMuted,fontSize:11}}>Aucun enregistrement.</div>;
-  const HISTORY_TABS=[{id:"factures",label:`Factures (${cFac.length})`},{id:"commandes",label:`Commandes (${cCmd.length})`},{id:"soumissions",label:`Soumissions (${cSou.length})`},{id:"encaissements",label:`Encaissements (${cPaiements.length})`},{id:"notes",label:"Notes"}];
+  const myRecs=(recurrents||[]).filter(r=>r.clientId===cId);
+  const HISTORY_TABS=[{id:"factures",label:`Factures (${cFac.length})`},{id:"commandes",label:`Commandes (${cCmd.length})`},{id:"soumissions",label:`Soumissions (${cSou.length})`},{id:"encaissements",label:`Encaissements (${cPaiements.length})`},{id:"recurrentes",label:`Récurrentes (${myRecs.length})`},{id:"notes",label:"Notes"}];
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
       <button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>
@@ -3060,11 +3271,12 @@ function ClientProfile({client,saveClient,onBack,onNewDoc,onOpenDoc,soumissions,
           </div>
         ))}
       </div>)}
+      {profileTab==="recurrentes"&&<RecurringTab clientId={cId} recurrents={recurrents||[]} saveRecurrents={saveRecurrents} produits={[]} showUpgradePrompt={showUpgradePrompt} t={t} inputS={inputS}/>}
       {profileTab==="notes"&&<EmptyMsg/>}
     </div>
   </div>);
 }
-function ClientsSection({clients,saveClients,onNewDoc,onOpenDoc,soumissions,commandes,factures}){
+function ClientsSection({clients,saveClients,onNewDoc,onOpenDoc,soumissions,commandes,factures,recurrents,saveRecurrents,showUpgradePrompt}){
   const t=useT();
   const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none"};
   const BLANK={code:"",entreprise:"",contact:"",adresse:"",ville:"",province:"QC",codePostal:"",pays:"Canada",tel1:"",tel2:"",cell:"",courriel:"",langue:"Français",conditionsPaiement:"Net 30",nbJours:"",notes:"",statut:"actif"};
@@ -3096,7 +3308,7 @@ function ClientsSection({clients,saveClients,onNewDoc,onOpenDoc,soumissions,comm
   if(selectedId){
     const client=clients.find(c=>c.id===selectedId);
     if(!client){setSelectedId(null);return null;}
-    return<ClientProfile client={client} saveClient={saveClient} onBack={()=>setSelectedId(null)} onNewDoc={onNewDoc} onOpenDoc={onOpenDoc} soumissions={soumissions} commandes={commandes} factures={factures} inputS={inputS} t={t}/>;
+    return<ClientProfile client={client} saveClient={saveClient} onBack={()=>setSelectedId(null)} onNewDoc={onNewDoc} onOpenDoc={onOpenDoc} soumissions={soumissions} commandes={commandes} factures={factures} inputS={inputS} t={t} recurrents={recurrents} saveRecurrents={saveRecurrents} showUpgradePrompt={showUpgradePrompt}/>;
   }
   return(<div style={{display:"flex",flexDirection:"column",gap:8}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}>
@@ -3924,6 +4136,7 @@ export default function App(){
   const [facCommandes,setFacCommandes]=useState([]);
   const [facFactures,setFacFactures]=useState([]);
   const [facCreditNotes,setFacCreditNotes]=useState([]);
+  const [facRecurrents,setFacRecurrents]=useState([]);
 
   const t=theme;
 
@@ -3947,6 +4160,7 @@ export default function App(){
     try{const r16=await window.api.storage.get("dicann-fac-commandes");if(r16?.value)setFacCommandes(JSON.parse(r16.value))}catch(e){}
     try{const r17=await window.api.storage.get("dicann-fac-factures");if(r17?.value)setFacFactures(JSON.parse(r17.value))}catch(e){}
     try{const r18=await window.api.storage.get("dicann-fac-creditnotes");if(r18?.value)setFacCreditNotes(JSON.parse(r18.value))}catch(e){}
+    try{const r19=await window.api.storage.get("dicann-fac-recurrents");if(r19?.value)setFacRecurrents(JSON.parse(r19.value))}catch(e){}
     setLoading(false);
     // Load auto-backup info after a short delay (backup runs at t+3s)
     setTimeout(async()=>{try{const info=await window.api.backup.getInfo();setBackupInfo(info)}catch(_){}},4000);
@@ -4011,6 +4225,7 @@ export default function App(){
   const saveFacCommandes=useCallback(list=>{setFacCommandes(list);window.api.storage.set("dicann-fac-commandes",JSON.stringify(list)).catch(()=>{})},[]);
   const saveFacFactures=useCallback(list=>{setFacFactures(list);window.api.storage.set("dicann-fac-factures",JSON.stringify(list)).catch(()=>{})},[]);
   const saveFacCreditNotes=useCallback(list=>{setFacCreditNotes(list);window.api.storage.set("dicann-fac-creditnotes",JSON.stringify(list)).catch(()=>{})},[]);
+  const saveFacRecurrents=useCallback(list=>{setFacRecurrents(list);window.api.storage.set("dicann-fac-recurrents",JSON.stringify(list)).catch(()=>{})},[]);
 
   // ── raw state updaters (no audit) ──
   const _updRaw=useCallback((dt,f,v)=>{setLiveData(p=>{const u={...p,[dt]:{...(p[dt]||{}),[f]:v}};persist(u);return u})},[persist]);
@@ -4460,7 +4675,7 @@ export default function App(){
 
           {activeTab==="monthly"&&<MonthlyPL computeDay={computeDay} suppliers={suppliers} liveData={liveData} platforms={platforms}/>}
           {activeTab==="encaisse"&&<EncaisseTab liveData={liveData} encaisseData={encaisseData} persistEncaisse={persistEncaisse} encaisseConfig={encaisseConfig} saveEncaisseConfig={saveEncaisseConfig}/>}
-          {activeTab==="facturation"&&<FacturationTab categories={facCategories} saveCategories={saveFacCategories} produits={facProduits} saveProduits={saveFacProduits} clients={facClients} saveClients={saveFacClients} soumissions={facSoumissions} saveSoumissions={saveFacSoumissions} commandes={facCommandes} saveCommandes={saveFacCommandes} factures={facFactures} saveFactures={saveFacFactures} creditNotes={facCreditNotes} saveCreditNotes={saveFacCreditNotes} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData} persistEncaisse={persistEncaisse} showUpgradePrompt={showUpgradePrompt} apiConfig={apiConfig}/>}
+          {activeTab==="facturation"&&<FacturationTab categories={facCategories} saveCategories={saveFacCategories} produits={facProduits} saveProduits={saveFacProduits} clients={facClients} saveClients={saveFacClients} soumissions={facSoumissions} saveSoumissions={saveFacSoumissions} commandes={facCommandes} saveCommandes={saveFacCommandes} factures={facFactures} saveFactures={saveFacFactures} creditNotes={facCreditNotes} saveCreditNotes={saveFacCreditNotes} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData} persistEncaisse={persistEncaisse} showUpgradePrompt={showUpgradePrompt} apiConfig={apiConfig} recurrents={facRecurrents} saveRecurrents={saveFacRecurrents}/>}
           {activeTab==="intelligence"&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR} platforms={platforms} encaisseData={encaisseData} encaisseConfig={encaisseConfig}/>}
 
           {/* SETTINGS TAB */}
