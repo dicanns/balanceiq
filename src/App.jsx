@@ -129,6 +129,9 @@ const BLANK_DAY={cashes:[{...BLANK_CASH}],employees:[],hamEnd:null,hamReceived:n
 const OWNER_EMAIL="info@dicanns.ca";
 const DAILY_FIELD_LABELS={posVentes:"Ventes POS",posTPS:"TPS POS",posTVQ:"TVQ POS",posLivraisons:"Livraisons POS",float:"Float",interac:"Interac",livraisons:"Livraisons caisse",deposits:"Dépôts",finalCash:"Cash final",hamEnd:"Hamburgers — fin",hotEnd:"Hot dogs — fin",hamReceived:"Hamburgers — reçus",hotReceived:"Hot dogs — reçus"};
 const WMO_FR=code=>{if(code===0)return"Ensoleillé";if(code<=2)return"Peu nuageux";if(code===3)return"Couvert";if(code<=48)return"Brouillard";if(code<=55)return"Bruine";if(code<=65)return"Pluie";if(code<=75)return"Neige";if(code<=82)return"Averses";if(code<=86)return"Averses de neige";if(code<=99)return"Orageux";return"Variable"};
+const WMO_DESC=(code,T_)=>{const k=code===0?"wSunny":code<=2?"wPartlyCloudy":code===3?"wOvercast":code<=48?"wFog":code<=55?"wDrizzle":code<=65?"wRain":code<=75?"wSnow":code<=82?"wShowers":code<=86?"wSnowShowers":code<=99?"wThunderstorm":"wVariable";return T_?.[k]||WMO_FR(code);};
+// Maps stored FR weather strings to the active-language equivalent at display time
+const xlateWeather=(str,T_)=>{if(!str||!T_)return str;const map={"Ensoleillé":"wSunny","Peu nuageux":"wPartlyCloudy","Couvert":"wOvercast","Brouillard":"wFog","Bruine":"wDrizzle","Pluie":"wRain","Neige":"wSnow","Averses":"wShowers","Averses de neige":"wSnowShowers","Orageux":"wThunderstorm","Variable":"wVariable"};return T_[map[str]]||str;};
 
 function genDemo(){const data={};const base=new Date(2024,0,1);for(let i=0;i<366;i++){const d=new Date(base);d.setDate(d.getDate()+i);const dow=d.getDay(),isWe=dow===0||dow===6;const total=Math.max(800,Math.round((isWe?2800:1900)+Math.sin((d.getMonth()/12)*Math.PI)*400+(Math.random()-0.5)*600));data[dk(d)]={venteNet:total,hamUsed:Math.round((18+Math.random()*12)*(0.7+Math.random()*0.25)),hotUsed:Math.round((12+Math.random()*8)*(0.7+Math.random()*0.25))}}return data}
 
@@ -5633,7 +5636,7 @@ export default function App(){
       const data=await res.json();
       const code=data?.current?.weather_code;
       const temp=data?.current?.temperature_2m;
-      if(code!=null)upd(today,"weather",WMO_FR(code));
+      if(code!=null)upd(today,"weather",WMO_DESC(code,T));
       if(temp!=null)upd(today,"tempC",Math.round(temp));
     }catch(e){}})();
   },[loading,selectedDate,apiConfig.weatherLat,apiConfig.weatherLng]);
@@ -5973,7 +5976,7 @@ export default function App(){
                   <div style={{fontSize:15,fontWeight:700,textTransform:"capitalize",color:t.text,display:"flex",alignItems:"center",gap:6}}>{fmtD(d,T)}{isDayComplete&&<span style={{fontSize:9.5,fontWeight:700,color:"#16a34a",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:10,padding:"1px 7px",lineHeight:1.6}}>✓ {T.statusDayComplete}</span>}</div>
                   <div style={{display:"flex",gap:3,marginTop:1,flexWrap:"wrap"}}>
                     {holiday&&<span style={{fontSize:9,background:t.warnBg,color:t.warnText,padding:"1px 5px",borderRadius:8,fontWeight:600}}>{holiday}</span>}
-                    {today.weather&&<span style={{fontSize:9,background:"rgba(56,189,248,0.07)",color:"#38bdf8",padding:"1px 5px",borderRadius:8}}>{today.weather}{today.tempC!=null?` ${today.tempC}°C`:""}</span>}
+                    {today.weather&&<span style={{fontSize:9,background:"rgba(56,189,248,0.07)",color:"#38bdf8",padding:"1px 5px",borderRadius:8}}>{xlateWeather(today.weather,T)}{today.tempC!=null?` ${today.tempC}°C`:""}</span>}
                     {displayGas!=null&&<span style={{fontSize:9,background:lastGas?t.warnBg:t.section,color:lastGas?t.warnText:t.textSub,padding:"1px 5px",borderRadius:8}}>⛽ {Number(displayGas).toFixed(3)}$/L{lastGas?" (auto)":""}</span>}
                   </div>
                 </div>
@@ -6115,7 +6118,7 @@ export default function App(){
                 <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
                   <span style={{fontSize:13,fontWeight:700,marginBottom:4,display:"block",color:t.text}}>{T.extTitle}</span>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}>
-                    <F label={T.extWeather} value={raw.weather} onChange={v=>upd(selectedDate,"weather",v)} type="text" placeholder="Ensoleillé..." wide/>
+                    <F label={T.extWeather} value={raw.weather} onChange={v=>upd(selectedDate,"weather",v)} type="text" placeholder={T.wSunny+"..."} wide/>
                     <F label={T.extTemp} value={raw.tempC} onChange={v=>upd(selectedDate,"tempC",v)} suffix="°C"/>
                     <div>
                       <F label={T.extGas} value={raw.gas} onChange={v=>upd(selectedDate,"gas",v)} suffix="$/L"/>
