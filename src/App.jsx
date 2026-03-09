@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useContext, createContext } from "react";
 import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt } from "./config/features.js";
+import { logCreate, logUpdate, logVoid, logCorrection, isFinancialField, promptCorrectionReason } from "./services/auditLogger.js";
 
 // ── THEME ──
 const DARK = {
@@ -121,6 +122,7 @@ const BLANK_CASH={cashierId:"",posVentes:null,posTPS:null,posTVQ:null,posLivrais
 const BLANK_EMP={name:"",hours:null,wage:null};
 const BLANK_DAY={cashes:[{...BLANK_CASH}],employees:[],hamEnd:null,hamReceived:null,hamStartOverride:null,hotEnd:null,hotReceived:null,hotStartOverride:null,weather:"",tempC:null,gas:null,notes:"",events:""};
 const OWNER_EMAIL="info@dicanns.ca";
+const DAILY_FIELD_LABELS={posVentes:"Ventes POS",posTPS:"TPS POS",posTVQ:"TVQ POS",posLivraisons:"Livraisons POS",float:"Float",interac:"Interac",livraisons:"Livraisons caisse",deposits:"Dépôts",finalCash:"Cash final",hamEnd:"Hamburgers — fin",hotEnd:"Hot dogs — fin",hamReceived:"Hamburgers — reçus",hotReceived:"Hot dogs — reçus"};
 const WMO_FR=code=>{if(code===0)return"Ensoleillé";if(code<=2)return"Peu nuageux";if(code===3)return"Couvert";if(code<=48)return"Brouillard";if(code<=55)return"Bruine";if(code<=65)return"Pluie";if(code<=75)return"Neige";if(code<=82)return"Averses";if(code<=86)return"Averses de neige";if(code<=99)return"Orageux";return"Variable"};
 
 function genDemo(){const data={};const base=new Date(2024,0,1);for(let i=0;i<366;i++){const d=new Date(base);d.setDate(d.getDate()+i);const dow=d.getDay(),isWe=dow===0||dow===6;const total=Math.max(800,Math.round((isWe?2800:1900)+Math.sin((d.getMonth()/12)*Math.PI)*400+(Math.random()-0.5)*600));data[dk(d)]={venteNet:total,hamUsed:Math.round((18+Math.random()*12)*(0.7+Math.random()*0.25)),hotUsed:Math.round((12+Math.random()*8)*(0.7+Math.random()*0.25))}}return data}
@@ -523,10 +525,17 @@ function BillEntry({label,baseKey,plData,updPL,accent="249,115,22"}){
   const total=bills.length?bills.reduce((s,b)=>s+(b.amount||0),0):(plData[baseKey]||0);
   const addBill=()=>{
     const amt=parseFloat(newAmt);if(!amt||isNaN(amt))return;
-    updPL(`${baseKey}_bills`,[...bills,{id:Date.now().toString(),date:newDate,amount:amt,note:newNote.trim()}]);
+    const bill={id:Date.now().toString(),date:newDate,amount:amt,note:newNote.trim()};
+    updPL(`${baseKey}_bills`,[...bills,bill]);
+    logCreate('pl','facture_fournisseur',bill.id,bill);
     setNewAmt('');setNewNote('');
   };
-  const removeBill=id=>updPL(`${baseKey}_bills`,bills.filter(b=>b.id!==id));
+  const removeBill=async id=>{
+    const reason=await promptCorrectionReason('Retrait de facture fournisseur');
+    if(!reason)return;
+    logVoid('pl','facture_fournisseur',id,reason);
+    updPL(`${baseKey}_bills`,bills.filter(b=>b.id!==id));
+  };
   const accentRgb=`rgba(${accent},`;
   return(<div style={{borderBottom:`1px solid ${t.divider}`,marginBottom:0}}>
     {/* Header — click to collapse/expand */}
@@ -869,12 +878,12 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
     return{totalCV,totalDep,totalSort,currentPos:dr.closing,bal,notBal,bigE};
   },[month,computedMap,dr]);
 
-  const addEntree=()=>{if(!newEntreeMt)return;updEnc("autreEntrees",[...enc.autreEntrees,{id:Date.now().toString(),description:newEntreeDesc.trim(),montant:parseFloat(newEntreeMt)}]);setNewEntreeDesc("");setNewEntreeMt("");};
-  const rmEntree=id=>updEnc("autreEntrees",enc.autreEntrees.filter(e=>e.id!==id));
-  const addDeposit=()=>{if(!newDepMt)return;updEnc("deposits",[...enc.deposits,{id:Date.now().toString(),montant:parseFloat(newDepMt),note:newDepNote.trim(),slip:newDepSlip.trim()}]);setNewDepMt("");setNewDepNote("");setNewDepSlip("");};
-  const rmDeposit=id=>updEnc("deposits",enc.deposits.filter(d=>d.id!==id));
-  const addSortie=()=>{if(!newSortMt||!newSortCat)return;updEnc("sorties",[...enc.sorties,{id:Date.now().toString(),categorie:newSortCat,description:newSortDesc.trim(),montant:parseFloat(newSortMt)}]);setNewSortCat("");setNewSortDesc("");setNewSortMt("");};
-  const rmSortie=id=>updEnc("sorties",enc.sorties.filter(s=>s.id!==id));
+  const addEntree=()=>{if(!newEntreeMt)return;const e={id:Date.now().toString(),description:newEntreeDesc.trim(),montant:parseFloat(newEntreeMt)};updEnc("autreEntrees",[...enc.autreEntrees,e]);logCreate('encaisse','entree',e.id,e);setNewEntreeDesc("");setNewEntreeMt("");};
+  const rmEntree=async id=>{const reason=await promptCorrectionReason("Retrait d'entrée de caisse");if(!reason)return;logVoid('encaisse','entree',id,reason);updEnc("autreEntrees",enc.autreEntrees.filter(e=>e.id!==id));};
+  const addDeposit=()=>{if(!newDepMt)return;const dep={id:Date.now().toString(),montant:parseFloat(newDepMt),note:newDepNote.trim(),slip:newDepSlip.trim()};updEnc("deposits",[...enc.deposits,dep]);logCreate('encaisse','depot',dep.id,dep);setNewDepMt("");setNewDepNote("");setNewDepSlip("");};
+  const rmDeposit=async id=>{const reason=await promptCorrectionReason("Retrait de dépôt");if(!reason)return;logVoid('encaisse','depot',id,reason);updEnc("deposits",enc.deposits.filter(d=>d.id!==id));};
+  const addSortie=()=>{if(!newSortMt||!newSortCat)return;const s={id:Date.now().toString(),categorie:newSortCat,description:newSortDesc.trim(),montant:parseFloat(newSortMt)};updEnc("sorties",[...enc.sorties,s]);logCreate('encaisse','sortie',s.id,s);setNewSortCat("");setNewSortDesc("");setNewSortMt("");};
+  const rmSortie=async id=>{const reason=await promptCorrectionReason("Retrait de sortie de fonds");if(!reason)return;logVoid('encaisse','sortie',id,reason);updEnc("sorties",enc.sorties.filter(s=>s.id!==id));};
 
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
 
@@ -3248,6 +3257,11 @@ export default function App(){
   const [newEN,setNewEN]=useState("");
   const [newEW,setNewEW]=useState("");
   const saveTimer=useRef(null);
+  // Audit tracking refs (persist across renders, no re-render on change)
+  const liveDataRef=useRef({});          // always-current copy of liveData for old-value reads
+  const initialDatesRef=useRef(new Set()); // dates that existed on app load
+  const sessionCreatedRef=useRef(new Set()); // new dates created this session
+  const sessionCorrectionRef=useRef(new Map()); // date → correction reason already captured
   const [editingSupId,setEditingSupId]=useState(null);
   const [editingSupName,setEditingSupName]=useState("");
   const [platforms,setPlatforms]=useState(DEFAULT_PLATFORMS);
@@ -3272,7 +3286,7 @@ export default function App(){
   const t=theme;
 
   useEffect(()=>{(async()=>{
-    try{const r=await window.api.storage.get("dicann-v7");if(r?.value)setLiveData(JSON.parse(r.value))}catch(e){}
+    try{const r=await window.api.storage.get("dicann-v7");if(r?.value){const ld=JSON.parse(r.value);setLiveData(ld);liveDataRef.current=ld;initialDatesRef.current=new Set(Object.keys(ld).filter(k=>Object.keys(ld[k]||{}).length>0));}}catch(e){}
     try{const r2=await window.api.storage.get("dicann-roster");if(r2?.value)setRoster(JSON.parse(r2.value))}catch(e){}
     try{const r2b=await window.api.storage.get("dicann-emp-roster");if(r2b?.value)setEmpRoster(JSON.parse(r2b.value))}catch(e){}
     try{const r3=await window.api.storage.get("dicann-suppliers-v2");if(r3?.value)setSuppliers(JSON.parse(r3.value))}catch(e){}
@@ -3301,6 +3315,9 @@ export default function App(){
       window.api.updater.onAvailable(()=>setUpdateAvailable(true));
     }
   },[]);
+
+  // Keep liveDataRef in sync so audit callbacks can read old values synchronously
+  useEffect(()=>{liveDataRef.current=liveData;},[liveData]);
 
   useEffect(()=>{
     if(loading)return;
@@ -3350,7 +3367,29 @@ export default function App(){
   const saveFacFactures=useCallback(list=>{setFacFactures(list);window.api.storage.set("dicann-fac-factures",JSON.stringify(list)).catch(()=>{})},[]);
   const saveFacCreditNotes=useCallback(list=>{setFacCreditNotes(list);window.api.storage.set("dicann-fac-creditnotes",JSON.stringify(list)).catch(()=>{})},[]);
 
-  const upd=useCallback((dt,f,v)=>{setLiveData(p=>{const u={...p,[dt]:{...(p[dt]||{}),[f]:v}};persist(u);return u})},[persist]);
+  // ── raw state updaters (no audit) ──
+  const _updRaw=useCallback((dt,f,v)=>{setLiveData(p=>{const u={...p,[dt]:{...(p[dt]||{}),[f]:v}};persist(u);return u})},[persist]);
+  const _updCashRaw=useCallback((dt,i,c)=>{setLiveData(p=>{const d={...(p[dt]||{})};const cs=[...(d.cashes||[{...BLANK_CASH}])];cs[i]=c;const u={...p,[dt]:{...d,cashes:cs}};persist(u);return u})},[persist]);
+  const _updEmpRaw=useCallback((dt,i,e)=>{setLiveData(p=>{const d={...(p[dt]||{})};const es=[...(d.employees||[])];es[i]=e;const u={...p,[dt]:{...d,employees:es}};persist(u);return u})},[persist]);
+
+  // ── audit-aware updaters ──
+  const upd=useCallback((dt,f,v)=>{
+    const oldVal=liveDataRef.current[dt]?.[f];
+    _updRaw(dt,f,v);
+    const isExisting=initialDatesRef.current.has(dt);
+    if(!isExisting&&!sessionCreatedRef.current.has(dt)){
+      logCreate('daily','jour',dt,{[f]:v});sessionCreatedRef.current.add(dt);
+    }else if(isExisting&&isFinancialField('daily',f)){
+      if(sessionCorrectionRef.current.has(dt)){
+        logCorrection('daily','jour',dt,f,oldVal,v,sessionCorrectionRef.current.get(dt));
+      }else{
+        promptCorrectionReason(DAILY_FIELD_LABELS[f]||f).then(reason=>{
+          if(reason){sessionCorrectionRef.current.set(dt,reason);logCorrection('daily','jour',dt,f,oldVal,v,reason);}
+          else{_updRaw(dt,f,oldVal??null);}
+        });
+      }
+    }else{logUpdate('daily','jour',dt,f,oldVal,v);}
+  },[_updRaw]);
 
   const checkGasPrice=useCallback(async()=>{
     setGasCheckLoading(true);setGasCheckMsg(null);
@@ -3368,12 +3407,37 @@ export default function App(){
       setGasCheckLoading(false);
     }
   },[selectedDate,upd]);
-  const updCash=useCallback((dt,i,c)=>{setLiveData(p=>{const d={...(p[dt]||{})};const cs=[...(d.cashes||[{...BLANK_CASH}])];cs[i]=c;const u={...p,[dt]:{...d,cashes:cs}};persist(u);return u})},[persist]);
-  const addCash=useCallback(dt=>{setLiveData(p=>{const d={...(p[dt]||{})};const cs=[...(d.cashes||[{...BLANK_CASH}])];cs.push({...BLANK_CASH});const u={...p,[dt]:{...d,cashes:cs}};persist(u);return u})},[persist]);
-  const rmCash=useCallback((dt,i)=>{setLiveData(p=>{const d={...(p[dt]||{})};const cs=[...(d.cashes||[])];cs.splice(i,1);const u={...p,[dt]:{...d,cashes:cs}};persist(u);return u})},[persist]);
-  const updEmp=useCallback((dt,i,e)=>{setLiveData(p=>{const d={...(p[dt]||{})};const es=[...(d.employees||[])];es[i]=e;const u={...p,[dt]:{...d,employees:es}};persist(u);return u})},[persist]);
-  const addEmp=useCallback((dt,empEntry)=>{setLiveData(p=>{const d={...(p[dt]||{})};const es=[...(d.employees||[])];es.push(empEntry||{...BLANK_EMP});const u={...p,[dt]:{...d,employees:es}};persist(u);return u})},[persist]);
-  const rmEmp=useCallback((dt,i)=>{setLiveData(p=>{const d={...(p[dt]||{})};const es=[...(d.employees||[])];es.splice(i,1);const u={...p,[dt]:{...d,employees:es}};persist(u);return u})},[persist]);
+  const updCash=useCallback((dt,i,newCash)=>{
+    const oldCash=(liveDataRef.current[dt]?.cashes||[])[i]||{};
+    _updCashRaw(dt,i,newCash);
+    const isExisting=initialDatesRef.current.has(dt);
+    const allKeys=new Set([...Object.keys(oldCash),...Object.keys(newCash)]);
+    for(const key of allKeys){
+      if(oldCash[key]===newCash[key])continue;
+      if(isExisting&&isFinancialField('daily',key)){
+        if(sessionCorrectionRef.current.has(dt)){
+          logCorrection('daily','caisse',`${dt}:${i}`,key,oldCash[key],newCash[key],sessionCorrectionRef.current.get(dt));
+        }else{
+          const snap={...oldCash};
+          promptCorrectionReason(DAILY_FIELD_LABELS[key]||key).then(reason=>{
+            if(reason){sessionCorrectionRef.current.set(dt,reason);logCorrection('daily','caisse',`${dt}:${i}`,key,snap[key],newCash[key],reason);}
+            else{_updCashRaw(dt,i,snap);}
+          });
+        }
+        break;
+      }else{logUpdate('daily','caisse',`${dt}:${i}`,key,oldCash[key],newCash[key]);}
+    }
+  },[_updCashRaw]);
+  const addCash=useCallback(dt=>{setLiveData(p=>{const d={...(p[dt]||{})};const cs=[...(d.cashes||[{...BLANK_CASH}])];cs.push({...BLANK_CASH});const u={...p,[dt]:{...d,cashes:cs}};persist(u);return u});logUpdate('daily','jour',dt,'caisses',null,'ajout');},[persist]);
+  const rmCash=useCallback((dt,i)=>{setLiveData(p=>{const d={...(p[dt]||{})};const cs=[...(d.cashes||[])];cs.splice(i,1);const u={...p,[dt]:{...d,cashes:cs}};persist(u);return u});logUpdate('daily','jour',dt,'caisses',null,`retrait:${i}`);},[persist]);
+  const updEmp=useCallback((dt,i,newEmp)=>{
+    const oldEmp=(liveDataRef.current[dt]?.employees||[])[i]||{};
+    _updEmpRaw(dt,i,newEmp);
+    const allKeys=new Set([...Object.keys(oldEmp),...Object.keys(newEmp)]);
+    allKeys.forEach(key=>{if(oldEmp[key]!==newEmp[key])logUpdate('daily','employe',`${dt}:${i}`,key,oldEmp[key],newEmp[key]);});
+  },[_updEmpRaw]);
+  const addEmp=useCallback((dt,empEntry)=>{setLiveData(p=>{const d={...(p[dt]||{})};const es=[...(d.employees||[])];es.push(empEntry||{...BLANK_EMP});const u={...p,[dt]:{...d,employees:es}};persist(u);return u});logUpdate('daily','employe',dt,'ajout',null,JSON.stringify(empEntry));},[persist]);
+  const rmEmp=useCallback((dt,i)=>{setLiveData(p=>{const d={...(p[dt]||{})};const es=[...(d.employees||[])];es.splice(i,1);const u={...p,[dt]:{...d,employees:es}};persist(u);return u});logUpdate('daily','employe',dt,'retrait',null,`index:${i}`);},[persist]);
 
   const getLR=useCallback(dt=>{const l=liveData[dt];if(!l||!Object.keys(l).length)return{...BLANK_DAY,cashes:[{...BLANK_CASH}],employees:[]};return{...BLANK_DAY,...l,cashes:l.cashes||[{...BLANK_CASH}],employees:l.employees||[]}},[liveData]);
   const getIC=useCallback(dt=>{const p=liveData[prevDk(dt)];return p?{hamEnd:p.hamEnd??null,hotEnd:p.hotEnd??null}:{hamEnd:null,hotEnd:null}},[liveData]);
