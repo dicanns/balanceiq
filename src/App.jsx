@@ -1381,6 +1381,8 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
     saveCommandes([...commandes,newCmd]);
     saveDocNums({...docNums,commande:docNums.commande+1});
     saveSoumissions(soumissions.map(s=>s.id===soum.id?{...s,statut:"Acceptée",commandeId:id,commandeNumero:numero}:s));
+    logCreate('invoice','commande',id,newCmd);
+    logUpdate('invoice','soumission',soum.id,'statut',soum.statut,'Acceptée');
     setActiveDoc({type:"commande",doc:newCmd,clientId:null});
   };
   const convertToFacture=(source,sourceType)=>{
@@ -1393,6 +1395,9 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
     saveDocNums({...docNums,facture:docNums.facture+1});
     if(sourceType==="soumission")saveSoumissions(soumissions.map(s=>s.id===source.id?{...s,statut:"Acceptée",factureId:id,factureNumero:numero}:s));
     if(sourceType==="commande")saveCommandes(commandes.map(c=>c.id===source.id?{...c,statut:"Complétée",factureId:id,factureNumero:numero}:c));
+    logCreate('invoice','facture',id,newFac);
+    if(sourceType==="soumission")logUpdate('invoice','soumission',source.id,'statut',source.statut,'Acceptée');
+    if(sourceType==="commande")logUpdate('invoice','commande',source.id,'statut',source.statut,'Complétée');
     setActiveDoc({type:"facture",doc:newFac,clientId:null});
   };
   const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none"};
@@ -1591,7 +1596,7 @@ function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveD
     if(p)updL(lid,{produitId:pid,description:p.description,prixUnitaire:parseFloat(p.prixUnitaire)||0,tps:p.tps!==false,tvq:p.tvq!==false});
   };
   const doSave=()=>{
-    let id=savedId,numero=savedNumero;
+    let id=savedId,numero=savedNumero;const isNew=!id;
     if(!id){
       id=Date.now().toString();numero=fmtDocNum(docNums.prefix,"S",docNums.soumission);
       saveDocNums({...docNums,soumission:docNums.soumission+1});
@@ -1599,9 +1604,18 @@ function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveD
     }
     const doc={...form,id,numero,lignes};
     saveSoumissions(soumissions.some(s=>s.id===id)?soumissions.map(s=>s.id===id?doc:s):[...soumissions,doc]);
+    if(isNew)logCreate('invoice','soumission',id,doc);
+    else logUpdate('invoice','soumission',id,'document',null,JSON.stringify(doc));
     setFlash(true);setTimeout(()=>setFlash(false),2000);
   };
-  const doDelete=()=>{saveSoumissions(soumissions.filter(s=>s.id!==savedId));onBack();};
+  const doDelete=async()=>{
+    if(!savedId)return;
+    const reason=await promptCorrectionReason('Annulation de la soumission');
+    if(!reason)return;
+    logVoid('invoice','soumission',savedId,reason);
+    saveSoumissions(soumissions.map(s=>s.id===savedId?{...s,statut:"Annulée",voidReason:reason,voidDate:dk(new Date())}:s));
+    onBack();
+  };
   const doPrint=()=>{
     const numero=savedNumero||fmtDocNum(docNums.prefix,"S",docNums.soumission);
     openPDF(buildSoumissionHTML({...form,numero,lignes,totals,client,companyInfo}));
@@ -1639,9 +1653,9 @@ function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveD
       }
       {savedId&&form.statut==="Brouillon"&&(
         confirmDel
-          ?<><span style={{fontSize:11,color:"#ef4444"}}>Confirmer?</span>
-             <button onClick={doDelete} style={{padding:"4px 10px",borderRadius:5,border:"none",background:"#ef4444",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>Supprimer</button>
-             <button onClick={()=>setConfirmDel(false)} style={{padding:"4px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>Annuler</button></>
+          ?<><span style={{fontSize:11,color:"#ef4444"}}>Annuler ce document?</span>
+             <button onClick={doDelete} style={{padding:"4px 10px",borderRadius:5,border:"none",background:"#ef4444",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>Annuler la soumission</button>
+             <button onClick={()=>setConfirmDel(false)} style={{padding:"4px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>Revenir</button></>
           :<button onClick={()=>setConfirmDel(true)} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:600,fontSize:11}}>🗑️</button>
       )}
     </div>
@@ -1766,7 +1780,7 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
     if(p)updL(lid,{produitId:pid,description:p.description,prixUnitaire:parseFloat(p.prixUnitaire)||0,tps:p.tps!==false,tvq:p.tvq!==false});
   };
   const doSave=()=>{
-    let id=savedId,numero=savedNumero;
+    let id=savedId,numero=savedNumero;const isNew=!id;
     if(!id){
       id=Date.now().toString();numero=fmtDocNum(docNums.prefix,"C",docNums.commande);
       saveDocNums({...docNums,commande:docNums.commande+1});
@@ -1774,9 +1788,18 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
     }
     const doc={...form,id,numero,lignes};
     saveCommandes(commandes.some(c=>c.id===id)?commandes.map(c=>c.id===id?doc:c):[...commandes,doc]);
+    if(isNew)logCreate('invoice','commande',id,doc);
+    else logUpdate('invoice','commande',id,'document',null,JSON.stringify(doc));
     setFlash(true);setTimeout(()=>setFlash(false),2000);
   };
-  const doDelete=()=>{saveCommandes(commandes.filter(c=>c.id!==savedId));onBack();};
+  const doDelete=async()=>{
+    if(!savedId)return;
+    const reason=await promptCorrectionReason('Annulation de la commande');
+    if(!reason)return;
+    logVoid('invoice','commande',savedId,reason);
+    saveCommandes(commandes.map(c=>c.id===savedId?{...c,statut:"Annulée",voidReason:reason,voidDate:dk(new Date())}:c));
+    onBack();
+  };
   const doPrint=()=>{
     const numero=savedNumero||fmtDocNum(docNums.prefix,"C",docNums.commande);
     openPDF(buildCommandeHTML({...form,numero,lignes,totals,client,companyInfo}));
@@ -1808,9 +1831,9 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
       }
       {savedId&&form.statut==="Brouillon"&&(
         confirmDel
-          ?<><span style={{fontSize:11,color:"#ef4444"}}>Confirmer?</span>
-             <button onClick={doDelete} style={{padding:"4px 10px",borderRadius:5,border:"none",background:"#ef4444",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>Supprimer</button>
-             <button onClick={()=>setConfirmDel(false)} style={{padding:"4px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>Annuler</button></>
+          ?<><span style={{fontSize:11,color:"#ef4444"}}>Annuler ce document?</span>
+             <button onClick={doDelete} style={{padding:"4px 10px",borderRadius:5,border:"none",background:"#ef4444",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>Annuler la commande</button>
+             <button onClick={()=>setConfirmDel(false)} style={{padding:"4px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>Revenir</button></>
           :<button onClick={()=>setConfirmDel(true)} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:600,fontSize:11}}>🗑️</button>
       )}
     </div>
@@ -1961,7 +1984,7 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
     }
   },[form.clientId,form.date,client]);
   const doSave=()=>{
-    let id=savedId,numero=savedNumero;
+    let id=savedId,numero=savedNumero;const isNew=!id;
     if(!id){
       id=Date.now().toString();numero=fmtDocNum(docNums.prefix,"F",docNums.facture);
       saveDocNums({...docNums,facture:docNums.facture+1});
@@ -1969,9 +1992,18 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
     }
     const doc={...form,id,numero,lignes};
     saveFactures(factures.some(f=>f.id===id)?factures.map(f=>f.id===id?doc:f):[...factures,doc]);
+    if(isNew)logCreate('invoice','facture',id,doc);
+    else logUpdate('invoice','facture',id,'document',null,JSON.stringify(doc));
     setFlash(true);setTimeout(()=>setFlash(false),2000);
   };
-  const doDelete=()=>{saveFactures(factures.filter(f=>f.id!==savedId));onBack();};
+  const doDelete=async()=>{
+    if(!savedId)return;
+    const reason=await promptCorrectionReason('Annulation de la facture');
+    if(!reason)return;
+    logVoid('invoice','facture',savedId,reason);
+    saveFactures(factures.map(f=>f.id===savedId?{...f,statut:"Annulée",voidReason:reason,voidDate:dk(new Date())}:f));
+    onBack();
+  };
   const doPrint=()=>{
     const numero=savedNumero||fmtDocNum(docNums.prefix,"F",docNums.facture);
     openPDF(buildFactureHTML({...form,numero,lignes,totals,client,companyInfo,montantPaye}));
@@ -1999,9 +2031,9 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
       <button onClick={()=>savedId&&onCreditNote&&onCreditNote(factures.find(f=>f.id===savedId)||{...form,id:savedId})} disabled={!savedId||!onCreditNote||["Annulée"].includes(form.statut)} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${!savedId||!onCreditNote||["Annulée"].includes(form.statut)?t.cardBorder:"rgba(239,68,68,0.3)"}`,background:!savedId||!onCreditNote||["Annulée"].includes(form.statut)?t.section:"rgba(239,68,68,0.07)",color:!savedId||!onCreditNote||["Annulée"].includes(form.statut)?t.textDim:"#ef4444",cursor:!savedId||!onCreditNote||["Annulée"].includes(form.statut)?"default":"pointer",fontWeight:600,fontSize:11,opacity:!savedId||!onCreditNote||["Annulée"].includes(form.statut)?0.4:1}}>→ Note de crédit</button>
       {savedId&&!locked&&(
         confirmDel
-          ?<><span style={{fontSize:11,color:"#ef4444"}}>Confirmer?</span>
-             <button onClick={doDelete} style={{padding:"4px 10px",borderRadius:5,border:"none",background:"#ef4444",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>Supprimer</button>
-             <button onClick={()=>setConfirmDel(false)} style={{padding:"4px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>Annuler</button></>
+          ?<><span style={{fontSize:11,color:"#ef4444"}}>Annuler ce document?</span>
+             <button onClick={doDelete} style={{padding:"4px 10px",borderRadius:5,border:"none",background:"#ef4444",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>Annuler la facture</button>
+             <button onClick={()=>setConfirmDel(false)} style={{padding:"4px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>Revenir</button></>
           :<button onClick={()=>setConfirmDel(true)} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:600,fontSize:11}}>🗑️</button>
       )}
     </div>
@@ -2136,6 +2168,8 @@ function EncaissementEditor({clientId,factureId,clients,factures,saveFactures,do
     const newStatut=newSolde<=0.005?"Payée":"Payée partiellement";
     const updFac={...selFac,paiements:[...(selFac.paiements||[]),paiement],statut:newStatut};
     saveFactures(factures.map(f=>f.id===selId?updFac:f));
+    logCreate('payment','paiement',id,{...paiement,factureId:selId,factureNumero:selFac.numero});
+    logUpdate('invoice','facture',selId,'statut',selFac.statut,newStatut);
     saveDocNums({...docNums,encaissement:docNums.encaissement+1});
     // If Comptant → add read-only entry to Encaisse for this date
     if(form.mode==="Comptant"&&persistEncaisse){
@@ -2298,6 +2332,7 @@ function NoteDeCreditEditor({creditNote,clients,factures,companyInfo,docNums,sav
     if(!savedId){
       saveCreditNotes([...creditNotes,rec]);
       saveDocNums({...docNums,creditNote:docNums.creditNote+1});
+      logCreate('invoice','note_de_credit',id,rec);
       if(form.factureId&&linkedFac&&creditAmount>0){
         const pId=Date.now().toString()+"c";
         const newPaiements=[...(linkedFac.paiements||[]),{id:pId,numero,date:form.date,montant:creditAmount,mode:"Note de crédit",reference:numero,note:`Note de crédit ${numero}`,fromCredit:true}];
@@ -2305,9 +2340,11 @@ function NoteDeCreditEditor({creditNote,clients,factures,companyInfo,docNums,sav
         const solde=facTotalAmt-totalPaye;
         const newStatut=solde<=0.005?"Créditée":totalPaye>0?"Payée partiellement":linkedFac.statut;
         saveFactures(factures.map(f=>f.id===form.factureId?{...f,paiements:newPaiements,statut:newStatut}:f));
+        logUpdate('invoice','facture',form.factureId,'statut',linkedFac.statut,newStatut);
       }
     } else {
       saveCreditNotes(creditNotes.map(n=>n.id===id?rec:n));
+      logUpdate('invoice','note_de_credit',id,'document',null,JSON.stringify(rec));
     }
     setSavedId(id);setSaved(true);setTimeout(()=>setSaved(false),2000);
   };
