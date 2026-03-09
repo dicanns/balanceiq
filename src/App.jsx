@@ -5999,24 +5999,24 @@ export default function App(){
           {/* DAILY TAB */}
           {activeTab==="daily"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
             <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-              <MC label="Vente nette" value={fmt(today.venteNet)} accent={t.posColor}/>
-              <MC label="Total brut" value={fmt(today.total)} accent="#f97316"/>
-              <MC label="$/douzaine" value={today.moyenne?fmt(today.moyenne):"—"} accent="#7c3aed"/>
-              <MC label="Cumul sem." value={fmt(wkC)}/>
-              <MC label="Mois en cours" value={fmt(mtdTotal)} sub={`${mtdDays} jr${mtdDays!==1?"s":""}`}/>
-              {today.labourPct!=null&&<MC label="Main d'œuvre" value={`${today.labourPct.toFixed(1)}%`} sub={fmt(today.labourCost)} accent={today.labourPct>35?"#ef4444":today.labourPct>28?t.warnText:"#22c55e"}/>}
+              <MC label={T.dailyNetSales} value={fmt(today.venteNet)} accent={t.posColor}/>
+              <MC label={T.dailyGross} value={fmt(today.total)} accent="#f97316"/>
+              <MC label={T.dailyPerDozen} value={today.moyenne?fmt(today.moyenne):"—"} accent="#7c3aed"/>
+              <MC label={T.dailyWeekCumul} value={fmt(wkC)}/>
+              <MC label={T.dailyMonthCumul} value={fmt(mtdTotal)} sub={T.dailyDaysAbbr(mtdDays)}/>
+              {today.labourPct!=null&&<MC label={T.dailyLabourCard} value={`${today.labourPct.toFixed(1)}%`} sub={fmt(today.labourCost)} accent={today.labourPct>35?"#ef4444":today.labourPct>28?t.warnText:"#22c55e"}/>}
               <div style={{background:t.section,border:`1px solid ${t.sectionBorder}`,borderRadius:8,padding:"9px 13px",display:"flex",flexDirection:"column",gap:1,minWidth:100,flex:"0 0 auto",cursor:"pointer"}} onClick={()=>setActiveTab("encaisse")}>
-                <span style={{fontSize:8.5,color:t.textMuted,textTransform:"uppercase",letterSpacing:0.8,fontWeight:600}}>Encaisse</span>
+                <span style={{fontSize:8.5,color:t.textMuted,textTransform:"uppercase",letterSpacing:0.8,fontWeight:600}}>{T.dailyEncaisseCard}</span>
                 <span style={{fontSize:18,fontWeight:700,fontFamily:"'DM Mono',monospace",color:encaisseStatus==="balanced"?"#22c55e":encaisseStatus==="error"?"#ef4444":encaisseStatus==="pending"?"#f97316":t.textDim}}>
                   {encaisseStatus==="balanced"?"✓":encaisseStatus==="error"?"✗":encaisseStatus==="pending"?"⏳":"—"}
                 </span>
-                <span style={{fontSize:9.5,color:t.textMuted}}>{encaisseStatus==="balanced"?"Balancé":encaisseStatus==="error"?"Écart":encaisseStatus==="pending"?"En cours":"Non saisi"}</span>
+                <span style={{fontSize:9.5,color:t.textMuted}}>{encaisseStatus==="balanced"?T.statusBalanced:encaisseStatus==="error"?T.statusVariance:encaisseStatus==="pending"?T.statusPending:T.statusNotEntered}</span>
               </div>
             </div>
 
             <div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}>
-                <span style={{fontSize:13.5,fontWeight:700,color:t.text}}>Caisses</span>
+                <span style={{fontSize:13.5,fontWeight:700,color:t.text}}>{T.dailyCaisses}</span>
                 <button onClick={()=>addCash(selectedDate)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.18)",background:"rgba(249,115,22,0.06)",color:"#f97316",cursor:"pointer",fontWeight:600}}>{T.dailyNewCaisse}</button>
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
