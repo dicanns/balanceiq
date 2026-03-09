@@ -1120,6 +1120,7 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
 // ── COMPTABILITE EXPORT ──
 function ComptabiliteExport({factures,clients,produits,categories,companyInfo,onClose,showUpgradePrompt}){
   const t=useT();
+  const T=useL();
   const today=dk(new Date());
   const firstOfMonth=today.slice(0,8)+"01";
   const iS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:11,padding:"4px 7px",outline:"none",fontFamily:"'DM Mono',monospace"};
@@ -1250,15 +1251,15 @@ function ComptabiliteExport({factures,clients,produits,categories,companyInfo,on
       buildCSV(rows,"grand-livre-comptes-recevables");setMsg(`${rows.length-1} client${rows.length>2?"s":""} exporté${rows.length>2?"s":""}.`);
     }
   };
-  const OPTS=[{id:"facturation",label:"Journal de facturation",desc:"Détail par ligne d'article — numéros de compte inclus"},{id:"encaissements",label:"Journal des encaissements",desc:"Paiements reçus, mode et référence"},{id:"grandlivre",label:"Grand livre comptes à recevoir",desc:"Soldes par client sur la période"}];
+  const OPTS=[{id:"facturation",label:T.exportJournalInv,desc:T.exportInvDesc},{id:"encaissements",label:T.exportJournalPay,desc:T.exportPayDesc},{id:"grandlivre",label:T.exportLedger,desc:T.exportLedgerDesc}];
   return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
     <div style={{background:t.bg,border:`1px solid ${t.cardBorder}`,borderRadius:12,padding:22,width:"100%",maxWidth:500,display:"flex",flexDirection:"column",gap:12,boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <span style={{fontSize:14,fontWeight:700,color:t.text}}>📊 Exporter pour comptabilité</span>
+        <span style={{fontSize:14,fontWeight:700,color:t.text}}>{T.exportTitle}</span>
         <button onClick={onClose} style={{background:"none",border:"none",color:t.textDim,cursor:"pointer",fontSize:18,lineHeight:1}}>✕</button>
       </div>
       <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-        <span style={{fontSize:11,color:t.textMuted}}>Période :</span>
+        <span style={{fontSize:11,color:t.textMuted}}>{T.period}</span>
         <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={iS}/>
         <span style={{fontSize:11,color:t.textMuted}}>→</span>
         <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={iS}/>
@@ -1270,9 +1271,9 @@ function ComptabiliteExport({factures,clients,produits,categories,companyInfo,on
         </label>))}
       </div>
       <div style={{display:"flex",gap:8,alignItems:"center",borderTop:`1px solid ${t.dividerMid}`,paddingTop:10,flexWrap:"wrap"}}>
-        <button onClick={doExport} style={{padding:"7px 20px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>⬇ CSV</button>
+        <button onClick={doExport} style={{padding:"7px 20px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>⬇ {T.exportCSV}</button>
         <button onClick={doExportExcel} style={{padding:"7px 14px",borderRadius:6,border:`1px solid ${canUse("excelExport")?"rgba(34,197,94,0.3)":t.cardBorder}`,background:canUse("excelExport")?"rgba(34,197,94,0.08)":t.section,color:canUse("excelExport")?"#16a34a":t.textDim,cursor:"pointer",fontWeight:600,fontSize:11,display:"flex",alignItems:"center",gap:5}}>
-          {canUse("excelExport")?"📊 Excel":(<>Excel <span style={{fontSize:9,fontWeight:700,color:"#6b7280",background:"rgba(255,255,255,0.06)",padding:"1px 5px",borderRadius:4,marginLeft:3}}>Pro</span></>)}
+          {canUse("excelExport")?("📊 "+T.exportExcel):(<>{T.exportExcel} <span style={{fontSize:9,fontWeight:700,color:"#6b7280",background:"rgba(255,255,255,0.06)",padding:"1px 5px",borderRadius:4,marginLeft:3}}>Pro</span></>)}
         </button>
         {upgradeMsg&&<span style={{fontSize:10,color:"#f97316",fontWeight:600}}>🔒 Pro requis pour l'export Excel</span>}
         {msg&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>{msg}</span>}
@@ -1288,6 +1289,7 @@ function getStatutColorFn(type,statut){if(type==="soumission")return STATUT_SOUM
 function getDocSolde(doc){if(doc._type==="facture"){const paye=(doc.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);return Math.max(0,computeSoumTotals(doc.lignes||[]).total-paye);}return null;}
 function FacturationDashboard({soumissions,commandes,factures,creditNotes,clients,produits,categories,companyInfo,showUpgradePrompt,openDoc}){
   const t=useT();
+  const T=useL();
   const [showCompta,setShowCompta]=useState(false);
   const today=dk(new Date());
   const thisMonth=today.slice(0,7);
@@ -1329,12 +1331,12 @@ function FacturationDashboard({soumissions,commandes,factures,creditNotes,client
   };
   const toggleSort=col=>{if(sortCol===col)setSortDir(d=>-d);else{setSortCol(col);setSortDir(-1);}};
   const SH=({col,align,children})=>(<span onClick={()=>toggleSort(col)} style={{cursor:"pointer",userSelect:"none",fontSize:10,fontWeight:700,color:sortCol===col?"#f97316":t.textMuted,display:"block",textAlign:align||"left"}}>{children}{sortCol===col?(sortDir<0?" ↓":" ↑"):""}</span>);
-  const FTABS=[{id:"tous",label:"Tous"},{id:"soumission",label:"Soumissions"},{id:"commande",label:"Commandes"},{id:"facture",label:"Factures"},{id:"creditnote",label:"Notes de crédit"}];
+  const FTABS=[{id:"tous",label:T.filterAll},{id:"soumission",label:T.filterQuotes},{id:"commande",label:T.filterOrders},{id:"facture",label:T.filterInvoices},{id:"creditnote",label:T.filterCreditNotes}];
   const countOf=type=>allDocs.filter(d=>d._type===type).length;
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     {/* Stats */}
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8}}>
-      {[{label:"Facturé ce mois",val:fmt(stats.factureCeMois),color:"#f97316"},{label:"Encaissé ce mois",val:fmt(stats.encaisseCeMois),color:"#22c55e"},{label:"En souffrance",val:fmt(stats.enSouffrance),color:"#ef4444"},{label:"En retard",val:`${stats.enRetard} facture${stats.enRetard!==1?"s":""}`,color:stats.enRetard>0?"#ef4444":t.textMuted}].map(s=>(
+      {[{label:T.facInvoicedMonth,val:fmt(stats.factureCeMois),color:"#f97316"},{label:T.facCollectedMonth,val:fmt(stats.encaisseCeMois),color:"#22c55e"},{label:T.facOutstanding,val:fmt(stats.enSouffrance),color:"#ef4444"},{label:T.facOverdue,val:`${stats.enRetard} facture${stats.enRetard!==1?"s":""}`,color:stats.enRetard>0?"#ef4444":t.textMuted}].map(s=>(
         <div key={s.label} style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:"10px 14px"}}>
           <div style={{fontSize:9.5,color:t.textMuted,marginBottom:3,textTransform:"uppercase",letterSpacing:"0.5px"}}>{s.label}</div>
           <div style={{fontSize:15,fontWeight:900,color:s.color,fontFamily:"'DM Mono',monospace"}}>{s.val}</div>
@@ -1353,16 +1355,16 @@ function FacturationDashboard({soumissions,commandes,factures,creditNotes,client
     {showCompta&&<ComptabiliteExport factures={factures} clients={clients} produits={produits} categories={categories} companyInfo={companyInfo} showUpgradePrompt={showUpgradePrompt} onClose={()=>setShowCompta(false)}/>}
     {/* Search + date range */}
     <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Rechercher # ou client..." style={{...inputS,flex:"1 1 160px"}}/>
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder={T.facSearchDoc} style={{...inputS,flex:"1 1 160px"}}/>
       <span style={{fontSize:10,color:t.textMuted}}>Du</span>
       <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={{...inputS,fontFamily:"'DM Mono',monospace"}}/>
       <span style={{fontSize:10,color:t.textMuted}}>au</span>
       <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={{...inputS,fontFamily:"'DM Mono',monospace"}}/>
-      {(search||dateFrom||dateTo)&&<button onClick={()=>{setSearch("");setDateFrom("");setDateTo("");}} style={{fontSize:10,padding:"3px 8px",borderRadius:5,border:"none",background:"rgba(239,68,68,0.08)",color:"#ef4444",cursor:"pointer",fontWeight:600}}>✕ Réinitialiser</button>}
+      {(search||dateFrom||dateTo)&&<button onClick={()=>{setSearch("");setDateFrom("");setDateTo("");}} style={{fontSize:10,padding:"3px 8px",borderRadius:5,border:"none",background:"rgba(239,68,68,0.08)",color:"#ef4444",cursor:"pointer",fontWeight:600}}>{"✕ "+T.reset}</button>}
     </div>
     {/* Table */}
     {filtered.length===0
-      ?<div style={{textAlign:"center",padding:"32px 0",color:t.textMuted,fontSize:12}}>Aucun document trouvé.</div>
+      ?<div style={{textAlign:"center",padding:"32px 0",color:t.textMuted,fontSize:12}}>{T.facNoDocuments}</div>
       :<div style={{overflowX:"auto"}}>
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
           <thead><tr style={{borderBottom:`2px solid ${t.dividerMid}`}}>
@@ -1449,6 +1451,7 @@ function buildEtatDeCompteHTML({client,factures,creditNotes,dateFrom,dateTo,comp
 
 function EtatDeCompteViewer({clientId,clients,factures,creditNotes,companyInfo,invoiceTemplate,onBack}){
   const t=useT();
+  const T=useL();
   const client=clients.find(c=>c.id===clientId);
   const now=dk(new Date());
   const firstOfYear=now.slice(0,4)+"-01-01";
@@ -1458,7 +1461,7 @@ function EtatDeCompteViewer({clientId,clients,factures,creditNotes,companyInfo,i
   const html=useMemo(()=>buildEtatDeCompteHTML({client,factures,creditNotes,dateFrom,dateTo,companyInfo,invoiceTemplate}),[client,factures,creditNotes,dateFrom,dateTo,companyInfo,invoiceTemplate]);
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-      <button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>
+      <button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.back}</button>
       <span style={{fontSize:14,fontWeight:700,color:t.text}}>État de compte</span>
       {client&&<span style={{fontSize:12,color:t.textMuted}}>— {client.entreprise}</span>}
     </div>
@@ -1478,6 +1481,7 @@ function EtatDeCompteViewer({clientId,clients,factures,creditNotes,companyInfo,i
 // ── AGING REPORT ──
 function AgingReport({factures,clients,creditNotes,companyInfo,apiConfig,showUpgradePrompt,invoiceTemplate}){
   const t=useT();
+  const T=useL();
   const [asOf,setAsOf]=useState(dk(new Date()));
   const [sortCol,setSortCol]=useState("montantDu");
   const [sortDir,setSortDir]=useState(-1);
@@ -1595,18 +1599,18 @@ function AgingReport({factures,clients,creditNotes,companyInfo,apiConfig,showUpg
       <button onClick={()=>setBulkStatus(null)} style={{marginLeft:10,background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:11}}>✕</button>
     </div>}
     {sorted.length===0
-      ?<div style={{textAlign:"center",padding:"32px 0",color:t.textMuted,fontSize:12}}>Aucune facture impayée au {asOf}.</div>
+      ?<div style={{textAlign:"center",padding:"32px 0",color:t.textMuted,fontSize:12}}>{T.agingNoUnpaid(asOf)}</div>
       :<div style={{overflowX:"auto"}}>
         {viewMode==="sommaire"
           ?<table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
             <thead><tr style={{borderBottom:`2px solid ${t.dividerMid}`}}>
               {isBulkEmail&&<th style={{width:28,padding:"5px 4px"}}><input type="checkbox" checked={sorted.length>0&&selClients.size===sorted.length} onChange={e=>e.target.checked?selectAll():setSelClients(new Set())} style={{accentColor:"#f97316"}}/></th>}
               <th style={{textAlign:"left",padding:"5px 8px"}}><SortHd col="client">Client</SortHd></th>
-              <th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="montantDu" align="right">Montant dû</SortHd></th>
-              <th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="courant" align="right" color="#9ca3af">Courant</SortHd></th>
-              <th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="j30" align="right" color="#eab308">30 jours</SortHd></th>
-              <th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="j60" align="right" color="#f97316">60 jours</SortHd></th>
-              <th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="j90" align="right" color="#ef4444">90+ jours</SortHd></th>
+              <th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="montantDu" align="right">{T.agingAmountDue}</SortHd></th>
+              <th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="courant" align="right" color="#9ca3af">{T.agingCurrent}</SortHd></th>
+              <th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="j30" align="right" color="#eab308">{T.aging30}</SortHd></th>
+              <th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="j60" align="right" color="#f97316">{T.aging60}</SortHd></th>
+              <th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="j90" align="right" color="#ef4444">{T.aging90}</SortHd></th>
               <th style={{width:60,padding:"5px 4px"}}/>
             </tr></thead>
             <tbody>
@@ -1618,7 +1622,7 @@ function AgingReport({factures,clients,creditNotes,companyInfo,apiConfig,showUpg
                 <MonoCell val={row.j30} color="#eab308" bold={row.j30>0}/>
                 <MonoCell val={row.j60} color="#f97316" bold={row.j60>0}/>
                 <MonoCell val={row.j90} color="#ef4444" bold={row.j90>0}/>
-                <td style={{padding:"4px 6px",textAlign:"right"}}><button onClick={()=>setEtatClient(row.clientId)} style={{fontSize:9,padding:"2px 7px",borderRadius:4,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600}}>État</button></td>
+                <td style={{padding:"4px 6px",textAlign:"right"}}><button onClick={()=>setEtatClient(row.clientId)} style={{fontSize:9,padding:"2px 7px",borderRadius:4,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600}}>{T.facAccountStatement}</button></td>
               </tr>))}
             </tbody>
             <tfoot><tr style={{borderTop:`2px solid ${t.dividerMid}`,background:t.section}}>
@@ -1637,10 +1641,10 @@ function AgingReport({factures,clients,creditNotes,companyInfo,apiConfig,showUpg
               <th style={{textAlign:"left",padding:"5px 8px",color:t.textMuted,fontWeight:600,fontSize:10}}>Client / # Facture</th>
               <th style={{textAlign:"left",padding:"5px 8px",color:t.textMuted,fontWeight:600,fontSize:10}}>Date</th>
               <th style={{textAlign:"right",padding:"5px 8px",color:t.textMuted,fontWeight:600,fontSize:10}}>Total</th>
-              <th style={{textAlign:"right",padding:"5px 8px",color:"#9ca3af",fontWeight:600,fontSize:10}}>Courant</th>
-              <th style={{textAlign:"right",padding:"5px 8px",color:"#eab308",fontWeight:600,fontSize:10}}>30j</th>
-              <th style={{textAlign:"right",padding:"5px 8px",color:"#f97316",fontWeight:600,fontSize:10}}>60j</th>
-              <th style={{textAlign:"right",padding:"5px 8px",color:"#ef4444",fontWeight:600,fontSize:10}}>90j+</th>
+              <th style={{textAlign:"right",padding:"5px 8px",color:"#9ca3af",fontWeight:600,fontSize:10}}>{T.agingCurrent}</th>
+              <th style={{textAlign:"right",padding:"5px 8px",color:"#eab308",fontWeight:600,fontSize:10}}>{T.aging30}</th>
+              <th style={{textAlign:"right",padding:"5px 8px",color:"#f97316",fontWeight:600,fontSize:10}}>{T.aging60}</th>
+              <th style={{textAlign:"right",padding:"5px 8px",color:"#ef4444",fontWeight:600,fontSize:10}}>{T.aging90}</th>
             </tr></thead>
             <tbody>
               {sorted.map(row=>{
@@ -1692,6 +1696,7 @@ function AgingReport({factures,clients,creditNotes,companyInfo,apiConfig,showUpg
 // ── FACTURATION TAB ──
 function FacturationTab({categories,saveCategories,produits,saveProduits,clients,saveClients,soumissions,saveSoumissions,commandes,saveCommandes,factures,saveFactures,creditNotes,saveCreditNotes,docNums,saveDocNums,companyInfo,encaisseData,persistEncaisse,showUpgradePrompt,apiConfig,recurrents,saveRecurrents,invoiceTemplate}){
   const t=useT();
+  const T=useL();
   const [subTab,setSubTab]=useState("documents");
   const [activeDoc,setActiveDoc]=useState(null);
   const [selectedClientId,setSelectedClientId]=useState(null);
@@ -1750,7 +1755,7 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
   const toggleActif=cat=>saveCategories(categories.map(c=>c.id===cat.id?{...c,actif:!c.actif}:c));
   const addCat=()=>{if(!newForm.nom.trim())return;saveCategories([...categories,{id:Date.now().toString(),nom:newForm.nom.trim(),compteRevenu:newForm.compteRevenu.trim(),compteEscompte:newForm.compteEscompte.trim(),description:newForm.description.trim(),actif:true}]);setNewForm({nom:"",compteRevenu:"",compteEscompte:"",description:""});setAddOpen(false)};
 
-  const subTabs=[{id:"documents",label:"Documents"},{id:"clients",label:"Clients"},{id:"categories",label:"Catégories"},{id:"produits",label:"Produits & Services"},{id:"vieillissement",label:"Vieillissement"}];
+  const subTabs=[{id:"documents",label:T.factDocs},{id:"clients",label:T.factClients},{id:"categories",label:T.factCategories},{id:"produits",label:T.factProducts},{id:"vieillissement",label:T.factAging}];
 
   if(activeDoc?.type==="soumission"){
     const fc=activeDoc.fromClient;
@@ -1780,10 +1785,10 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
         {s.label}{s.soon&&<span style={{fontSize:8,marginLeft:4,color:t.textDim,fontWeight:400}}>bientôt</span>}
       </button>))}
       <div style={{flex:1}}/>
-      <button onClick={()=>openDoc("soumission",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,marginBottom:2}}>+ Nouvelle soumission</button>
-      <button onClick={()=>openDoc("commande",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,marginBottom:2}}>+ Nouvelle commande</button>
-      <button onClick={()=>openDoc("facture",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,marginBottom:2}}>+ Nouvelle facture</button>
-      <button onClick={()=>openDoc("creditnote",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:700,marginBottom:2}}>+ Note de crédit</button>
+      <button onClick={()=>openDoc("soumission",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,marginBottom:2}}>{T.facNewQuote}</button>
+      <button onClick={()=>openDoc("commande",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,marginBottom:2}}>{T.facNewOrder}</button>
+      <button onClick={()=>openDoc("facture",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,marginBottom:2}}>{T.facNewInvoice}</button>
+      <button onClick={()=>openDoc("creditnote",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:700,marginBottom:2}}>{T.facNewCreditNote}</button>
     </div>
 
     {/* Recurring invoices alert banner */}
@@ -1920,6 +1925,7 @@ function buildSoumissionHTML({numero,date,dateExpiration,statut,client,reference
 // ── EMAIL COMPOSE MODAL ──
 function EmailComposeModal({initTo,fromEmail,initSubject,initBody,attachmentName,pdfHtml,apiConfig,onSuccess,onClose}){
   const t=useT();
+  const T=useL();
   const [to,setTo]=useState(initTo||"");
   const [subject,setSubject]=useState(initSubject||"");
   const [body,setBody]=useState(initBody||"");
@@ -1982,19 +1988,19 @@ function EmailComposeModal({initTo,fromEmail,initSubject,initBody,attachmentName
         <button onClick={onClose} disabled={sending} style={{background:"none",border:"none",color:t.textMuted,fontSize:20,cursor:sending?"default":"pointer",lineHeight:1,opacity:sending?0.4:1}}>✕</button>
       </div>
       <div>
-        <div style={{fontSize:11,color:t.textMuted,marginBottom:4}}>De :</div>
+        <div style={{fontSize:11,color:t.textMuted,marginBottom:4}}>{T.facFrom}</div>
         <div style={{fontSize:12,color:t.textDim,padding:"6px 9px",background:t.section,borderRadius:5,border:`1px solid ${t.inputBorder}`}}>{canDirect?(apiConfig?.resendFrom||"noreply@balanceiq.ca"):"(via votre client de messagerie)"}</div>
       </div>
       <div>
-        <div style={{fontSize:11,color:t.textMuted,marginBottom:4}}>À :</div>
+        <div style={{fontSize:11,color:t.textMuted,marginBottom:4}}>{T.facTo}</div>
         <input value={to} onChange={e=>setTo(e.target.value)} style={inputS} placeholder="courriel@client.com" disabled={sending}/>
       </div>
       <div>
-        <div style={{fontSize:11,color:t.textMuted,marginBottom:4}}>Objet :</div>
+        <div style={{fontSize:11,color:t.textMuted,marginBottom:4}}>{T.facSubject}</div>
         <input value={subject} onChange={e=>setSubject(e.target.value)} style={inputS} disabled={sending}/>
       </div>
       <div>
-        <div style={{fontSize:11,color:t.textMuted,marginBottom:4}}>Message :</div>
+        <div style={{fontSize:11,color:t.textMuted,marginBottom:4}}>{T.facMessage}</div>
         <textarea value={body} onChange={e=>setBody(e.target.value)} rows={8} style={{...inputS,resize:"vertical",fontFamily:"'Outfit',sans-serif",lineHeight:1.6}} disabled={sending}/>
       </div>
       {/* Attachment row */}
@@ -2005,14 +2011,14 @@ function EmailComposeModal({initTo,fromEmail,initSubject,initBody,attachmentName
         </div>
         :<div style={{background:"rgba(249,115,22,0.04)",border:"1px solid rgba(249,115,22,0.2)",borderRadius:7,padding:"10px 12px",display:"flex",flexDirection:"column",gap:8}}>
           <div style={{display:"flex",alignItems:"center",gap:6}}>
-            <span style={{fontSize:11,fontWeight:700,color:t.text}}>Étape 1 — Télécharger le PDF</span>
-            {downloaded&&<span style={{fontSize:10,color:"#22c55e",fontWeight:600}}>✓ Téléchargé</span>}
+            <span style={{fontSize:11,fontWeight:700,color:t.text}}>{T.emailFreeStep1}</span>
+            {downloaded&&<span style={{fontSize:10,color:"#22c55e",fontWeight:600}}>✓ {T.emailDownloaded}</span>}
           </div>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <button onClick={doDownloadPDF} disabled={downloading} style={{padding:"5px 14px",borderRadius:6,border:"1px solid rgba(249,115,22,0.4)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:downloading?"default":"pointer",fontWeight:700,fontSize:11,opacity:downloading?0.6:1}}>
-              {downloading?"Génération…":"💾 Télécharger "+attachmentName}
+              {downloading?"Génération…":"💾 "+T.download+" "+attachmentName}
             </button>
-            <span style={{fontSize:10,color:t.textDim}}>puis joignez-le manuellement à votre courriel</span>
+            <span style={{fontSize:10,color:t.textDim}}>{T.emailAttachManually}</span>
           </div>
           <div style={{fontSize:10,color:t.textDim,borderTop:`1px solid rgba(249,115,22,0.15)`,paddingTop:6,display:"flex",alignItems:"center",gap:4}}>
             <span>✨</span>
@@ -2021,14 +2027,14 @@ function EmailComposeModal({initTo,fromEmail,initSubject,initBody,attachmentName
         </div>
       }
       {!canDirect&&<div style={{display:"flex",alignItems:"center",gap:6,background:t.section,border:`1px solid ${t.inputBorder}`,borderRadius:5,padding:"6px 9px"}}>
-        <span style={{fontSize:11,fontWeight:700,color:t.text}}>Étape 2 — Ouvrir votre client de messagerie</span>
+        <span style={{fontSize:11,fontWeight:700,color:t.text}}>{T.emailFreeStep2}</span>
       </div>}
       {error&&<div style={{fontSize:11,color:"#ef4444",fontWeight:600}}>✗ {error}</div>}
       <div style={{display:"flex",gap:8,justifyContent:"flex-end",alignItems:"center"}}>
         {sending&&<span style={{fontSize:11,color:"#f97316",fontWeight:600}}>{sendStep}</span>}
-        <button onClick={onClose} disabled={sending} style={{padding:"7px 16px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:sending?"default":"pointer",fontWeight:600,fontSize:12,opacity:sending?0.4:1}}>Annuler</button>
+        <button onClick={onClose} disabled={sending} style={{padding:"7px 16px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:sending?"default":"pointer",fontWeight:600,fontSize:12,opacity:sending?0.4:1}}>{T.cancel}</button>
         <button onClick={doSend} disabled={!to.trim()||sending} style={{padding:"7px 18px",borderRadius:6,border:"none",background:!to.trim()||sending?"rgba(249,115,22,0.3)":"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:!to.trim()||sending?"default":"pointer",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>
-          {sending?"…":canDirect?"📤 Envoyer":"📬 Ouvrir mon courriel"}
+          {sending?"…":canDirect?T.send:"📬 Ouvrir mon courriel"}
         </button>
       </div>
     </div>
@@ -2067,6 +2073,7 @@ function useDirectEmail(apiConfig){
 
 function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveDocNums,soumissions,saveSoumissions,commandes,factures,onBack,onBackToClient,onBackToList,initClientId,onConvertToCommande,onConvertToFacture,apiConfig,invoiceTemplate,onOpenDoc}){
   const t=useT();
+  const T=useL();
   const isNew=!soumission?.id;
   const todayStr=dk(new Date());
   const exp30=dk(new Date(Date.now()+30*86400000));
@@ -2128,25 +2135,25 @@ function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveD
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     {/* Top bar */}
     <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-      {onBackToClient?<><button onClick={onBackToList} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Clients</button><button onClick={onBackToClient} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Fiche client</button></>:<button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>}
+      {onBackToClient?<><button onClick={onBackToList} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToList}</button><button onClick={onBackToClient} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToClient}</button></>:<button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.back}</button>}
       <span style={{fontSize:14,fontWeight:700,color:t.text}}>{savedNumero||(isNew?"Nouvelle soumission":soumission?.numero)}</span>
       <span style={{fontSize:10,fontWeight:700,color:SC[form.statut]||t.textMuted,background:"rgba(0,0,0,0.06)",borderRadius:10,padding:"2px 8px"}}>{form.statut}</span>
       <div style={{flex:1}}/>
-      <button onClick={doSave} style={{padding:"5px 14px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'Outfit',sans-serif"}}>💾 Sauvegarder</button>
-      {flash&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>✓</span>}
-      <button onClick={doPrint} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>🖨️ Imprimer</button>
-      <button onClick={openEmailModal} disabled={!client?.courriel} title={!client?.courriel?"Aucun courriel client":""} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:!client?.courriel?t.textDim:t.textSub,cursor:!client?.courriel?"default":"pointer",fontWeight:600,fontSize:11,opacity:!client?.courriel?0.5:1}}>📧 Envoyer</button>
+      <button onClick={doSave} style={{padding:"5px 14px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'Outfit',sans-serif"}}>💾 {T.save}</button>
+      {flash&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>{T.saved}</span>}
+      <button onClick={doPrint} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>🖨️ {T.print}</button>
+      <button onClick={openEmailModal} disabled={!client?.courriel} title={!client?.courriel?"Aucun courriel client":""} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:!client?.courriel?t.textDim:t.textSub,cursor:!client?.courriel?"default":"pointer",fontWeight:600,fontSize:11,opacity:!client?.courriel?0.5:1}}>{T.send}</button>
       {savedId&&!soumission?.commandeId&&onConvertToCommande
-        ?<button onClick={()=>onConvertToCommande({...form,id:savedId,numero:savedNumero,lignes})} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11}}>→ Commande</button>
+        ?<button onClick={()=>onConvertToCommande({...form,id:savedId,numero:savedNumero,lignes})} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11}}>{T.facConvertOrder}</button>
         :soumission?.commandeId
           ?<span style={{fontSize:10,color:"#22c55e",fontWeight:600}}>✓ {soumission.commandeNumero}</span>
-          :<button disabled style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"default",fontWeight:600,fontSize:11,opacity:0.4}}>→ Commande</button>
+          :<button disabled style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"default",fontWeight:600,fontSize:11,opacity:0.4}}>{T.facConvertOrder}</button>
       }
       {savedId&&!soumission?.factureId&&onConvertToFacture
-        ?<button onClick={()=>onConvertToFacture({...form,id:savedId,numero:savedNumero,lignes})} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11}}>→ Facture</button>
+        ?<button onClick={()=>onConvertToFacture({...form,id:savedId,numero:savedNumero,lignes})} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11}}>{T.facConvertInvoice}</button>
         :soumission?.factureId
           ?<span style={{fontSize:10,color:"#22c55e",fontWeight:600}}>✓ {soumission.factureNumero}</span>
-          :<button disabled style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"default",fontWeight:600,fontSize:11,opacity:0.4}}>→ Facture</button>
+          :<button disabled style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"default",fontWeight:600,fontSize:11,opacity:0.4}}>{T.facConvertInvoice}</button>
       }
       {savedId&&form.statut==="Brouillon"&&(
         confirmDel
@@ -2191,8 +2198,8 @@ function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveD
           </select>
         </div>
         <div style={{flex:"2 1 180px"}}>
-          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Réf. client / Bon de commande</div>
-          <input value={form.referenceClient||""} onChange={e=>upd({referenceClient:e.target.value})} placeholder="Optionnel" style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.facCustomerRef}</div>
+          <input value={form.referenceClient||""} onChange={e=>upd({referenceClient:e.target.value})} placeholder={T.facOptional} style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
         </div>
       </div>
       {client&&<div style={{marginTop:8,padding:"5px 8px",borderRadius:6,background:t.section,border:`1px solid ${t.sectionBorder}`,fontSize:11,color:t.textSub}}>
@@ -2207,7 +2214,7 @@ function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveD
     <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
       <span style={{fontSize:12,fontWeight:700,color:t.text,display:"block",marginBottom:8}}>Lignes</span>
       <div style={{display:"grid",gridTemplateColumns:"1.8fr 2fr 65px 85px 65px 28px 28px 90px 24px",gap:5,padding:"2px 4px",marginBottom:4}}>
-        {["Produit","Description","Qté","Prix unit.","Remise %","TPS","TVQ","Total",""].map((h,i)=>(
+        {["Produit","Description",T.facQty,T.facUnitPrice,"Remise %","TPS","TVQ",T.facLineTotal,""].map((h,i)=>(
           <span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i>=2&&i<=7?"center":"left"}}>{h}</span>
         ))}
       </div>
@@ -2232,22 +2239,22 @@ function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveD
           <button onClick={()=>setLignes(ls=>ls.filter(x=>x.id!==l.id))} disabled={lignes.length===1} style={{background:"none",border:"none",color:lignes.length===1?t.textDim:"#ef4444",cursor:lignes.length===1?"default":"pointer",fontSize:14,padding:0,fontWeight:700}}>✕</button>
         </div>);
       })}
-      <button onClick={()=>setLignes(ls=>[...ls,newLigne()])} style={{marginTop:2,padding:"5px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>+ Ajouter une ligne</button>
+      <button onClick={()=>setLignes(ls=>[...ls,newLigne()])} style={{marginTop:2,padding:"5px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>{T.facAddLine}</button>
     </div>
     {/* Totals + Notes */}
     <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
       <div style={{flex:"2 1 200px",background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
-        <div style={{fontSize:12,fontWeight:700,color:t.text,marginBottom:6}}>Notes / Conditions</div>
-        <textarea value={form.notes||""} onChange={e=>upd({notes:e.target.value})} rows={4} placeholder="Notes visibles sur le document imprimé..." style={{...inputS,width:"100%",boxSizing:"border-box",resize:"vertical",fontFamily:"'Outfit',sans-serif"}}/>
+        <div style={{fontSize:12,fontWeight:700,color:t.text,marginBottom:6}}>{T.facNotes}</div>
+        <textarea value={form.notes||""} onChange={e=>upd({notes:e.target.value})} rows={4} placeholder={T.facNotesPlaceholder} style={{...inputS,width:"100%",boxSizing:"border-box",resize:"vertical",fontFamily:"'Outfit',sans-serif"}}/>
       </div>
       <div style={{flex:"1 1 180px",background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12,display:"flex",flexDirection:"column",gap:5,justifyContent:"flex-end"}}>
-        {[["Sous-total",totals.sousTotal],["TPS (5%)",totals.tpsTotal],["TVQ (9.975%)",totals.tvqTotal]].map(([label,val])=>(
+        {[[T.facSubTotal,totals.sousTotal],[T.facTPS,totals.tpsTotal],[T.facTVQ,totals.tvqTotal]].map(([label,val])=>(
           <div key={label} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:t.textSub}}>
             <span>{label}</span><span style={{fontFamily:"'DM Mono',monospace"}}>{fmt(val)}</span>
           </div>
         ))}
         <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:800,color:t.text,borderTop:`2px solid ${t.dividerMid}`,paddingTop:6,marginTop:2}}>
-          <span>TOTAL</span><span style={{fontFamily:"'DM Mono',monospace",color:"#f97316"}}>{fmt(totals.total)}</span>
+          <span>{T.facTotal}</span><span style={{fontFamily:"'DM Mono',monospace",color:"#f97316"}}>{fmt(totals.total)}</span>
         </div>
       </div>
     </div>
@@ -2273,6 +2280,7 @@ function buildCommandeHTML({numero,date,dateLivraison,statut,client,referenceCli
 }
 function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNums,commandes,saveCommandes,soumissions,factures,onBack,onBackToClient,onBackToList,initClientId,onConvertToFacture,apiConfig,showUpgradePrompt,invoiceTemplate,onOpenDoc}){ // eslint-disable-line
   const t=useT();
+  const T=useL();
   const isNew=!commande?.id;
   const todayStr=dk(new Date());
   const locked=commande?.statut==="Complétée";
@@ -2344,26 +2352,26 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
   const SC=STATUT_CMD_C;
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-      {onBackToClient?<><button onClick={onBackToList} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Clients</button><button onClick={onBackToClient} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Fiche client</button></>:<button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>}
+      {onBackToClient?<><button onClick={onBackToList} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToList}</button><button onClick={onBackToClient} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToClient}</button></>:<button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.back}</button>}
       <span style={{fontSize:14,fontWeight:700,color:t.text}}>{savedNumero||(isNew?"Nouvelle commande":commande?.numero)}</span>
       <span style={{fontSize:10,fontWeight:700,color:SC[form.statut]||t.textMuted,background:"rgba(0,0,0,0.06)",borderRadius:10,padding:"2px 8px"}}>{form.statut}</span>
       {form.sourceNumero&&<span style={{fontSize:10,color:t.textMuted}}>← Soumission {form.sourceNumero}</span>}
       <div style={{flex:1}}/>
-      <button onClick={doSave} style={{padding:"5px 14px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'Outfit',sans-serif"}}>💾 Sauvegarder</button>
-      {flash&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>✓</span>}
-      <button onClick={doPrint} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>🖨️ Imprimer</button>
-      <button onClick={openEmailModal} disabled={!client?.courriel} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:!client?.courriel?t.textDim:t.textSub,cursor:!client?.courriel?"default":"pointer",fontWeight:600,fontSize:11,opacity:!client?.courriel?0.5:1}}>📧 Envoyer</button>
+      <button onClick={doSave} style={{padding:"5px 14px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'Outfit',sans-serif"}}>💾 {T.save}</button>
+      {flash&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>{T.saved}</span>}
+      <button onClick={doPrint} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>🖨️ {T.print}</button>
+      <button onClick={openEmailModal} disabled={!client?.courriel} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:!client?.courriel?t.textDim:t.textSub,cursor:!client?.courriel?"default":"pointer",fontWeight:600,fontSize:11,opacity:!client?.courriel?0.5:1}}>{T.send}</button>
       {savedId&&!commande?.factureId&&onConvertToFacture
-        ?<button onClick={()=>onConvertToFacture({...form,id:savedId,numero:savedNumero,lignes})} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11}}>Facturer cette commande</button>
+        ?<button onClick={()=>onConvertToFacture({...form,id:savedId,numero:savedNumero,lignes})} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11}}>{T.facConvertInvoice}</button>
         :commande?.factureId
           ?<span style={{fontSize:10,color:"#22c55e",fontWeight:600}}>✓ {commande.factureNumero}</span>
-          :<button disabled style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"default",fontWeight:600,fontSize:11,opacity:0.4}}>Facturer cette commande</button>
+          :<button disabled style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"default",fontWeight:600,fontSize:11,opacity:0.4}}>{T.facConvertInvoice}</button>
       }
       {savedId&&form.statut==="Brouillon"&&(
         confirmDel
-          ?<><span style={{fontSize:11,color:"#ef4444"}}>Annuler ce document?</span>
-             <button onClick={doDelete} style={{padding:"4px 10px",borderRadius:5,border:"none",background:"#ef4444",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>Annuler la commande</button>
-             <button onClick={()=>setConfirmDel(false)} style={{padding:"4px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>Revenir</button></>
+          ?<><span style={{fontSize:11,color:"#ef4444"}}>{T.cancel}?</span>
+             <button onClick={doDelete} style={{padding:"4px 10px",borderRadius:5,border:"none",background:"#ef4444",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>{T.delete}</button>
+             <button onClick={()=>setConfirmDel(false)} style={{padding:"4px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>{T.back}</button></>
           :<button onClick={()=>setConfirmDel(true)} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:600,fontSize:11}}>🗑️</button>
       )}
     </div>
@@ -2400,8 +2408,8 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
           </select>
         </div>
         <div style={{flex:"2 1 180px"}}>
-          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Réf. client / Bon de commande</div>
-          <input value={form.referenceClient||""} onChange={e=>upd({referenceClient:e.target.value})} placeholder="Optionnel" style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.facCustomerRef}</div>
+          <input value={form.referenceClient||""} onChange={e=>upd({referenceClient:e.target.value})} placeholder={T.facOptional} style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
         </div>
       </div>
       {client&&<div style={{marginTop:8,padding:"5px 8px",borderRadius:6,background:t.section,border:`1px solid ${t.sectionBorder}`,fontSize:11,color:t.textSub}}>
@@ -2415,10 +2423,10 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
     <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
         <span style={{fontSize:12,fontWeight:700,color:t.text}}>Lignes</span>
-        {locked&&<span style={{fontSize:10,color:"#f59e0b",fontWeight:600,background:"rgba(245,158,11,0.1)",borderRadius:8,padding:"1px 7px"}}>Commande complétée — lignes verrouillées</span>}
+        {locked&&<span style={{fontSize:10,color:"#f59e0b",fontWeight:600,background:"rgba(245,158,11,0.1)",borderRadius:8,padding:"1px 7px"}}>{T.facLockedLines}</span>}
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1.8fr 2fr 65px 85px 65px 28px 28px 90px 24px",gap:5,padding:"2px 4px",marginBottom:4}}>
-        {["Produit","Description","Qté","Prix unit.","Remise %","TPS","TVQ","Total",""].map((h,i)=>(
+        {["Produit","Description",T.facQty,T.facUnitPrice,"Remise %","TPS","TVQ",T.facLineTotal,""].map((h,i)=>(
           <span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i>=2&&i<=7?"center":"left"}}>{h}</span>
         ))}
       </div>
@@ -2443,12 +2451,12 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
           <button onClick={()=>setLignes(ls=>ls.filter(x=>x.id!==l.id))} disabled={lignes.length===1||locked} style={{background:"none",border:"none",color:(lignes.length===1||locked)?t.textDim:"#ef4444",cursor:(lignes.length===1||locked)?"default":"pointer",fontSize:14,padding:0,fontWeight:700}}>✕</button>
         </div>);
       })}
-      {!locked&&<button onClick={()=>setLignes(ls=>[...ls,newLigne()])} style={{marginTop:2,padding:"5px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>+ Ajouter une ligne</button>}
+      {!locked&&<button onClick={()=>setLignes(ls=>[...ls,newLigne()])} style={{marginTop:2,padding:"5px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>{T.facAddLine}</button>}
     </div>
     <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
       <div style={{flex:"2 1 200px",background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
-        <div style={{fontSize:12,fontWeight:700,color:t.text,marginBottom:6}}>Notes / Conditions</div>
-        <textarea value={form.notes||""} onChange={e=>upd({notes:e.target.value})} rows={4} placeholder="Notes visibles sur le document imprimé..." style={{...inputS,width:"100%",boxSizing:"border-box",resize:"vertical",fontFamily:"'Outfit',sans-serif"}}/>
+        <div style={{fontSize:12,fontWeight:700,color:t.text,marginBottom:6}}>{T.facNotes}</div>
+        <textarea value={form.notes||""} onChange={e=>upd({notes:e.target.value})} rows={4} placeholder={T.facNotesPlaceholder} style={{...inputS,width:"100%",boxSizing:"border-box",resize:"vertical",fontFamily:"'Outfit',sans-serif"}}/>
       </div>
       <div style={{flex:"1 1 180px",background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12,display:"flex",flexDirection:"column",gap:5,justifyContent:"flex-end"}}>
         {[["Sous-total",totals.sousTotal],["TPS (5%)",totals.tpsTotal],["TVQ (9.975%)",totals.tvqTotal]].map(([label,val])=>(
@@ -2480,7 +2488,7 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
             <select value={depotForm.mode} onChange={e=>setDepotForm(p=>({...p,mode:e.target.value}))} style={{...inputS,fontSize:11}}>
               {MODES_PAIEMENT.map(m=><option key={m} value={m}>{m}</option>)}
             </select>
-            <input value={depotForm.reference} onChange={e=>setDepotForm(p=>({...p,reference:e.target.value}))} placeholder="Référence (optionnel)" style={{...inputS,fontSize:11}}/>
+            <input value={depotForm.reference} onChange={e=>setDepotForm(p=>({...p,reference:e.target.value}))} placeholder={T.facRefOptional} style={{...inputS,fontSize:11}}/>
             <div style={{display:"flex",gap:6}}>
               <button onClick={addDepot} style={{flex:1,padding:"4px 0",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>✓ Enregistrer</button>
               <button onClick={()=>setShowDepotForm(false)} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>Annuler</button>
@@ -2518,6 +2526,7 @@ function buildFactureHTML({numero,date,dateEcheance,statut,client,referenceClien
 }
 function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums,factures,saveFactures,commandes,soumissions,onBack,onBackToClient,onBackToList,initClientId,onEnregistrerPaiement,onCreditNote,apiConfig,showUpgradePrompt,invoiceTemplate,onOpenDoc}){
   const t=useT();
+  const T=useL();
   const isNew=!facture?.id;
   const todayStr=dk(new Date());
   const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none"};
@@ -2607,16 +2616,16 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
   const SC=STATUT_FAC_C;
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-      {onBackToClient?<><button onClick={onBackToList} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Clients</button><button onClick={onBackToClient} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Fiche client</button></>:<button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>}
+      {onBackToClient?<><button onClick={onBackToList} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToList}</button><button onClick={onBackToClient} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToClient}</button></>:<button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.back}</button>}
       <span style={{fontSize:14,fontWeight:700,color:t.text}}>{savedNumero||(isNew?"Nouvelle facture":facture?.numero)}</span>
       <span style={{fontSize:10,fontWeight:700,color:SC[displayStatut]||t.textMuted,background:"rgba(0,0,0,0.06)",borderRadius:10,padding:"2px 8px"}}>{displayStatut}{isOverdue&&" ⚠"}</span>
       <div style={{flex:1}}/>
-      <button onClick={doSave} style={{padding:"5px 14px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'Outfit',sans-serif"}}>💾 Sauvegarder</button>
-      {flash&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>✓</span>}
-      <button onClick={doPrint} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>🖨️ Imprimer</button>
-      <button onClick={openEmailModal} disabled={!client?.courriel} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:!client?.courriel?t.textDim:t.textSub,cursor:!client?.courriel?"default":"pointer",fontWeight:600,fontSize:11,opacity:!client?.courriel?0.5:1}}>📧 Envoyer</button>
-      <button onClick={()=>savedId&&onEnregistrerPaiement&&onEnregistrerPaiement(factures.find(f=>f.id===savedId)||{...form,id:savedId})} disabled={!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?t.cardBorder:"rgba(249,115,22,0.3)"}`,background:!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?t.section:"rgba(249,115,22,0.07)",color:!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?t.textDim:"#f97316",cursor:!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?"default":"pointer",fontWeight:600,fontSize:11,opacity:!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?0.4:1}}>Enregistrer un paiement</button>
-      <button onClick={()=>savedId&&onCreditNote&&onCreditNote(factures.find(f=>f.id===savedId)||{...form,id:savedId})} disabled={!savedId||!onCreditNote||["Annulée"].includes(form.statut)} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${!savedId||!onCreditNote||["Annulée"].includes(form.statut)?t.cardBorder:"rgba(239,68,68,0.3)"}`,background:!savedId||!onCreditNote||["Annulée"].includes(form.statut)?t.section:"rgba(239,68,68,0.07)",color:!savedId||!onCreditNote||["Annulée"].includes(form.statut)?t.textDim:"#ef4444",cursor:!savedId||!onCreditNote||["Annulée"].includes(form.statut)?"default":"pointer",fontWeight:600,fontSize:11,opacity:!savedId||!onCreditNote||["Annulée"].includes(form.statut)?0.4:1}}>→ Note de crédit</button>
+      <button onClick={doSave} style={{padding:"5px 14px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'Outfit',sans-serif"}}>💾 {T.save}</button>
+      {flash&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>{T.saved}</span>}
+      <button onClick={doPrint} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>🖨️ {T.print}</button>
+      <button onClick={openEmailModal} disabled={!client?.courriel} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:!client?.courriel?t.textDim:t.textSub,cursor:!client?.courriel?"default":"pointer",fontWeight:600,fontSize:11,opacity:!client?.courriel?0.5:1}}>{T.send}</button>
+      <button onClick={()=>savedId&&onEnregistrerPaiement&&onEnregistrerPaiement(factures.find(f=>f.id===savedId)||{...form,id:savedId})} disabled={!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?t.cardBorder:"rgba(249,115,22,0.3)"}`,background:!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?t.section:"rgba(249,115,22,0.07)",color:!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?t.textDim:"#f97316",cursor:!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?"default":"pointer",fontWeight:600,fontSize:11,opacity:!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?0.4:1}}>{T.facRecordPayment}</button>
+      <button onClick={()=>savedId&&onCreditNote&&onCreditNote(factures.find(f=>f.id===savedId)||{...form,id:savedId})} disabled={!savedId||!onCreditNote||["Annulée"].includes(form.statut)} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${!savedId||!onCreditNote||["Annulée"].includes(form.statut)?t.cardBorder:"rgba(239,68,68,0.3)"}`,background:!savedId||!onCreditNote||["Annulée"].includes(form.statut)?t.section:"rgba(239,68,68,0.07)",color:!savedId||!onCreditNote||["Annulée"].includes(form.statut)?t.textDim:"#ef4444",cursor:!savedId||!onCreditNote||["Annulée"].includes(form.statut)?"default":"pointer",fontWeight:600,fontSize:11,opacity:!savedId||!onCreditNote||["Annulée"].includes(form.statut)?0.4:1}}>{T.facCreateCreditNote}</button>
       {savedId&&!locked&&(
         confirmDel
           ?<><span style={{fontSize:11,color:"#ef4444"}}>Annuler ce document?</span>
@@ -2629,7 +2638,7 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
     {form.sourceNumero&&(
       <div style={{background:"rgba(249,115,22,0.06)",border:"1px solid rgba(249,115,22,0.2)",borderRadius:6,padding:"6px 12px",fontSize:11,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginTop:4}}>
         <span>📋</span>
-        <span style={{color:t.textSub}}>Créée depuis :</span>
+        <span style={{color:t.textSub}}>{T.facCreatedFrom}</span>
         <button onClick={()=>{
           const srcType=form.sourceType;
           const srcId=form.sourceId;
@@ -2654,7 +2663,7 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
           <input type="date" value={form.date||todayStr} onChange={e=>upd({date:e.target.value})} disabled={locked} style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace",opacity:locked?0.6:1}}/>
         </div>
         <div style={{flex:"1 1 120px"}}>
-          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Date d'échéance</div>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.facDueDate}</div>
           <input type="date" value={form.dateEcheance||""} onChange={e=>upd({dateEcheance:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace",borderColor:isOverdue?"#ef4444":undefined}}/>
         </div>
         <div style={{flex:"1 1 140px"}}>
@@ -2664,8 +2673,8 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
           </select>
         </div>
         <div style={{flex:"2 1 180px"}}>
-          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Réf. client / Bon de commande</div>
-          <input value={form.referenceClient||""} onChange={e=>upd({referenceClient:e.target.value})} placeholder="Optionnel" style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.facCustomerRef}</div>
+          <input value={form.referenceClient||""} onChange={e=>upd({referenceClient:e.target.value})} placeholder={T.facOptional} style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
         </div>
       </div>
       {client&&<div style={{marginTop:8,padding:"5px 8px",borderRadius:6,background:t.section,border:`1px solid ${t.sectionBorder}`,fontSize:11,color:t.textSub}}>
@@ -2710,17 +2719,17 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
     </div>
     <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
       <div style={{flex:"2 1 200px",background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
-        <div style={{fontSize:12,fontWeight:700,color:t.text,marginBottom:6}}>Notes</div>
-        <textarea value={form.notes||""} onChange={e=>upd({notes:e.target.value})} rows={3} placeholder="Notes visibles sur la facture imprimée..." style={{...inputS,width:"100%",boxSizing:"border-box",resize:"vertical",fontFamily:"'Outfit',sans-serif"}}/>
+        <div style={{fontSize:12,fontWeight:700,color:t.text,marginBottom:6}}>{T.facNotes}</div>
+        <textarea value={form.notes||""} onChange={e=>upd({notes:e.target.value})} rows={3} placeholder={T.facNotesPlaceholder} style={{...inputS,width:"100%",boxSizing:"border-box",resize:"vertical",fontFamily:"'Outfit',sans-serif"}}/>
       </div>
       <div style={{flex:"1 1 180px",background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12,display:"flex",flexDirection:"column",gap:5,justifyContent:"flex-end"}}>
-        {[["Sous-total",totals.sousTotal],["TPS (5%)",totals.tpsTotal],["TVQ (9.975%)",totals.tvqTotal]].map(([label,val])=>(
+        {[[T.facSubTotal,totals.sousTotal],[T.facTPS,totals.tpsTotal],[T.facTVQ,totals.tvqTotal]].map(([label,val])=>(
           <div key={label} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:t.textSub}}>
             <span>{label}</span><span style={{fontFamily:"'DM Mono',monospace"}}>{fmt(val)}</span>
           </div>
         ))}
         <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:800,color:t.text,borderTop:`2px solid ${t.dividerMid}`,paddingTop:6,marginTop:2}}>
-          <span>TOTAL</span><span style={{fontFamily:"'DM Mono',monospace",color:"#f97316"}}>{fmt(totals.total)}</span>
+          <span>{T.facTotal}</span><span style={{fontFamily:"'DM Mono',monospace",color:"#f97316"}}>{fmt(totals.total)}</span>
         </div>
         {acomptes.length>0&&<>
           <div style={{fontSize:10,color:t.textMuted,borderTop:`1px dashed ${t.dividerMid}`,paddingTop:5,marginTop:2,textTransform:"uppercase",letterSpacing:"0.5px"}}>Dépôts / Acomptes</div>
@@ -2771,7 +2780,7 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
             <select value={depotForm.mode} onChange={e=>setDepotForm(p=>({...p,mode:e.target.value}))} style={{...inputS,fontSize:11}}>
               {MODES_PAIEMENT.map(m=><option key={m} value={m}>{m}</option>)}
             </select>
-            <input value={depotForm.reference} onChange={e=>setDepotForm(p=>({...p,reference:e.target.value}))} placeholder="Référence (optionnel)" style={{...inputS,fontSize:11}}/>
+            <input value={depotForm.reference} onChange={e=>setDepotForm(p=>({...p,reference:e.target.value}))} placeholder={T.facRefOptional} style={{...inputS,fontSize:11}}/>
             <div style={{display:"flex",gap:6}}>
               <button onClick={addDepot} style={{flex:1,padding:"4px 0",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>✓ Enregistrer</button>
               <button onClick={()=>setShowDepotForm(false)} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>Annuler</button>
@@ -2806,6 +2815,7 @@ function buildReceiptHTML({numero,date,montant,mode,reference,note,client,factur
 }
 function EncaissementEditor({clientId,factureId,clients,factures,saveFactures,docNums,saveDocNums,companyInfo,encaisseData,persistEncaisse,onBack,onBackToClient,onBackToList,showUpgradePrompt}){
   const t=useT();
+  const T=useL();
   const isBulk=canUse('bulkEncaissement');
   const isAutoApply=canUse('autoApplyPayments');
   const todayStr=dk(new Date());
@@ -2926,7 +2936,7 @@ function EncaissementEditor({clientId,factureId,clients,factures,saveFactures,do
   if(confirmation){
     return(<div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={{display:"flex",alignItems:"center",gap:8}}>
-        {onBackToClient?<><button onClick={onBackToList} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Clients</button><button onClick={onBackToClient} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Fiche client</button></>:<button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>}
+        {onBackToClient?<><button onClick={onBackToList} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToList}</button><button onClick={onBackToClient} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToClient}</button></>:<button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.back}</button>}
         <span style={{fontSize:14,fontWeight:700,color:t.text}}>{confirmation.bulk?"Paiements enregistrés":"Paiement enregistré"}</span>
       </div>
       <div style={{background:"rgba(34,197,94,0.08)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:9,padding:16}}>
@@ -2946,8 +2956,8 @@ function EncaissementEditor({clientId,factureId,clients,factures,saveFactures,do
         </div>)}
       </div>
       <div style={{display:"flex",gap:8,justifyContent:"center"}}>
-        {!confirmation.bulk&&<button onClick={()=>openPDF(buildReceiptHTML({...confirmation.paiement,numero:confirmation.numero,montant:confirmation.montant,client,facture:selFac,companyInfo}))} style={{padding:"7px 16px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12}}>🖨️ Imprimer le reçu</button>}
-        <button onClick={onBack} style={{padding:"7px 16px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>Terminer</button>
+        {!confirmation.bulk&&<button onClick={()=>openPDF(buildReceiptHTML({...confirmation.paiement,numero:confirmation.numero,montant:confirmation.montant,client,facture:selFac,companyInfo}))} style={{padding:"7px 16px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12}}>🖨️ {T.print}</button>}
+        <button onClick={onBack} style={{padding:"7px 16px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>{T.close}</button>
       </div>
     </div>);
   }
@@ -2956,8 +2966,8 @@ function EncaissementEditor({clientId,factureId,clients,factures,saveFactures,do
   const colsFree="24px 80px 100px 1fr 90px 90px";
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-      {onBackToClient?<><button onClick={onBackToList} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Clients</button><button onClick={onBackToClient} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Fiche client</button></>:<button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>}
-      <span style={{fontSize:14,fontWeight:700,color:t.text}}>Enregistrer un paiement</span>
+      {onBackToClient?<><button onClick={onBackToList} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToList}</button><button onClick={onBackToClient} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToClient}</button></>:<button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.back}</button>}
+      <span style={{fontSize:14,fontWeight:700,color:t.text}}>{T.facRecordPayment}</span>
       {client&&<span style={{fontSize:12,color:t.textMuted}}>— {client.entreprise}</span>}
       {isBulk&&<span style={{fontSize:9.5,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"2px 7px",borderRadius:8}}>PRO · Multi-factures</span>}
     </div>
@@ -3093,6 +3103,7 @@ function buildNoteDeCreditHTML({numero,date,clientId,factureNumero,raison,raison
 }
 function NoteDeCreditEditor({creditNote,clients,factures,companyInfo,docNums,saveDocNums,creditNotes,saveCreditNotes,saveFactures,onBack,onBackToClient,onBackToList,initClientId,initFactureId,invoiceTemplate}){
   const t=useT();
+  const T=useL();
   const isNew=!creditNote?.id;
   const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none"};
   const resolvedFactureId=creditNote?.factureId||initFactureId||"";
@@ -3171,7 +3182,7 @@ function NoteDeCreditEditor({creditNote,clients,factures,companyInfo,docNums,sav
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     {/* Header bar */}
     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-      {onBackToClient?<><button onClick={onBackToList} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Clients</button><button onClick={onBackToClient} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Fiche client</button></>:<button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>}
+      {onBackToClient?<><button onClick={onBackToList} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToList}</button><button onClick={onBackToClient} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToClient}</button></>:<button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.back}</button>}
       <span style={{fontSize:14,fontWeight:700,color:"#ef4444"}}>Note de crédit</span>
       {fromInvoice&&<span style={{fontSize:11,color:t.textMuted,background:"rgba(59,130,246,0.07)",padding:"2px 8px",borderRadius:5}}>sur facture <strong>{linkedFac?.numero||"—"}</strong></span>}
       {savedId&&<span style={{fontSize:11,fontFamily:"'DM Mono',monospace",color:t.textMuted}}>{creditNotes.find(n=>n.id===savedId)?.numero}</span>}
@@ -3214,7 +3225,7 @@ function NoteDeCreditEditor({creditNote,clients,factures,companyInfo,docNums,sav
         </div>
         {form.raison==="Autre"&&<div style={{flex:"2 1 200px"}}>
           <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Explication <span style={{color:"#ef4444"}}>*</span></div>
-          <input value={form.raisonDetail||""} onChange={e=>upd({raisonDetail:e.target.value})} placeholder="Décrivez la raison..." disabled={locked} style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+          <input value={form.raisonDetail||""} onChange={e=>upd({raisonDetail:e.target.value})} placeholder={T.facReasonPlaceholder} disabled={locked} style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
         </div>}
       </div>
       {linkedFac&&<div style={{marginTop:8,fontSize:11,color:"#3b82f6",background:"rgba(59,130,246,0.06)",borderRadius:5,padding:"5px 8px",display:"flex",gap:12,flexWrap:"wrap"}}>
@@ -3261,7 +3272,7 @@ function NoteDeCreditEditor({creditNote,clients,factures,companyInfo,docNums,sav
       </div>
       {manualLines.map(l=>{const sub=(l.prixUnitaire||0)*(l.quantite||0)*(1-(l.remise||0)/100);return(
         <div key={l.id} style={{display:"grid",gridTemplateColumns:"1fr 60px 90px 60px 50px 50px 90px 24px",gap:4,marginBottom:4,alignItems:"center"}}>
-          <input value={l.description||""} onChange={e=>updManual(l.id,{description:e.target.value})} placeholder="Description du crédit..." disabled={locked} style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+          <input value={l.description||""} onChange={e=>updManual(l.id,{description:e.target.value})} placeholder={T.facCreditDescPlaceholder} disabled={locked} style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
           <input type="number" min="0.01" step="0.01" value={l.quantite||1} onChange={e=>updManual(l.id,{quantite:parseFloat(e.target.value)||0})} disabled={locked} style={{...inputS,textAlign:"right",fontFamily:"'DM Mono',monospace",width:"100%",boxSizing:"border-box"}}/>
           <input type="number" min="0" step="0.01" value={l.prixUnitaire||0} onChange={e=>updManual(l.id,{prixUnitaire:parseFloat(e.target.value)||0})} disabled={locked} style={{...inputS,textAlign:"right",fontFamily:"'DM Mono',monospace",width:"100%",boxSizing:"border-box"}}/>
           <input type="number" min="0" max="100" step="0.1" value={l.remise||0} onChange={e=>updManual(l.id,{remise:parseFloat(e.target.value)||0})} disabled={locked} style={{...inputS,textAlign:"right",fontFamily:"'DM Mono',monospace",width:"100%",boxSizing:"border-box"}}/>
@@ -3271,7 +3282,7 @@ function NoteDeCreditEditor({creditNote,clients,factures,companyInfo,docNums,sav
           {!locked&&<button onClick={()=>rmManual(l.id)} disabled={manualLines.length===1} style={{background:"none",border:"none",color:"#ef4444",cursor:manualLines.length===1?"default":"pointer",fontSize:13,opacity:manualLines.length===1?0.3:1}}>✕</button>}
         </div>
       );})}
-      {!locked&&<button onClick={addManual} style={{fontSize:11,padding:"3px 10px",borderRadius:5,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.05)",color:"#ef4444",cursor:"pointer",fontWeight:600,marginTop:4}}>+ Ligne</button>}
+      {!locked&&<button onClick={addManual} style={{fontSize:11,padding:"3px 10px",borderRadius:5,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.05)",color:"#ef4444",cursor:"pointer",fontWeight:600,marginTop:4}}>{T.facAddLine}</button>}
     </div>}
     {/* CUSTOM LINES (from-invoice mode extra lines) */}
     {fromInvoice&&<div style={{background:t.card,border:`1px solid rgba(239,68,68,0.1)`,borderRadius:9,padding:12}}>
@@ -3292,7 +3303,7 @@ function NoteDeCreditEditor({creditNote,clients,factures,companyInfo,docNums,sav
     {/* Totals */}
     <div style={{display:"flex",justifyContent:"flex-end"}}>
       <div style={{width:280,display:"flex",flexDirection:"column",gap:3}}>
-        {[["Sous-total",totals.sousTotal],["TPS (5%)",totals.tpsTotal],["TVQ (9.975%)",totals.tvqTotal]].map(([l,v])=>(
+        {[[T.facSubTotal,totals.sousTotal],[T.facTPS,totals.tpsTotal],[T.facTVQ,totals.tvqTotal]].map(([l,v])=>(
           <div key={l} style={{display:"flex",justifyContent:"space-between",fontSize:12,color:t.textSub}}>
             <span>{l}</span><span style={{fontFamily:"'DM Mono',monospace",color:"#ef4444"}}>({fmt(v)})</span>
           </div>
@@ -3310,9 +3321,9 @@ function NoteDeCreditEditor({creditNote,clients,factures,companyInfo,docNums,sav
     </div>
     {/* Actions */}
     <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-      <button onClick={doSave} disabled={!canSave} style={{padding:"6px 18px",borderRadius:6,border:"none",background:canSave?"linear-gradient(135deg,#ef4444,#dc2626)":"rgba(255,255,255,0.05)",color:canSave?"#fff":t.textDim,cursor:canSave?"pointer":"default",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>✓ {savedId?"Sauvegarder":"Créer la note de crédit"}</button>
-      {saved&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>Sauvegardé ✓</span>}
-      {savedId&&<button onClick={doPrint} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>🖨️ Imprimer</button>}
+      <button onClick={doSave} disabled={!canSave} style={{padding:"6px 18px",borderRadius:6,border:"none",background:canSave?"linear-gradient(135deg,#ef4444,#dc2626)":"rgba(255,255,255,0.05)",color:canSave?"#fff":t.textDim,cursor:canSave?"pointer":"default",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>✓ {T.save}</button>
+      {saved&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>{T.saved}</span>}
+      {savedId&&<button onClick={doPrint} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>🖨️ {T.print}</button>}
     </div>
   </div>);
 }
@@ -3427,6 +3438,7 @@ function getNextDueDate(rec,today){
 }
 
 function RecurringTab({clientId,recurrents,saveRecurrents,produits,showUpgradePrompt,t,inputS}){
+  const T=useL();
   const isRecurring=canUse("recurringInvoices");
   const BLANK_REC={clientId,description:"",lignes:[{description:"",quantite:1,prixUnitaire:0,taxable:true,remise:0}],frequence:"Mensuel",jourFacturation:1,dateDebut:dk(new Date()),dateFin:null,autoEnvoyer:false,actif:true};
   const myRecs=useMemo(()=>recurrents.filter(r=>r.clientId===clientId),[recurrents,clientId]);
@@ -3493,8 +3505,8 @@ function RecurringTab({clientId,recurrents,saveRecurrents,produits,showUpgradePr
       ))}
       <button onClick={addLigne} style={{fontSize:9.5,color:"#f97316",background:"none",border:"none",cursor:"pointer",fontWeight:600,marginBottom:8}}>+ Ajouter une ligne</button>
       <div style={{display:"flex",gap:6}}>
-        <button onClick={saveNew} disabled={!form.lignes[0]?.description?.trim()} style={{padding:"5px 14px",borderRadius:5,border:"none",background:form.lignes[0]?.description?.trim()?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:form.lignes[0]?.description?.trim()?"#fff":t.textDim,cursor:form.lignes[0]?.description?.trim()?"pointer":"default",fontWeight:700,fontSize:11}}>Enregistrer</button>
-        <button onClick={()=>setAdding(false)} style={{padding:"5px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>Annuler</button>
+        <button onClick={saveNew} disabled={!form.lignes[0]?.description?.trim()} style={{padding:"5px 14px",borderRadius:5,border:"none",background:form.lignes[0]?.description?.trim()?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:form.lignes[0]?.description?.trim()?"#fff":t.textDim,cursor:form.lignes[0]?.description?.trim()?"pointer":"default",fontWeight:700,fontSize:11}}>{T.save}</button>
+        <button onClick={()=>setAdding(false)} style={{padding:"5px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>{T.cancel}</button>
       </div>
     </div>)}
     {myRecs.length===0&&!adding&&<div style={{textAlign:"center",padding:"16px 0",color:t.textMuted,fontSize:11}}>Aucune facture récurrente configurée.</div>}
@@ -3513,7 +3525,7 @@ function RecurringTab({clientId,recurrents,saveRecurrents,produits,showUpgradePr
           <div style={{display:"flex",gap:4,alignItems:"center"}}>
             {due&&<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"2px 7px",borderRadius:8}}>À générer</span>}
             <button onClick={()=>toggleActif(r.id)} style={{fontSize:9.5,padding:"2px 7px",borderRadius:4,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer"}}>{r.actif?"Désactiver":"Activer"}</button>
-            <button onClick={()=>deleteRec(r.id)} style={{fontSize:9.5,padding:"2px 7px",borderRadius:4,border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer"}}>Supprimer</button>
+            <button onClick={()=>deleteRec(r.id)} style={{fontSize:9.5,padding:"2px 7px",borderRadius:4,border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer"}}>{T.delete}</button>
           </div>
         </div>
       </div>);
@@ -3523,6 +3535,7 @@ function RecurringTab({clientId,recurrents,saveRecurrents,produits,showUpgradePr
 
 function RecurringGenerateModal({recurrents,saveRecurrents,factures,saveFactures,docNums,saveDocNums,clients,companyInfo,apiConfig,onClose}){
   const t=useT();
+  const T=useL();
   const today=dk(new Date());
   const due=useMemo(()=>recurrents.filter(r=>isRecurringDue(r,today)),[recurrents,today]);
   const [generating,setGenerating]=useState(false);
@@ -3566,7 +3579,7 @@ function RecurringGenerateModal({recurrents,saveRecurrents,factures,saveFactures
   return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}>
     <div style={{background:"#1a1d26",border:"1px solid rgba(249,115,22,0.3)",borderRadius:12,padding:24,maxWidth:540,width:"90%",maxHeight:"80vh",overflowY:"auto"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-        <span style={{fontSize:14,fontWeight:700,color:"#fff"}}>🔄 Factures récurrentes à générer</span>
+        <span style={{fontSize:14,fontWeight:700,color:"#fff"}}>🔄 {T.recurringTitle}</span>
         <button onClick={onClose} style={{background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:16}}>✕</button>
       </div>
       {results
@@ -3578,7 +3591,7 @@ function RecurringGenerateModal({recurrents,saveRecurrents,factures,saveFactures
               <span style={{fontFamily:"'DM Mono',monospace",color:"#f97316"}}>{fmt(computeSoumTotals(fac.lignes).total)}</span>
             </div>
           ))}
-          <button onClick={onClose} style={{marginTop:16,padding:"7px 20px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>Terminer</button>
+          <button onClick={onClose} style={{marginTop:16,padding:"7px 20px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>{T.close}</button>
         </div>)
         :(<div>
           {due.length===0
@@ -3598,7 +3611,7 @@ function RecurringGenerateModal({recurrents,saveRecurrents,factures,saveFactures
                 <button onClick={doGenerate} disabled={generating} style={{padding:"7px 20px",borderRadius:6,border:"none",background:generating?"rgba(255,255,255,0.1)":"linear-gradient(135deg,#f97316,#ea580c)",color:generating?"#6b7280":"#fff",cursor:generating?"default":"pointer",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>
                   {generating?"Génération…":`Créer ${due.length} facture${due.length!==1?"s":""}`}
                 </button>
-                <button onClick={onClose} style={{padding:"7px 14px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:"#9ca3af",cursor:"pointer",fontSize:12}}>Annuler</button>
+                <button onClick={onClose} style={{padding:"7px 14px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:"#9ca3af",cursor:"pointer",fontSize:12}}>{T.cancel}</button>
               </div>
             </div>}
         </div>)}
@@ -3607,6 +3620,7 @@ function RecurringGenerateModal({recurrents,saveRecurrents,factures,saveFactures
 }
 
 function ClientProfile({client,saveClient,onBack,onNewDoc,onOpenDoc,soumissions,commandes,factures,creditNotes,companyInfo,invoiceTemplate,inputS,t,recurrents,saveRecurrents,showUpgradePrompt}){
+  const T=useL();
   const [form,setForm]=useState({...client});
   const [profileTab,setProfileTab]=useState("factures");
   const [saved,setSaved]=useState(false);
@@ -3624,13 +3638,13 @@ function ClientProfile({client,saveClient,onBack,onNewDoc,onOpenDoc,soumissions,
   const rowS={display:"grid",gap:6,padding:"6px 6px",borderBottom:`1px solid ${t.divider}`,cursor:"pointer",alignItems:"center"};
   const EmptyMsg=()=><div style={{textAlign:"center",padding:"20px 0",color:t.textMuted,fontSize:11}}>Aucun enregistrement.</div>;
   const myRecs=(recurrents||[]).filter(r=>r.clientId===cId);
-  const HISTORY_TABS=[{id:"factures",label:`Factures (${cFac.length})`},{id:"commandes",label:`Commandes (${cCmd.length})`},{id:"soumissions",label:`Soumissions (${cSou.length})`},{id:"encaissements",label:`Encaissements (${cPaiements.length})`},{id:"recurrentes",label:`Récurrentes (${myRecs.length})`},{id:"notes",label:"Notes"}];
+  const HISTORY_TABS=[{id:"factures",label:`${T.filterInvoices} (${cFac.length})`},{id:"commandes",label:`${T.filterOrders} (${cCmd.length})`},{id:"soumissions",label:`${T.filterQuotes} (${cSou.length})`},{id:"encaissements",label:`Encaissements (${cPaiements.length})`},{id:"recurrentes",label:`Récurrentes (${myRecs.length})`},{id:"notes",label:"Notes"}];
   if(showEtatCompte){
     return <EtatDeCompteViewer clientId={cId} clients={[client]} factures={factures} creditNotes={creditNotes||[]} companyInfo={companyInfo} invoiceTemplate={effectiveTemplate} onBack={()=>setShowEtatCompte(false)}/>;
   }
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-      <button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>
+      <button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.back}</button>
       <div style={{flex:1}}>
         <span style={{fontSize:14,fontWeight:700,color:t.text}}>{client.entreprise}</span>
         <span style={{fontSize:10,color:t.textMuted,fontFamily:"'DM Mono',monospace",marginLeft:8}}>{client.code}</span>
@@ -3645,18 +3659,18 @@ function ClientProfile({client,saveClient,onBack,onNewDoc,onOpenDoc,soumissions,
       </button>
     </div>
     <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-      <button onClick={()=>onNewDoc&&onNewDoc("soumission",cId)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ Nouvelle soumission</button>
-      <button onClick={()=>onNewDoc&&onNewDoc("commande",cId)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ Nouvelle commande</button>
-      <button onClick={()=>onNewDoc&&onNewDoc("facture",cId)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ Nouvelle facture</button>
-      <button onClick={()=>onNewDoc&&onNewDoc("encaissement",cId)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ Nouvel encaissement</button>
-      <button onClick={()=>onNewDoc&&onNewDoc("creditnote",cId)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:700}}>+ Note de crédit</button>
-      <button onClick={()=>setShowEtatCompte(true)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600}}>État de compte</button>
+      <button onClick={()=>onNewDoc&&onNewDoc("soumission",cId)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ {T.facNewQuote}</button>
+      <button onClick={()=>onNewDoc&&onNewDoc("commande",cId)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ {T.facNewOrder}</button>
+      <button onClick={()=>onNewDoc&&onNewDoc("facture",cId)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ {T.facNewInvoice}</button>
+      <button onClick={()=>onNewDoc&&onNewDoc("encaissement",cId)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ {T.facRecordPayment}</button>
+      <button onClick={()=>onNewDoc&&onNewDoc("creditnote",cId)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:700}}>+ {T.facNewCreditNote}</button>
+      <button onClick={()=>setShowEtatCompte(true)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600}}>{T.clientAccountStatement}</button>
     </div>
     <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
       <ClientForm form={form} setForm={setForm} inputS={inputS} t={t}/>
       <div style={{display:"flex",gap:6,marginTop:10,alignItems:"center"}}>
-        <button onClick={doSave} disabled={!form.entreprise?.trim()} style={{padding:"6px 16px",borderRadius:6,border:"none",background:form.entreprise?.trim()?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:form.entreprise?.trim()?"#fff":t.textDim,cursor:form.entreprise?.trim()?"pointer":"default",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>✓ Sauvegarder</button>
-        {saved&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>Sauvegardé ✓</span>}
+        <button onClick={doSave} disabled={!form.entreprise?.trim()} style={{padding:"6px 16px",borderRadius:6,border:"none",background:form.entreprise?.trim()?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:form.entreprise?.trim()?"#fff":t.textDim,cursor:form.entreprise?.trim()?"pointer":"default",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>✓ {T.save}</button>
+        {saved&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>{T.saved}</span>}
       </div>
     </div>
     {/* History tabs */}
@@ -3734,6 +3748,7 @@ function ClientProfile({client,saveClient,onBack,onNewDoc,onOpenDoc,soumissions,
 }
 function ClientsSection({clients,saveClients,onNewDoc,onOpenDoc,soumissions,commandes,factures,creditNotes,companyInfo,invoiceTemplate,recurrents,saveRecurrents,showUpgradePrompt,selectedClientId,setSelectedClientId}){
   const t=useT();
+  const T=useL();
   const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none"};
   const BLANK={code:"",entreprise:"",contact:"",adresse:"",ville:"",province:"QC",codePostal:"",pays:"Canada",tel1:"",tel2:"",cell:"",courriel:"",langue:"Français",conditionsPaiement:"Net 30",nbJours:"",notes:"",statut:"actif"};
   const [search,setSearch]=useState("");
@@ -3787,8 +3802,8 @@ function ClientsSection({clients,saveClients,onNewDoc,onOpenDoc,soumissions,comm
       <span style={{fontSize:12,fontWeight:700,color:"#f97316",display:"block",marginBottom:8}}>Nouveau client</span>
       <ClientForm form={form} setForm={setForm} inputS={inputS} t={t} autoFocusEntreprise/>
       <div style={{display:"flex",gap:6,marginTop:8}}>
-        <button onClick={addClient} disabled={!form.entreprise.trim()} style={{padding:"6px 16px",borderRadius:6,border:"none",background:form.entreprise.trim()?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:form.entreprise.trim()?"#fff":t.textDim,cursor:form.entreprise.trim()?"pointer":"default",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>Ajouter</button>
-        <button onClick={()=>{setAddOpen(false);setForm(BLANK);}} style={{padding:"6px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>Annuler</button>
+        <button onClick={addClient} disabled={!form.entreprise.trim()} style={{padding:"6px 16px",borderRadius:6,border:"none",background:form.entreprise.trim()?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:form.entreprise.trim()?"#fff":t.textDim,cursor:form.entreprise.trim()?"pointer":"default",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>{T.save}</button>
+        <button onClick={()=>{setAddOpen(false);setForm(BLANK);}} style={{padding:"6px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>{T.cancel}</button>
       </div>
     </div>)}
     {filtered.length>0&&(<div style={{display:"grid",gridTemplateColumns:"90px 2fr 1.5fr 1fr 1fr 100px",gap:6,padding:"3px 8px",borderBottom:`1px solid ${t.dividerMid}`}}>
@@ -3823,6 +3838,7 @@ function genProdCode(produits){
   return`PROD-${String(max+1).padStart(3,"0")}`;
 }
 function ProdForm({form,setForm,customU,setCustomU,onSave,onCancel,isNew,activeCats,inputS,t}){
+  const T=useL();
   return(<div style={{display:"flex",flexDirection:"column",gap:7,padding:isNew?12:6}}>
     {isNew&&<span style={{fontSize:12,fontWeight:700,color:"#f97316",marginBottom:2}}>Nouveau produit / service</span>}
     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
@@ -3876,13 +3892,14 @@ function ProdForm({form,setForm,customU,setCustomU,onSave,onCancel,isNew,activeC
       <input value={form.notes||""} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Notes..." style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
     </div>
     <div style={{display:"flex",gap:6,marginTop:2}}>
-      <button onClick={onSave} disabled={!form.description?.trim()||!form.categorieId} style={{padding:"6px 16px",borderRadius:6,border:"none",background:(form.description?.trim()&&form.categorieId)?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:(form.description?.trim()&&form.categorieId)?"#fff":t.textDim,cursor:(form.description?.trim()&&form.categorieId)?"pointer":"default",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>{isNew?"Ajouter":"✓ Sauvegarder"}</button>
-      <button onClick={onCancel} style={{padding:"6px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>Annuler</button>
+      <button onClick={onSave} disabled={!form.description?.trim()||!form.categorieId} style={{padding:"6px 16px",borderRadius:6,border:"none",background:(form.description?.trim()&&form.categorieId)?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:(form.description?.trim()&&form.categorieId)?"#fff":t.textDim,cursor:(form.description?.trim()&&form.categorieId)?"pointer":"default",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>{T.save}</button>
+      <button onClick={onCancel} style={{padding:"6px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>{T.cancel}</button>
     </div>
   </div>);
 }
 function ProduitsSection({produits,saveProduits,categories}){
   const t=useT();
+  const T=useL();
   const activeCats=useMemo(()=>categories.filter(c=>c.actif!==false),[categories]);
   const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none"};
   const BLANK={code:"",description:"",categorieId:"",prixUnitaire:"",uniteMesure:"unité",tps:true,tvq:true,notes:"",actif:true};
