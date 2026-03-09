@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('api', {
     getInfo: () => ipcRenderer.invoke('backup:getInfo'),
     openDir: () => ipcRenderer.invoke('backup:openDir'),
   },
+  email: {
+    sendResend: (opts) => ipcRenderer.invoke('email:sendResend', opts),
+  },
   updater: {
     onAvailable: (cb) => ipcRenderer.on('update:available', () => cb()),
     downloadAndInstall: () => ipcRenderer.invoke('updater:downloadAndInstall'),

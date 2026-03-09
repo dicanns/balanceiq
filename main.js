@@ -166,6 +166,41 @@ ipcMain.handle('backup:openDir', () => {
   shell.openPath(dir);
 });
 
+// IPC handler — send email via Resend API
+ipcMain.handle('email:sendResend', async (event, {apiKey, from, to, subject, html, attachments}) => {
+  return new Promise((resolve) => {
+    const body = JSON.stringify({from, to, subject, html, attachments});
+    const req = net.request({
+      method: 'POST',
+      url: 'https://api.resend.com/emails',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    req.on('response', (response) => {
+      const chunks = [];
+      response.on('data', (chunk) => chunks.push(chunk));
+      response.on('end', () => {
+        try {
+          const json = JSON.parse(Buffer.concat(chunks).toString('utf-8'));
+          if (response.statusCode >= 200 && response.statusCode < 300) {
+            resolve({ success: true, id: json.id });
+          } else {
+            resolve({ error: json.message || `Erreur ${response.statusCode}` });
+          }
+        } catch {
+          resolve({ error: 'Réponse invalide du serveur courriel.' });
+        }
+      });
+      response.on('error', () => resolve({ error: 'Erreur réseau — courriel.' }));
+    });
+    req.on('error', () => resolve({ error: 'Erreur réseau — courriel.' }));
+    req.write(body);
+    req.end();
+  });
+});
+
 // IPC handler — gas price scraper (CAA Canada — prix moyen national, source statique)
 // Note: La Régie de l'énergie charge ses prix via JavaScript (non scrappable).
 // CAA Canada publie le prix moyen du jour en HTML statique sur https://www.caa.ca/gas-prices/

@@ -1283,15 +1283,91 @@ function FacturationDashboard({soumissions,commandes,factures,creditNotes,client
   </div>);
 }
 
+// ── ÉTAT DE COMPTE ──
+function buildEtatDeCompteHTML({client,factures,creditNotes,dateFrom,dateTo,companyInfo}){
+  const fd=s=>s?new Date(s+"T12:00:00").toLocaleDateString("fr-CA",{year:"numeric",month:"long",day:"numeric"}):"";
+  const fc=v=>`$${Math.abs(v).toFixed(2)}`;
+  const logo=companyInfo.logo?`<img src="${companyInfo.logo}" style="height:48px;object-fit:contain;display:block;margin-bottom:4px"/>`:`<div style="font-size:24px;font-weight:900;background:linear-gradient(135deg,#f97316,#ea580c);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:2px">BIQ</div>`;
+  const cli=client?[client.entreprise,client.adresse,client.ville?`${client.ville}, ${client.province||""} ${client.codePostal||""}`:null,client.tel1,client.courriel].filter(Boolean).join("<br/>"):"—";
+
+  // Build transaction list in date order
+  const txns=[];
+  for(const fac of factures.filter(f=>f.clientId===client?.id&&!["Annulée","Brouillon"].includes(f.statut))){
+    const tot=computeSoumTotals(fac.lignes).total;
+    if(fac.date>=dateFrom&&fac.date<=dateTo)txns.push({date:fac.date,type:"Facture",ref:fac.numero,debit:tot,credit:0});
+    for(const p of (fac.paiements||[])){
+      if(p.date>=dateFrom&&p.date<=dateTo)txns.push({date:p.date,type:"Paiement",ref:p.numero||"—",debit:0,credit:p.montant||0});
+    }
+  }
+  for(const cn of (creditNotes||[]).filter(c=>c.clientId===client?.id&&!["Annulée"].includes(c.statut))){
+    const tot=computeSoumTotals(cn.lignes).total;
+    if(cn.date>=dateFrom&&cn.date<=dateTo)txns.push({date:cn.date,type:"Note de crédit",ref:cn.numero,debit:0,credit:tot});
+  }
+  txns.sort((a,b)=>a.date.localeCompare(b.date));
+
+  let balance=0;
+  const rows=txns.map(tx=>{
+    balance+=tx.debit-tx.credit;
+    const balColor=balance>0?"#ef4444":balance<0?"#22c55e":"#6b7280";
+    return`<tr style="border-bottom:1px solid #eee"><td style="padding:5px 8px">${fd(tx.date)}</td><td style="padding:5px 8px">${tx.type}</td><td style="padding:5px 8px;font-family:monospace">${tx.ref}</td><td style="padding:5px 8px;text-align:right;font-family:monospace">${tx.debit>0?fc(tx.debit):"—"}</td><td style="padding:5px 8px;text-align:right;font-family:monospace;color:#22c55e">${tx.credit>0?fc(tx.credit):"—"}</td><td style="padding:5px 8px;text-align:right;font-family:monospace;font-weight:700;color:${balColor}">${fc(balance)}</td></tr>`;
+  }).join("");
+
+  // Aging summary as of dateTo
+  const asOfDate=new Date(dateTo+"T12:00:00");
+  let courant=0,j30=0,j60=0,j90=0;
+  for(const fac of factures.filter(f=>f.clientId===client?.id&&!["Payée","Créditée","Annulée","Brouillon"].includes(f.statut))){
+    const paye=(fac.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);
+    const solde=computeSoumTotals(fac.lignes).total-paye;
+    if(solde<=0.005)continue;
+    let days=0;if(fac.dateEcheance){const due=new Date(fac.dateEcheance+"T12:00:00");days=Math.floor((asOfDate-due)/86400000);}
+    if(days<=0)courant+=solde;else if(days<=30)j30+=solde;else if(days<=60)j60+=solde;else j90+=solde;
+  }
+  const totalDu=courant+j30+j60+j90;
+
+  return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>État de compte — ${client?.entreprise||""}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}table{width:100%;border-collapse:collapse}th{background:#f97316;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.aging{display:flex;gap:0;margin-top:12px;border:1px solid #eee;border-radius:4px;overflow:hidden}.aging-cell{flex:1;padding:8px;text-align:center;border-right:1px solid #eee}.aging-cell:last-child{border-right:none}.aging-label{font-size:10px;color:#888;margin-bottom:2px}.aging-val{font-size:14px;font-weight:700}.msg{background:#fff9e6;border-left:4px solid #f97316;padding:12px 16px;margin-top:20px;font-size:12px;color:#555}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${companyInfo.nom||""}</div><div style="font-size:11px;color:#555">${[companyInfo.adresse,companyInfo.ville].filter(Boolean).join(", ")}</div>${companyInfo.telephone?`<div style="font-size:11px">${companyInfo.telephone}</div>`:""}${companyInfo.courriel?`<div style="font-size:11px">${companyInfo.courriel}</div>`:""}</div><div style="text-align:right"><div style="font-size:22px;font-weight:900;color:#f97316">ÉTAT DE COMPTE</div><div style="font-size:11px;color:#555;margin-top:4px">Période: ${fd(dateFrom)} au ${fd(dateTo)}</div><div style="font-size:11px;color:#555;margin-top:2px">Émis le: ${fd(dk(new Date()))}</div></div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;margin-bottom:4px">Client</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>Date</th><th>Type</th><th>Référence</th><th style="text-align:right">Débit</th><th style="text-align:right">Crédit</th><th style="text-align:right">Solde courant</th></tr></thead><tbody>${rows||"<tr><td colspan='6' style='padding:12px;text-align:center;color:#888'>Aucune transaction dans cette période.</td></tr>"}</tbody></table>${totalDu>0.005?`<div style="margin-top:16px"><div style="font-size:11px;font-weight:700;color:#555;margin-bottom:6px;text-transform:uppercase">Sommaire de vieillissement au ${fd(dateTo)}</div><div class="aging"><div class="aging-cell"><div class="aging-label">Courant</div><div class="aging-val" style="color:#22c55e">$${courant.toFixed(2)}</div></div><div class="aging-cell"><div class="aging-label">30 jours</div><div class="aging-val" style="color:#eab308">$${j30.toFixed(2)}</div></div><div class="aging-cell"><div class="aging-label">60 jours</div><div class="aging-val" style="color:#f97316">$${j60.toFixed(2)}</div></div><div class="aging-cell"><div class="aging-label">90+ jours</div><div class="aging-val" style="color:#ef4444">$${j90.toFixed(2)}</div></div><div class="aging-cell" style="background:#f97316;color:#fff"><div class="aging-label" style="color:rgba(255,255,255,0.8)">Total dû</div><div class="aging-val">$${totalDu.toFixed(2)}</div></div></div><div class="msg">Veuillez faire parvenir votre paiement à votre plus tôt. Pour toute question, communiquez avec nous à ${companyInfo.courriel||""}.</div></div>`:"<div style='margin-top:12px;padding:10px;background:#f0fdf4;border-left:4px solid #22c55e;font-size:12px;color:#166534'>✓ Aucun solde impayé — compte en règle.</div>"}<div class="ftr">${companyInfo.numeroTPS?`N° TPS: ${companyInfo.numeroTPS}`:""}${companyInfo.numeroTVQ?` | N° TVQ: ${companyInfo.numeroTVQ}`:""}</div></body></html>`;
+}
+
+function EtatDeCompteViewer({clientId,clients,factures,creditNotes,companyInfo,onBack}){
+  const t=useT();
+  const client=clients.find(c=>c.id===clientId);
+  const now=dk(new Date());
+  const firstOfYear=now.slice(0,4)+"-01-01";
+  const [dateFrom,setDateFrom]=useState(firstOfYear);
+  const [dateTo,setDateTo]=useState(now);
+  const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:11,padding:"3px 6px",outline:"none",fontFamily:"'DM Mono',monospace"};
+  const html=useMemo(()=>buildEtatDeCompteHTML({client,factures,creditNotes,dateFrom,dateTo,companyInfo}),[client,factures,creditNotes,dateFrom,dateTo,companyInfo]);
+  return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
+    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+      <button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>
+      <span style={{fontSize:14,fontWeight:700,color:t.text}}>État de compte</span>
+      {client&&<span style={{fontSize:12,color:t.textMuted}}>— {client.entreprise}</span>}
+    </div>
+    <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:8,padding:"8px 12px"}}>
+      <span style={{fontSize:11,color:t.textMuted}}>Période :</span>
+      <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={inputS}/>
+      <span style={{fontSize:11,color:t.textMuted}}>au</span>
+      <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={inputS}/>
+      <button onClick={()=>openPDF(html)} style={{marginLeft:"auto",padding:"5px 14px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'Outfit',sans-serif"}}>🖨️ Imprimer / PDF</button>
+    </div>
+    <div style={{border:`1px solid ${t.cardBorder}`,borderRadius:8,overflow:"hidden",background:"#fff"}}>
+      <iframe srcDoc={html} style={{width:"100%",height:520,border:"none"}} title="État de compte"/>
+    </div>
+  </div>);
+}
+
 // ── AGING REPORT ──
-function AgingReport({factures,clients,showUpgradePrompt}){
+function AgingReport({factures,clients,creditNotes,companyInfo,apiConfig,showUpgradePrompt}){
   const t=useT();
   const [asOf,setAsOf]=useState(dk(new Date()));
   const [sortCol,setSortCol]=useState("montantDu");
   const [sortDir,setSortDir]=useState(-1);
   const [viewMode,setViewMode]=useState("sommaire"); // "sommaire" | "detail"
   const [expanded,setExpanded]=useState(new Set());
+  const [etatClient,setEtatClient]=useState(null); // clientId | null — show état de compte viewer
+  const [selClients,setSelClients]=useState(new Set()); // selected for bulk email
+  const [bulkStatus,setBulkStatus]=useState(null); // null | {sending,current,total} | {done,sent,failed:[]}
   const isDetailed=canUse("detailedAging");
+  const isBulkEmail=canUse("bulkEmailStatements");
   const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:11,padding:"3px 6px",outline:"none",fontFamily:"'DM Mono',monospace"};
 
   const data=useMemo(()=>{
@@ -1325,10 +1401,62 @@ function AgingReport({factures,clients,showUpgradePrompt}){
 
   const TabBtn=({active,onClick,children})=>(<button onClick={onClick} style={{padding:"3px 12px",borderRadius:5,border:`1px solid ${active?"#f97316":t.cardBorder}`,background:active?"rgba(249,115,22,0.1)":t.section,color:active?"#f97316":t.textSub,cursor:"pointer",fontSize:10.5,fontWeight:active?700:400}}>{children}</button>);
 
+  const toggleClientSel=cid=>{
+    if(!isBulkEmail){if(showUpgradePrompt)showUpgradePrompt("bulkEmailStatements");return;}
+    setSelClients(prev=>{const n=new Set(prev);if(n.has(cid))n.delete(cid);else n.add(cid);return n;});
+  };
+  const selectAll=()=>{
+    if(!isBulkEmail){if(showUpgradePrompt)showUpgradePrompt("bulkEmailStatements");return;}
+    setSelClients(new Set(sorted.map(r=>r.clientId)));
+  };
+
+  const sendBulkStatements=async()=>{
+    if(!isBulkEmail){if(showUpgradePrompt)showUpgradePrompt("bulkEmailStatements");return;}
+    const resendKey=apiConfig?.resendKey;
+    if(!resendKey){alert("Clé API Resend non configurée. Ajoutez-la dans Paramètres > Courriel.");return;}
+    const fromAddr=apiConfig?.resendFrom||"noreply@balanceiq.ca";
+    const toSend=sorted.filter(r=>selClients.has(r.clientId)&&r.client?.courriel);
+    const noEmail=sorted.filter(r=>selClients.has(r.clientId)&&!r.client?.courriel);
+    if(!toSend.length){alert(noEmail.length?"Les clients sélectionnés n'ont pas d'adresse courriel.":"Sélectionnez au moins un client.");return;}
+    setBulkStatus({sending:true,current:0,total:toSend.length});
+    const sent=[];const failed=[...noEmail.map(r=>({client:r.client,reason:"Pas de courriel"}))];
+    const now=dk(new Date());
+    const firstOfYear=now.slice(0,4)+"-01-01";
+    for(let i=0;i<toSend.length;i++){
+      const row=toSend[i];
+      setBulkStatus({sending:true,current:i+1,total:toSend.length});
+      try{
+        const html=buildEtatDeCompteHTML({client:row.client,factures,creditNotes:creditNotes||[],dateFrom:firstOfYear,dateTo:now,companyInfo});
+        const subject=`État de compte — ${companyInfo.nom||"BalanceIQ"} — ${now}`;
+        const body=`<p>Bonjour,</p><p>Veuillez trouver ci-joint votre état de compte au ${now}.</p><p>Solde dû : <strong>$${row.montantDu.toFixed(2)}</strong></p><p>Pour toute question, communiquez avec nous.</p><p>Cordialement,<br/>${companyInfo.nom||""}</p>`;
+        const r=await window.api.email.sendResend({apiKey:resendKey,from:fromAddr,to:row.client.courriel,subject,html:body+`\n<hr/>\n${html}`,attachments:[]});
+        if(r?.success)sent.push(row.client);
+        else failed.push({client:row.client,reason:r?.error||"Erreur inconnue"});
+      }catch(e){failed.push({client:row.client,reason:e.message||"Erreur"});}
+    }
+    setBulkStatus({done:true,sent:sent.length,failed});
+    setSelClients(new Set());
+  };
+
+  // Show état de compte viewer for a specific client
+  if(etatClient){
+    return<EtatDeCompteViewer clientId={etatClient} clients={clients} factures={factures} creditNotes={creditNotes||[]} companyInfo={companyInfo} onBack={()=>setEtatClient(null)}/>;
+  }
+
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
       <span style={{fontSize:13.5,fontWeight:700,color:t.text}}>Âge des comptes</span>
       <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+        {isBulkEmail&&selClients.size>0&&(
+          <button onClick={sendBulkStatements} style={{padding:"4px 12px",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:10.5,fontFamily:"'Outfit',sans-serif"}}>
+            📧 Envoyer les états de compte ({selClients.size})
+          </button>
+        )}
+        {!isBulkEmail&&sorted.length>0&&(
+          <button onClick={()=>showUpgradePrompt&&showUpgradePrompt("bulkEmailStatements")} style={{padding:"4px 12px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"pointer",fontWeight:600,fontSize:10.5}}>
+            📧 États de compte 🔒
+          </button>
+        )}
         <div style={{display:"flex",gap:4}}>
           <TabBtn active={viewMode==="sommaire"} onClick={()=>setViewMode("sommaire")}>Sommaire</TabBtn>
           <TabBtn active={viewMode==="detail"} onClick={switchToDetail}>Détaillé{!isDetailed&&" 🔒"}</TabBtn>
@@ -1337,36 +1465,51 @@ function AgingReport({factures,clients,showUpgradePrompt}){
         <input type="date" value={asOf} onChange={e=>setAsOf(e.target.value)} style={inputS}/>
       </div>
     </div>
+    {/* Bulk send status */}
+    {bulkStatus?.sending&&<div style={{background:"rgba(249,115,22,0.08)",border:"1px solid rgba(249,115,22,0.2)",borderRadius:7,padding:"8px 12px",fontSize:11,color:"#f97316"}}>
+      📧 Envoi {bulkStatus.current}/{bulkStatus.total}…
+    </div>}
+    {bulkStatus?.done&&<div style={{background:"rgba(34,197,94,0.08)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:7,padding:"8px 12px",fontSize:11}}>
+      <span style={{color:"#22c55e",fontWeight:700}}>✓ {bulkStatus.sent} envoyé{bulkStatus.sent!==1?"s":""}</span>
+      {bulkStatus.failed.length>0&&<span style={{color:"#ef4444",marginLeft:10}}>✗ {bulkStatus.failed.length} échec{bulkStatus.failed.length!==1?"s":""}: {bulkStatus.failed.map(f=>`${f.client?.entreprise||"?"} (${f.reason})`).join(", ")}</span>}
+      <button onClick={()=>setBulkStatus(null)} style={{marginLeft:10,background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:11}}>✕</button>
+    </div>}
     {sorted.length===0
       ?<div style={{textAlign:"center",padding:"32px 0",color:t.textMuted,fontSize:12}}>Aucune facture impayée au {asOf}.</div>
       :<div style={{overflowX:"auto"}}>
         {viewMode==="sommaire"
           ?<table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
             <thead><tr style={{borderBottom:`2px solid ${t.dividerMid}`}}>
+              {isBulkEmail&&<th style={{width:28,padding:"5px 4px"}}><input type="checkbox" checked={sorted.length>0&&selClients.size===sorted.length} onChange={e=>e.target.checked?selectAll():setSelClients(new Set())} style={{accentColor:"#f97316"}}/></th>}
               <th style={{textAlign:"left",padding:"5px 8px"}}><SortHd col="client">Client</SortHd></th>
               <th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="montantDu" align="right">Montant dû</SortHd></th>
               <th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="courant" align="right" color="#9ca3af">Courant</SortHd></th>
               <th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="j30" align="right" color="#eab308">30 jours</SortHd></th>
               <th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="j60" align="right" color="#f97316">60 jours</SortHd></th>
               <th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="j90" align="right" color="#ef4444">90+ jours</SortHd></th>
+              <th style={{width:60,padding:"5px 4px"}}/>
             </tr></thead>
             <tbody>
               {sorted.map(row=>(<tr key={row.clientId} style={{borderBottom:`1px solid ${t.divider}`}}>
+                {isBulkEmail&&<td style={{padding:"4px",textAlign:"center"}}><input type="checkbox" checked={selClients.has(row.clientId)} onChange={()=>toggleClientSel(row.clientId)} style={{accentColor:"#f97316",cursor:"pointer"}}/></td>}
                 <td style={{padding:"6px 8px",color:t.text,fontWeight:600}}>{row.client?.entreprise||"Client inconnu"}<span style={{fontSize:9,color:t.textMuted,fontFamily:"'DM Mono',monospace",marginLeft:5}}>{row.client?.code||""}</span></td>
                 <td style={{padding:"6px 8px",textAlign:"right",fontFamily:"'DM Mono',monospace",fontWeight:700,color:t.text}}>{fmt(row.montantDu)}</td>
                 <MonoCell val={row.courant} color={t.textSub}/>
                 <MonoCell val={row.j30} color="#eab308" bold={row.j30>0}/>
                 <MonoCell val={row.j60} color="#f97316" bold={row.j60>0}/>
                 <MonoCell val={row.j90} color="#ef4444" bold={row.j90>0}/>
+                <td style={{padding:"4px 6px",textAlign:"right"}}><button onClick={()=>setEtatClient(row.clientId)} style={{fontSize:9,padding:"2px 7px",borderRadius:4,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600}}>État</button></td>
               </tr>))}
             </tbody>
             <tfoot><tr style={{borderTop:`2px solid ${t.dividerMid}`,background:t.section}}>
+              {isBulkEmail&&<td/>}
               <td style={{padding:"6px 8px",fontWeight:700,fontSize:12,color:t.text}}>TOTAL</td>
               <td style={{padding:"6px 8px",textAlign:"right",fontFamily:"'DM Mono',monospace",fontWeight:900,fontSize:12,color:t.text}}>{fmt(totals.montantDu)}</td>
               <MonoCell val={totals.courant} color={t.textSub} bold/>
               <MonoCell val={totals.j30} color="#eab308" bold/>
               <MonoCell val={totals.j60} color="#f97316" bold/>
               <MonoCell val={totals.j90} color="#ef4444" bold/>
+              <td/>
             </tr></tfoot>
           </table>
           :<table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
@@ -1427,7 +1570,7 @@ function AgingReport({factures,clients,showUpgradePrompt}){
 }
 
 // ── FACTURATION TAB ──
-function FacturationTab({categories,saveCategories,produits,saveProduits,clients,saveClients,soumissions,saveSoumissions,commandes,saveCommandes,factures,saveFactures,creditNotes,saveCreditNotes,docNums,saveDocNums,companyInfo,encaisseData,persistEncaisse,showUpgradePrompt}){
+function FacturationTab({categories,saveCategories,produits,saveProduits,clients,saveClients,soumissions,saveSoumissions,commandes,saveCommandes,factures,saveFactures,creditNotes,saveCreditNotes,docNums,saveDocNums,companyInfo,encaisseData,persistEncaisse,showUpgradePrompt,apiConfig}){
   const t=useT();
   const [subTab,setSubTab]=useState("documents");
   const [activeDoc,setActiveDoc]=useState(null);
@@ -1522,7 +1665,7 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
     {subTab==="produits"&&<ProduitsSection produits={produits} saveProduits={saveProduits} categories={categories}/>}
 
     {/* Vieillissement */}
-    {subTab==="vieillissement"&&<AgingReport factures={factures} clients={clients} showUpgradePrompt={showUpgradePrompt}/>}
+    {subTab==="vieillissement"&&<AgingReport factures={factures} clients={clients} creditNotes={creditNotes} companyInfo={companyInfo} apiConfig={apiConfig} showUpgradePrompt={showUpgradePrompt}/>}
 
     {/* Categories */}
     {subTab==="categories"&&(<div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -4317,7 +4460,7 @@ export default function App(){
 
           {activeTab==="monthly"&&<MonthlyPL computeDay={computeDay} suppliers={suppliers} liveData={liveData} platforms={platforms}/>}
           {activeTab==="encaisse"&&<EncaisseTab liveData={liveData} encaisseData={encaisseData} persistEncaisse={persistEncaisse} encaisseConfig={encaisseConfig} saveEncaisseConfig={saveEncaisseConfig}/>}
-          {activeTab==="facturation"&&<FacturationTab categories={facCategories} saveCategories={saveFacCategories} produits={facProduits} saveProduits={saveFacProduits} clients={facClients} saveClients={saveFacClients} soumissions={facSoumissions} saveSoumissions={saveFacSoumissions} commandes={facCommandes} saveCommandes={saveFacCommandes} factures={facFactures} saveFactures={saveFacFactures} creditNotes={facCreditNotes} saveCreditNotes={saveFacCreditNotes} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData} persistEncaisse={persistEncaisse} showUpgradePrompt={showUpgradePrompt}/>}
+          {activeTab==="facturation"&&<FacturationTab categories={facCategories} saveCategories={saveFacCategories} produits={facProduits} saveProduits={saveFacProduits} clients={facClients} saveClients={saveFacClients} soumissions={facSoumissions} saveSoumissions={saveFacSoumissions} commandes={facCommandes} saveCommandes={saveFacCommandes} factures={facFactures} saveFactures={saveFacFactures} creditNotes={facCreditNotes} saveCreditNotes={saveFacCreditNotes} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData} persistEncaisse={persistEncaisse} showUpgradePrompt={showUpgradePrompt} apiConfig={apiConfig}/>}
           {activeTab==="intelligence"&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR} platforms={platforms} encaisseData={encaisseData} encaisseConfig={encaisseConfig}/>}
 
           {/* SETTINGS TAB */}
