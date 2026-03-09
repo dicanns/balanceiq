@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useContext, createContext } from "react";
 import { version as appVersion } from "../package.json";
-import { canUse, shouldShowUpgradePrompt, CURRENT_PLAN } from "./config/features.js";
+import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./config/features.js";
 import * as XLSX from "xlsx";
 import { logCreate, logUpdate, logVoid, logCorrection, isFinancialField, promptCorrectionReason } from "./services/auditLogger.js";
 
@@ -110,7 +110,7 @@ const prevDk=s=>{const d=new Date(s+"T12:00:00");d.setDate(d.getDate()-1);return
 const getHol=d=>{const k=`${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;return QC_HOL[k]||null};
 const PROVINCES_CA=["AB","BC","MB","NB","NL","NS","NT","NU","ON","PE","QC","SK","YT"];
 const DEFAULT_COMPANY_INFO={nom:"",adresse:"",ville:"",province:"QC",codePostal:"",telephone:"",courriel:"",siteWeb:"",numeroTPS:"",numeroTVQ:"",logo:null};
-const DEFAULT_INVOICE_TEMPLATE={logoPosition:"gauche",accentColor:"#f97316",footerText:"",defaultNotes:"",showTaxNumbers:true};
+const DEFAULT_INVOICE_TEMPLATE={logoPosition:"gauche",accentColor:"#f97316",footerText:"",defaultNotes:"",showTaxNumbers:true,whiteLabelName:"",whiteLabelEnabled:false};
 const DEFAULT_DOC_NUMS={prefix:"",soumission:1,commande:1,facture:1,creditNote:1,encaissement:1};
 function fmtDocNum(prefix,code,num){return`${prefix||""}${code}-${String(num).padStart(4,"0")}`;}
 
@@ -584,10 +584,28 @@ function BillEntry({label,baseKey,plData,updPL,accent="249,115,22"}){
   </div>);
 }
 
-// ── PDF GENERATOR ──
+// ── PDF PREVIEW ──
+// Uses a custom DOM event so any component can open the in-app preview modal
 function openPDF(html){
-  const w=window.open("","_blank");
-  if(w){w.document.write(html);w.document.close();setTimeout(()=>w.print(),400)}
+  window.dispatchEvent(new CustomEvent('biq:pdf-preview',{detail:{html}}));
+}
+
+function PDFPreviewModal({html,onClose}){
+  const t=useT();
+  const doPrint=()=>{
+    if(window.api?.pdf?.print){window.api.pdf.print(html);}
+    else{const w=window.open("","_blank");if(w){w.document.write(html);w.document.close();setTimeout(()=>w.print(),400);}}
+  };
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:3000,display:"flex",flexDirection:"column"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 16px",background:t.card,borderBottom:`1px solid ${t.cardBorder}`,flexShrink:0}}>
+        <span style={{fontSize:13,fontWeight:700,color:t.text,flex:1}}>Aperçu du document</span>
+        <button onClick={doPrint} style={{padding:"6px 18px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>🖨️ Imprimer / Enregistrer PDF</button>
+        <button onClick={onClose} style={{padding:"6px 16px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12}}>✕ Fermer</button>
+      </div>
+      <iframe srcDoc={html} style={{flex:1,border:"none",background:"#fff"}} title="Aperçu PDF"/>
+    </div>
+  );
 }
 
 // ── EMPLOYEE ROW (daily tab) ──
@@ -1378,7 +1396,9 @@ function buildEtatDeCompteHTML({client,factures,creditNotes,dateFrom,dateTo,comp
   const fc=v=>`$${Math.abs(v).toFixed(2)}`;
   const tpl={...DEFAULT_INVOICE_TEMPLATE,...(invoiceTemplate||{})};const ac=tpl.accentColor;
   const logoAlign=tpl.logoPosition==='centre'?'center':tpl.logoPosition==='droite'?'right':'left';
-  const logo=companyInfo.logo?`<div style="text-align:${logoAlign}"><img src="${companyInfo.logo}" style="height:48px;object-fit:contain;" /></div>`:`<div style="font-size:24px;font-weight:900;background:linear-gradient(135deg,${ac},${ac});-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:2px">BIQ</div>`;
+  const fallbackName=tpl.whiteLabelEnabled&&tpl.whiteLabelName?tpl.whiteLabelName:"BIQ";
+  const logo=companyInfo.logo?`<div style="text-align:${logoAlign}"><img src="${companyInfo.logo}" style="height:48px;object-fit:contain;" /></div>`:`<div style="font-size:${fallbackName==="BIQ"?24:16}px;font-weight:900;color:${ac};letter-spacing:${fallbackName==="BIQ"?2:0}px">${fallbackName}</div>`;
+  const biqCredit=tpl.whiteLabelEnabled?`<div style="margin-top:6px;font-size:9px;color:#bbb">Propulsé par BalanceIQ</div>`:"";
   const cli=client?[client.entreprise,client.adresse,client.ville?`${client.ville}, ${client.province||""} ${client.codePostal||""}`:null,client.tel1,client.courriel].filter(Boolean).join("<br/>"):"—";
 
   // Build transaction list in date order
@@ -1415,7 +1435,7 @@ function buildEtatDeCompteHTML({client,factures,creditNotes,dateFrom,dateTo,comp
   }
   const totalDu=courant+j30+j60+j90;
 
-  return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>État de compte — ${client?.entreprise||""}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}table{width:100%;border-collapse:collapse}th{background:#f97316;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.aging{display:flex;gap:0;margin-top:12px;border:1px solid #eee;border-radius:4px;overflow:hidden}.aging-cell{flex:1;padding:8px;text-align:center;border-right:1px solid #eee}.aging-cell:last-child{border-right:none}.aging-label{font-size:10px;color:#888;margin-bottom:2px}.aging-val{font-size:14px;font-weight:700}.msg{background:#fff9e6;border-left:4px solid #f97316;padding:12px 16px;margin-top:20px;font-size:12px;color:#555}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}th{background:${ac}}th{background:${ac}}.notes{border-left-color:${ac}}.title{color:${ac}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${companyInfo.nom||""}</div><div style="font-size:11px;color:#555">${[companyInfo.adresse,companyInfo.ville].filter(Boolean).join(", ")}</div>${companyInfo.telephone?`<div style="font-size:11px">${companyInfo.telephone}</div>`:""}${companyInfo.courriel?`<div style="font-size:11px">${companyInfo.courriel}</div>`:""}</div><div style="text-align:right"><div style="font-size:22px;font-weight:900;color:#f97316">ÉTAT DE COMPTE</div><div style="font-size:11px;color:#555;margin-top:4px">Période: ${fd(dateFrom)} au ${fd(dateTo)}</div><div style="font-size:11px;color:#555;margin-top:2px">Émis le: ${fd(dk(new Date()))}</div></div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;margin-bottom:4px">Client</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>Date</th><th>Type</th><th>Référence</th><th style="text-align:right">Débit</th><th style="text-align:right">Crédit</th><th style="text-align:right">Solde courant</th></tr></thead><tbody>${rows||"<tr><td colspan='6' style='padding:12px;text-align:center;color:#888'>Aucune transaction dans cette période.</td></tr>"}</tbody></table>${totalDu>0.005?`<div style="margin-top:16px"><div style="font-size:11px;font-weight:700;color:#555;margin-bottom:6px;text-transform:uppercase">Sommaire de vieillissement au ${fd(dateTo)}</div><div class="aging"><div class="aging-cell"><div class="aging-label">Courant</div><div class="aging-val" style="color:#22c55e">$${courant.toFixed(2)}</div></div><div class="aging-cell"><div class="aging-label">30 jours</div><div class="aging-val" style="color:#eab308">$${j30.toFixed(2)}</div></div><div class="aging-cell"><div class="aging-label">60 jours</div><div class="aging-val" style="color:#f97316">$${j60.toFixed(2)}</div></div><div class="aging-cell"><div class="aging-label">90+ jours</div><div class="aging-val" style="color:#ef4444">$${j90.toFixed(2)}</div></div><div class="aging-cell" style="background:#f97316;color:#fff"><div class="aging-label" style="color:rgba(255,255,255,0.8)">Total dû</div><div class="aging-val">$${totalDu.toFixed(2)}</div></div></div><div class="msg">Veuillez faire parvenir votre paiement à votre plus tôt. Pour toute question, communiquez avec nous à ${companyInfo.courriel||""}.</div></div>`:"<div style='margin-top:12px;padding:10px;background:#f0fdf4;border-left:4px solid #22c55e;font-size:12px;color:#166534'>✓ Aucun solde impayé — compte en règle.</div>"}<div class="ftr">${companyInfo.numeroTPS?`N° TPS: ${companyInfo.numeroTPS}`:""}${companyInfo.numeroTVQ?` | N° TVQ: ${companyInfo.numeroTVQ}`:""}</div></body></html>`;
+  return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>État de compte — ${client?.entreprise||""}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}table{width:100%;border-collapse:collapse}th{background:#f97316;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.aging{display:flex;gap:0;margin-top:12px;border:1px solid #eee;border-radius:4px;overflow:hidden}.aging-cell{flex:1;padding:8px;text-align:center;border-right:1px solid #eee}.aging-cell:last-child{border-right:none}.aging-label{font-size:10px;color:#888;margin-bottom:2px}.aging-val{font-size:14px;font-weight:700}.msg{background:#fff9e6;border-left:4px solid #f97316;padding:12px 16px;margin-top:20px;font-size:12px;color:#555}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}th{background:${ac}}th{background:${ac}}.notes{border-left-color:${ac}}.title{color:${ac}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${companyInfo.nom||""}</div><div style="font-size:11px;color:#555">${[companyInfo.adresse,companyInfo.ville].filter(Boolean).join(", ")}</div>${companyInfo.telephone?`<div style="font-size:11px">${companyInfo.telephone}</div>`:""}${companyInfo.courriel?`<div style="font-size:11px">${companyInfo.courriel}</div>`:""}</div><div style="text-align:right"><div style="font-size:22px;font-weight:900;color:#f97316">ÉTAT DE COMPTE</div><div style="font-size:11px;color:#555;margin-top:4px">Période: ${fd(dateFrom)} au ${fd(dateTo)}</div><div style="font-size:11px;color:#555;margin-top:2px">Émis le: ${fd(dk(new Date()))}</div></div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;margin-bottom:4px">Client</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>Date</th><th>Type</th><th>Référence</th><th style="text-align:right">Débit</th><th style="text-align:right">Crédit</th><th style="text-align:right">Solde courant</th></tr></thead><tbody>${rows||"<tr><td colspan='6' style='padding:12px;text-align:center;color:#888'>Aucune transaction dans cette période.</td></tr>"}</tbody></table>${totalDu>0.005?`<div style="margin-top:16px"><div style="font-size:11px;font-weight:700;color:#555;margin-bottom:6px;text-transform:uppercase">Sommaire de vieillissement au ${fd(dateTo)}</div><div class="aging"><div class="aging-cell"><div class="aging-label">Courant</div><div class="aging-val" style="color:#22c55e">$${courant.toFixed(2)}</div></div><div class="aging-cell"><div class="aging-label">30 jours</div><div class="aging-val" style="color:#eab308">$${j30.toFixed(2)}</div></div><div class="aging-cell"><div class="aging-label">60 jours</div><div class="aging-val" style="color:#f97316">$${j60.toFixed(2)}</div></div><div class="aging-cell"><div class="aging-label">90+ jours</div><div class="aging-val" style="color:#ef4444">$${j90.toFixed(2)}</div></div><div class="aging-cell" style="background:#f97316;color:#fff"><div class="aging-label" style="color:rgba(255,255,255,0.8)">Total dû</div><div class="aging-val">$${totalDu.toFixed(2)}</div></div></div><div class="msg">Veuillez faire parvenir votre paiement à votre plus tôt. Pour toute question, communiquez avec nous à ${companyInfo.courriel||""}.</div></div>`:"<div style='margin-top:12px;padding:10px;background:#f0fdf4;border-left:4px solid #22c55e;font-size:12px;color:#166534'>✓ Aucun solde impayé — compte en règle.</div>"}<div class="ftr">${companyInfo.numeroTPS?`N° TPS: ${companyInfo.numeroTPS}`:""}${companyInfo.numeroTVQ?` | N° TVQ: ${companyInfo.numeroTVQ}`:""}${biqCredit}</div></body></html>`;
 }
 
 function EtatDeCompteViewer({clientId,clients,factures,creditNotes,companyInfo,invoiceTemplate,onBack}){
@@ -1531,7 +1551,7 @@ function AgingReport({factures,clients,creditNotes,companyInfo,apiConfig,showUpg
 
   // Show état de compte viewer for a specific client
   if(etatClient){
-    return<EtatDeCompteViewer clientId={etatClient} clients={clients} factures={factures} creditNotes={creditNotes||[]} companyInfo={companyInfo} invoiceTemplate={invoiceTemplate} onBack={()=>setEtatClient(null)}/>;
+    return<EtatDeCompteViewer clientId={etatClient} clients={clients} factures={factures} creditNotes={creditNotes||[]} companyInfo={companyInfo} invoiceTemplate={effectiveTemplate} onBack={()=>setEtatClient(null)}/>;
   }
 
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -1665,19 +1685,22 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
   const t=useT();
   const [subTab,setSubTab]=useState("documents");
   const [activeDoc,setActiveDoc]=useState(null);
+  const [selectedClientId,setSelectedClientId]=useState(null);
   const [showRecurringModal,setShowRecurringModal]=useState(false);
   const today=dk(new Date());
   const dueCount=useMemo(()=>(recurrents||[]).filter(r=>isRecurringDue(r,today)).length,[recurrents,today]);
-  // activeDoc: null | { type, doc: obj|null, clientId: str|null }
-  const openDoc=(type,clientId,doc)=>setActiveDoc({type,doc:doc||null,clientId:clientId||null});
+  // activeDoc: null | { type, doc: obj|null, clientId: str|null, fromClient: bool }
+  const openDoc=(type,clientId,doc,fromClient=false)=>setActiveDoc({type,doc:doc||null,clientId:clientId||null,fromClient:!!fromClient});
   const closeDoc=()=>setActiveDoc(null);
+  const backToClient=()=>{setActiveDoc(null);setSubTab("clients");};
+  const backToList=()=>{setActiveDoc(null);setSelectedClientId(null);setSubTab("clients");};
   const convertSoumToCommande=(soum)=>{
     const id=Date.now().toString();
     const numero=fmtDocNum(docNums.prefix,"C",docNums.commande);
     const newCmd={id,numero,date:dk(new Date()),dateLivraison:"",clientId:soum.clientId,referenceClient:soum.referenceClient,statut:"Brouillon",lignes:soum.lignes.map(l=>({...l,id:Date.now().toString(36)+Math.random().toString(36).slice(2)})),notes:soum.notes,sourceType:"soumission",sourceId:soum.id,sourceNumero:soum.numero};
     saveCommandes([...commandes,newCmd]);
     saveDocNums({...docNums,commande:docNums.commande+1});
-    saveSoumissions(soumissions.map(s=>s.id===soum.id?{...s,statut:"Acceptée",commandeId:id,commandeNumero:numero}:s));
+    saveSoumissions(soumissions.map(s=>s.id===soum.id?{...s,statut:"Acceptée",commandeId:id,commandeNumero:numero,commandeDate:dk(new Date())}:s));
     logCreate('invoice','commande',id,newCmd);
     logUpdate('invoice','soumission',soum.id,'statut',soum.statut,'Acceptée');
     setActiveDoc({type:"commande",doc:newCmd,clientId:null});
@@ -1690,8 +1713,8 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
     const newFac={id,numero,date:dk(new Date()),dateEcheance,clientId:source.clientId,referenceClient:source.referenceClient,statut:"Brouillon",lignes:source.lignes.map(l=>({...l,id:Date.now().toString(36)+Math.random().toString(36).slice(2)})),notes:source.notes,paiements:[],sourceType,sourceId:source.id,sourceNumero:source.numero};
     saveFactures([...factures,newFac]);
     saveDocNums({...docNums,facture:docNums.facture+1});
-    if(sourceType==="soumission")saveSoumissions(soumissions.map(s=>s.id===source.id?{...s,statut:"Acceptée",factureId:id,factureNumero:numero}:s));
-    if(sourceType==="commande")saveCommandes(commandes.map(c=>c.id===source.id?{...c,statut:"Complétée",factureId:id,factureNumero:numero}:c));
+    if(sourceType==="soumission")saveSoumissions(soumissions.map(s=>s.id===source.id?{...s,statut:"Acceptée",factureId:id,factureNumero:numero,factureDate:dk(new Date())}:s));
+    if(sourceType==="commande")saveCommandes(commandes.map(c=>c.id===source.id?{...c,statut:"Complétée",factureId:id,factureNumero:numero,factureDate:dk(new Date())}:c));
     logCreate('invoice','facture',id,newFac);
     if(sourceType==="soumission")logUpdate('invoice','soumission',source.id,'statut',source.statut,'Acceptée');
     if(sourceType==="commande")logUpdate('invoice','commande',source.id,'statut',source.statut,'Complétée');
@@ -1721,19 +1744,24 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
   const subTabs=[{id:"documents",label:"Documents"},{id:"clients",label:"Clients"},{id:"categories",label:"Catégories"},{id:"produits",label:"Produits & Services"},{id:"vieillissement",label:"Vieillissement"}];
 
   if(activeDoc?.type==="soumission"){
-    return<SoumissionEditor soumission={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} soumissions={soumissions} saveSoumissions={saveSoumissions} onBack={closeDoc} initClientId={activeDoc.clientId} onConvertToCommande={convertSoumToCommande} onConvertToFacture={soum=>convertToFacture(soum,"soumission")} apiConfig={apiConfig} invoiceTemplate={invoiceTemplate}/>;
+    const fc=activeDoc.fromClient;
+    return<SoumissionEditor soumission={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} soumissions={soumissions} saveSoumissions={saveSoumissions} commandes={commandes} factures={factures} onBack={closeDoc} onBackToClient={fc?backToClient:null} onBackToList={fc?backToList:null} initClientId={activeDoc.clientId} onConvertToCommande={convertSoumToCommande} onConvertToFacture={soum=>convertToFacture(soum,"soumission")} apiConfig={apiConfig} invoiceTemplate={effectiveTemplate} onOpenDoc={openDoc}/>;
   }
   if(activeDoc?.type==="commande"){
-    return<CommandeEditor commande={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} commandes={commandes} saveCommandes={saveCommandes} onBack={closeDoc} initClientId={activeDoc.clientId} onConvertToFacture={cmd=>convertToFacture(cmd,"commande")} apiConfig={apiConfig} showUpgradePrompt={showUpgradePrompt} invoiceTemplate={invoiceTemplate}/>;
+    const fc=activeDoc.fromClient;
+    return<CommandeEditor commande={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} commandes={commandes} saveCommandes={saveCommandes} soumissions={soumissions} factures={factures} onBack={closeDoc} onBackToClient={fc?backToClient:null} onBackToList={fc?backToList:null} initClientId={activeDoc.clientId} onConvertToFacture={cmd=>convertToFacture(cmd,"commande")} apiConfig={apiConfig} showUpgradePrompt={showUpgradePrompt} invoiceTemplate={effectiveTemplate} onOpenDoc={openDoc}/>;
   }
   if(activeDoc?.type==="facture"){
-    return<FactureEditor facture={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} factures={factures} saveFactures={saveFactures} onBack={closeDoc} initClientId={activeDoc.clientId} onEnregistrerPaiement={(fac)=>openDoc("encaissement",fac.clientId,{factureId:fac.id})} onCreditNote={(fac)=>setActiveDoc({type:"creditnote",doc:null,clientId:fac.clientId,factureId:fac.id})} apiConfig={apiConfig} showUpgradePrompt={showUpgradePrompt} invoiceTemplate={invoiceTemplate}/>;
+    const fc=activeDoc.fromClient;
+    return<FactureEditor facture={activeDoc.doc} clients={clients} produits={produits} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} factures={factures} saveFactures={saveFactures} commandes={commandes} soumissions={soumissions} onBack={closeDoc} onBackToClient={fc?backToClient:null} onBackToList={fc?backToList:null} initClientId={activeDoc.clientId} onEnregistrerPaiement={(fac)=>openDoc("encaissement",fac.clientId,{factureId:fac.id},fc)} onCreditNote={(fac)=>setActiveDoc({type:"creditnote",doc:null,clientId:fac.clientId,factureId:fac.id,fromClient:fc})} apiConfig={apiConfig} showUpgradePrompt={showUpgradePrompt} invoiceTemplate={effectiveTemplate} onOpenDoc={openDoc}/>;
   }
   if(activeDoc?.type==="encaissement"){
-    return<EncaissementEditor clientId={activeDoc.clientId} factureId={activeDoc.doc?.factureId||null} clients={clients} factures={factures} saveFactures={saveFactures} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData||{}} persistEncaisse={persistEncaisse} onBack={closeDoc} showUpgradePrompt={showUpgradePrompt}/>;
+    const fc=activeDoc.fromClient;
+    return<EncaissementEditor clientId={activeDoc.clientId} factureId={activeDoc.doc?.factureId||null} clients={clients} factures={factures} saveFactures={saveFactures} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData||{}} persistEncaisse={persistEncaisse} onBack={closeDoc} onBackToClient={fc?backToClient:null} onBackToList={fc?backToList:null} showUpgradePrompt={showUpgradePrompt}/>;
   }
   if(activeDoc?.type==="creditnote"){
-    return<NoteDeCreditEditor creditNote={activeDoc.doc} clients={clients} factures={factures} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} creditNotes={creditNotes} saveCreditNotes={saveCreditNotes} saveFactures={saveFactures} onBack={closeDoc} initClientId={activeDoc.clientId} initFactureId={activeDoc.factureId||null} invoiceTemplate={invoiceTemplate}/>;
+    const fc=activeDoc.fromClient;
+    return<NoteDeCreditEditor creditNote={activeDoc.doc} clients={clients} factures={factures} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums} creditNotes={creditNotes} saveCreditNotes={saveCreditNotes} saveFactures={saveFactures} onBack={closeDoc} onBackToClient={fc?backToClient:null} onBackToList={fc?backToList:null} initClientId={activeDoc.clientId} initFactureId={activeDoc.factureId||null} invoiceTemplate={effectiveTemplate}/>;
   }
 
   return(<div style={{display:"flex",flexDirection:"column",gap:0}}>
@@ -1762,13 +1790,13 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
     {subTab==="documents"&&<FacturationDashboard soumissions={soumissions} commandes={commandes} factures={factures} creditNotes={creditNotes} clients={clients} produits={produits} categories={categories} companyInfo={companyInfo} showUpgradePrompt={showUpgradePrompt} openDoc={openDoc}/>}
 
     {/* Clients */}
-    {subTab==="clients"&&<ClientsSection clients={clients} saveClients={saveClients} onNewDoc={(type,clientId)=>openDoc(type,clientId,null)} onOpenDoc={openDoc} soumissions={soumissions} commandes={commandes} factures={factures} recurrents={recurrents} saveRecurrents={saveRecurrents} showUpgradePrompt={showUpgradePrompt}/>}
+    {subTab==="clients"&&<ClientsSection clients={clients} saveClients={saveClients} onNewDoc={(type,clientId)=>openDoc(type,clientId,null,true)} onOpenDoc={(type,clientId,doc)=>openDoc(type,clientId,doc,true)} soumissions={soumissions} commandes={commandes} factures={factures} creditNotes={creditNotes} companyInfo={companyInfo} invoiceTemplate={effectiveTemplate} recurrents={recurrents} saveRecurrents={saveRecurrents} showUpgradePrompt={showUpgradePrompt} selectedClientId={selectedClientId} setSelectedClientId={setSelectedClientId}/>}
 
     {/* Produits */}
     {subTab==="produits"&&<ProduitsSection produits={produits} saveProduits={saveProduits} categories={categories}/>}
 
     {/* Vieillissement */}
-    {subTab==="vieillissement"&&<AgingReport factures={factures} clients={clients} creditNotes={creditNotes} companyInfo={companyInfo} apiConfig={apiConfig} showUpgradePrompt={showUpgradePrompt} invoiceTemplate={invoiceTemplate}/>}
+    {subTab==="vieillissement"&&<AgingReport factures={factures} clients={clients} creditNotes={creditNotes} companyInfo={companyInfo} apiConfig={apiConfig} showUpgradePrompt={showUpgradePrompt} invoiceTemplate={effectiveTemplate}/>}
 
     {/* Categories */}
     {subTab==="categories"&&(<div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -1878,8 +1906,126 @@ function buildSoumissionHTML({numero,date,dateExpiration,statut,client,reference
   const tpl={...DEFAULT_INVOICE_TEMPLATE,...(invoiceTemplate||{})};const ac=tpl.accentColor;const logoAlign=tpl.logoPosition==='centre'?'center':tpl.logoPosition==='droite'?'right':'left';const logo=companyInfo.logo?`<div style="text-align:${logoAlign}"><img src="${companyInfo.logo}" style="max-height:55px;max-width:110px;object-fit:contain;" alt="Logo"/></div>`:"";
   const rows=lignes.map((l,i)=>{const lt=(l.quantite||0)*(l.prixUnitaire||0)*(1-(l.remise||0)/100);return`<tr style="background:${i%2?"#f9f9f9":"#fff"}"><td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:12px">${l.description||""}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:center;font-size:12px">${l.quantite||1}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:right;font-size:12px">${fc(l.prixUnitaire||0)}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:center;font-size:12px">${l.remise?l.remise+"%":"—"}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:right;font-size:12px;font-weight:700">${fc(lt)}</td></tr>`}).join("");
   const cli=client?`<div style="font-weight:700;font-size:13px">${client.entreprise}</div>${client.contact?`<div>${client.contact}</div>`:""}${client.adresse?`<div>${client.adresse}</div>`:""}${client.ville?`<div>${[client.ville,client.province,client.codePostal].filter(Boolean).join(", ")}</div>`:""}${client.courriel?`<div>${client.courriel}</div>`:""}${client.tel1?`<div>${client.tel1}</div>`:""}`:""` "(aucun client)"`;
-  return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Soumission ${numero}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}.hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px}.title{font-size:30px;font-weight:900;color:#f97316;letter-spacing:2px}.meta{font-size:11px;color:#555;margin-top:3px}table{width:100%;border-collapse:collapse}th{background:#f97316;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.tot{margin-left:auto;width:260px;margin-top:12px}.tr{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}.tf{font-weight:900;font-size:15px;border-top:2px solid #1a1a1a;margin-top:4px;padding-top:4px}.notes{background:#f9f9f9;border-left:3px solid #f97316;padding:10px 12px;margin-top:16px;font-size:12px}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}th{background:${ac}}th{background:${ac}}.notes{border-left-color:${ac}}.title{color:${ac}}</style></head><body><div class="hdr"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${companyInfo.nom||""}</div><div class="meta">${[companyInfo.adresse,companyInfo.ville,companyInfo.province].filter(Boolean).join(", ")}</div>${companyInfo.telephone?`<div class="meta">${companyInfo.telephone}</div>`:""}${companyInfo.courriel?`<div class="meta">${companyInfo.courriel}</div>`:""}</div><div style="text-align:right"><div class="title">SOUMISSION</div><div style="font-size:18px;font-weight:700;margin-top:4px"># ${numero}</div><div class="meta">Date: ${fd(date)}</div><div class="meta">Expiration: ${fd(dateExpiration)}</div><div class="meta">Statut: <strong>${statut}</strong></div>${referenceClient?`<div class="meta">Réf.: ${referenceClient}</div>`:""}</div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Facturé à</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>Description</th><th style="width:55px;text-align:center">Qté</th><th style="width:100px;text-align:right">Prix unit.</th><th style="width:65px;text-align:center">Remise</th><th style="width:100px;text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><div class="tot"><div class="tr"><span>Sous-total</span><span>${fc(totals.sousTotal)}</span></div><div class="tr"><span>TPS (5%)</span><span>${fc(totals.tpsTotal)}</span></div><div class="tr"><span>TVQ (9.975%)</span><span>${fc(totals.tvqTotal)}</span></div><div class="tr tf"><span>TOTAL</span><span>${fc(totals.total)}</span></div></div>${notes?`<div class="notes"><strong>Notes / Conditions</strong><br/>${notes}</div>`:""}<div class="ftr">${tpl.showTaxNumbers&&companyInfo.numeroTPS?`N° TPS: ${companyInfo.numeroTPS}`:""}${tpl.showTaxNumbers&&companyInfo.numeroTVQ?` &nbsp;|&nbsp; N° TVQ: ${companyInfo.numeroTVQ}`:""}${tpl.footerText?`<div style="margin-top:3px">${tpl.footerText}</div>`:""}</div></body></html>`;
+  return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Soumission ${numero}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}.hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px}.title{font-size:30px;font-weight:900;color:#f97316;letter-spacing:2px}.meta{font-size:11px;color:#555;margin-top:3px}table{width:100%;border-collapse:collapse}th{background:#f97316;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.tot{margin-left:auto;width:260px;margin-top:12px}.tr{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}.tf{font-weight:900;font-size:15px;border-top:2px solid #1a1a1a;margin-top:4px;padding-top:4px}.notes{background:#f9f9f9;border-left:3px solid #f97316;padding:10px 12px;margin-top:16px;font-size:12px}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}th{background:${ac}}th{background:${ac}}.notes{border-left-color:${ac}}.title{color:${ac}}</style></head><body><div class="hdr"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${companyInfo.nom||""}</div><div class="meta">${[companyInfo.adresse,companyInfo.ville,companyInfo.province].filter(Boolean).join(", ")}</div>${companyInfo.telephone?`<div class="meta">${companyInfo.telephone}</div>`:""}${companyInfo.courriel?`<div class="meta">${companyInfo.courriel}</div>`:""}</div><div style="text-align:right"><div class="title">SOUMISSION</div><div style="font-size:18px;font-weight:700;margin-top:4px"># ${numero}</div><div class="meta">Date: ${fd(date)}</div><div class="meta">Expiration: ${fd(dateExpiration)}</div><div class="meta">Statut: <strong>${statut}</strong></div>${referenceClient?`<div class="meta">Réf.: ${referenceClient}</div>`:""}</div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Facturé à</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>Description</th><th style="width:55px;text-align:center">Qté</th><th style="width:100px;text-align:right">Prix unit.</th><th style="width:65px;text-align:center">Remise</th><th style="width:100px;text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><div class="tot"><div class="tr"><span>Sous-total</span><span>${fc(totals.sousTotal)}</span></div><div class="tr"><span>TPS (5%)</span><span>${fc(totals.tpsTotal)}</span></div><div class="tr"><span>TVQ (9.975%)</span><span>${fc(totals.tvqTotal)}</span></div><div class="tr tf"><span>TOTAL</span><span>${fc(totals.total)}</span></div></div>${notes?`<div class="notes"><strong>Notes / Conditions</strong><br/>${notes}</div>`:""}<div class="ftr">${tpl.showTaxNumbers&&companyInfo.numeroTPS?`N° TPS: ${companyInfo.numeroTPS}`:""}${tpl.showTaxNumbers&&companyInfo.numeroTVQ?` &nbsp;|&nbsp; N° TVQ: ${companyInfo.numeroTVQ}`:""}${tpl.footerText?`<div style="margin-top:3px">${tpl.footerText}</div>`:""}${biqCredit}</div></body></html>`;
 }
+// ── EMAIL COMPOSE MODAL ──
+function EmailComposeModal({initTo,fromEmail,initSubject,initBody,attachmentName,pdfHtml,apiConfig,onSuccess,onClose}){
+  const t=useT();
+  const [to,setTo]=useState(initTo||"");
+  const [subject,setSubject]=useState(initSubject||"");
+  const [body,setBody]=useState(initBody||"");
+  const [sending,setSending]=useState(false);
+  const [sendStep,setSendStep]=useState(""); // progress label
+  const [error,setError]=useState(null);
+  const canDirect=canUse("directEmailSend")&&!!apiConfig?.resendKey;
+  const [downloading,setDownloading]=useState(false);
+  const [downloaded,setDownloaded]=useState(false);
+  const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"6px 9px",outline:"none",width:"100%",boxSizing:"border-box"};
+  const doDownloadPDF=async()=>{
+    if(!window.api?.pdf?.toPDF)return;
+    setDownloading(true);
+    const result=await window.api.pdf.toPDF(pdfHtml);
+    setDownloading(false);
+    if(result?.data){
+      const bytes=atob(result.data);
+      const arr=new Uint8Array(bytes.length);
+      for(let i=0;i<bytes.length;i++)arr[i]=bytes.charCodeAt(i);
+      const blob=new Blob([arr],{type:'application/pdf'});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      a.href=url;a.download=attachmentName;a.click();
+      URL.revokeObjectURL(url);
+      setDownloaded(true);
+    }
+  };
+  const doSend=async()=>{
+    if(!to.trim())return;
+    if(canDirect){
+      setSending(true);setError(null);
+      try{
+        // Step 1: generate real PDF
+        setSendStep("Génération du PDF…");
+        let attachments=[];
+        if(window.api?.pdf?.toPDF){
+          const pdfResult=await window.api.pdf.toPDF(pdfHtml);
+          if(pdfResult?.data){
+            attachments=[{filename:attachmentName,content:pdfResult.data}];
+          }else if(pdfResult?.error){
+            console.warn("PDF generation failed:",pdfResult.error);
+          }
+        }
+        // Step 2: send email
+        setSendStep("Envoi en cours…");
+        const bodyHtml=`<div style="white-space:pre-wrap;font-family:Arial,sans-serif;font-size:13px;line-height:1.6;color:#1a1a1a">${body.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br/>")}</div>`;
+        const r=await window.api.email.sendResend({apiKey:apiConfig.resendKey,from:apiConfig.resendFrom||"noreply@balanceiq.ca",to:to.trim(),subject,html:bodyHtml,attachments});
+        if(r?.success){onSuccess(to.trim());}
+        else{setError(r?.error||"Erreur inconnue");setSending(false);setSendStep("");}
+      }catch(e){setError(e.message||"Erreur");setSending(false);setSendStep("");}
+    }else{
+      window.open(`mailto:${to.trim()}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+      onSuccess(to.trim());
+    }
+  };
+  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center"}}>
+    <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:12,padding:24,width:560,maxWidth:"95vw",display:"flex",flexDirection:"column",gap:14,maxHeight:"90vh",overflowY:"auto"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <span style={{fontSize:15,fontWeight:700,color:t.text}}>📧 Envoyer le document</span>
+        <button onClick={onClose} disabled={sending} style={{background:"none",border:"none",color:t.textMuted,fontSize:20,cursor:sending?"default":"pointer",lineHeight:1,opacity:sending?0.4:1}}>✕</button>
+      </div>
+      <div>
+        <div style={{fontSize:11,color:t.textMuted,marginBottom:4}}>De :</div>
+        <div style={{fontSize:12,color:t.textDim,padding:"6px 9px",background:t.section,borderRadius:5,border:`1px solid ${t.inputBorder}`}}>{canDirect?(apiConfig?.resendFrom||"noreply@balanceiq.ca"):"(via votre client de messagerie)"}</div>
+      </div>
+      <div>
+        <div style={{fontSize:11,color:t.textMuted,marginBottom:4}}>À :</div>
+        <input value={to} onChange={e=>setTo(e.target.value)} style={inputS} placeholder="courriel@client.com" disabled={sending}/>
+      </div>
+      <div>
+        <div style={{fontSize:11,color:t.textMuted,marginBottom:4}}>Objet :</div>
+        <input value={subject} onChange={e=>setSubject(e.target.value)} style={inputS} disabled={sending}/>
+      </div>
+      <div>
+        <div style={{fontSize:11,color:t.textMuted,marginBottom:4}}>Message :</div>
+        <textarea value={body} onChange={e=>setBody(e.target.value)} rows={8} style={{...inputS,resize:"vertical",fontFamily:"'Outfit',sans-serif",lineHeight:1.6}} disabled={sending}/>
+      </div>
+      {/* Attachment row */}
+      {canDirect
+        ?<div style={{fontSize:11,color:t.textMuted,background:t.section,border:`1px solid ${t.inputBorder}`,borderRadius:5,padding:"6px 9px",display:"flex",alignItems:"center",gap:6}}>
+          <span>📎</span><span>{attachmentName}</span>
+          <span style={{fontSize:10,color:"#22c55e",marginLeft:"auto"}}>✓ PDF joint automatiquement</span>
+        </div>
+        :<div style={{background:"rgba(249,115,22,0.04)",border:"1px solid rgba(249,115,22,0.2)",borderRadius:7,padding:"10px 12px",display:"flex",flexDirection:"column",gap:8}}>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <span style={{fontSize:11,fontWeight:700,color:t.text}}>Étape 1 — Télécharger le PDF</span>
+            {downloaded&&<span style={{fontSize:10,color:"#22c55e",fontWeight:600}}>✓ Téléchargé</span>}
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <button onClick={doDownloadPDF} disabled={downloading} style={{padding:"5px 14px",borderRadius:6,border:"1px solid rgba(249,115,22,0.4)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:downloading?"default":"pointer",fontWeight:700,fontSize:11,opacity:downloading?0.6:1}}>
+              {downloading?"Génération…":"💾 Télécharger "+attachmentName}
+            </button>
+            <span style={{fontSize:10,color:t.textDim}}>puis joignez-le manuellement à votre courriel</span>
+          </div>
+          <div style={{fontSize:10,color:t.textDim,borderTop:`1px solid rgba(249,115,22,0.15)`,paddingTop:6,display:"flex",alignItems:"center",gap:4}}>
+            <span>✨</span>
+            <span>Avec <strong style={{color:"#f97316"}}>BalanceIQ Pro</strong>, le PDF est généré et joint automatiquement — aucune manipulation requise.</span>
+          </div>
+        </div>
+      }
+      {!canDirect&&<div style={{display:"flex",alignItems:"center",gap:6,background:t.section,border:`1px solid ${t.inputBorder}`,borderRadius:5,padding:"6px 9px"}}>
+        <span style={{fontSize:11,fontWeight:700,color:t.text}}>Étape 2 — Ouvrir votre client de messagerie</span>
+      </div>}
+      {error&&<div style={{fontSize:11,color:"#ef4444",fontWeight:600}}>✗ {error}</div>}
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end",alignItems:"center"}}>
+        {sending&&<span style={{fontSize:11,color:"#f97316",fontWeight:600}}>{sendStep}</span>}
+        <button onClick={onClose} disabled={sending} style={{padding:"7px 16px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:sending?"default":"pointer",fontWeight:600,fontSize:12,opacity:sending?0.4:1}}>Annuler</button>
+        <button onClick={doSend} disabled={!to.trim()||sending} style={{padding:"7px 18px",borderRadius:6,border:"none",background:!to.trim()||sending?"rgba(249,115,22,0.3)":"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:!to.trim()||sending?"default":"pointer",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>
+          {sending?"…":canDirect?"📤 Envoyer":"📬 Ouvrir mon courriel"}
+        </button>
+      </div>
+    </div>
+  </div>);
+}
+
 // ── DIRECT EMAIL HELPER ──
 // Returns {status, send(html, to, subject, bodyHtml)} — used by all 3 editors
 function useDirectEmail(apiConfig){
@@ -1910,7 +2056,7 @@ function useDirectEmail(apiConfig){
   return{sendDoc,EmailStatusBadge,isDirectEmail:canDirect&&!!apiConfig?.resendKey};
 }
 
-function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveDocNums,soumissions,saveSoumissions,onBack,initClientId,onConvertToCommande,onConvertToFacture,apiConfig,invoiceTemplate}){
+function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveDocNums,soumissions,saveSoumissions,commandes,factures,onBack,onBackToClient,onBackToList,initClientId,onConvertToCommande,onConvertToFacture,apiConfig,invoiceTemplate,onOpenDoc}){
   const t=useT();
   const isNew=!soumission?.id;
   const todayStr=dk(new Date());
@@ -1922,8 +2068,8 @@ function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveD
   const [savedNumero,setSavedNumero]=useState(soumission?.numero||null);
   const [confirmDel,setConfirmDel]=useState(false);
   const [flash,setFlash]=useState(false);
+  const [emailModal,setEmailModal]=useState(null);
   const totals=useMemo(()=>computeSoumTotals(lignes),[lignes]);
-  const {sendDoc:sendSoum,EmailStatusBadge:SoumEmailBadge}=useDirectEmail(apiConfig);
   const client=clients.find(c=>c.id===form.clientId);
   const upd=f=>setForm(p=>({...p,...f}));
   const updL=(id,f)=>setLignes(ls=>ls.map(l=>l.id===id?{...l,...f}:l));
@@ -1957,26 +2103,30 @@ function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveD
     const numero=savedNumero||fmtDocNum(docNums.prefix,"S",docNums.soumission);
     openPDF(buildSoumissionHTML({...form,numero,lignes,totals,client,companyInfo,invoiceTemplate}));
   };
-  const doEmail=()=>{
+  const openEmailModal=()=>{
     if(!client?.courriel)return;
     const num=savedNumero||"—";
     const html=buildSoumissionHTML({...form,numero:num,lignes,totals,client,companyInfo,invoiceTemplate});
-    const intro=`<p>Bonjour,</p><p>Veuillez trouver ci-joint votre soumission <strong>${num}</strong> d'un montant de <strong>${fmt(totals.total)}</strong>.</p><p>Merci de votre confiance,<br/>${companyInfo.nom||""}</p>`;
-    sendSoum({html,to:client.courriel,subject:`Soumission ${num} — ${companyInfo.nom||""}`,introHtml:intro});
+    setEmailModal({
+      initTo:client.courriel,
+      initSubject:`Soumission ${num} — ${companyInfo.nom||""}`,
+      initBody:`Bonjour ${client.contact||client.entreprise||""},\n\nVeuillez trouver ci-joint votre soumission ${num} d'un montant de ${fmt(totals.total)}.\n\nN'hésitez pas à nous contacter pour toute question.\n\nCordialement,\n${companyInfo.nom||""}`,
+      attachmentName:`Soumission-${num}.pdf`,
+      pdfHtml:html
+    });
   };
   const SC=STATUT_SOUM_C;
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     {/* Top bar */}
     <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-      <button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>
+      {onBackToClient?<><button onClick={onBackToList} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Clients</button><button onClick={onBackToClient} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Fiche client</button></>:<button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>}
       <span style={{fontSize:14,fontWeight:700,color:t.text}}>{savedNumero||(isNew?"Nouvelle soumission":soumission?.numero)}</span>
       <span style={{fontSize:10,fontWeight:700,color:SC[form.statut]||t.textMuted,background:"rgba(0,0,0,0.06)",borderRadius:10,padding:"2px 8px"}}>{form.statut}</span>
       <div style={{flex:1}}/>
       <button onClick={doSave} style={{padding:"5px 14px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'Outfit',sans-serif"}}>💾 Sauvegarder</button>
       {flash&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>✓</span>}
       <button onClick={doPrint} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>🖨️ Imprimer</button>
-      <button onClick={doEmail} disabled={!client?.courriel} title={!client?.courriel?"Aucun courriel client":""} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:!client?.courriel?t.textDim:t.textSub,cursor:!client?.courriel?"default":"pointer",fontWeight:600,fontSize:11,opacity:!client?.courriel?0.5:1}}>📧 Envoyer</button>
-      {SoumEmailBadge}
+      <button onClick={openEmailModal} disabled={!client?.courriel} title={!client?.courriel?"Aucun courriel client":""} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:!client?.courriel?t.textDim:t.textSub,cursor:!client?.courriel?"default":"pointer",fontWeight:600,fontSize:11,opacity:!client?.courriel?0.5:1}}>📧 Envoyer</button>
       {savedId&&!soumission?.commandeId&&onConvertToCommande
         ?<button onClick={()=>onConvertToCommande({...form,id:savedId,numero:savedNumero,lignes})} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11}}>→ Commande</button>
         :soumission?.commandeId
@@ -1997,6 +2147,16 @@ function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveD
           :<button onClick={()=>setConfirmDel(true)} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:600,fontSize:11}}>🗑️</button>
       )}
     </div>
+    {/* Document chain */}
+    {(soumission?.commandeId||soumission?.factureId)&&(
+      <div style={{background:"rgba(249,115,22,0.06)",border:"1px solid rgba(249,115,22,0.2)",borderRadius:6,padding:"6px 12px",fontSize:11,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+        <span>📋</span>
+        <span style={{color:t.textSub}}>Converti en :</span>
+        {soumission?.commandeId&&<button onClick={()=>onOpenDoc&&onOpenDoc("commande",soumission.clientId,commandes?.find(c=>c.id===soumission.commandeId))} style={{background:"none",border:"none",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11,padding:0,textDecoration:"underline"}}>{soumission.commandeNumero}{soumission.commandeDate?` (${soumission.commandeDate})`:""}</button>}
+        {soumission?.commandeId&&soumission?.factureId&&<span style={{color:t.textMuted}}>→</span>}
+        {soumission?.factureId&&<button onClick={()=>onOpenDoc&&onOpenDoc("facture",soumission.clientId,factures?.find(f=>f.id===soumission.factureId))} style={{background:"none",border:"none",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11,padding:0,textDecoration:"underline"}}>{soumission.factureNumero}{soumission.factureDate?` (${soumission.factureDate})`:""}</button>}
+      </div>
+    )}
     {/* Header */}
     <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -2082,6 +2242,7 @@ function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveD
         </div>
       </div>
     </div>
+    {emailModal&&<EmailComposeModal {...emailModal} fromEmail={apiConfig?.resendFrom||"noreply@balanceiq.ca"} apiConfig={apiConfig} onSuccess={to=>{setEmailModal(null);}} onClose={()=>setEmailModal(null)}/>}
   </div>);
 }
 
@@ -2093,15 +2254,15 @@ const STATUT_CMD_C={"Brouillon":"#6b7280","Confirmée":"#3b82f6","En cours":"#f5
 function buildCommandeHTML({numero,date,dateLivraison,statut,client,referenceClient,lignes,notes,totals,companyInfo,sourceNumero,acomptes=[],invoiceTemplate={}}){
   const fd=d=>{if(!d)return"—";const dt=new Date(d+"T12:00:00");return`${dt.getDate()} ${["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"][dt.getMonth()]} ${dt.getFullYear()}`};
   const fc=n=>(n||0).toLocaleString("fr-CA",{style:"currency",currency:"CAD"});
-  const tpl={...DEFAULT_INVOICE_TEMPLATE,...(invoiceTemplate||{})};const ac=tpl.accentColor;const logoAlign=tpl.logoPosition==='centre'?'center':tpl.logoPosition==='droite'?'right':'left';const logo=companyInfo.logo?`<div style="text-align:${logoAlign}"><img src="${companyInfo.logo}" style="max-height:55px;max-width:110px;object-fit:contain;" alt="Logo"/></div>`:"";
+  const tpl={...DEFAULT_INVOICE_TEMPLATE,...(invoiceTemplate||{})};const ac=tpl.accentColor;const logoAlign=tpl.logoPosition==='centre'?'center':tpl.logoPosition==='droite'?'right':'left';const fallbackName=tpl.whiteLabelEnabled&&tpl.whiteLabelName?tpl.whiteLabelName:"BIQ";const biqCredit=tpl.whiteLabelEnabled?`<div style="margin-top:6px;font-size:9px;color:#bbb">Propulsé par BalanceIQ</div>`:"";const logo=companyInfo.logo?`<div style="text-align:${logoAlign}"><img src="${companyInfo.logo}" style="max-height:55px;max-width:110px;object-fit:contain;" alt="Logo"/></div>`:`<div style="font-size:${fallbackName==="BIQ"?24:16}px;font-weight:900;color:${ac};letter-spacing:${fallbackName==="BIQ"?2:0}px">${fallbackName}</div>`;
   const rows=lignes.map((l,i)=>{const lt=(l.quantite||0)*(l.prixUnitaire||0)*(1-(l.remise||0)/100);return`<tr style="background:${i%2?"#f9f9f9":"#fff"}"><td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:12px">${l.description||""}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:center;font-size:12px">${l.quantite||1}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:right;font-size:12px">${fc(l.prixUnitaire||0)}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:center;font-size:12px">${l.remise?l.remise+"%":"—"}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:right;font-size:12px;font-weight:700">${fc(lt)}</td></tr>`}).join("");
   const cli=client?`<div style="font-weight:700;font-size:13px">${client.entreprise}</div>${client.contact?`<div>${client.contact}</div>`:""}${client.adresse?`<div>${client.adresse}</div>`:""}${client.ville?`<div>${[client.ville,client.province,client.codePostal].filter(Boolean).join(", ")}</div>`:""}${client.courriel?`<div>${client.courriel}</div>`:""}${client.tel1?`<div>${client.tel1}</div>`:""}`:""` "(aucun client)"`;
   const totalAcomptes=acomptes.reduce((s,a)=>s+(a.montant||0),0);
   const soldeRestant=totals.total-totalAcomptes;
   const depotSection=acomptes.length>0?`<div style="margin-top:6px;border-top:1px dashed #ccc;padding-top:6px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Dépôts / Acomptes</div>${acomptes.map(a=>`<div class="tr" style="color:#16a34a"><span>Dépôt reçu — ${a.date||""}${a.mode?` (${a.mode})`:""}</span><span>−${fc(a.montant||0)}</span></div>`).join("")}<div class="tr tf" style="color:#ea580c"><span>SOLDE À PAYER</span><span>${fc(soldeRestant)}</span></div></div>`:""
-  return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Commande ${numero}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}.hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px}.title{font-size:26px;font-weight:900;color:#f97316;letter-spacing:2px}.meta{font-size:11px;color:#555;margin-top:3px}table{width:100%;border-collapse:collapse}th{background:#f97316;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.tot{margin-left:auto;width:260px;margin-top:12px}.tr{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}.tf{font-weight:900;font-size:15px;border-top:2px solid #1a1a1a;margin-top:4px;padding-top:4px}.notes{background:#f9f9f9;border-left:3px solid #f97316;padding:10px 12px;margin-top:16px;font-size:12px}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}th{background:${ac}}th{background:${ac}}.notes{border-left-color:${ac}}.title{color:${ac}}</style></head><body><div class="hdr"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${companyInfo.nom||""}</div><div class="meta">${[companyInfo.adresse,companyInfo.ville,companyInfo.province].filter(Boolean).join(", ")}</div>${companyInfo.telephone?`<div class="meta">${companyInfo.telephone}</div>`:""}${companyInfo.courriel?`<div class="meta">${companyInfo.courriel}</div>`:""}</div><div style="text-align:right"><div class="title">BON DE COMMANDE</div><div style="font-size:18px;font-weight:700;margin-top:4px"># ${numero}</div><div class="meta">Date: ${fd(date)}</div>${dateLivraison?`<div class="meta">Livraison: ${fd(dateLivraison)}</div>`:""}<div class="meta">Statut: <strong>${statut}</strong></div>${referenceClient?`<div class="meta">Réf.: ${referenceClient}</div>`:""}${sourceNumero?`<div class="meta">Soumission: ${sourceNumero}</div>`:""}</div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Facturé à</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>Description</th><th style="width:55px;text-align:center">Qté</th><th style="width:100px;text-align:right">Prix unit.</th><th style="width:65px;text-align:center">Remise</th><th style="width:100px;text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><div class="tot"><div class="tr"><span>Sous-total</span><span>${fc(totals.sousTotal)}</span></div><div class="tr"><span>TPS (5%)</span><span>${fc(totals.tpsTotal)}</span></div><div class="tr"><span>TVQ (9.975%)</span><span>${fc(totals.tvqTotal)}</span></div><div class="tr tf"><span>TOTAL</span><span>${fc(totals.total)}</span></div>${depotSection}</div>${notes?`<div class="notes"><strong>Notes / Conditions</strong><br/>${notes}</div>`:""}<div class="ftr">${tpl.showTaxNumbers&&companyInfo.numeroTPS?`N° TPS: ${companyInfo.numeroTPS}`:""}${tpl.showTaxNumbers&&companyInfo.numeroTVQ?` &nbsp;|&nbsp; N° TVQ: ${companyInfo.numeroTVQ}`:""}${tpl.footerText?`<div style="margin-top:3px">${tpl.footerText}</div>`:""}</div></body></html>`;
+  return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Commande ${numero}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}.hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px}.title{font-size:26px;font-weight:900;color:#f97316;letter-spacing:2px}.meta{font-size:11px;color:#555;margin-top:3px}table{width:100%;border-collapse:collapse}th{background:#f97316;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.tot{margin-left:auto;width:260px;margin-top:12px}.tr{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}.tf{font-weight:900;font-size:15px;border-top:2px solid #1a1a1a;margin-top:4px;padding-top:4px}.notes{background:#f9f9f9;border-left:3px solid #f97316;padding:10px 12px;margin-top:16px;font-size:12px}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}th{background:${ac}}th{background:${ac}}.notes{border-left-color:${ac}}.title{color:${ac}}</style></head><body><div class="hdr"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${companyInfo.nom||""}</div><div class="meta">${[companyInfo.adresse,companyInfo.ville,companyInfo.province].filter(Boolean).join(", ")}</div>${companyInfo.telephone?`<div class="meta">${companyInfo.telephone}</div>`:""}${companyInfo.courriel?`<div class="meta">${companyInfo.courriel}</div>`:""}</div><div style="text-align:right"><div class="title">BON DE COMMANDE</div><div style="font-size:18px;font-weight:700;margin-top:4px"># ${numero}</div><div class="meta">Date: ${fd(date)}</div>${dateLivraison?`<div class="meta">Livraison: ${fd(dateLivraison)}</div>`:""}<div class="meta">Statut: <strong>${statut}</strong></div>${referenceClient?`<div class="meta">Réf.: ${referenceClient}</div>`:""}${sourceNumero?`<div class="meta">Soumission: ${sourceNumero}</div>`:""}</div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Facturé à</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>Description</th><th style="width:55px;text-align:center">Qté</th><th style="width:100px;text-align:right">Prix unit.</th><th style="width:65px;text-align:center">Remise</th><th style="width:100px;text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><div class="tot"><div class="tr"><span>Sous-total</span><span>${fc(totals.sousTotal)}</span></div><div class="tr"><span>TPS (5%)</span><span>${fc(totals.tpsTotal)}</span></div><div class="tr"><span>TVQ (9.975%)</span><span>${fc(totals.tvqTotal)}</span></div><div class="tr tf"><span>TOTAL</span><span>${fc(totals.total)}</span></div>${depotSection}</div>${notes?`<div class="notes"><strong>Notes / Conditions</strong><br/>${notes}</div>`:""}<div class="ftr">${tpl.showTaxNumbers&&companyInfo.numeroTPS?`N° TPS: ${companyInfo.numeroTPS}`:""}${tpl.showTaxNumbers&&companyInfo.numeroTVQ?` &nbsp;|&nbsp; N° TVQ: ${companyInfo.numeroTVQ}`:""}${tpl.footerText?`<div style="margin-top:3px">${tpl.footerText}</div>`:""}${biqCredit}</div></body></html>`;
 }
-function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNums,commandes,saveCommandes,onBack,initClientId,onConvertToFacture,apiConfig,showUpgradePrompt}){ // eslint-disable-line
+function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNums,commandes,saveCommandes,soumissions,factures,onBack,onBackToClient,onBackToList,initClientId,onConvertToFacture,apiConfig,showUpgradePrompt,invoiceTemplate,onOpenDoc}){ // eslint-disable-line
   const t=useT();
   const isNew=!commande?.id;
   const todayStr=dk(new Date());
@@ -2117,6 +2278,7 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
   const [showDepotForm,setShowDepotForm]=useState(false);
   const [depotForm,setDepotForm]=useState({date:todayStr,montant:"",mode:"Virement/E-Transfer",reference:""});
   const totalAcomptes=useMemo(()=>acomptes.reduce((s,a)=>s+(a.montant||0),0),[acomptes]);
+  const [emailModal,setEmailModal]=useState(null);
   const totals=useMemo(()=>computeSoumTotals(lignes),[lignes]);
   const client=clients.find(c=>c.id===form.clientId);
   const upd=f=>setForm(p=>({...p,...f}));
@@ -2158,18 +2320,22 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
     const numero=savedNumero||fmtDocNum(docNums.prefix,"C",docNums.commande);
     openPDF(buildCommandeHTML({...form,numero,lignes,totals,client,companyInfo,acomptes,invoiceTemplate}));
   };
-  const {sendDoc:sendCmd,EmailStatusBadge:CmdEmailBadge}=useDirectEmail(apiConfig);
-  const doEmail=()=>{
+  const openEmailModal=()=>{
     if(!client?.courriel)return;
     const num=savedNumero||"—";
-    const html=buildCommandeHTML({...form,numero:num,lignes,totals,client,companyInfo,invoiceTemplate});
-    const intro=`<p>Bonjour,</p><p>Veuillez trouver ci-joint votre bon de commande <strong>${num}</strong> d'un montant de <strong>${fmt(totals.total)}</strong>.</p><p>Merci de votre confiance,<br/>${companyInfo.nom||""}</p>`;
-    sendCmd({html,to:client.courriel,subject:`Commande ${num} — ${companyInfo.nom||""}`,introHtml:intro});
+    const html=buildCommandeHTML({...form,numero:num,lignes,totals,client,companyInfo,acomptes,invoiceTemplate});
+    setEmailModal({
+      initTo:client.courriel,
+      initSubject:`Commande ${num} — ${companyInfo.nom||""}`,
+      initBody:`Bonjour ${client.contact||client.entreprise||""},\n\nVeuillez trouver ci-joint votre bon de commande ${num} d'un montant de ${fmt(totals.total)}.\n\nN'hésitez pas à nous contacter pour toute question.\n\nCordialement,\n${companyInfo.nom||""}`,
+      attachmentName:`Commande-${num}.pdf`,
+      pdfHtml:html
+    });
   };
   const SC=STATUT_CMD_C;
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-      <button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>
+      {onBackToClient?<><button onClick={onBackToList} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Clients</button><button onClick={onBackToClient} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Fiche client</button></>:<button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>}
       <span style={{fontSize:14,fontWeight:700,color:t.text}}>{savedNumero||(isNew?"Nouvelle commande":commande?.numero)}</span>
       <span style={{fontSize:10,fontWeight:700,color:SC[form.statut]||t.textMuted,background:"rgba(0,0,0,0.06)",borderRadius:10,padding:"2px 8px"}}>{form.statut}</span>
       {form.sourceNumero&&<span style={{fontSize:10,color:t.textMuted}}>← Soumission {form.sourceNumero}</span>}
@@ -2177,8 +2343,7 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
       <button onClick={doSave} style={{padding:"5px 14px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'Outfit',sans-serif"}}>💾 Sauvegarder</button>
       {flash&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>✓</span>}
       <button onClick={doPrint} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>🖨️ Imprimer</button>
-      <button onClick={doEmail} disabled={!client?.courriel} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:!client?.courriel?t.textDim:t.textSub,cursor:!client?.courriel?"default":"pointer",fontWeight:600,fontSize:11,opacity:!client?.courriel?0.5:1}}>📧 Envoyer</button>
-      {CmdEmailBadge}
+      <button onClick={openEmailModal} disabled={!client?.courriel} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:!client?.courriel?t.textDim:t.textSub,cursor:!client?.courriel?"default":"pointer",fontWeight:600,fontSize:11,opacity:!client?.courriel?0.5:1}}>📧 Envoyer</button>
       {savedId&&!commande?.factureId&&onConvertToFacture
         ?<button onClick={()=>onConvertToFacture({...form,id:savedId,numero:savedNumero,lignes})} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11}}>Facturer cette commande</button>
         :commande?.factureId
@@ -2193,6 +2358,15 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
           :<button onClick={()=>setConfirmDel(true)} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:600,fontSize:11}}>🗑️</button>
       )}
     </div>
+    {/* Document chain */}
+    {(commande?.sourceType||commande?.factureId)&&(
+      <div style={{background:"rgba(249,115,22,0.06)",border:"1px solid rgba(249,115,22,0.2)",borderRadius:6,padding:"6px 12px",fontSize:11,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+        <span>📋</span>
+        {commande?.sourceType&&<><span style={{color:t.textSub}}>Créée depuis :</span><button onClick={()=>onOpenDoc&&onOpenDoc("soumission",commande.clientId,soumissions?.find(s=>s.id===commande.sourceId))} style={{background:"none",border:"none",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11,padding:0,textDecoration:"underline"}}>{commande.sourceNumero}</button></>}
+        {commande?.sourceType&&commande?.factureId&&<span style={{color:t.textMuted}}>|</span>}
+        {commande?.factureId&&<><span style={{color:t.textSub}}>Converti en :</span><button onClick={()=>onOpenDoc&&onOpenDoc("facture",commande.clientId,factures?.find(f=>f.id===commande.factureId))} style={{background:"none",border:"none",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11,padding:0,textDecoration:"underline"}}>{commande.factureNumero}{commande.factureDate?` (${commande.factureDate})`:""}</button></>}
+      </div>
+    )}
     <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         <div style={{flex:"2 1 200px"}}>
@@ -2309,6 +2483,7 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
         )}
       </div>
     </div>
+    {emailModal&&<EmailComposeModal {...emailModal} fromEmail={apiConfig?.resendFrom||"noreply@balanceiq.ca"} apiConfig={apiConfig} onSuccess={to=>{setEmailModal(null);}} onClose={()=>setEmailModal(null)}/>}
   </div>);
 }
 
@@ -2324,15 +2499,15 @@ function calcDateEcheance(dateStr,conditions,nbJours){
 function buildFactureHTML({numero,date,dateEcheance,statut,client,referenceClient,lignes,notes,totals,companyInfo,sourceNumero,sourceType,montantPaye,acomptes=[],invoiceTemplate={}}){
   const fd=d=>{if(!d)return"—";const dt=new Date(d+"T12:00:00");return`${dt.getDate()} ${["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"][dt.getMonth()]} ${dt.getFullYear()}`};
   const fc=n=>(n||0).toLocaleString("fr-CA",{style:"currency",currency:"CAD"});
-  const tpl={...DEFAULT_INVOICE_TEMPLATE,...(invoiceTemplate||{})};const ac=tpl.accentColor;const logoAlign=tpl.logoPosition==='centre'?'center':tpl.logoPosition==='droite'?'right':'left';const logo=companyInfo.logo?`<div style="text-align:${logoAlign}"><img src="${companyInfo.logo}" style="max-height:55px;max-width:110px;object-fit:contain;" alt="Logo"/></div>`:"";
+  const tpl={...DEFAULT_INVOICE_TEMPLATE,...(invoiceTemplate||{})};const ac=tpl.accentColor;const logoAlign=tpl.logoPosition==='centre'?'center':tpl.logoPosition==='droite'?'right':'left';const fallbackName=tpl.whiteLabelEnabled&&tpl.whiteLabelName?tpl.whiteLabelName:"BIQ";const biqCredit=tpl.whiteLabelEnabled?`<div style="margin-top:6px;font-size:9px;color:#bbb">Propulsé par BalanceIQ</div>`:"";const logo=companyInfo.logo?`<div style="text-align:${logoAlign}"><img src="${companyInfo.logo}" style="max-height:55px;max-width:110px;object-fit:contain;" alt="Logo"/></div>`:`<div style="font-size:${fallbackName==="BIQ"?24:16}px;font-weight:900;color:${ac};letter-spacing:${fallbackName==="BIQ"?2:0}px">${fallbackName}</div>`;
   const rows=lignes.map((l,i)=>{const lt=(l.quantite||0)*(l.prixUnitaire||0)*(1-(l.remise||0)/100);return`<tr style="background:${i%2?"#f9f9f9":"#fff"}"><td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:12px">${l.description||""}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:center;font-size:12px">${l.quantite||1}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:right;font-size:12px">${fc(l.prixUnitaire||0)}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:center;font-size:12px">${l.remise?l.remise+"%":"—"}</td><td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:right;font-size:12px;font-weight:700">${fc(lt)}</td></tr>`}).join("");
   const cli=client?`<div style="font-weight:700;font-size:13px">${client.entreprise}</div>${client.contact?`<div>${client.contact}</div>`:""}${client.adresse?`<div>${client.adresse}</div>`:""}${client.ville?`<div>${[client.ville,client.province,client.codePostal].filter(Boolean).join(", ")}</div>`:""}${client.courriel?`<div>${client.courriel}</div>`:""}${client.tel1?`<div>${client.tel1}</div>`:""}`:""` "(aucun client)"`;
   const totalAcomptes=acomptes.reduce((s,a)=>s+(a.montant||0),0);
   const solde=totals.total-totalAcomptes-(montantPaye||0);
   const depotSection=acomptes.length>0?`<div style="margin-top:6px;border-top:1px dashed #ccc;padding-top:6px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Dépôts / Acomptes</div>${acomptes.map(a=>`<div class="tr" style="color:#16a34a"><span>Dépôt reçu — ${a.date||""}${a.mode?` (${a.mode})`:""}</span><span>−${fc(a.montant||0)}</span></div>`).join("")}</div>`:""
-  return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Facture ${numero}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}table{width:100%;border-collapse:collapse}th{background:#f97316;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.tot{margin-left:auto;width:280px;margin-top:12px}.tr{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}.tf{font-weight:900;font-size:15px;border-top:2px solid #1a1a1a;margin-top:4px;padding-top:4px}.due{background:#fff3cd;border:1px solid #f97316;borderRadius:4px;padding:6px 10px;margin-bottom:12px;font-size:12px;font-weight:700}.notes{background:#f9f9f9;border-left:3px solid #f97316;padding:10px 12px;margin-top:16px;font-size:12px}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}th{background:${ac}}th{background:${ac}}.notes{border-left-color:${ac}}.title{color:${ac}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${companyInfo.nom||""}</div><div style="font-size:11px;color:#555">${[companyInfo.adresse,companyInfo.ville,companyInfo.province].filter(Boolean).join(", ")}</div>${companyInfo.telephone?`<div style="font-size:11px;color:#555">${companyInfo.telephone}</div>`:""}${companyInfo.courriel?`<div style="font-size:11px;color:#555">${companyInfo.courriel}</div>`:""}</div><div style="text-align:right"><div style="font-size:30px;font-weight:900;color:#f97316;letter-spacing:2px">FACTURE</div><div style="font-size:18px;font-weight:700;margin-top:4px"># ${numero}</div><div style="font-size:11px;color:#555;margin-top:3px">Date: ${fd(date)}</div><div style="font-size:12px;font-weight:700;color:${statut==="En retard"?"#ef4444":"#1a1a1a"};margin-top:4px;padding:4px 8px;background:${statut==="En retard"?"#fee2e2":"#f3f4f6"};borderRadius:4px;display:inline-block">Échéance: ${fd(dateEcheance)}</div><div style="font-size:11px;color:#555;margin-top:3px">Statut: <strong>${statut}</strong></div>${referenceClient?`<div style="font-size:11px;color:#555">Réf.: ${referenceClient}</div>`:""}${sourceNumero?`<div style="font-size:11px;color:#555">${sourceType==="commande"?"Commande":"Soumission"}: ${sourceNumero}</div>`:""}</div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Facturé à</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>Description</th><th style="width:55px;text-align:center">Qté</th><th style="width:100px;text-align:right">Prix unit.</th><th style="width:65px;text-align:center">Remise</th><th style="width:100px;text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><div class="tot"><div class="tr"><span>Sous-total</span><span>${fc(totals.sousTotal)}</span></div><div class="tr"><span>TPS (5%)</span><span>${fc(totals.tpsTotal)}</span></div><div class="tr"><span>TVQ (9.975%)</span><span>${fc(totals.tvqTotal)}</span></div><div class="tr tf"><span>TOTAL</span><span>${fc(totals.total)}</span></div>${depotSection}${(montantPaye||0)>0?`<div class="tr" style="color:#22c55e"><span>Paiements reçus</span><span>−${fc(montantPaye)}</span></div>`:""}<div class="tr tf" style="color:#ef4444"><span>SOLDE DÛ</span><span>${fc(Math.max(0,solde))}</span></div></div>${notes?`<div class="notes"><strong>Notes</strong><br/>${notes}</div>`:""}<div class="ftr">${tpl.showTaxNumbers&&companyInfo.numeroTPS?`N° TPS: ${companyInfo.numeroTPS}`:""}${tpl.showTaxNumbers&&companyInfo.numeroTVQ?` &nbsp;|&nbsp; N° TVQ: ${companyInfo.numeroTVQ}`:""}${tpl.footerText?`<div style="margin-top:3px">${tpl.footerText}</div>`:""}</div></body></html>`;
+  return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Facture ${numero}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}table{width:100%;border-collapse:collapse}th{background:#f97316;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.tot{margin-left:auto;width:280px;margin-top:12px}.tr{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}.tf{font-weight:900;font-size:15px;border-top:2px solid #1a1a1a;margin-top:4px;padding-top:4px}.due{background:#fff3cd;border:1px solid #f97316;borderRadius:4px;padding:6px 10px;margin-bottom:12px;font-size:12px;font-weight:700}.notes{background:#f9f9f9;border-left:3px solid #f97316;padding:10px 12px;margin-top:16px;font-size:12px}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}th{background:${ac}}th{background:${ac}}.notes{border-left-color:${ac}}.title{color:${ac}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${companyInfo.nom||""}</div><div style="font-size:11px;color:#555">${[companyInfo.adresse,companyInfo.ville,companyInfo.province].filter(Boolean).join(", ")}</div>${companyInfo.telephone?`<div style="font-size:11px;color:#555">${companyInfo.telephone}</div>`:""}${companyInfo.courriel?`<div style="font-size:11px;color:#555">${companyInfo.courriel}</div>`:""}</div><div style="text-align:right"><div style="font-size:30px;font-weight:900;color:#f97316;letter-spacing:2px">FACTURE</div><div style="font-size:18px;font-weight:700;margin-top:4px"># ${numero}</div><div style="font-size:11px;color:#555;margin-top:3px">Date: ${fd(date)}</div><div style="font-size:12px;font-weight:700;color:${statut==="En retard"?"#ef4444":"#1a1a1a"};margin-top:4px;padding:4px 8px;background:${statut==="En retard"?"#fee2e2":"#f3f4f6"};borderRadius:4px;display:inline-block">Échéance: ${fd(dateEcheance)}</div><div style="font-size:11px;color:#555;margin-top:3px">Statut: <strong>${statut}</strong></div>${referenceClient?`<div style="font-size:11px;color:#555">Réf.: ${referenceClient}</div>`:""}${sourceNumero?`<div style="font-size:11px;color:#555">${sourceType==="commande"?"Commande":"Soumission"}: ${sourceNumero}</div>`:""}</div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Facturé à</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>Description</th><th style="width:55px;text-align:center">Qté</th><th style="width:100px;text-align:right">Prix unit.</th><th style="width:65px;text-align:center">Remise</th><th style="width:100px;text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><div class="tot"><div class="tr"><span>Sous-total</span><span>${fc(totals.sousTotal)}</span></div><div class="tr"><span>TPS (5%)</span><span>${fc(totals.tpsTotal)}</span></div><div class="tr"><span>TVQ (9.975%)</span><span>${fc(totals.tvqTotal)}</span></div><div class="tr tf"><span>TOTAL</span><span>${fc(totals.total)}</span></div>${depotSection}${(montantPaye||0)>0?`<div class="tr" style="color:#22c55e"><span>Paiements reçus</span><span>−${fc(montantPaye)}</span></div>`:""}<div class="tr tf" style="color:#ef4444"><span>SOLDE DÛ</span><span>${fc(Math.max(0,solde))}</span></div></div>${notes?`<div class="notes"><strong>Notes</strong><br/>${notes}</div>`:""}<div class="ftr">${tpl.showTaxNumbers&&companyInfo.numeroTPS?`N° TPS: ${companyInfo.numeroTPS}`:""}${tpl.showTaxNumbers&&companyInfo.numeroTVQ?` &nbsp;|&nbsp; N° TVQ: ${companyInfo.numeroTVQ}`:""}${tpl.footerText?`<div style="margin-top:3px">${tpl.footerText}</div>`:""}${biqCredit}</div></body></html>`;
 }
-function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums,factures,saveFactures,onBack,initClientId,onEnregistrerPaiement,onCreditNote,apiConfig,showUpgradePrompt}){
+function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums,factures,saveFactures,commandes,soumissions,onBack,onBackToClient,onBackToList,initClientId,onEnregistrerPaiement,onCreditNote,apiConfig,showUpgradePrompt,invoiceTemplate,onOpenDoc}){
   const t=useT();
   const isNew=!facture?.id;
   const todayStr=dk(new Date());
@@ -2346,6 +2521,7 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
   const [acomptes,setAcomptes]=useState(facture?.acomptes||[]);
   const [showDepotForm,setShowDepotForm]=useState(false);
   const [depotForm,setDepotForm]=useState({date:todayStr,montant:"",mode:"Virement/E-Transfer",reference:""});
+  const [emailModal,setEmailModal]=useState(null);
   const totalAcomptes=useMemo(()=>acomptes.reduce((s,a)=>s+(a.montant||0),0),[acomptes]);
   const totals=useMemo(()=>computeSoumTotals(lignes),[lignes]);
   const client=clients.find(c=>c.id===form.clientId);
@@ -2356,7 +2532,6 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
   const montantPaye=useMemo(()=>(form.paiements||[]).reduce((s,p)=>s+(p.montant||0),0),[form.paiements]);
   const soldeDu=totals.total-totalAcomptes-montantPaye;
   const addDepot=()=>{
-    if(!canUse('depositTracking')){if(showUpgradePrompt)showUpgradePrompt('depositTracking');return;}
     const mt=parseFloat(depotForm.montant);if(!mt||mt<=0)return;
     setAcomptes(prev=>[...prev,{id:Date.now().toString(),...depotForm,montant:mt}]);
     setDepotForm({date:todayStr,montant:"",mode:"Virement/E-Transfer",reference:""});
@@ -2408,27 +2583,29 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
     const numero=savedNumero||fmtDocNum(docNums.prefix,"F",docNums.facture);
     openPDF(buildFactureHTML({...form,numero,lignes,totals,client,companyInfo,montantPaye,acomptes,invoiceTemplate}));
   };
-  const {sendDoc:sendFac,EmailStatusBadge:FacEmailBadge}=useDirectEmail(apiConfig);
-  const doEmail=()=>{
+  const openEmailModal=()=>{
     if(!client?.courriel)return;
     const num=savedNumero||"—";
-    const html=buildFactureHTML({...form,numero:num,lignes,totals,client,companyInfo,montantPaye,invoiceTemplate});
-    const intro=`<p>Bonjour,</p><p>Veuillez trouver ci-joint votre facture <strong>${num}</strong> d'un montant de <strong>${fmt(totals.total)}</strong>${soldeDu<totals.total?`, solde dû: <strong>${fmt(soldeDu)}</strong>`:""}.</p><p>Merci de votre confiance,<br/>${companyInfo.nom||""}</p>`;
-    sendFac({html,to:client.courriel,subject:`Facture ${num} — ${companyInfo.nom||""}`,introHtml:intro});
+    const html=buildFactureHTML({...form,numero:num,lignes,totals,client,companyInfo,montantPaye,acomptes,invoiceTemplate});
+    setEmailModal({
+      initTo:client.courriel,
+      initSubject:`Facture ${num} — ${companyInfo.nom||""}`,
+      initBody:`Bonjour ${client.contact||client.entreprise||""},\n\nVeuillez trouver ci-joint votre facture ${num} d'un montant de ${fmt(totals.total)}${soldeDu<totals.total?` (solde dû : ${fmt(Math.max(0,soldeDu))})`:""}.\n\nN'hésitez pas à nous contacter pour toute question.\n\nCordialement,\n${companyInfo.nom||""}`,
+      attachmentName:`Facture-${num}.pdf`,
+      pdfHtml:html
+    });
   };
   const SC=STATUT_FAC_C;
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-      <button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>
+      {onBackToClient?<><button onClick={onBackToList} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Clients</button><button onClick={onBackToClient} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Fiche client</button></>:<button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>}
       <span style={{fontSize:14,fontWeight:700,color:t.text}}>{savedNumero||(isNew?"Nouvelle facture":facture?.numero)}</span>
       <span style={{fontSize:10,fontWeight:700,color:SC[displayStatut]||t.textMuted,background:"rgba(0,0,0,0.06)",borderRadius:10,padding:"2px 8px"}}>{displayStatut}{isOverdue&&" ⚠"}</span>
-      {form.sourceNumero&&<span style={{fontSize:10,color:t.textMuted}}>← {form.sourceType==="commande"?"Commande":"Soumission"} {form.sourceNumero}</span>}
       <div style={{flex:1}}/>
       <button onClick={doSave} style={{padding:"5px 14px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'Outfit',sans-serif"}}>💾 Sauvegarder</button>
       {flash&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>✓</span>}
       <button onClick={doPrint} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>🖨️ Imprimer</button>
-      <button onClick={doEmail} disabled={!client?.courriel} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:!client?.courriel?t.textDim:t.textSub,cursor:!client?.courriel?"default":"pointer",fontWeight:600,fontSize:11,opacity:!client?.courriel?0.5:1}}>📧 Envoyer</button>
-      {FacEmailBadge}
+      <button onClick={openEmailModal} disabled={!client?.courriel} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:!client?.courriel?t.textDim:t.textSub,cursor:!client?.courriel?"default":"pointer",fontWeight:600,fontSize:11,opacity:!client?.courriel?0.5:1}}>📧 Envoyer</button>
       <button onClick={()=>savedId&&onEnregistrerPaiement&&onEnregistrerPaiement(factures.find(f=>f.id===savedId)||{...form,id:savedId})} disabled={!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?t.cardBorder:"rgba(249,115,22,0.3)"}`,background:!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?t.section:"rgba(249,115,22,0.07)",color:!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?t.textDim:"#f97316",cursor:!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?"default":"pointer",fontWeight:600,fontSize:11,opacity:!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?0.4:1}}>Enregistrer un paiement</button>
       <button onClick={()=>savedId&&onCreditNote&&onCreditNote(factures.find(f=>f.id===savedId)||{...form,id:savedId})} disabled={!savedId||!onCreditNote||["Annulée"].includes(form.statut)} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${!savedId||!onCreditNote||["Annulée"].includes(form.statut)?t.cardBorder:"rgba(239,68,68,0.3)"}`,background:!savedId||!onCreditNote||["Annulée"].includes(form.statut)?t.section:"rgba(239,68,68,0.07)",color:!savedId||!onCreditNote||["Annulée"].includes(form.statut)?t.textDim:"#ef4444",cursor:!savedId||!onCreditNote||["Annulée"].includes(form.statut)?"default":"pointer",fontWeight:600,fontSize:11,opacity:!savedId||!onCreditNote||["Annulée"].includes(form.statut)?0.4:1}}>→ Note de crédit</button>
       {savedId&&!locked&&(
@@ -2439,6 +2616,21 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
           :<button onClick={()=>setConfirmDel(true)} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:600,fontSize:11}}>🗑️</button>
       )}
     </div>
+    {/* Document chain */}
+    {form.sourceNumero&&(
+      <div style={{background:"rgba(249,115,22,0.06)",border:"1px solid rgba(249,115,22,0.2)",borderRadius:6,padding:"6px 12px",fontSize:11,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginTop:4}}>
+        <span>📋</span>
+        <span style={{color:t.textSub}}>Créée depuis :</span>
+        <button onClick={()=>{
+          const srcType=form.sourceType;
+          const srcId=form.sourceId;
+          if(srcType==="commande"&&onOpenDoc){const doc=commandes?.find(c=>c.id===srcId);onOpenDoc("commande",form.clientId,doc);}
+          else if(srcType==="soumission"&&onOpenDoc){const doc=soumissions?.find(s=>s.id===srcId);onOpenDoc("soumission",form.clientId,doc);}
+        }} style={{background:"none",border:"none",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11,padding:0,textDecoration:"underline"}}>
+          {form.sourceType==="commande"?"Commande":"Soumission"} {form.sourceNumero}
+        </button>
+      </div>
+    )}
     <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         <div style={{flex:"2 1 200px"}}>
@@ -2543,6 +2735,25 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
           <span>Solde dû</span><span style={{fontFamily:"'DM Mono',monospace"}}>{fmt(Math.max(0,soldeDu))}</span>
         </div>}
         {montantPaye===0&&totalAcomptes===0&&<div style={{fontSize:10,color:t.textMuted,textAlign:"center",marginTop:4}}>Aucun paiement enregistré</div>}
+        {(form.paiements||[]).length>0&&(
+          <div style={{marginTop:8,borderTop:`1px solid ${t.divider}`,paddingTop:8}}>
+            <div style={{fontSize:10,fontWeight:700,color:t.textMuted,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:4}}>Historique des paiements</div>
+            <div style={{display:"grid",gridTemplateColumns:"80px 1fr 80px 80px 90px",gap:3,fontSize:10,color:t.textMuted,fontWeight:700,marginBottom:3}}>
+              <span>Date</span><span>Mode</span><span>Référence</span><span>Montant</span><span style={{textAlign:"right"}}>Solde</span>
+            </div>
+            {(form.paiements||[]).map((p,i)=>{
+              const cumPaid=(form.paiements||[]).slice(0,i+1).reduce((s,x)=>s+(x.montant||0),0);
+              const soldeApres=Math.max(0,totals.total-totalAcomptes-cumPaid);
+              return(<div key={p.id||i} style={{display:"grid",gridTemplateColumns:"80px 1fr 80px 80px 90px",gap:3,fontSize:11,color:t.text,padding:"2px 0",borderBottom:`1px solid ${t.divider}`}}>
+                <span>{p.date||"—"}</span>
+                <span style={{color:t.textSub}}>{p.mode||"—"}</span>
+                <span style={{color:t.textDim,fontFamily:"'DM Mono',monospace"}}>{p.reference||"—"}</span>
+                <span style={{color:"#22c55e",fontWeight:700,fontFamily:"'DM Mono',monospace"}}>{fmt(p.montant||0)}</span>
+                <span style={{textAlign:"right",fontFamily:"'DM Mono',monospace",color:soldeApres===0?"#22c55e":"#f97316",fontWeight:700}}>{fmt(soldeApres)}</span>
+              </div>);
+            })}
+          </div>
+        )}
         {!locked&&(showDepotForm
           ?<div style={{borderTop:`1px solid ${t.dividerMid}`,paddingTop:8,marginTop:4,display:"flex",flexDirection:"column",gap:5}}>
             <div style={{fontSize:11,fontWeight:700,color:t.text}}>Enregistrer un dépôt</div>
@@ -2557,12 +2768,23 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
               <button onClick={()=>setShowDepotForm(false)} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>Annuler</button>
             </div>
           </div>
-          :<button onClick={()=>{if(!canUse('depositTracking')){if(showUpgradePrompt)showUpgradePrompt('depositTracking');return;}setShowDepotForm(true);}} style={{marginTop:6,padding:"5px 10px",borderRadius:6,border:`1px solid ${canUse('depositTracking')?"rgba(249,115,22,0.3)":t.cardBorder}`,background:canUse('depositTracking')?"rgba(249,115,22,0.07)":t.section,color:canUse('depositTracking')?"#f97316":t.textDim,cursor:"pointer",fontWeight:600,fontSize:11,display:"flex",alignItems:"center",gap:5}}>
-            + Enregistrer un dépôt{!canUse('depositTracking')&&<span style={{fontSize:9,fontWeight:700,color:"#6b7280",background:"rgba(255,255,255,0.06)",padding:"1px 5px",borderRadius:4}}>Pro</span>}
+          :<button onClick={()=>setShowDepotForm(true)} style={{marginTop:6,padding:"5px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:600,fontSize:11,display:"flex",alignItems:"center",gap:5}}>
+            + Enregistrer un dépôt
           </button>
         )}
       </div>
     </div>
+    {emailModal&&<EmailComposeModal {...emailModal} fromEmail={apiConfig?.resendFrom||"noreply@balanceiq.ca"} apiConfig={apiConfig} onSuccess={to=>{
+      setEmailModal(null);
+      if(form.statut==="Brouillon"){
+        const newStatut="Envoyée";
+        setForm(p=>({...p,statut:newStatut}));
+        if(savedId){
+          const doc={...form,statut:newStatut,id:savedId,numero:savedNumero,lignes,acomptes};
+          saveFactures(factures.some(f=>f.id===savedId)?factures.map(f=>f.id===savedId?doc:f):[...factures,doc]);
+        }
+      }
+    }} onClose={()=>setEmailModal(null)}/>}
   </div>);
 }
 
@@ -2573,7 +2795,7 @@ function buildReceiptHTML({numero,date,montant,mode,reference,note,client,factur
   const logo=companyInfo.logo?`<img src="${companyInfo.logo}" style="max-height:50px;object-fit:contain;" alt="Logo"/>`:"";
   return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Reçu ${numero}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:30px;font-size:13px;max-width:400px}.title{font-size:24px;font-weight:900;color:#f97316;letter-spacing:2px;margin:12px 0 4px}.num{font-size:16px;font-weight:700;margin-bottom:16px}.row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee;font-size:12px}.total{font-size:18px;font-weight:900;color:#22c55e;text-align:right;margin-top:12px}.stamp{border:3px solid #22c55e;color:#22c55e;font-weight:900;font-size:20px;text-align:center;padding:8px;margin-top:16px;letter-spacing:4px}.ftr{margin-top:20px;font-size:10px;color:#888;text-align:center}@media print{body{padding:15px}}</style></head><body>${logo}<div class="title">REÇU DE PAIEMENT</div><div class="num"># ${numero}</div><div class="row"><span>Date</span><span>${fd(date)}</span></div><div class="row"><span>Client</span><span>${client?.entreprise||"—"}</span></div>${facture?`<div class="row"><span>Facture</span><span>${facture.numero}</span></div>`:""}<div class="row"><span>Mode de paiement</span><span>${mode}</span></div>${reference?`<div class="row"><span>Référence</span><span>${reference}</span></div>`:""}<div class="total">${fc(montant)}</div>${note?`<div style="margin-top:10px;font-size:11px;color:#555">Note: ${note}</div>`:""}<div class="stamp">✓ REÇU</div><div class="ftr">${companyInfo.nom||""}</div></body></html>`;
 }
-function EncaissementEditor({clientId,factureId,clients,factures,saveFactures,docNums,saveDocNums,companyInfo,encaisseData,persistEncaisse,onBack,showUpgradePrompt}){
+function EncaissementEditor({clientId,factureId,clients,factures,saveFactures,docNums,saveDocNums,companyInfo,encaisseData,persistEncaisse,onBack,onBackToClient,onBackToList,showUpgradePrompt}){
   const t=useT();
   const isBulk=canUse('bulkEncaissement');
   const isAutoApply=canUse('autoApplyPayments');
@@ -2695,7 +2917,7 @@ function EncaissementEditor({clientId,factureId,clients,factures,saveFactures,do
   if(confirmation){
     return(<div style={{display:"flex",flexDirection:"column",gap:12}}>
       <div style={{display:"flex",alignItems:"center",gap:8}}>
-        <button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>
+        {onBackToClient?<><button onClick={onBackToList} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Clients</button><button onClick={onBackToClient} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Fiche client</button></>:<button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>}
         <span style={{fontSize:14,fontWeight:700,color:t.text}}>{confirmation.bulk?"Paiements enregistrés":"Paiement enregistré"}</span>
       </div>
       <div style={{background:"rgba(34,197,94,0.08)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:9,padding:16}}>
@@ -2725,7 +2947,7 @@ function EncaissementEditor({clientId,factureId,clients,factures,saveFactures,do
   const colsFree="24px 80px 100px 1fr 90px 90px";
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-      <button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>
+      {onBackToClient?<><button onClick={onBackToList} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Clients</button><button onClick={onBackToClient} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Fiche client</button></>:<button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>}
       <span style={{fontSize:14,fontWeight:700,color:t.text}}>Enregistrer un paiement</span>
       {client&&<span style={{fontSize:12,color:t.textMuted}}>— {client.entreprise}</span>}
       {isBulk&&<span style={{fontSize:9.5,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"2px 7px",borderRadius:8}}>PRO · Multi-factures</span>}
@@ -2855,10 +3077,12 @@ function buildNoteDeCreditHTML({numero,date,clientId,factureNumero,raison,raison
   const rows=lignes.map(l=>{const sub=(l.prixUnitaire||0)*(l.quantite||0)*(1-(l.remise||0)/100);return`<tr style="border-bottom:1px solid #eee"><td style="padding:5px 8px">${l.description||""}</td><td style="padding:5px 8px;text-align:center">${l.quantite}</td><td style="padding:5px 8px;text-align:right">${fc(-(l.prixUnitaire||0))}</td><td style="padding:5px 8px;text-align:center">${l.remise?l.remise+"%":"—"}</td><td style="padding:5px 8px;text-align:right;color:#ef4444;font-weight:700">${fc(-sub)}</td></tr>`;}).join("");
   const tpl={...DEFAULT_INVOICE_TEMPLATE,...(invoiceTemplate||{})};const ac=tpl.accentColor;
   const logoAlign=tpl.logoPosition==='centre'?'center':tpl.logoPosition==='droite'?'right':'left';
-  const logo=companyInfo.logo?`<div style="text-align:${logoAlign}"><img src="${companyInfo.logo}" style="height:48px;object-fit:contain;" /></div>`:`<div style="font-size:24px;font-weight:900;background:linear-gradient(135deg,#ef4444,#dc2626);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:2px">BIQ</div>`;
-  return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Note de crédit ${numero}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}table{width:100%;border-collapse:collapse}th{background:#ef4444;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.tot{margin-left:auto;width:280px;margin-top:12px}.tr{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}.tf{font-weight:900;font-size:15px;border-top:2px solid #1a1a1a;margin-top:4px;padding-top:4px;color:#ef4444}.notes{background:#f9f9f9;border-left:3px solid #ef4444;padding:10px 12px;margin-top:16px;font-size:12px}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}th{background:${ac}}th{background:${ac}}.notes{border-left-color:${ac}}.title{color:${ac}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${companyInfo.nom||""}</div><div style="font-size:11px;color:#555">${[companyInfo.adresse,companyInfo.ville,companyInfo.province].filter(Boolean).join(", ")}</div>${companyInfo.telephone?`<div style="font-size:11px;color:#555">${companyInfo.telephone}</div>`:""}${companyInfo.courriel?`<div style="font-size:11px;color:#555">${companyInfo.courriel}</div>`:""}</div><div style="text-align:right"><div style="font-size:26px;font-weight:900;color:#ef4444;letter-spacing:2px">NOTE DE CRÉDIT</div><div style="font-size:18px;font-weight:700;margin-top:4px"># ${numero}</div><div style="font-size:11px;color:#555;margin-top:3px">Date: ${fd(date)}</div>${factureNumero?`<div style="font-size:11px;color:#555;margin-top:3px">Facture d'origine: <strong>${factureNumero}</strong></div>`:""}<div style="font-size:11px;color:#555;margin-top:3px">Raison: ${raison==="Autre"?raisonDetail:raison}</div></div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Client</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>Description</th><th style="width:55px;text-align:center">Qté</th><th style="width:100px;text-align:right">Prix unit.</th><th style="width:65px;text-align:center">Remise</th><th style="width:100px;text-align:right">Crédit</th></tr></thead><tbody>${rows}</tbody></table><div class="tot"><div class="tr"><span>Sous-total</span><span style="color:#ef4444">${fc(-totals.sousTotal)}</span></div><div class="tr"><span>TPS (5%)</span><span style="color:#ef4444">${fc(-totals.tpsTotal)}</span></div><div class="tr"><span>TVQ (9.975%)</span><span style="color:#ef4444">${fc(-totals.tvqTotal)}</span></div><div class="tr tf"><span>CRÉDIT TOTAL</span><span>${fc(-totals.total)}</span></div></div>${notes?`<div class="notes"><strong>Notes</strong><br/>${notes}</div>`:""}<div class="ftr">${tpl.showTaxNumbers&&companyInfo.numeroTPS?`N° TPS: ${companyInfo.numeroTPS}`:""}${tpl.showTaxNumbers&&companyInfo.numeroTVQ?` &nbsp;|&nbsp; N° TVQ: ${companyInfo.numeroTVQ}`:""}${tpl.footerText?`<div style="margin-top:3px">${tpl.footerText}</div>`:""}</div></body></html>`;
+  const fallbackName=tpl.whiteLabelEnabled&&tpl.whiteLabelName?tpl.whiteLabelName:"BIQ";
+  const biqCredit=tpl.whiteLabelEnabled?`<div style="margin-top:6px;font-size:9px;color:#bbb">Propulsé par BalanceIQ</div>`:"";
+  const logo=companyInfo.logo?`<div style="text-align:${logoAlign}"><img src="${companyInfo.logo}" style="height:48px;object-fit:contain;" /></div>`:`<div style="font-size:${fallbackName==="BIQ"?24:16}px;font-weight:900;color:#ef4444;letter-spacing:${fallbackName==="BIQ"?2:0}px">${fallbackName}</div>`;
+  return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Note de crédit ${numero}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}table{width:100%;border-collapse:collapse}th{background:#ef4444;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.tot{margin-left:auto;width:280px;margin-top:12px}.tr{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}.tf{font-weight:900;font-size:15px;border-top:2px solid #1a1a1a;margin-top:4px;padding-top:4px;color:#ef4444}.notes{background:#f9f9f9;border-left:3px solid #ef4444;padding:10px 12px;margin-top:16px;font-size:12px}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}th{background:${ac}}th{background:${ac}}.notes{border-left-color:${ac}}.title{color:${ac}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${companyInfo.nom||""}</div><div style="font-size:11px;color:#555">${[companyInfo.adresse,companyInfo.ville,companyInfo.province].filter(Boolean).join(", ")}</div>${companyInfo.telephone?`<div style="font-size:11px;color:#555">${companyInfo.telephone}</div>`:""}${companyInfo.courriel?`<div style="font-size:11px;color:#555">${companyInfo.courriel}</div>`:""}</div><div style="text-align:right"><div style="font-size:26px;font-weight:900;color:#ef4444;letter-spacing:2px">NOTE DE CRÉDIT</div><div style="font-size:18px;font-weight:700;margin-top:4px"># ${numero}</div><div style="font-size:11px;color:#555;margin-top:3px">Date: ${fd(date)}</div>${factureNumero?`<div style="font-size:11px;color:#555;margin-top:3px">Facture d'origine: <strong>${factureNumero}</strong></div>`:""}<div style="font-size:11px;color:#555;margin-top:3px">Raison: ${raison==="Autre"?raisonDetail:raison}</div></div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Client</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>Description</th><th style="width:55px;text-align:center">Qté</th><th style="width:100px;text-align:right">Prix unit.</th><th style="width:65px;text-align:center">Remise</th><th style="width:100px;text-align:right">Crédit</th></tr></thead><tbody>${rows}</tbody></table><div class="tot"><div class="tr"><span>Sous-total</span><span style="color:#ef4444">${fc(-totals.sousTotal)}</span></div><div class="tr"><span>TPS (5%)</span><span style="color:#ef4444">${fc(-totals.tpsTotal)}</span></div><div class="tr"><span>TVQ (9.975%)</span><span style="color:#ef4444">${fc(-totals.tvqTotal)}</span></div><div class="tr tf"><span>CRÉDIT TOTAL</span><span>${fc(-totals.total)}</span></div></div>${notes?`<div class="notes"><strong>Notes</strong><br/>${notes}</div>`:""}<div class="ftr">${tpl.showTaxNumbers&&companyInfo.numeroTPS?`N° TPS: ${companyInfo.numeroTPS}`:""}${tpl.showTaxNumbers&&companyInfo.numeroTVQ?` &nbsp;|&nbsp; N° TVQ: ${companyInfo.numeroTVQ}`:""}${tpl.footerText?`<div style="margin-top:3px">${tpl.footerText}</div>`:""}${biqCredit}</div></body></html>`;
 }
-function NoteDeCreditEditor({creditNote,clients,factures,companyInfo,docNums,saveDocNums,creditNotes,saveCreditNotes,saveFactures,onBack,initClientId,initFactureId,invoiceTemplate}){
+function NoteDeCreditEditor({creditNote,clients,factures,companyInfo,docNums,saveDocNums,creditNotes,saveCreditNotes,saveFactures,onBack,onBackToClient,onBackToList,initClientId,initFactureId,invoiceTemplate}){
   const t=useT();
   const isNew=!creditNote?.id;
   const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none"};
@@ -2938,7 +3162,7 @@ function NoteDeCreditEditor({creditNote,clients,factures,companyInfo,docNums,sav
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     {/* Header bar */}
     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-      <button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>
+      {onBackToClient?<><button onClick={onBackToList} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Clients</button><button onClick={onBackToClient} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Fiche client</button></>:<button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>}
       <span style={{fontSize:14,fontWeight:700,color:"#ef4444"}}>Note de crédit</span>
       {fromInvoice&&<span style={{fontSize:11,color:t.textMuted,background:"rgba(59,130,246,0.07)",padding:"2px 8px",borderRadius:5}}>sur facture <strong>{linkedFac?.numero||"—"}</strong></span>}
       {savedId&&<span style={{fontSize:11,fontFamily:"'DM Mono',monospace",color:t.textMuted}}>{creditNotes.find(n=>n.id===savedId)?.numero}</span>}
@@ -3373,10 +3597,11 @@ function RecurringGenerateModal({recurrents,saveRecurrents,factures,saveFactures
   </div>);
 }
 
-function ClientProfile({client,saveClient,onBack,onNewDoc,onOpenDoc,soumissions,commandes,factures,inputS,t,recurrents,saveRecurrents,showUpgradePrompt}){
+function ClientProfile({client,saveClient,onBack,onNewDoc,onOpenDoc,soumissions,commandes,factures,creditNotes,companyInfo,invoiceTemplate,inputS,t,recurrents,saveRecurrents,showUpgradePrompt}){
   const [form,setForm]=useState({...client});
   const [profileTab,setProfileTab]=useState("factures");
   const [saved,setSaved]=useState(false);
+  const [showEtatCompte,setShowEtatCompte]=useState(false);
   const doSave=()=>{if(!form.entreprise?.trim())return;saveClient({...form,entreprise:form.entreprise.trim()});setSaved(true);setTimeout(()=>setSaved(false),2000);};
   const toggleStatut=()=>{const updated={...form,statut:form.statut==="actif"?"inactif":"actif"};setForm(updated);saveClient(updated);};
   // Per-client filtered lists, sorted date desc
@@ -3391,6 +3616,9 @@ function ClientProfile({client,saveClient,onBack,onNewDoc,onOpenDoc,soumissions,
   const EmptyMsg=()=><div style={{textAlign:"center",padding:"20px 0",color:t.textMuted,fontSize:11}}>Aucun enregistrement.</div>;
   const myRecs=(recurrents||[]).filter(r=>r.clientId===cId);
   const HISTORY_TABS=[{id:"factures",label:`Factures (${cFac.length})`},{id:"commandes",label:`Commandes (${cCmd.length})`},{id:"soumissions",label:`Soumissions (${cSou.length})`},{id:"encaissements",label:`Encaissements (${cPaiements.length})`},{id:"recurrentes",label:`Récurrentes (${myRecs.length})`},{id:"notes",label:"Notes"}];
+  if(showEtatCompte){
+    return <EtatDeCompteViewer clientId={cId} clients={[client]} factures={factures} creditNotes={creditNotes||[]} companyInfo={companyInfo} invoiceTemplate={effectiveTemplate} onBack={()=>setShowEtatCompte(false)}/>;
+  }
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
       <button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>← Retour</button>
@@ -3413,7 +3641,7 @@ function ClientProfile({client,saveClient,onBack,onNewDoc,onOpenDoc,soumissions,
       <button onClick={()=>onNewDoc&&onNewDoc("facture",cId)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ Nouvelle facture</button>
       <button onClick={()=>onNewDoc&&onNewDoc("encaissement",cId)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>+ Nouvel encaissement</button>
       <button onClick={()=>onNewDoc&&onNewDoc("creditnote",cId)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:700}}>+ Note de crédit</button>
-      <button disabled title="Bientôt disponible" style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"default",fontWeight:600,opacity:0.5}}>État de compte</button>
+      <button onClick={()=>setShowEtatCompte(true)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600}}>État de compte</button>
     </div>
     <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
       <ClientForm form={form} setForm={setForm} inputS={inputS} t={t}/>
@@ -3467,7 +3695,10 @@ function ClientProfile({client,saveClient,onBack,onNewDoc,onOpenDoc,soumissions,
           <div key={d.id} onClick={()=>onOpenDoc&&onOpenDoc("soumission",d.clientId,d)} style={{...rowS,gridTemplateColumns:"100px 80px 1fr 90px"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(249,115,22,0.04)"} onMouseLeave={e=>e.currentTarget.style.background=""}>
             <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,fontWeight:600,color:t.text}}>{d.numero||"—"}</span>
             <span style={{fontSize:11,color:t.textSub,fontFamily:"'DM Mono',monospace"}}>{d.date||"—"}</span>
-            <span style={{fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:8,background:`${sc}18`,color:sc,width:"fit-content"}}>{d.statut}</span>
+            <div style={{display:"flex",alignItems:"center",gap:4}}>
+              <span style={{fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:8,background:`${sc}18`,color:sc,width:"fit-content"}}>{d.statut}</span>
+              {(d.commandeId||d.factureId)&&<span style={{fontSize:9,color:"#f97316",fontWeight:600}}>🔗 {d.commandeNumero||d.factureNumero}</span>}
+            </div>
             <span style={{fontSize:11,textAlign:"right",fontFamily:"'DM Mono',monospace",color:t.textSub}}>{fmt(tot)}</span>
           </div>
         );})}
@@ -3492,7 +3723,7 @@ function ClientProfile({client,saveClient,onBack,onNewDoc,onOpenDoc,soumissions,
     </div>
   </div>);
 }
-function ClientsSection({clients,saveClients,onNewDoc,onOpenDoc,soumissions,commandes,factures,recurrents,saveRecurrents,showUpgradePrompt}){
+function ClientsSection({clients,saveClients,onNewDoc,onOpenDoc,soumissions,commandes,factures,creditNotes,companyInfo,invoiceTemplate,recurrents,saveRecurrents,showUpgradePrompt,selectedClientId,setSelectedClientId}){
   const t=useT();
   const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none"};
   const BLANK={code:"",entreprise:"",contact:"",adresse:"",ville:"",province:"QC",codePostal:"",pays:"Canada",tel1:"",tel2:"",cell:"",courriel:"",langue:"Français",conditionsPaiement:"Net 30",nbJours:"",notes:"",statut:"actif"};
@@ -3500,7 +3731,8 @@ function ClientsSection({clients,saveClients,onNewDoc,onOpenDoc,soumissions,comm
   const [filterStatut,setFilterStatut]=useState("actif");
   const [sortCol,setSortCol]=useState("entreprise");
   const [sortAsc,setSortAsc]=useState(true);
-  const [selectedId,setSelectedId]=useState(null);
+  const selectedId=selectedClientId;
+  const setSelectedId=setSelectedClientId;
   const [addOpen,setAddOpen]=useState(false);
   const [form,setForm]=useState(BLANK);
   const filtered=useMemo(()=>{
@@ -3524,7 +3756,7 @@ function ClientsSection({clients,saveClients,onNewDoc,onOpenDoc,soumissions,comm
   if(selectedId){
     const client=clients.find(c=>c.id===selectedId);
     if(!client){setSelectedId(null);return null;}
-    return<ClientProfile client={client} saveClient={saveClient} onBack={()=>setSelectedId(null)} onNewDoc={onNewDoc} onOpenDoc={onOpenDoc} soumissions={soumissions} commandes={commandes} factures={factures} inputS={inputS} t={t} recurrents={recurrents} saveRecurrents={saveRecurrents} showUpgradePrompt={showUpgradePrompt}/>;
+    return<ClientProfile client={client} saveClient={saveClient} onBack={()=>setSelectedId(null)} onNewDoc={onNewDoc} onOpenDoc={onOpenDoc} soumissions={soumissions} commandes={commandes} factures={factures} creditNotes={creditNotes} companyInfo={companyInfo} invoiceTemplate={effectiveTemplate} inputS={inputS} t={t} recurrents={recurrents} saveRecurrents={saveRecurrents} showUpgradePrompt={showUpgradePrompt}/>;
   }
   return(<div style={{display:"flex",flexDirection:"column",gap:8}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}>
@@ -4010,9 +4242,710 @@ function UpgradePrompt({onClose}){
   );
 }
 
+// ── LOCATIONS CONFIG ──
+function LocationsConfig({locations,saveLocations,facClients}){
+  const t=useT();
+  const [editing,setEditing]=useState(null);
+  const [form,setForm]=useState({});
+  const newLoc=()=>{setForm({nom:"",adresse:"",ville:"",responsable:"",email:"",telephone:"",clientId:"",statut:"active",royaltyOverride:false,royaltyRate:null,adRate:null});setEditing("new")};
+  const editLoc=(loc)=>{setForm({...loc});setEditing(loc.id)};
+  const saveLoc=()=>{
+    if(!form.nom?.trim())return;
+    if(editing==="new"){
+      saveLocations([...locations,{...form,id:`loc-${Date.now()}`,clientId:form.clientId||null}]);
+    }else{
+      saveLocations(locations.map(l=>l.id===editing?{...form,id:l.id}:l));
+    }
+    setEditing(null);setForm({});
+  };
+  const deactivate=(id)=>saveLocations(locations.map(l=>l.id===id?{...l,statut:l.statut==="inactive"?"active":"inactive"}:l));
+  const inp={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:12,padding:"5px 8px",outline:"none",width:"100%"};
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <span style={{fontSize:13,fontWeight:700,color:t.text}}>📍 Gestion des succursales</span>
+        <button onClick={newLoc} style={{padding:"5px 13px",borderRadius:7,border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.1)",color:"#c4b5fd",cursor:"pointer",fontWeight:600,fontSize:11}}>+ Nouvelle succursale</button>
+      </div>
+      {editing&&(
+        <div style={{background:t.card,border:`1px solid rgba(167,139,250,0.2)`,borderRadius:9,padding:14}}>
+          <div style={{fontSize:12,fontWeight:700,color:t.text,marginBottom:10}}>{editing==="new"?"Nouvelle succursale":"Modifier la succursale"}</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            {[["Nom*","nom"],["Adresse","adresse"],["Ville","ville"],["Responsable","responsable"],["Courriel","email"],["Téléphone","telephone"]].map(([label,field])=>(
+              <div key={field}>
+                <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{label}</div>
+                <input value={form[field]||""} onChange={e=>setForm(p=>({...p,[field]:e.target.value}))} style={inp}/>
+              </div>
+            ))}
+            <div>
+              <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Client lié (facturation)</div>
+              <select value={form.clientId||""} onChange={e=>setForm(p=>({...p,clientId:e.target.value||null}))} style={{...inp,height:28}}>
+                <option value="">— Aucun —</option>
+                {facClients.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Statut</div>
+              <select value={form.statut||"active"} onChange={e=>setForm(p=>({...p,statut:e.target.value}))} style={{...inp,height:28}}>
+                <option value="active">Actif</option>
+                <option value="inactive">Inactif</option>
+              </select>
+            </div>
+          </div>
+          <div style={{marginTop:8}}>
+            <label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:t.textSub,cursor:"pointer"}}>
+              <input type="checkbox" checked={!!form.royaltyOverride} onChange={e=>setForm(p=>({...p,royaltyOverride:e.target.checked}))}/>
+              Taux de redevance personnalisé pour cette succursale
+            </label>
+            {form.royaltyOverride&&(
+              <div style={{display:"flex",gap:8,marginTop:6}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Taux redevance (%)</div>
+                  <input type="number" value={form.royaltyRate??""} onChange={e=>setForm(p=>({...p,royaltyRate:parseFloat(e.target.value)||null}))} style={{...inp,width:80}} placeholder="6"/>
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Contribution pub. (%)</div>
+                  <input type="number" value={form.adRate??""} onChange={e=>setForm(p=>({...p,adRate:parseFloat(e.target.value)||null}))} style={{...inp,width:80}} placeholder="2"/>
+                </div>
+              </div>
+            )}
+          </div>
+          <div style={{display:"flex",gap:8,marginTop:12}}>
+            <button onClick={saveLoc} style={{padding:"6px 16px",borderRadius:7,border:"1px solid rgba(34,197,94,0.3)",background:"rgba(34,197,94,0.1)",color:"#4ade80",cursor:"pointer",fontWeight:600,fontSize:11}}>Enregistrer</button>
+            <button onClick={()=>{setEditing(null);setForm({})}} style={{padding:"6px 12px",borderRadius:7,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textSub,cursor:"pointer",fontSize:11}}>Annuler</button>
+          </div>
+        </div>
+      )}
+      {locations.length===0&&!editing&&<div style={{fontSize:12,color:t.textMuted,padding:"16px 0",textAlign:"center"}}>Aucune succursale. Cliquez "+ Nouvelle succursale" pour commencer.</div>}
+      {locations.map(loc=>(
+        <div key={loc.id} style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",opacity:loc.statut==="inactive"?0.5:1}}>
+          <div>
+            <div style={{fontSize:12,fontWeight:700,color:t.text}}>{loc.nom}</div>
+            <div style={{fontSize:10.5,color:t.textMuted,marginTop:2}}>{[loc.ville,loc.responsable,loc.email].filter(Boolean).join(" · ")}</div>
+          </div>
+          <div style={{display:"flex",gap:6,alignItems:"center"}}>
+            <span style={{fontSize:9.5,padding:"2px 7px",borderRadius:6,background:loc.statut==="active"?"rgba(34,197,94,0.1)":"rgba(239,68,68,0.1)",color:loc.statut==="active"?"#4ade80":"#fca5a5",fontWeight:600}}>{loc.statut==="active"?"Actif":"Inactif"}</span>
+            <button onClick={()=>editLoc(loc)} style={{padding:"3px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textSub,cursor:"pointer",fontSize:10.5}}>Modifier</button>
+            <button onClick={()=>deactivate(loc.id)} style={{padding:"3px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textMuted,cursor:"pointer",fontSize:10.5}}>{loc.statut==="active"?"Désactiver":"Réactiver"}</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── REDEVANCES CONFIG ──
+function RedevancesConfig({royaltyConfig,saveRoyaltyConfig,facCategories,facProduits}){
+  const t=useT();
+  const [cfg,setCfg]=useState(royaltyConfig);
+  useEffect(()=>setCfg(royaltyConfig),[royaltyConfig]);
+  const inp={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:12,padding:"5px 8px",outline:"none"};
+  return(
+    <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:14}}>
+      <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:12}}>💰 Configuration des redevances</div>
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          <div>
+            <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Taux redevance (%)</div>
+            <input type="number" value={cfg.rate} onChange={e=>setCfg(p=>({...p,rate:parseFloat(e.target.value)||0}))} style={{...inp,width:100}}/>
+          </div>
+          <div>
+            <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Contribution publicitaire (%)</div>
+            <input type="number" value={cfg.adRate} onChange={e=>setCfg(p=>({...p,adRate:parseFloat(e.target.value)||0}))} style={{...inp,width:100}}/>
+          </div>
+          <div>
+            <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Structure</div>
+            <select value={cfg.structure} onChange={e=>setCfg(p=>({...p,structure:e.target.value}))} style={{...inp,height:28}}>
+              <option value="fixed">Taux fixe</option>
+              <option value="progressive">Échelle progressive</option>
+            </select>
+          </div>
+          <div>
+            <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Fréquence</div>
+            <select value={cfg.frequency} onChange={e=>setCfg(p=>({...p,frequency:e.target.value}))} style={{...inp,height:28}}>
+              <option value="monthly">Mensuel</option>
+              <option value="bimonthly">Bimensuel</option>
+            </select>
+          </div>
+          <div>
+            <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Catégorie de facturation</div>
+            <select value={cfg.categoryId||""} onChange={e=>setCfg(p=>({...p,categoryId:e.target.value||null}))} style={{...inp,height:28}}>
+              <option value="">— Sélectionner —</option>
+              {facCategories.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Produit de facturation</div>
+            <select value={cfg.produitId||""} onChange={e=>setCfg(p=>({...p,produitId:e.target.value||null}))} style={{...inp,height:28}}>
+              <option value="">— Sélectionner —</option>
+              {facProduits.map(p=><option key={p.id} value={p.id}>{p.nom}</option>)}
+            </select>
+          </div>
+        </div>
+        {cfg.structure==="progressive"&&(
+          <div>
+            <div style={{fontSize:11,fontWeight:600,color:t.text,marginBottom:6}}>Tranches progressives</div>
+            {(cfg.tranches||[]).map((tr,i)=>(
+              <div key={i} style={{display:"flex",gap:6,alignItems:"center",marginBottom:4}}>
+                <input type="number" placeholder="De ($)" value={tr.from||0} onChange={e=>{const ts=[...cfg.tranches];ts[i]={...ts[i],from:parseFloat(e.target.value)||0};setCfg(p=>({...p,tranches:ts}))}} style={{...inp,width:90}}/>
+                <span style={{color:t.textMuted,fontSize:11}}>à</span>
+                <input type="number" placeholder="À ($)" value={tr.to||""} onChange={e=>{const ts=[...cfg.tranches];ts[i]={...ts[i],to:parseFloat(e.target.value)||null};setCfg(p=>({...p,tranches:ts}))}} style={{...inp,width:90}}/>
+                <input type="number" placeholder="Taux %" value={tr.rate||0} onChange={e=>{const ts=[...cfg.tranches];ts[i]={...ts[i],rate:parseFloat(e.target.value)||0};setCfg(p=>({...p,tranches:ts}))}} style={{...inp,width:70}}/>
+                <span style={{color:t.textMuted,fontSize:11}}>%</span>
+                <button onClick={()=>{const ts=cfg.tranches.filter((_,j)=>j!==i);setCfg(p=>({...p,tranches:ts}))}} style={{padding:"2px 8px",borderRadius:4,border:"1px solid rgba(239,68,68,0.3)",background:"none",color:"#ef4444",cursor:"pointer",fontSize:10}}>✕</button>
+              </div>
+            ))}
+            <button onClick={()=>setCfg(p=>({...p,tranches:[...(p.tranches||[]),{from:0,to:null,rate:6}]}))} style={{marginTop:4,padding:"3px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textSub,cursor:"pointer",fontSize:10}}>+ Ajouter une tranche</button>
+          </div>
+        )}
+        {/* Hidden advanced option — stepped flat rate */}
+        <details style={{marginTop:4}}>
+          <summary style={{fontSize:10,color:t.textDim,cursor:"pointer",userSelect:"none",listStyle:"none",display:"flex",alignItems:"center",gap:4}}>
+            <span style={{fontSize:8}}>▶</span> Options avancées
+          </summary>
+          <div style={{marginTop:8,padding:"10px 12px",borderRadius:7,border:`1px solid ${t.cardBorder}`,background:t.section}}>
+            <label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:t.textSub,cursor:"pointer",marginBottom:6}}>
+              <input type="checkbox" checked={cfg.structure==="paliers"} onChange={e=>setCfg(p=>({...p,structure:e.target.checked?"paliers":"fixed",paliersMensuels:p.paliersMensuels||[{minVentes:0,rate:4},{minVentes:30000,rate:5},{minVentes:50000,rate:6}]}))}/>
+              Taux par palier mensuel (taux fixe selon le total des ventes du mois)
+            </label>
+            {cfg.structure==="paliers"&&(
+              <div>
+                <div style={{fontSize:10,color:t.textMuted,marginBottom:6}}>Le taux s'applique à l'ensemble des ventes selon le palier atteint ce mois-ci.</div>
+                {(cfg.paliersMensuels||[]).map((p,i)=>(
+                  <div key={i} style={{display:"flex",gap:6,alignItems:"center",marginBottom:4}}>
+                    <span style={{fontSize:10,color:t.textMuted,whiteSpace:"nowrap"}}>Ventes ≥</span>
+                    <input type="number" value={p.minVentes||0} onChange={e=>{const ps=[...cfg.paliersMensuels];ps[i]={...ps[i],minVentes:parseFloat(e.target.value)||0};setCfg(prev=>({...prev,paliersMensuels:ps}))}} style={{...inp,width:90}} placeholder="0"/>
+                    <span style={{fontSize:10,color:t.textMuted}}>→</span>
+                    <input type="number" value={p.rate||0} onChange={e=>{const ps=[...cfg.paliersMensuels];ps[i]={...ps[i],rate:parseFloat(e.target.value)||0};setCfg(prev=>({...prev,paliersMensuels:ps}))}} style={{...inp,width:60}} placeholder="6"/>
+                    <span style={{fontSize:10,color:t.textMuted}}>%</span>
+                    <button onClick={()=>setCfg(prev=>({...prev,paliersMensuels:prev.paliersMensuels.filter((_,j)=>j!==i)}))} style={{padding:"2px 7px",borderRadius:4,border:"1px solid rgba(239,68,68,0.3)",background:"none",color:"#ef4444",cursor:"pointer",fontSize:10}}>✕</button>
+                  </div>
+                ))}
+                <button onClick={()=>setCfg(prev=>({...prev,paliersMensuels:[...(prev.paliersMensuels||[]),{minVentes:0,rate:6}]}))} style={{marginTop:2,padding:"3px 9px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textSub,cursor:"pointer",fontSize:10}}>+ Palier</button>
+              </div>
+            )}
+          </div>
+        </details>
+        <button onClick={()=>saveRoyaltyConfig(cfg)} style={{alignSelf:"flex-start",padding:"6px 16px",borderRadius:7,border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.1)",color:"#c4b5fd",cursor:"pointer",fontWeight:600,fontSize:11}}>Enregistrer</button>
+      </div>
+    </div>
+  );
+}
+
+// ── MARQUE BLANCHE CONFIG ──
+function MarqueBlancheConfig({whiteLabelConfig,saveWhiteLabel}){
+  const t=useT();
+  const [cfg,setCfg]=useState(whiteLabelConfig);
+  useEffect(()=>setCfg(whiteLabelConfig),[whiteLabelConfig]);
+  if(!canUse('whiteLabel'))return(<div style={{padding:24,textAlign:"center",color:"#8b8fa3",fontSize:13}}>🔒 Marque blanche disponible avec le plan Franchise.</div>);
+  const inp={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:12,padding:"5px 8px",outline:"none",width:"100%"};
+  return(
+    <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:14}}>
+      <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:12}}>🏷️ Marque blanche</div>
+      <div style={{fontSize:11,color:t.textSub,marginBottom:10}}>Personnalise l'apparence des documents générés (factures, états de compte, scorecards).</div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:t.text,cursor:"pointer"}}>
+          <input type="checkbox" checked={!!cfg.enabled} onChange={e=>setCfg(p=>({...p,enabled:e.target.checked}))}/>
+          Activer la marque blanche
+        </label>
+        {cfg.enabled&&(<>
+          <div>
+            <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Nom de la franchise (remplace "BalanceIQ" sur les documents)</div>
+            <input value={cfg.franchiseName||""} onChange={e=>setCfg(p=>({...p,franchiseName:e.target.value}))} style={inp} placeholder="Ex: Dic Ann's Franchises Inc."/>
+          </div>
+          <div>
+            <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Couleur d'accent (remplace l'orange BalanceIQ sur les documents)</div>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <input type="color" value={cfg.accentColor||"#f97316"} onChange={e=>setCfg(p=>({...p,accentColor:e.target.value}))} style={{width:36,height:28,border:"none",borderRadius:4,cursor:"pointer",padding:2}}/>
+              <span style={{fontSize:11,fontFamily:"'DM Mono',monospace",color:t.textSub}}>{cfg.accentColor||"#f97316"}</span>
+            </div>
+          </div>
+          <div>
+            <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Pied de page personnalisé</div>
+            <input value={cfg.footer||""} onChange={e=>setCfg(p=>({...p,footer:e.target.value}))} style={inp} placeholder="Ex: Dic Ann's Franchises Inc. · Siège social · Laval, QC"/>
+          </div>
+        </>)}
+        <button onClick={()=>saveWhiteLabel(cfg)} style={{alignSelf:"flex-start",padding:"6px 16px",borderRadius:7,border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.1)",color:"#c4b5fd",cursor:"pointer",fontWeight:600,fontSize:11}}>Enregistrer</button>
+      </div>
+    </div>
+  );
+}
+
+// ── RÉSEAU TAB ──
+function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfig,facCategories,facProduits,saveFacFactures,docNums,saveDocNums,companyInfo,apiConfig}){
+  const t=useT();
+  const [monthlyData,setMonthlyData]=useState({});
+  const [loading,setLoading]=useState(true);
+  const [scoreTab,setScoreTab]=useState("performance");
+  const [reconMonth,setReconMonth]=useState(()=>{const n=new Date();return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`});
+  const [genPeriod,setGenPeriod]=useState(reconMonth);
+  const [genPreview,setGenPreview]=useState(null);
+  const [genLoading,setGenLoading]=useState(false);
+  const [genResult,setGenResult]=useState(null);
+
+  useEffect(()=>{
+    (async()=>{
+      setLoading(true);
+      const now=new Date();
+      const ym=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+      const yesterday=new Date(now);yesterday.setDate(yesterday.getDate()-1);
+      const yd=`${yesterday.getFullYear()}-${String(yesterday.getMonth()+1).padStart(2,'0')}-${String(yesterday.getDate()).padStart(2,'0')}`;
+      const result={};
+      for(const loc of locations){
+        try{
+          const r=await window.api.storage.get(`dicann-v7-loc-${loc.id}`);
+          const data=r?.value?JSON.parse(r.value):{};
+          // Monthly sales
+          const monthlySales=Object.entries(data).filter(([k])=>k.startsWith(ym)).reduce((sum,[,v])=>{
+            const cashes=v.cashes||[];
+            const net=cashes.reduce((s,c)=>{
+              if(c.float!=null&&c.deposits!=null&&c.finalCash!=null)return s+(c.interac||0)+(c.livraisons||0)+(c.deposits||0)+(c.finalCash||0)-(c.float||0);
+              return s;
+            },0);return sum+net;
+          },0);
+          // Yesterday's sales
+          const ydData=data[yd];
+          let ydSales=0;
+          if(ydData){const cashes=ydData.cashes||[];ydSales=cashes.reduce((s,c)=>{if(c.float!=null&&c.deposits!=null&&c.finalCash!=null)return s+(c.interac||0)+(c.livraisons||0)+(c.deposits||0)+(c.finalCash||0)-(c.float||0);return s;},0);}
+          // Today balanced?
+          const todayKey=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+          const todayData=data[todayKey];
+          let todayStatus="none";
+          if(todayData){
+            const cashes=todayData.cashes||[];
+            const allBal=cashes.length>0&&cashes.every(c=>{
+              if(c.float==null||c.deposits==null||c.finalCash==null||c.posVentes==null)return false;
+              const man=(c.interac||0)+(c.livraisons||0)+(c.deposits||0)+(c.finalCash||0)-(c.float||0);
+              const pos=(c.posVentes||0)+(c.posTPS||0)+(c.posTVQ||0)+(c.posLivraisons||0);
+              return Math.abs(man-pos)<=1;
+            });
+            const anyData=cashes.some(c=>c.posVentes!=null||c.finalCash!=null);
+            todayStatus=allBal?"balanced":anyData?"error":"partial";
+          }
+          // Average $/dozen
+          const allDays=Object.values(data);
+          const dzDays=allDays.filter(v=>v&&(v.hamUsed||0)+(v.hotUsed||0)>0);
+          const avgDz=dzDays.length?dzDays.reduce((s,v)=>{
+            const cashes=v.cashes||[];const net=cashes.reduce((ss,c)=>{if(c.float!=null&&c.deposits!=null&&c.finalCash!=null)return ss+(c.interac||0)+(c.livraisons||0)+(c.deposits||0)+(c.finalCash||0)-(c.float||0);return ss;},0);
+            return s+(net/((v.hamUsed||0)+(v.hotUsed||0)));
+          },0)/dzDays.length:0;
+          // Labour %
+          const labDays=allDays.filter(v=>v&&v.labourCost&&v.labourCost>0);
+          const avgLabourPct=labDays.length?labDays.reduce((s,v)=>{
+            const cashes=v.cashes||[];const net=cashes.reduce((ss,c)=>{if(c.float!=null&&c.deposits!=null&&c.finalCash!=null)return ss+(c.interac||0)+(c.livraisons||0)+(c.deposits||0)+(c.finalCash||0)-(c.float||0);return ss;},0);
+            return s+(net>0?v.labourCost/net*100:0);
+          },0)/labDays.length:0;
+          // Last filled date
+          const filledDates=Object.keys(data).filter(k=>/^\d{4}-\d{2}-\d{2}$/.test(k)&&Object.keys(data[k]||{}).length>0).sort();
+          const lastFilled=filledDates[filledDates.length-1]||null;
+          const daysSinceFilled=lastFilled?Math.floor((now-new Date(lastFilled))/(86400000)):999;
+          result[loc.id]={monthlySales,ydSales,todayStatus,avgDz,avgLabourPct,lastFilled,daysSinceFilled};
+        }catch(e){result[loc.id]={monthlySales:0,ydSales:0,todayStatus:"none",avgDz:0,avgLabourPct:0,lastFilled:null,daysSinceFilled:999};}
+      }
+      setMonthlyData(result);
+      setLoading(false);
+    })();
+  },[locations]);
+
+  const fmt=v=>v>=1000?`$${(v/1000).toFixed(1)}k`:`$${v.toFixed(0)}`;
+  const fmtFull=v=>`$${v.toLocaleString('fr-CA',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const activeLocs=locations.filter(l=>l.statut!=="inactive");
+  const networkTotal=Object.values(monthlyData).reduce((s,d)=>s+(d?.monthlySales||0),0);
+  const balancedToday=Object.values(monthlyData).filter(d=>d?.todayStatus==="balanced").length;
+  const royaltyDue=facFactures.filter(f=>f.status!=="paid"&&f.tags?.includes("redevance")).reduce((s,f)=>s+(f.total||0),0);
+
+  // Alerts
+  const alerts=[];
+  activeLocs.forEach(loc=>{
+    const d=monthlyData[loc.id];
+    if(!d)return;
+    if(d.daysSinceFilled>=3)alerts.push({type:"warning",msg:`${loc.nom} n'a pas saisi depuis ${d.daysSinceFilled} jour${d.daysSinceFilled!==1?"s":""}`});
+    if(d.avgLabourPct>35)alerts.push({type:"error",msg:`${loc.nom}: main d'œuvre ${d.avgLabourPct.toFixed(1)}% ce mois (cible <30%)`});
+    if(d.todayStatus==="error")alerts.push({type:"error",msg:`${loc.nom}: écart de caisse aujourd'hui`});
+  });
+
+  // Scorecard calculation
+  const calcScore=(locId)=>{
+    const d=monthlyData[locId];if(!d)return null;
+    const loc=locations.find(l=>l.id===locId);if(!loc)return null;
+    const targets={ventesCible:50000,fpPctCible:33,labourPctCible:30,dzCible:4.5};
+    let score=100;
+    const metrics=[];
+    // Labour %
+    const labOk=d.avgLabourPct>0&&d.avgLabourPct<=targets.labourPctCible;
+    metrics.push({label:"Main d'œuvre %",val:`${d.avgLabourPct.toFixed(1)}%`,target:`<${targets.labourPctCible}%`,ok:labOk});
+    if(!labOk&&d.avgLabourPct>0)score-=20;
+    // Avg $/dz
+    const dzOk=d.avgDz>=targets.dzCible;
+    metrics.push({label:"$/douzaine moyen",val:d.avgDz>0?fmtFull(d.avgDz):"—",target:`>${fmtFull(targets.dzCible)}`,ok:dzOk});
+    if(!dzOk&&d.avgDz>0)score-=15;
+    // Days without data
+    const incomplete=d.daysSinceFilled>0?Math.min(d.daysSinceFilled,5):0;
+    metrics.push({label:"Jours incomplets",val:`${incomplete}`,target:"0",ok:incomplete===0});
+    score-=incomplete*5;
+    return{score:Math.max(0,score),metrics,loc};
+  };
+
+  // Royalty invoice generation
+  const buildRoyaltyPreview=async()=>{
+    setGenLoading(true);
+    const preview=[];
+    for(const loc of activeLocs){
+      const r=await window.api.storage.get(`dicann-v7-loc-${loc.id}`);
+      const data=r?.value?JSON.parse(r.value):{};
+      const sales=Object.entries(data).filter(([k])=>k.startsWith(genPeriod)).reduce((sum,[,v])=>{
+        const cashes=v.cashes||[];return sum+cashes.reduce((s,c)=>{if(c.float!=null&&c.deposits!=null&&c.finalCash!=null)return s+(c.interac||0)+(c.livraisons||0)+(c.deposits||0)+(c.finalCash||0)-(c.float||0);return s;},0);
+      },0);
+      const rate=(loc.royaltyOverride&&loc.royaltyRate!=null)?loc.royaltyRate:royaltyConfig.rate;
+      const adRate=(loc.royaltyOverride&&loc.adRate!=null)?loc.adRate:royaltyConfig.adRate;
+      const royalty=sales*rate/100;
+      const ad=sales*adRate/100;
+      const client=facClients.find(c=>c.id===loc.clientId);
+      preview.push({loc,sales,rate,adRate,royalty,ad,total:royalty+ad,client,checked:true});
+    }
+    setGenPreview(preview);
+    setGenLoading(false);
+  };
+
+  const createRoyaltyInvoices=()=>{
+    if(!genPreview)return;
+    const checked=genPreview.filter(p=>p.checked&&p.client);
+    const newFactures=[...facFactures];
+    let nextNum=docNums?.nextFac||1;
+    const created=[];
+    for(const p of checked){
+      const [y,m]=genPeriod.split("-");
+      const monthLabel=new Date(parseInt(y),parseInt(m)-1,1).toLocaleDateString('fr-CA',{month:'long',year:'numeric'});
+      const inv={
+        id:`fac-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+        numero:`F-${String(nextNum).padStart(4,'0')}`,
+        date:new Date().toISOString().slice(0,10),
+        clientId:p.client.id,
+        status:"sent",
+        tags:["redevance"],
+        lignes:[
+          {id:`l1-${Date.now()}`,description:`Redevances — ${monthLabel} — Ventes: ${fmtFull(p.sales)} × ${p.rate}%`,qty:1,prix:p.royalty,taxable:true},
+          {id:`l2-${Date.now()}`,description:`Contribution publicitaire — ${monthLabel} — ${fmtFull(p.sales)} × ${p.adRate}%`,qty:1,prix:p.ad,taxable:true},
+        ],
+        notes:`Redevances pour la période ${genPeriod}`,
+        categoryId:royaltyConfig.categoryId,
+        conditions:"",
+      };
+      const sub=inv.lignes.reduce((s,l)=>s+(l.qty||1)*(l.prix||0),0);
+      inv.subtotal=sub;inv.tps=sub*0.05;inv.tvq=sub*0.09975;inv.total=sub+inv.tps+inv.tvq;
+      newFactures.push(inv);
+      created.push(inv.numero);
+      nextNum++;
+    }
+    saveFacFactures(newFactures);
+    saveDocNums({...docNums,nextFac:nextNum});
+    setGenResult(`✓ ${created.length} facture${created.length!==1?"s":""} créée${created.length!==1?"s":""}: ${created.join(", ")}`);
+    setGenPreview(null);
+  };
+
+  if(!canUse('royaltyAutoCalc')&&!canUse('multiLocationReconciliation')){
+    return(<div style={{padding:24,textAlign:"center",color:"#8b8fa3",fontSize:13}}>🔒 Module Franchise requis pour accéder au tableau de bord réseau.</div>);
+  }
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {/* Sub-tabs */}
+      <div style={{display:"flex",gap:2,borderBottom:`1px solid ${t.dividerMid}`,paddingBottom:1}}>
+        {[{id:"performance",label:"📊 Performance"},{id:"scorecards",label:"🏆 Scorecards"},{id:"redevances",label:"💰 Redevances"},{id:"reconciliation",label:"🔄 Réconciliation"},{id:"audit",label:"📋 Audit réseau"}].map(st=>(
+          <button key={st.id} onClick={()=>setScoreTab(st.id)} style={{background:"none",border:"none",color:scoreTab===st.id?"#a78bfa":t.textMuted,fontSize:11,fontWeight:scoreTab===st.id?700:500,padding:"5px 11px",cursor:"pointer",borderBottom:scoreTab===st.id?"2px solid #a78bfa":"2px solid transparent",whiteSpace:"nowrap"}}>
+            {st.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Performance sub-tab */}
+      {scoreTab==="performance"&&(<>
+        {/* Summary cards */}
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          {[
+            {label:"Ventes réseau (mois)",value:fmtFull(networkTotal),accent:"#a78bfa"},
+            {label:"Succursales actives",value:`${activeLocs.length}`,accent:"#22c55e"},
+            {label:"Balancées aujourd'hui",value:`${balancedToday}/${activeLocs.length}`,accent:"#38bdf8"},
+            {label:"Redevances en attente",value:fmtFull(royaltyDue),accent:"#f97316"},
+          ].map(card=>(
+            <div key={card.label} style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:"10px 14px",minWidth:140,flex:"1 1 auto"}}>
+              <div style={{fontSize:8.5,color:t.textMuted,textTransform:"uppercase",letterSpacing:0.8,fontWeight:600,marginBottom:4}}>{card.label}</div>
+              <div style={{fontSize:20,fontWeight:700,fontFamily:"'DM Mono',monospace",color:card.accent}}>{card.value}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Performance table */}
+        {loading?<div style={{color:t.textMuted,fontSize:12,padding:16,textAlign:"center"}}>Chargement des données...</div>:(
+          <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,overflow:"hidden"}}>
+            <div style={{padding:"10px 14px",borderBottom:`1px solid ${t.dividerMid}`}}>
+              <span style={{fontSize:13,fontWeight:700,color:t.text}}>Performance par succursale</span>
+            </div>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+              <thead>
+                <tr style={{background:t.section}}>
+                  {["Succursale","Ventes (mois)","Ventes (hier)","$/dz moy","Main d'œuvre %","Statut"].map(h=>(
+                    <th key={h} style={{padding:"7px 12px",textAlign:"left",fontWeight:600,color:t.textSub,fontSize:10.5,textTransform:"uppercase",letterSpacing:0.5}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {activeLocs.map(loc=>{
+                  const d=monthlyData[loc.id]||{};
+                  const labColor=d.avgLabourPct>35?"#ef4444":d.avgLabourPct>28?"#fbbf24":"#22c55e";
+                  const statusEl=d.todayStatus==="balanced"?<span style={{color:"#22c55e",fontWeight:700}}>✓</span>:d.todayStatus==="error"?<span style={{color:"#ef4444",fontWeight:700}}>✗</span>:d.todayStatus==="partial"?<span style={{color:"#f97316"}}>⏳</span>:<span style={{color:t.textDim}}>—</span>;
+                  return(
+                    <tr key={loc.id} style={{borderTop:`1px solid ${t.divider}`}}>
+                      <td style={{padding:"8px 12px",fontWeight:600,color:t.text}}>{loc.nom}</td>
+                      <td style={{padding:"8px 12px",fontFamily:"'DM Mono',monospace",color:"#a78bfa"}}>{fmtFull(d.monthlySales||0)}</td>
+                      <td style={{padding:"8px 12px",fontFamily:"'DM Mono',monospace",color:t.textSub}}>{fmtFull(d.ydSales||0)}</td>
+                      <td style={{padding:"8px 12px",fontFamily:"'DM Mono',monospace",color:t.textSub}}>{d.avgDz>0?fmtFull(d.avgDz):"—"}</td>
+                      <td style={{padding:"8px 12px",fontFamily:"'DM Mono',monospace",color:labColor}}>{d.avgLabourPct>0?`${d.avgLabourPct.toFixed(1)}%`:"—"}</td>
+                      <td style={{padding:"8px 12px"}}>{statusEl}</td>
+                    </tr>
+                  );
+                })}
+                {activeLocs.length===0&&<tr><td colSpan={6} style={{padding:20,textAlign:"center",color:t.textMuted,fontSize:12}}>Aucune succursale active. Ajoutez des succursales dans Config → Succursales.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Alerts */}
+        {alerts.length>0&&(
+          <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:"10px 14px"}}>
+            <div style={{fontSize:12,fontWeight:700,color:t.text,marginBottom:8}}>⚠️ Alertes réseau</div>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              {alerts.map((a,i)=>(
+                <div key={i} style={{fontSize:11,padding:"6px 10px",borderRadius:6,background:a.type==="error"?"rgba(239,68,68,0.08)":"rgba(251,191,36,0.08)",border:`1px solid ${a.type==="error"?"rgba(239,68,68,0.2)":"rgba(251,191,36,0.2)"}`,color:a.type==="error"?"#fca5a5":"#fcd34d"}}>
+                  {a.msg}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </>)}
+
+      {/* Scorecards sub-tab */}
+      {scoreTab==="scorecards"&&(
+        !canUse('franchiseeScorecards')?
+        <div style={{padding:24,textAlign:"center",color:"#8b8fa3",fontSize:13}}>🔒 Scorecards disponibles avec le plan Franchise.</div>:
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{fontSize:12,color:t.textSub,marginBottom:4}}>Scorecards du mois en cours — basées sur les données réelles de chaque succursale</div>
+          {loading?<div style={{color:t.textMuted,fontSize:12,padding:16,textAlign:"center"}}>Chargement...</div>:
+          activeLocs.map(loc=>{
+            const sc=calcScore(loc.id);if(!sc)return null;
+            const scoreColor=sc.score>=85?"#22c55e":sc.score>=70?"#fbbf24":"#ef4444";
+            return(
+              <div key={loc.id} style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,overflow:"hidden"}}>
+                <div style={{padding:"10px 14px",borderBottom:`1px solid ${t.dividerMid}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{fontSize:13,fontWeight:700,color:t.text}}>{loc.nom}</span>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:10,color:t.textMuted}}>Score global</span>
+                    <span style={{fontSize:18,fontWeight:800,fontFamily:"'DM Mono',monospace",color:scoreColor}}>{sc.score}/100</span>
+                  </div>
+                </div>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                  <thead>
+                    <tr style={{background:t.section}}>
+                      {["Métrique","Valeur","Cible","Statut"].map(h=><th key={h} style={{padding:"6px 12px",textAlign:"left",fontWeight:600,color:t.textSub,fontSize:10.5}}>{h}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sc.metrics.map((m,i)=>(
+                      <tr key={i} style={{borderTop:`1px solid ${t.divider}`}}>
+                        <td style={{padding:"6px 12px",color:t.text}}>{m.label}</td>
+                        <td style={{padding:"6px 12px",fontFamily:"'DM Mono',monospace",color:t.text}}>{m.val}</td>
+                        <td style={{padding:"6px 12px",fontFamily:"'DM Mono',monospace",color:t.textMuted}}>{m.target}</td>
+                        <td style={{padding:"6px 12px",fontWeight:700,color:m.ok?"#22c55e":"#ef4444"}}>{m.val==="—"?"—":m.ok?"✓ Atteint":"✗ Manqué"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
+          {activeLocs.length===0&&<div style={{color:t.textMuted,fontSize:12,padding:16,textAlign:"center"}}>Aucune succursale active.</div>}
+        </div>
+      )}
+
+      {/* Redevances sub-tab */}
+      {scoreTab==="redevances"&&(
+        !canUse('autoGenerateRoyaltyInvoices')?
+        <div style={{padding:24,textAlign:"center",color:"#8b8fa3",fontSize:13}}>🔒 Génération de redevances disponible avec le plan Franchise.</div>:
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:"10px 14px"}}>
+            <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:10}}>💰 Générer les factures de redevances</div>
+            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+              <input type="month" value={genPeriod} onChange={e=>setGenPeriod(e.target.value)} style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:12,padding:"5px 8px",outline:"none"}}/>
+              <button onClick={buildRoyaltyPreview} disabled={genLoading} style={{padding:"6px 14px",borderRadius:7,border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.1)",color:"#c4b5fd",cursor:"pointer",fontWeight:600,fontSize:11,opacity:genLoading?0.6:1}}>
+                {genLoading?"Calcul...":"Calculer les redevances"}
+              </button>
+            </div>
+            {genResult&&<div style={{marginTop:8,fontSize:12,color:"#22c55e",fontWeight:600}}>{genResult}</div>}
+          </div>
+          {genPreview&&(
+            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,overflow:"hidden"}}>
+              <div style={{padding:"10px 14px",borderBottom:`1px solid ${t.dividerMid}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontSize:12,fontWeight:700,color:t.text}}>Aperçu — {genPeriod}</span>
+                <button onClick={createRoyaltyInvoices} style={{padding:"6px 14px",borderRadius:7,border:"1px solid rgba(34,197,94,0.3)",background:"rgba(34,197,94,0.1)",color:"#4ade80",cursor:"pointer",fontWeight:600,fontSize:11}}>
+                  ✓ Créer les factures
+                </button>
+              </div>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                <thead>
+                  <tr style={{background:t.section}}>
+                    {["","Succursale","Client","Ventes nettes","Redevance","Pub.","Total"].map(h=><th key={h} style={{padding:"6px 10px",textAlign:"left",fontWeight:600,color:t.textSub,fontSize:10}}>{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {genPreview.map((p,i)=>(
+                    <tr key={i} style={{borderTop:`1px solid ${t.divider}`,opacity:p.client?1:0.5}}>
+                      <td style={{padding:"6px 10px"}}><input type="checkbox" checked={p.checked&&!!p.client} disabled={!p.client} onChange={e=>{const np=[...genPreview];np[i]={...np[i],checked:e.target.checked};setGenPreview(np)}}/></td>
+                      <td style={{padding:"6px 10px",fontWeight:600,color:t.text}}>{p.loc.nom}</td>
+                      <td style={{padding:"6px 10px",color:p.client?t.textSub:"#ef4444"}}>{p.client?p.client.nom:"Aucun client lié"}</td>
+                      <td style={{padding:"6px 10px",fontFamily:"'DM Mono',monospace",color:"#a78bfa"}}>{fmtFull(p.sales)}</td>
+                      <td style={{padding:"6px 10px",fontFamily:"'DM Mono',monospace",color:t.text}}>{fmtFull(p.royalty)}</td>
+                      <td style={{padding:"6px 10px",fontFamily:"'DM Mono',monospace",color:t.text}}>{fmtFull(p.ad)}</td>
+                      <td style={{padding:"6px 10px",fontFamily:"'DM Mono',monospace",fontWeight:600,color:t.text}}>{fmtFull(p.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Réconciliation sub-tab */}
+      {scoreTab==="reconciliation"&&(
+        !canUse('multiLocationReconciliation')?
+        <div style={{padding:24,textAlign:"center",color:"#8b8fa3",fontSize:13}}>🔒 Réconciliation multi-succursales disponible avec le plan Franchise.</div>:
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <span style={{fontSize:12,color:t.textSub}}>Période:</span>
+            <input type="month" value={reconMonth} onChange={e=>setReconMonth(e.target.value)} style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:12,padding:"5px 8px",outline:"none"}}/>
+          </div>
+          <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,overflow:"hidden"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+              <thead>
+                <tr style={{background:t.section}}>
+                  {["Succursale","Ventes (mois)","Redevance due","Facturé","Payé","Solde","Statut"].map(h=>(
+                    <th key={h} style={{padding:"7px 12px",textAlign:"left",fontWeight:600,color:t.textSub,fontSize:10.5}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {activeLocs.map(loc=>{
+                  const d=monthlyData[loc.id]||{};
+                  const rate=(loc.royaltyOverride&&loc.royaltyRate!=null)?loc.royaltyRate:royaltyConfig.rate;
+                  const adRate2=(loc.royaltyOverride&&loc.adRate!=null)?loc.adRate:royaltyConfig.adRate;
+                  const due=(d.monthlySales||0)*(rate+adRate2)/100;
+                  const billed=facFactures.filter(f=>f.clientId===loc.clientId&&f.tags?.includes("redevance")&&(f.date||"").startsWith(reconMonth.slice(0,7))).reduce((s,f)=>s+(f.total||0),0);
+                  const paid=facFactures.filter(f=>f.clientId===loc.clientId&&f.tags?.includes("redevance")&&(f.date||"").startsWith(reconMonth.slice(0,7))&&f.status==="paid").reduce((s,f)=>s+(f.total||0),0);
+                  const solde=billed-paid;
+                  const statusColor=solde<=0?"#22c55e":paid>0?"#fbbf24":"#ef4444";
+                  const statusLabel=solde<=0?"✓ Payé":paid>0?"Partiel":"Impayé";
+                  return(
+                    <tr key={loc.id} style={{borderTop:`1px solid ${t.divider}`}}>
+                      <td style={{padding:"8px 12px",fontWeight:600,color:t.text}}>{loc.nom}</td>
+                      <td style={{padding:"8px 12px",fontFamily:"'DM Mono',monospace",color:"#a78bfa"}}>{fmtFull(d.monthlySales||0)}</td>
+                      <td style={{padding:"8px 12px",fontFamily:"'DM Mono',monospace",color:t.textSub}}>{fmtFull(due)}</td>
+                      <td style={{padding:"8px 12px",fontFamily:"'DM Mono',monospace",color:t.text}}>{fmtFull(billed)}</td>
+                      <td style={{padding:"8px 12px",fontFamily:"'DM Mono',monospace",color:"#22c55e"}}>{fmtFull(paid)}</td>
+                      <td style={{padding:"8px 12px",fontFamily:"'DM Mono',monospace",fontWeight:600,color:statusColor}}>{fmtFull(solde)}</td>
+                      <td style={{padding:"8px 12px",fontWeight:700,color:statusColor}}>{statusLabel}</td>
+                    </tr>
+                  );
+                })}
+                {/* Totals row */}
+                {activeLocs.length>0&&(()=>{
+                  const totSales=activeLocs.reduce((s,l)=>s+(monthlyData[l.id]?.monthlySales||0),0);
+                  const totBilled=facFactures.filter(f=>f.tags?.includes("redevance")&&(f.date||"").startsWith(reconMonth.slice(0,7))).reduce((s,f)=>s+(f.total||0),0);
+                  const totPaid=facFactures.filter(f=>f.tags?.includes("redevance")&&(f.date||"").startsWith(reconMonth.slice(0,7))&&f.status==="paid").reduce((s,f)=>s+(f.total||0),0);
+                  return(<tr style={{borderTop:`2px solid ${t.dividerStrong}`,background:t.section}}>
+                    <td style={{padding:"8px 12px",fontWeight:700,color:t.text}}>TOTAL</td>
+                    <td style={{padding:"8px 12px",fontFamily:"'DM Mono',monospace",fontWeight:700,color:"#a78bfa"}}>{fmtFull(totSales)}</td>
+                    <td style={{padding:"8px 12px"}}></td>
+                    <td style={{padding:"8px 12px",fontFamily:"'DM Mono',monospace",fontWeight:700,color:t.text}}>{fmtFull(totBilled)}</td>
+                    <td style={{padding:"8px 12px",fontFamily:"'DM Mono',monospace",fontWeight:700,color:"#22c55e"}}>{fmtFull(totPaid)}</td>
+                    <td style={{padding:"8px 12px",fontFamily:"'DM Mono',monospace",fontWeight:700,color:"#f97316"}}>{fmtFull(totBilled-totPaid)}</td>
+                    <td></td>
+                  </tr>);
+                })()}
+                {activeLocs.length===0&&<tr><td colSpan={7} style={{padding:20,textAlign:"center",color:t.textMuted,fontSize:12}}>Aucune succursale active.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Audit réseau sub-tab */}
+      {scoreTab==="audit"&&(
+        <AuditReseauPanel locations={locations}/>
+      )}
+    </div>
+  );
+}
+
+function AuditReseauPanel({locations}){
+  const t=useT();
+  const [entries,setEntries]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [filterType,setFilterType]=useState("all");
+  useEffect(()=>{
+    (async()=>{
+      setLoading(true);
+      try{const r=await window.api.audit.query({limit:200});setEntries(r||[]);}catch(e){}
+      setLoading(false);
+    })();
+  },[]);
+  const filtered=filterType==="all"?entries:entries.filter(e=>e.action===filterType);
+  const actionColor=a=>a==="create"?"#22c55e":a==="void"?"#ef4444":a==="correction"?"#f97316":"#8b8fa3";
+  const actionLabel=a=>a==="create"?"Créé":a==="update"?"Modifié":a==="void"?"Annulé":a==="correction"?"Correction":a;
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+        <span style={{fontSize:12,fontWeight:600,color:t.text}}>Journal d'audit — toutes succursales</span>
+        <div style={{flex:1}}/>
+        {["all","create","update","correction","void"].map(f=>(
+          <button key={f} onClick={()=>setFilterType(f)} style={{padding:"3px 9px",borderRadius:5,border:`1px solid ${filterType===f?"rgba(167,139,250,0.5)":t.cardBorder}`,background:filterType===f?"rgba(167,139,250,0.12)":"none",color:filterType===f?"#c4b5fd":t.textMuted,fontSize:10,fontWeight:600,cursor:"pointer"}}>
+            {f==="all"?"Tous":actionLabel(f)}
+          </button>
+        ))}
+      </div>
+      {loading?<div style={{color:t.textMuted,fontSize:12,padding:16,textAlign:"center"}}>Chargement...</div>:(
+        <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,overflow:"hidden"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+            <thead>
+              <tr style={{background:t.section}}>
+                {["Horodatage","Action","Type","Entité","Champ","Détail"].map(h=>(
+                  <th key={h} style={{padding:"6px 10px",textAlign:"left",fontWeight:600,color:t.textSub,fontSize:10.5}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.slice(0,100).map((e,i)=>(
+                <tr key={i} style={{borderTop:`1px solid ${t.divider}`}}>
+                  <td style={{padding:"5px 10px",fontFamily:"'DM Mono',monospace",fontSize:10,color:t.textMuted,whiteSpace:"nowrap"}}>{e.ts?new Date(e.ts).toLocaleString("fr-CA",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}):"—"}</td>
+                  <td style={{padding:"5px 10px",fontWeight:600,color:actionColor(e.action)}}>{actionLabel(e.action)}</td>
+                  <td style={{padding:"5px 10px",color:t.textSub}}>{e.entity_type||"—"}</td>
+                  <td style={{padding:"5px 10px",fontFamily:"'DM Mono',monospace",fontSize:10,color:t.text}}>{e.entity_id||"—"}</td>
+                  <td style={{padding:"5px 10px",color:t.textMuted,fontSize:10}}>{e.field_name||"—"}</td>
+                  <td style={{padding:"5px 10px",color:t.textMuted,fontSize:10,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.reason||e.new_value||"—"}</td>
+                </tr>
+              ))}
+              {filtered.length===0&&<tr><td colSpan={6} style={{padding:20,textAlign:"center",color:t.textMuted}}>Aucune entrée d'audit.</td></tr>}
+            </tbody>
+          </table>
+          {filtered.length>100&&<div style={{padding:"6px 12px",fontSize:10,color:t.textMuted,borderTop:`1px solid ${t.divider}`}}>Affichage des 100 entrées les plus récentes sur {filtered.length}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── WELCOME SCREEN ──
 function WelcomeScreen({onSelect}){
-  const [franchiseurMsg,setFranchiseurMsg]=useState(false);
   return(
     <div style={{minHeight:"100vh",background:DARK.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Outfit','Helvetica Neue',sans-serif",padding:24}}>
       <div style={{maxWidth:480,width:"100%",textAlign:"center"}}>
@@ -4023,33 +4956,21 @@ function WelcomeScreen({onSelect}){
         <h1 style={{fontSize:24,fontWeight:700,color:"#e8e8ec",margin:"0 0 10px"}}>Bienvenue sur BalanceIQ</h1>
         <p style={{fontSize:15,color:"#8b8fa3",margin:"0 0 36px",lineHeight:1.5}}>Comment utilisez-vous l'application?</p>
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          <button onClick={()=>onSelect("restaurant")} style={{padding:"18px 24px",borderRadius:12,border:"1.5px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:16,fontFamily:"'Outfit',sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:10,transition:"all 0.15s"}}
-            onMouseEnter={e=>e.currentTarget.style.background="rgba(249,115,22,0.14)"}
-            onMouseLeave={e=>e.currentTarget.style.background="rgba(249,115,22,0.08)"}>
+          <button onClick={()=>onSelect("restaurant")} style={{display:"flex",alignItems:"center",gap:14,padding:"18px 22px",borderRadius:11,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",cursor:"pointer",textAlign:"left",transition:"background 0.15s",color:"#e8e8ec"}}>
             <span style={{fontSize:22}}>🏪</span>
             <div style={{textAlign:"left"}}>
               <div style={{fontSize:16,fontWeight:700}}>Restaurant / Franchisé</div>
               <div style={{fontSize:12,color:"rgba(249,115,22,0.7)",fontWeight:400,marginTop:2}}>Fermeture de caisse, P&L, inventaire, facturation</div>
             </div>
           </button>
-          <button onClick={()=>setFranchiseurMsg(true)} style={{padding:"18px 24px",borderRadius:12,border:`1.5px solid rgba(255,255,255,0.07)`,background:"rgba(255,255,255,0.025)",color:"#5a5e70",cursor:"pointer",fontWeight:700,fontSize:16,fontFamily:"'Outfit',sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:10}}
-            onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.04)"}
-            onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.025)"}>
+          <button onClick={()=>onSelect("franchiseur")} style={{display:"flex",alignItems:"center",gap:14,padding:"18px 22px",borderRadius:11,border:"1px solid rgba(139,92,246,0.25)",background:"rgba(139,92,246,0.07)",cursor:"pointer",textAlign:"left",transition:"background 0.15s",color:"#e8e8ec"}}>
             <span style={{fontSize:22}}>🏢</span>
             <div style={{textAlign:"left"}}>
               <div style={{fontSize:16,fontWeight:700}}>Franchiseur / Siège social</div>
-              <div style={{fontSize:12,color:"#4a4e5e",fontWeight:400,marginTop:2}}>Dashboard multi-franchises, redevances, consolidation</div>
+              <div style={{fontSize:12,color:"rgba(139,92,246,0.7)",fontWeight:400,marginTop:2}}>Dashboard multi-succursales, redevances, consolidation</div>
             </div>
           </button>
         </div>
-        {franchiseurMsg&&(
-          <div style={{marginTop:20,padding:"14px 18px",borderRadius:9,background:"rgba(251,191,36,0.08)",border:"1px solid rgba(251,191,36,0.2)",textAlign:"left"}}>
-            <div style={{fontSize:13,fontWeight:600,color:"#fbbf24",marginBottom:6}}>Mode Franchiseur — disponible prochainement</div>
-            <div style={{fontSize:12,color:"#8b8fa3",marginBottom:6,lineHeight:1.5}}>Le mode Franchiseur (dashboard multi-succursales, redevances automatiques, consolidation) est en développement. Vous serez notifié dès sa disponibilité.</div>
-            <div style={{fontSize:11,color:"#6b7280",marginBottom:12,padding:"8px 10px",borderRadius:6,background:"rgba(139,92,246,0.06)",border:"1px solid rgba(139,92,246,0.15)"}}>📋 Journal d'audit réseau — disponible avec synchronisation cloud</div>
-            <button onClick={()=>onSelect("restaurant")} style={{padding:"8px 16px",borderRadius:7,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>Continuer en mode Restaurant</button>
-          </div>
-        )}
         <p style={{fontSize:11,color:"#3e4254",marginTop:28}}>Version {appVersion} · BalanceIQ</p>
       </div>
     </div>
@@ -4310,6 +5231,7 @@ export default function App(){
   const [empRoster,setEmpRoster]=useState([]);
   const [suppliers,setSuppliers]=useState(DEFAULT_SUPPLIERS);
   const [apiConfig,setApiConfig]=useState({auphanKey:"",weatherKey:"",gasKey:""});
+  const [activePlan,setActivePlan]=useState("free");
   const [restoreMsg,setRestoreMsg]=useState('');
   const [backupInfo,setBackupInfo]=useState(null);
   const [configSubTab,setConfigSubTab]=useState("entreprise");
@@ -4347,7 +5269,14 @@ export default function App(){
   const [cfgNewCatName,setCfgNewCatName]=useState("");
   const encaisseTimer=useRef(null);
   const [appMode,setAppMode]=useState(null);
+  const [locations,setLocations]=useState([]);
+  const [activeLocationId,setActiveLocationId]=useState("all");
+  const [royaltyConfig,setRoyaltyConfig]=useState({type:'percent',structure:'fixed',rate:6,adRate:2,frequency:'monthly',categoryId:null,produitId:null,tranches:[{from:0,to:50000,rate:6},{from:50000,to:null,rate:5}]});
+  const [whiteLabelConfig,setWhiteLabelConfig]=useState({enabled:false,franchiseName:"",accentColor:"#f97316",footer:""});
+  const [locationDataCache,setLocationDataCache]=useState({});
   const [upgradePromptOpen,setUpgradePromptOpen]=useState(false);
+  const [pdfPreview,setPdfPreview]=useState(null);
+  useEffect(()=>{const h=e=>setPdfPreview(e.detail.html);window.addEventListener('biq:pdf-preview',h);return()=>window.removeEventListener('biq:pdf-preview',h);},[]);
   const [companyInfo,setCompanyInfo]=useState(DEFAULT_COMPANY_INFO);
   const [invoiceTemplate,setInvoiceTemplate]=useState(DEFAULT_INVOICE_TEMPLATE);
   const [docNums,setDocNums]=useState(DEFAULT_DOC_NUMS);
@@ -4367,12 +5296,15 @@ export default function App(){
     try{const r2=await window.api.storage.get("dicann-roster");if(r2?.value)setRoster(JSON.parse(r2.value))}catch(e){}
     try{const r2b=await window.api.storage.get("dicann-emp-roster");if(r2b?.value)setEmpRoster(JSON.parse(r2b.value))}catch(e){}
     try{const r3=await window.api.storage.get("dicann-suppliers-v2");if(r3?.value)setSuppliers(JSON.parse(r3.value))}catch(e){}
-    try{const r4=await window.api.storage.get("dicann-api-config");if(r4?.value)setApiConfig(JSON.parse(r4.value))}catch(e){}
+    try{const r4=await window.api.storage.get("dicann-api-config");if(r4?.value){const cfg=JSON.parse(r4.value);setApiConfig(cfg);if(cfg.plan&&import.meta.env.DEV){setPlan(cfg.plan);setActivePlan(cfg.plan);}}}catch(e){}
     try{const r5=await window.api.storage.get("balanceiq-theme");if(r5?.value==='light'||r5?.value==='dark')setThemeName(r5.value)}catch(e){}
     try{const r6=await window.api.storage.get("dicann-platforms");if(r6?.value)setPlatforms(JSON.parse(r6.value))}catch(e){}
     try{const r7=await window.api.storage.get("dicann-encaisse");if(r7?.value)setEncaisseData(JSON.parse(r7.value))}catch(e){}
     try{const r8=await window.api.storage.get("dicann-encaisse-config");if(r8?.value)setEncaisseConfig(prev=>({...DEFAULT_ENCAISSE_CONFIG,...JSON.parse(r8.value)}))}catch(e){}
     try{const r9=await window.api.storage.get("balanceiq-mode");if(r9?.value)setAppMode(r9.value);else setAppMode(null)}catch(e){setAppMode(null)}
+    try{const rL=await window.api.storage.get("balanceiq-locations");if(rL?.value)setLocations(JSON.parse(rL.value))}catch(e){}
+    try{const rR=await window.api.storage.get("balanceiq-royalty-config");if(rR?.value)setRoyaltyConfig(prev=>({...prev,...JSON.parse(rR.value)}))}catch(e){}
+    try{const rWL=await window.api.storage.get("balanceiq-whitelabel");if(rWL?.value)setWhiteLabelConfig(prev=>({...prev,...JSON.parse(rWL.value)}))}catch(e){}
     try{const r10=await window.api.storage.get("dicann-company-info");if(r10?.value)setCompanyInfo(prev=>({...DEFAULT_COMPANY_INFO,...JSON.parse(r10.value)}))}catch(e){}
     try{const rTpl=await window.api.storage.get("dicann-invoice-template");if(rTpl?.value)setInvoiceTemplate(prev=>({...DEFAULT_INVOICE_TEMPLATE,...JSON.parse(rTpl.value)}))}catch(e){}
     try{const r11=await window.api.storage.get("dicann-fac-categories");if(r11?.value)setFacCategories(JSON.parse(r11.value))}catch(e){}
@@ -4438,9 +5370,17 @@ export default function App(){
   const persistEncaisse=useCallback(data=>{setEncaisseData(data);if(encaisseTimer.current)clearTimeout(encaisseTimer.current);encaisseTimer.current=setTimeout(async()=>{try{await window.api.storage.set("dicann-encaisse",JSON.stringify(data))}catch(e){}},600)},[]);
   const saveEncaisseConfig=useCallback(cfg=>{setEncaisseConfig(cfg);window.api.storage.set("dicann-encaisse-config",JSON.stringify(cfg)).catch(()=>{})},[]);
   const saveAppMode=useCallback(mode=>{setAppMode(mode);window.api.storage.set("balanceiq-mode",mode).catch(()=>{})},[]);
+  const saveLocations=useCallback(list=>{setLocations(list);window.api.storage.set("balanceiq-locations",JSON.stringify(list)).catch(()=>{})},[]);
+  const saveRoyaltyConfig=useCallback(cfg=>{setRoyaltyConfig(cfg);window.api.storage.set("balanceiq-royalty-config",JSON.stringify(cfg)).catch(()=>{})},[]);
+  const saveWhiteLabel=useCallback(cfg=>{setWhiteLabelConfig(cfg);window.api.storage.set("balanceiq-whitelabel",JSON.stringify(cfg)).catch(()=>{})},[]);
   const showUpgradePrompt=useCallback(featureName=>{if(shouldShowUpgradePrompt(featureName))setUpgradePromptOpen(true)},[]);
   const saveCompanyInfo=useCallback(info=>{setCompanyInfo(info);window.api.storage.set("dicann-company-info",JSON.stringify(info)).catch(()=>{})},[]);
   const saveInvoiceTemplate=useCallback(tpl=>{setInvoiceTemplate(tpl);window.api.storage.set("dicann-invoice-template",JSON.stringify(tpl)).catch(()=>{})},[]);
+  // Merge white-label settings into invoiceTemplate for PDF builders
+  const effectiveTemplate=useMemo(()=>{
+    if(!whiteLabelConfig?.enabled)return invoiceTemplate;
+    return{...invoiceTemplate,whiteLabelEnabled:true,whiteLabelName:whiteLabelConfig.franchiseName||"",accentColor:whiteLabelConfig.accentColor||invoiceTemplate.accentColor,footerText:[whiteLabelConfig.footer,invoiceTemplate.footerText].filter(Boolean).join(" · ")};
+  },[invoiceTemplate,whiteLabelConfig]);
   const saveFacCategories=useCallback(cats=>{setFacCategories(cats);window.api.storage.set("dicann-fac-categories",JSON.stringify(cats)).catch(()=>{})},[]);
   const saveFacProduits=useCallback(prods=>{setFacProduits(prods);window.api.storage.set("dicann-fac-produits",JSON.stringify(prods)).catch(()=>{})},[]);
   const saveFacClients=useCallback(list=>{setFacClients(list);window.api.storage.set("dicann-fac-clients",JSON.stringify(list)).catch(()=>{})},[]);
@@ -4649,7 +5589,29 @@ export default function App(){
     return h;
   };
 
-  const tabs=[{id:"daily",label:"Quotidien"},{id:"monthly",label:"P&L Mensuel"},{id:"encaisse",label:"💵 Encaisse"},{id:"intelligence",label:"Intelligence"},{id:"settings",label:"Config"}];
+  const getLocationMonthlySales=useCallback(async(locId,yearMonth)=>{
+    try{const r=await window.api.storage.get(`dicann-v7-loc-${locId}`);
+    if(!r?.value)return 0;
+    const data=JSON.parse(r.value);
+    return Object.entries(data).filter(([k])=>k.startsWith(yearMonth)).reduce((sum,[,v])=>{
+      const cashes=v.cashes||[];
+      const net=cashes.reduce((s,c)=>{
+        if(c.float!=null&&c.deposits!=null&&c.finalCash!=null){
+          return s+(c.interac||0)+(c.livraisons||0)+(c.deposits||0)+(c.finalCash||0)-(c.float||0);
+        }return s;
+      },0);return sum+net;
+    },0);
+    }catch(e){return 0;}
+  },[]);
+
+  const tabs=[
+    ...(appMode==="franchiseur"?[{id:"reseau",label:"🏢 Réseau"}]:[]),
+    {id:"daily",label:"Quotidien"},
+    {id:"monthly",label:"P&L Mensuel"},
+    {id:"encaisse",label:"💵 Encaisse"},
+    {id:"intelligence",label:"Intelligence"},
+    {id:"settings",label:"Config"}
+  ];
 
   const inputStyle={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:12,padding:"5px 8px",outline:"none"};
 
@@ -4659,6 +5621,7 @@ export default function App(){
   return(
     <ThemeCtx.Provider value={theme}>
       {upgradePromptOpen&&<UpgradePrompt onClose={()=>setUpgradePromptOpen(false)}/>}
+      {pdfPreview&&<PDFPreviewModal html={pdfPreview} onClose={()=>setPdfPreview(null)}/>}
       <div style={{minHeight:"100vh",background:t.bg,fontFamily:"'Outfit','Helvetica Neue',sans-serif",color:t.text,transition:"background 0.2s,color 0.2s"}}>
 
         {/* ── HEADER ── */}
@@ -4667,10 +5630,22 @@ export default function App(){
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               <div style={{width:32,height:28,borderRadius:6,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:"#fff",letterSpacing:-0.5}}>BIQ</div>
               <span style={{fontSize:14,fontWeight:700,color:t.text}}>BalanceIQ</span>
+              {appMode==="franchiseur"&&(
+                <select value={activeLocationId} onChange={e=>setActiveLocationId(e.target.value)}
+                  style={{marginLeft:12,background:"rgba(139,92,246,0.1)",border:"1px solid rgba(139,92,246,0.25)",borderRadius:6,color:"#c4b5fd",fontSize:11,fontWeight:600,padding:"3px 8px",cursor:"pointer",outline:"none",fontFamily:"'Outfit',sans-serif"}}>
+                  <option value="all">🏢 Tout le réseau</option>
+                  {locations.filter(l=>l.statut!=="inactive").map(l=>(
+                    <option key={l.id} value={l.id}>📍 {l.nom}</option>
+                  ))}
+                </select>
+              )}
             </div>
             <div style={{display:"flex",alignItems:"center",gap:6}}>
               {saving&&<span style={{fontSize:9,color:"#f97316",fontFamily:"'DM Mono',monospace"}}>sauvegarde...</span>}
               {hasL&&<Pill ok label="Saisie"/>}
+              <button onClick={()=>{saveAppMode(null)}} title="Changer de mode" style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textMuted,fontSize:10,padding:"3px 8px",cursor:"pointer",fontWeight:600}}>
+                ⇄ Mode
+              </button>
               <button onClick={toggleTheme} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 8px",cursor:"pointer",fontWeight:600,fontFamily:"'DM Mono',monospace"}}>
                 {themeName==='dark'?'☀ Clair':'☾ Foncé'}
               </button>
@@ -4715,6 +5690,9 @@ export default function App(){
 
         {/* ── CONTENT ── */}
         <div style={{maxWidth:1120,margin:"0 auto",padding:"10px 15px 30px"}}>
+
+          {/* RÉSEAU TAB */}
+          {activeTab==="reseau"&&<ReseauTab locations={locations} facFactures={facFactures} facCreditNotes={facCreditNotes} facClients={facClients} royaltyConfig={royaltyConfig} facCategories={facCategories} facProduits={facProduits} saveFacFactures={saveFacFactures} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} apiConfig={apiConfig}/>}
 
           {/* DAILY TAB */}
           {activeTab==="daily"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -4899,14 +5877,24 @@ export default function App(){
 
           {activeTab==="monthly"&&<MonthlyPL computeDay={computeDay} suppliers={suppliers} liveData={liveData} platforms={platforms}/>}
           {activeTab==="encaisse"&&<EncaisseTab liveData={liveData} encaisseData={encaisseData} persistEncaisse={persistEncaisse} encaisseConfig={encaisseConfig} saveEncaisseConfig={saveEncaisseConfig}/>}
-          {activeTab==="facturation"&&<FacturationTab categories={facCategories} saveCategories={saveFacCategories} produits={facProduits} saveProduits={saveFacProduits} clients={facClients} saveClients={saveFacClients} soumissions={facSoumissions} saveSoumissions={saveFacSoumissions} commandes={facCommandes} saveCommandes={saveFacCommandes} factures={facFactures} saveFactures={saveFacFactures} creditNotes={facCreditNotes} saveCreditNotes={saveFacCreditNotes} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData} persistEncaisse={persistEncaisse} showUpgradePrompt={showUpgradePrompt} apiConfig={apiConfig} recurrents={facRecurrents} saveRecurrents={saveFacRecurrents} invoiceTemplate={invoiceTemplate}/>}
+          {activeTab==="facturation"&&<FacturationTab categories={facCategories} saveCategories={saveFacCategories} produits={facProduits} saveProduits={saveFacProduits} clients={facClients} saveClients={saveFacClients} soumissions={facSoumissions} saveSoumissions={saveFacSoumissions} commandes={facCommandes} saveCommandes={saveFacCommandes} factures={facFactures} saveFactures={saveFacFactures} creditNotes={facCreditNotes} saveCreditNotes={saveFacCreditNotes} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData} persistEncaisse={persistEncaisse} showUpgradePrompt={showUpgradePrompt} apiConfig={apiConfig} recurrents={facRecurrents} saveRecurrents={saveFacRecurrents} invoiceTemplate={effectiveTemplate}/>}
           {activeTab==="intelligence"&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR} platforms={platforms} encaisseData={encaisseData} encaisseConfig={encaisseConfig}/>}
 
           {/* SETTINGS TAB */}
           {activeTab==="settings"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
             {/* Config sub-tab bar */}
             {(()=>{
-              const CTABS=[{id:"entreprise",label:"🏢 Entreprise"},{id:"personnel",label:"👥 Personnel"},{id:"fournisseurs",label:"📦 Fournisseurs"},{id:"finances",label:"💵 Finances"},{id:"integrations",label:"🔌 Intégrations"},{id:"donnees",label:"💾 Données"},{id:"apparence",label:"🎨 Apparence"},{id:"application",label:"📱 Application"}];
+              const CTABS=[
+                {id:"entreprise",label:"🏢 Entreprise"},
+                {id:"personnel",label:"👥 Personnel"},
+                {id:"fournisseurs",label:"📦 Fournisseurs"},
+                {id:"finances",label:"💵 Finances"},
+                {id:"integrations",label:"🔌 Intégrations"},
+                {id:"donnees",label:"💾 Données"},
+                {id:"apparence",label:"🎨 Apparence"},
+                {id:"application",label:"📱 Application"},
+                ...(appMode==="franchiseur"?[{id:"succursales",label:"📍 Succursales"},{id:"redevances",label:"💰 Redevances"},{id:"marqueblanche",label:"🏷️ Marque blanche"}]:[]),
+              ];
               return(<div style={{display:"flex",gap:2,borderBottom:`1px solid ${t.dividerMid}`,overflowX:"auto",paddingBottom:1,marginBottom:4,flexShrink:0}}>
                 {CTABS.map(({id,label})=>(
                   <button key={id} onClick={()=>setConfigSubTab(id)} style={{background:"none",border:"none",color:configSubTab===id?"#f97316":t.textMuted,fontSize:11,fontWeight:configSubTab===id?700:500,padding:"5px 11px",cursor:"pointer",borderBottom:configSubTab===id?"2px solid #f97316":"2px solid transparent",whiteSpace:"nowrap",flexShrink:0,fontFamily:"'Outfit',sans-serif"}}>
@@ -5111,6 +6099,14 @@ export default function App(){
                     Afficher les numéros TPS/TVQ sur les documents
                   </label>
                   <div style={{fontSize:10,color:"#22c55e",fontWeight:600}}>✓ Paramètres appliqués à tous vos documents (factures, soumissions, commandes)</div>
+                  <button onClick={()=>{
+                    const sampleClient={entreprise:companyInfo.nom||"Entreprise Exemple inc.",contact:"Jean Dupont",adresse:"123 rue Principale",ville:"Montréal",province:"QC",codePostal:"H1A 1A1",courriel:"jean@exemple.ca",tel1:"514-555-0100"};
+                    const sampleLignes=[{id:"1",description:"Service de consultation",quantite:10,prixUnitaire:150,remise:0,tps:true,tvq:true},{id:"2",description:"Frais de déplacement",quantite:1,prixUnitaire:75,remise:10,tps:true,tvq:false},{id:"3",description:"Licence logicielle annuelle",quantite:3,prixUnitaire:200,remise:0,tps:true,tvq:true}];
+                    const sampleTotals=computeSoumTotals(sampleLignes);
+                    openPDF(buildFactureHTML({numero:"F-DEMO",date:dk(new Date()),dateEcheance:"2026-04-07",statut:"Envoyée",referenceClient:"REF-2026-001",lignes:sampleLignes,notes:invoiceTemplate.defaultNotes||"Merci de votre confiance. Paiement dû dans 30 jours.",totals:sampleTotals,client:sampleClient,companyInfo,montantPaye:0,acomptes:[],sourceType:null,sourceNumero:null,invoiceTemplate}));
+                  }} style={{padding:"7px 16px",borderRadius:6,border:"1px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11}}>
+                    👁️ Aperçu du modèle (facture démo)
+                  </button>
                 </div>
                 :<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
                   <span style={{fontSize:11,color:t.textSub}}>Personnalisez les couleurs, logo et pied de page de vos documents.</span>
@@ -5223,28 +6219,59 @@ export default function App(){
               <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Mode de l'application</span>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <span style={{fontSize:18}}>🏪</span>
+                  <span style={{fontSize:18}}>{appMode==="franchiseur"?"🏢":"🏪"}</span>
                   <div>
-                    <div style={{fontSize:12,fontWeight:600,color:t.text}}>Restaurant / Franchisé</div>
-                    <div style={{fontSize:10.5,color:t.textMuted}}>Mode actif — fermeture de caisse, P&L, facturation</div>
+                    <div style={{fontSize:12,fontWeight:600,color:t.text}}>{appMode==="franchiseur"?"Franchiseur / Siège social":"Restaurant / Franchisé"}</div>
+                    <div style={{fontSize:10.5,color:t.textMuted}}>{appMode==="franchiseur"?"Dashboard réseau, redevances, succursales":"Fermeture de caisse, P&L, facturation"}</div>
                   </div>
                 </div>
                 <span style={{fontSize:10,fontWeight:700,color:"#16a34a",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:10,padding:"2px 8px"}}>Actif</span>
               </div>
-              <div style={{fontSize:10.5,color:t.textMuted,marginTop:8}}>Mode Franchiseur / Siège social disponible prochainement.</div>
+              <div style={{fontSize:10.5,color:t.textMuted,marginTop:8}}>Pour changer de mode, cliquez le bouton "⇄ Mode" dans l'en-tête.</div>
             </div>
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Plan actif</span>
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <span style={{fontSize:11,color:t.textSub}}>Plan actuel :</span>
-                <span style={{fontSize:12,fontWeight:700,color:"#f97316",fontFamily:"'DM Mono',monospace"}}>{CURRENT_PLAN.toUpperCase()}</span>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                <span style={{fontSize:13,fontWeight:700,color:t.text}}>Plan actif</span>
+                {import.meta.env.DEV&&<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"2px 7px",borderRadius:8,letterSpacing:"0.3px"}}>MODE DEV</span>}
               </div>
-              <div style={{fontSize:10,color:t.textDim,marginTop:4}}>Pour changer de plan, communiquez avec BalanceIQ.</div>
+              {import.meta.env.DEV
+                ?<>
+                  <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                    {["free","pro","franchise"].map(p=>(
+                      <button key={p} onClick={()=>{setPlan(p);setActivePlan(p);const nc={...apiConfig,plan:p};setApiConfig(nc);saveApiCfg(nc);}} style={{padding:"5px 16px",borderRadius:20,border:activePlan===p?"none":`1px solid ${t.cardBorder}`,background:activePlan===p?"linear-gradient(135deg,#f97316,#ea580c)":t.section,color:activePlan===p?"#fff":t.textSub,cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'DM Mono',monospace",textTransform:"uppercase"}}>
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{fontSize:10,color:t.textMuted,marginTop:6}}>Sélection du plan disponible en mode développement uniquement.</div>
+                </>
+                :<>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:12,fontWeight:700,color:"#f97316",fontFamily:"'DM Mono',monospace",textTransform:"uppercase"}}>{activePlan}</span>
+                  </div>
+                  <div style={{fontSize:10,color:t.textDim,marginTop:4}}>Pour changer de plan, communiquez avec BalanceIQ.</div>
+                </>
+              }
             </div>
             <div style={{textAlign:"center",padding:"8px 0 2px"}}>
               <span style={{fontSize:10.5,color:t.textSub,fontFamily:"'DM Mono',monospace"}}>BalanceIQ v{appVersion}</span>
             </div>
             </div>)}
+
+            {/* 📍 SUCCURSALES — franchiseur only */}
+            {configSubTab==="succursales"&&appMode==="franchiseur"&&(
+              <LocationsConfig locations={locations} saveLocations={saveLocations} facClients={facClients}/>
+            )}
+
+            {/* 💰 REDEVANCES — franchiseur only */}
+            {configSubTab==="redevances"&&appMode==="franchiseur"&&(
+              <RedevancesConfig royaltyConfig={royaltyConfig} saveRoyaltyConfig={saveRoyaltyConfig} facCategories={facCategories} facProduits={facProduits}/>
+            )}
+
+            {/* 🏷️ MARQUE BLANCHE — franchiseur only */}
+            {configSubTab==="marqueblanche"&&appMode==="franchiseur"&&(
+              <MarqueBlancheConfig whiteLabelConfig={whiteLabelConfig} saveWhiteLabel={saveWhiteLabel}/>
+            )}
 
             </div>
           </div>)}

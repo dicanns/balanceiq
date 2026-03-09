@@ -1,6 +1,6 @@
 # BalanceIQ — Product Roadmap
 ### L'intelligence derrière vos chiffres.
-### Last updated: March 8, 2026 (session 7)
+### Last updated: March 9, 2026 (session 9)
 
 ---
 
@@ -14,6 +14,10 @@
 | Gas price fetch | CAA Canada scraper (cheerio) | ✅ Wired |
 | Weather API | Open-Meteo (free, no key) | ✅ Built |
 | Packaging | electron-builder (.exe + .dmg) | ✅ Built |
+| Auto-updater | electron-updater → GitHub Releases | ✅ Built |
+| Audit trail | SQLite audit_log + daily_snapshots | ✅ Built |
+| PDF engine | Electron printToPDF (hidden BrowserWindow) | ✅ Built |
+| Email | Resend API via Electron net module | ✅ Built |
 
 ---
 
@@ -31,194 +35,164 @@
 - [x] Inventory carry-over (Fin → Début du lendemain automatic)
 - [x] Inventory manual override (✎ button to correct starting count)
 - [x] Stock received (+Reçu field for deliveries)
-- [x] Bread checkpoints — track buns remaining at 14h, 17h, 19h, 20h for ham and hot dog; shows cumulative "passé" (sold by that point) = Début + Reçu − Restant
+- [x] Bread checkpoints — track buns remaining at 14h, 17h, 19h, 20h; shows "passé" per window
 - [x] Average $/dozen (Vente nette ÷ total dozens used)
 - [x] Labour tracking — employees, hours, saved wages, cost, % of sales
 - [x] Labour % color-coded (green ≤28%, yellow 28-35%, red >35%)
 - [x] External factors: weather, temperature, gas price, events
 - [x] Quebec holidays auto-detected
 - [x] Gas price auto-fill from last known price (up to 14 days back)
-- [x] Gas price "Confirmer" button for auto-filled price
-- [x] Gas price "Vérifier le prix (Régie de l'énergie)" button — live fetch from CAA Canada, shows loading state, auto-fills on success, French error message on failure
-- [x] Daily notes
-- [x] Weekly sales chart
-- [x] Each day starts blank (except inventory carry-over + gas auto-fill)
+- [x] Gas price live fetch from CAA Canada (cheerio scraper via IPC)
+- [x] Daily notes, weekly sales chart
 - [x] All data auto-saves with debounce
 
 ### ✅ DONE — P&L Mensuel tab
 
-- [x] Revenue auto-calculated from daily reports
-- [x] Revenue manual override with "Retour auto" option
-- [x] Supplier cost tracking — Food & Paper column per supplier
-- [x] Petty cash — F&P and Misc separate lines
+- [x] Revenue auto-calculated from daily reports with manual override
+- [x] Supplier cost tracking — F&P column per supplier with multi-bill entry (date, amount HT, note)
 - [x] 16 operating expense categories
-- [x] Labour cost auto-pulled from daily reports + manual override
-- [x] Full P&L summary: Revenue → Gross Profit → Net Profit/Loss
-- [x] Percentage indicators (F&P %, Labour %, Net %)
-- [x] Color-coded alerts when percentages are out of range
-- [x] Save & Print PDF (opens print dialog)
-- [x] Email report to info@dicanns.ca
-- [x] Buffered inputs (no focus loss when typing)
-- [x] Multi-bill entry per supplier/expense — add individual invoices with date, amount (HT), note/invoice number; collapsed by default showing total, expanded showing line-by-line; all amounts before taxes (avant taxes); PDF print includes bill detail
-- [x] Enter key navigation — across daily tab and P&L, Enter moves focus to next blank field
+- [x] Labour auto-pulled from daily reports + manual override
+- [x] Full P&L summary: Revenue → Gross → Net
+- [x] Percentage indicators with color-coded alerts
+- [x] Save & Print PDF, email to info@dicanns.ca
+- [x] Monthly P&L reset button
 
 ### ✅ DONE — Intelligence tab
 
 - [x] Sales projections based on last 8 same-day-of-week entries
 - [x] Suggested ordering quantities (ham + hot dozens with safety margin)
-- [x] Day-of-week profiling (average sales, ham, hot per weekday)
-- [x] Anomaly detection — flags days ±25% from average for that day type
-- [x] Cash variance history per cashier (running total + last 5 entries)
-- [x] All rule-based, no API cost
-- [x] Consumption velocity analysis — average dz consumed per time window (Début→14h, 14h→17h, 17h→19h, 19h→20h) broken down by day of week
-- [x] Predictive ordering with external factors — multi-factor model (dow + weather category + temp range + Quebec holidays); shows ham/hot/sales estimate for tomorrow with contextual adjustments
-- [x] Intra-day projection on daily tab — once any bread checkpoint is entered, linearly extrapolates end-of-day usage for ham and hot
+- [x] Day-of-week profiling; anomaly detection ±25%
+- [x] Cash variance history per cashier
+- [x] Consumption velocity analysis per time window
+- [x] Predictive ordering — multi-factor model (dow + weather + temp + Quebec holidays)
+- [x] Intra-day projection from bread checkpoints
+- [x] Encaisse monthly sortie breakdown vs prior month (flags +40%)
 
 ### ✅ DONE — Encaisse tab (💵 daily cash position tracker)
 
-- [x] **New tab** — "💵 Encaisse" placed between P&L Mensuel and Intelligence
-- [x] **Read-only from caisses** — reads `finalCash - float` per register for "Cash des ventes", reads `interac` for "Dépôt Interac/Crédit"; NEVER writes back to caisses
-- [x] **① Solde d'ouverture** — auto-carried from previous day's closing balance (iterative forward computation); manual override (✎) with option to reset; shows warning when no history found
-- [x] **② Entrées de cash** — auto "Cash des ventes" (read-only from caisses, shows "⏳ Remplir les caisses d'abord" if no data); manual "Autre entrée" items with description + amount (add/remove)
-- [x] **③ Dépôts à la banque** — auto "Dépôt Interac/Crédit" from caisses (read-only); manual cash deposits with amount, note, optional bordereau number (add/remove, multiple per day)
-- [x] **④ Sorties de cash** — each entry has category (dropdown), description, amount; default categories: Fournisseur payé cash, Avance employé, Achats divers, Réparations, Autre; add/remove entries
-- [x] **⑤ Comptage physique** — Tiroirs-caisses, Petite caisse, Bureau / Office; auto-totals when at least one entered
-- [x] **⑥ Réconciliation** — full equation display; ✓ BALANCÉ (green, |écart| ≤ $2) or ✗ with surplus/manque amount (red); carry-forward mode selector (Solde calculé vs Comptage physique)
-- [x] **Daily tab status indicator** — clickable card next to labour metric: ✓ (green/Balancé), ✗ (red/Écart), ⏳ (orange/En cours), — (gray/Non saisi); clicking navigates to Encaisse tab
-- [x] **Monthly summary** — collapsible panel with month selector; shows total cash des ventes, dépôts, sorties, current position, days balanced vs not, flags days with écart > $10
-- [x] **Configuration** (inline in Encaisse tab) — add/remove/rename sortie categories; add/remove cash locations; same pattern as suppliers
-- [x] **Intelligence tab** — new "💵 Encaisse — analyse mensuelle" card showing breakdown of sorties by category for current month vs previous month, flags categories up 40%+
-- [x] **Storage** — `dicann-encaisse` (all daily data) + `dicann-encaisse-config` (categories/locations), 600ms debounce persist
+- [x] Reads from caisses (finalCash - float), never writes back
+- [x] Solde d'ouverture auto-carried from prior day closing
+- [x] Entrées: Cash des ventes (auto) + Autre entrée (manual)
+- [x] Dépôts à la banque: Interac/Crédit (auto) + cash deposits (manual)
+- [x] Sorties de cash with categories
+- [x] Comptage physique (tiroirs-caisses, petite caisse, bureau)
+- [x] Réconciliation: ✓ BALANCÉ (|écart| ≤ $2) or ✗ with amount
+- [x] Monthly summary — days balanced, écart flags
+- [x] Daily tab status indicator (clickable card)
 
 ### ✅ DONE — Livraisons (delivery platform tracking)
 
-- [x] **Livraisons section in daily tab** — placed between Caisses and Inventory; purely informational, zero effect on reconciliation
-- [x] Per-platform fields: "Ventes plateforme" (what the dashboard shows) + "Dépôt reçu" (what landed in the bank)
-- [x] Dépôt can be entered on any date retroactively — common since platforms pay out days later
-- [x] When both fields filled: shows `Écart: -$68,00 (14.2%)` in orange = platform commission
-- [x] When ventes filled but no dépôt: shows "⏳ En attente du dépôt"
-- [x] Daily summary at bottom: total ventes, total dépôts, commission totale
-- [x] Section header subtitle: "Informatif seulement — n'affecte pas la réconciliation des caisses"
-- [x] **P&L tab** — "📱 Plateformes de livraison" informational section showing per-platform monthly ventes/dépôts/commission/%; grand total across all platforms; labeled as informational, not added to P&L expense calculation
-- [x] **Intelligence tab** — "📱 Livraisons — analyse des plateformes" card: average commission % per platform, total ventes, and overdue deposit alerts (7+ days since ventes entered with no dépôt)
-- [x] **Config tab** — "Plateformes de livraison" section: DoorDash 🔴, Uber Eats 🟢, Skip The Dishes 🟠 pre-configured; add custom platforms (📦), remove any; persisted to `dicann-platforms`
-- [x] **Livraisons section collapsible** — click header to collapse/expand, same pattern as employees section
-- [x] **CSV import per platform** — "📥 Importer relevé" button per platform; file dialog filtered to .csv; auto-detects date/amount columns per platform (with known column hints for DoorDash/Uber Eats/Skip); if auto-detect fails, shows dropdown column mapper that saves the mapping to `dicann-api-config.csvColumnMaps` (persisted per platform); preview screen shows all found dates + amounts + total before import; conflict handling when a dépôt already exists (Remplacer tout / Ignorer les conflits / Annuler); success confirmation message auto-dismisses after 4s; aggregates multiple rows per date; handles ISO, MM/DD/YYYY, YYYY/MM/DD, and named-month date formats
+- [x] Per-platform: Ventes plateforme + Dépôt reçu with commission display
+- [x] Informational only — never affects caisse reconciliation
+- [x] CSV import per platform (DoorDash, Uber Eats, Skip; column auto-detect + mapper)
+- [x] P&L and Intelligence tab integration
+- [x] Collapsible section
 
-### ✅ DONE — Config tab
+### ✅ DONE — Facturation module — FREE tier (BuildGuide_1_FREE.md)
 
-- [x] Cashier roster management (add, remove)
-- [x] Employee roster management (add, remove, with saved hourly wage)
-- [x] Supplier list management (add, remove, rename in-place)
-- [x] Delivery platform list management (add, remove) — see Livraisons above
-- [x] API integration fields (Auphan POS, Gas price) — ready for keys
-- [x] Coordonnées météo — GeoSearch component using Open-Meteo geocoding API; type city name → dropdown of results → saves lat/lng/label to apiConfig; shows "📍 Ville — météo configurée"; defaults to Montréal if unconfigured
-- [x] Export: CSV, PDF (print dialog), JSON backup
-- [x] Restore from JSON backup — file dialog, validation, confirmation, SQLite write, reload (handles both manual + auto-backup formats including P&L)
-- [x] Auto-backup — on launch, 1 JSON per day to Documents/BalanceIQ Backups/, 30-day rotation, cross-platform; Config tab shows last backup date + file count + folder path with "Ouvrir le dossier" button
-- [x] Light / dark theme toggle — "Warm" light theme + persistent preference (SQLite)
+- [x] Client database with full contact info
+- [x] Categories + Products (with account numbers for accounting export)
+- [x] Soumissions (quotes) → Commandes (orders) → Factures (invoices) — full conversion chain
+- [x] Notes de crédit
+- [x] Document chain tracking — clickable banners linking converted docs
+- [x] EncaissementEditor — record payments, running balance, credit handling
+- [x] Basic aging report (summary)
+- [x] État de compte — FREE for single client
+- [x] PDF print + preview for all document types (PDFPreviewModal via CustomEvent)
+- [x] Email compose modal — Pro sends via Resend; Free uses mailto: + PDF download
+- [x] Auto-advance document status on email send
+- [x] Client profile with document history + État de compte button
+- [x] Partial payments (dépôts/acomptes) FREE on Factures
+- [x] CSV export
+- [x] Company info + logo in Config
 
-### ✅ DONE — Electron + Infrastructure
+### ✅ DONE — Facturation module — PRO tier (BuildGuide_2_PRO.md)
 
-- [x] Electron main process (`main.js`) with IPC handlers
-- [x] SQLite via `better-sqlite3` — key-value store replacing `window.storage`
-- [x] `preload.js` contextBridge — exposes `window.api.storage`, `window.api.gas`, `window.api.backup`, `window.api.updater`
-- [x] Auto-updater — `electron-updater` wired; checks GitHub Releases on launch (production only); orange notification bar with "Installer" button; `autoDownload=false` until user confirms
-- [x] Vite dev server + Electron concurrently for development
-- [x] `cheerio` installed for HTML parsing
-- [x] Gas price IPC handler (`gas:getPrice`) — fetches CAA Canada, parses `national_single_price`
+- [x] Bulk Encaissement — multi-invoice payment, auto-apply oldest-first, running total, credit/refund
+- [x] Auto-Apply Payments — oldest-first distribution with preview
+- [x] Detailed Aging Report — per-invoice expandable rows
+- [x] Account Statements + Bulk Email via Resend
+- [x] Recurring Invoices — per client, frequency, auto-send
+- [x] Direct Email Send — Resend API (real PDF attachment via pdf:toPDF IPC)
+- [x] Excel Export — SheetJS, 4-sheet workbook (journal facturation, encaissements, grand livre, sommaire)
+- [x] Deposit/Acompte Tracking on Commandes
+- [x] Custom Invoice Templates — accent color, logo position, footer, default notes, TPS/TVQ toggle
+
+### ✅ DONE — Facturation module — FRANCHISE tier (BuildGuide_3_FRANCHISE.md)
+
+- [x] **Franchiseur mode** — welcome screen activates mode, saves to balanceiq-mode storage
+- [x] **Location selector** — dropdown in header (purple) to switch between locations or "Tout le réseau"
+- [x] **⇄ Mode button** — always visible in header, returns to welcome screen to switch modes
+- [x] **Config → Application** — correctly shows active mode (🏢 Franchiseur vs 🏪 Restaurant)
+- [x] **Config → 📍 Succursales** — add/edit/deactivate locations; link to billing client; custom royalty rate override per location; weather coords per location
+- [x] **Config → 💰 Redevances** — flat rate or progressive brackets; ad contribution %; billing category + product; stepped flat rate (hidden "Options avancées" — taux par palier mensuel)
+- [x] **Config → 🏷️ Marque blanche** — franchise name replaces "BIQ" on documents; custom accent color; custom footer; "Propulsé par BalanceIQ" credit always appended
+- [x] **Réseau tab → 📊 Performance** — network summary cards (ventes, succursales actives, balancées aujourd'hui, redevances en attente); performance table per location (ventes mois/hier, $/dz, labour%, statut); auto-generated alerts (days not filled, labour %, today's écart)
+- [x] **Réseau tab → 🏆 Scorecards** — monthly score per location (labour %, $/dz, completeness); color-coded 0-100
+- [x] **Réseau tab → 💰 Redevances** — select period → calculate per-location royalties → preview table → create invoices; invoices tagged "redevance" + linked to client
+- [x] **Réseau tab → 🔄 Réconciliation** — billed vs paid per location; totals row; color-coded status
+- [x] **Réseau tab → 📋 Audit réseau** — full audit log viewer with action filters (Créé/Modifié/Correction/Annulé); shows 100 most recent entries
+- [x] **White label wired into PDF builders** — all 5 builders (soumission, commande, facture, note de crédit, état de compte) respect whiteLabelEnabled/whiteLabelName/accentColor via effectiveTemplate
+- [x] **Data isolation per location** — each location has its own SQLite key namespace: `dicann-v7-loc-{id}`, `dicann-pl-{month}-loc-{id}`, etc.
+- [x] **Stepped flat rate** — hidden advanced option; monthly total sales determine which single % applies to entire month (distinct from progressive brackets)
+
+### ✅ DONE — Infrastructure
+
+- [x] Electron main process (`main.js`) with all IPC handlers
+- [x] SQLite via better-sqlite3 — kv_store + audit_log + daily_snapshots tables
+- [x] preload.js contextBridge — window.api.*
+- [x] Auto-updater — electron-updater, GitHub Releases, orange notification bar
+- [x] Audit trail — append-only audit_log, device UUID, logCreate/logUpdate/logVoid/logCorrection
+- [x] Daily snapshots — auto-snapshot on complete day
+- [x] pdf:toPDF IPC — hidden BrowserWindow → printToPDF → base64 (used for email attachments)
+- [x] pdf:print IPC — visible BrowserWindow → system print dialog
+- [x] Auto-backup — 1 JSON/day to Documents/BalanceIQ Backups/, 30-day rotation
+- [x] Restore from JSON backup
+
+### ✅ DONE — Plan / Feature Flag System (src/config/features.js)
+
+- Plans: `free`, `pro`, `franchise`
+- Runtime-mutable: `setPlan()` / `getActivePlan()` / `canUse(featureName)`
+- DEV mode: pill buttons in Config → Application to switch plans for testing
+- Production: plan locked to free until billing is wired
+- Franchise features: `royaltyAutoCalc`, `autoGenerateRoyaltyInvoices`, `multiLocationReconciliation`, `franchiseeScorecards`, `consolidatedAging`, `whiteLabel`
 
 ---
 
-## 🟡 LOW-EFFORT UPGRADES
+## 🟡 QUICK WIN OPPORTUNITIES
 
-### Quick wins — UI improvements
-
-| Feature | Effort | Impact | Description |
-|---------|--------|--------|-------------|
-| ~~**"Journée complète" indicator**~~ | ~~Very low~~ | ~~Medium~~ | ✅ Done — green badge on date + green dot on week chart when all caisses balance + inventory entered |
-| ~~**Running month-to-date total**~~ | ~~Very low~~ | ~~High~~ | ✅ Done — "Mois en cours" MC card showing cumulative net sales + day count |
-| ~~**Notes preview in week chart**~~ | ~~Very low~~ | ~~Low~~ | ✅ Done — 4px orange dot below day label when notes exist |
-| ~~**Quick-entry mode / keyboard shortcuts**~~ | ~~Low~~ | ~~Medium~~ | ✅ Done — explicit tabIndex ordering through POS then manual fields per caisse |
-| ~~**Print daily report**~~ | ~~Low~~ | ~~Medium~~ | ✅ Done — "🖨️ Imprimer le rapport" button at bottom of daily tab |
-| **Date search with calendar** | Low | Medium | Calendar view showing which days have data entered (filled vs empty) |
-| **Mobile-first responsive design** | Medium | High | Adapt layout for phone/tablet use — franchisees close out on the floor |
-| ~~**Light theme option**~~ | ~~Low~~ | ~~Low~~ | ✅ Done — dark/light toggle in header + Config, saved to storage |
-| **Bilingual mode (FR/EN toggle)** | Medium | Medium | Switch all UI labels between French and English |
-
-### Quick wins — Daily report
-
-| Feature | Effort | Impact | Description |
-|---------|--------|--------|-------------|
-| **Break-even tracker** | Low | High | Show daily sales target needed to hit monthly break-even; flag if below |
-| **Waste / Perte field in inventory** | Very low | Medium | Track product waste separately from used — affects real cost calculation |
-
-### Quick wins — Analytics
-
-| Feature | Effort | Impact | Description |
-|---------|--------|--------|-------------|
-| **Monthly trend line** | Low | High | Simple line chart showing daily net sales for the selected month |
-| **Best/worst day of month** | Very low | Medium | Highlight highest and lowest sales days |
-| **Average daily sales card** | Very low | Medium | Show month-to-date average alongside cumulative |
-| **Labour cost trend** | Low | Medium | Track labour % over time — is it trending up or down? |
-| **Food cost warning on daily** | Low | Medium | If daily moyenne $/dz is off from the monthly average, flag it |
-| **Total employee hours in P&L** | Very low | Medium | Auto-sum hours from all daily reports into the monthly P&L labour section |
-
-### Quick wins — Data integrity
-
-| Feature | Effort | Impact | Description |
-|---------|--------|--------|-------------|
-| ~~**Restore from JSON backup**~~ | ~~Low~~ | ~~High~~ | ✅ Done — "Restaurer depuis backup" button in Config/Export; file dialog + validation + confirmation + SQLite write + reload |
-| ~~**Data validation on save**~~ | ~~Low~~ | ~~Medium~~ | ✅ Done — on-blur warnings for all daily tab fields (float, cash, POS, inventory, employees) and P&L tab (bills, overrides) |
+| Feature | Effort | Description |
+|---------|--------|-------------|
+| Bilingual FR/EN toggle | Medium | Switch all UI between French and English |
+| Date calendar view | Low | Calendar showing which days have data entered |
+| Break-even tracker | Low | Daily sales target to hit monthly break-even |
+| Monthly trend line chart | Low | Line chart of daily net sales for selected month |
+| Mobile-first responsive | Medium | Adapt layout for phone/tablet use |
+| Apple code signing | — | $99/year eliminates "damaged app" warning on Mac |
 
 ---
 
 ## 🔲 NEXT PHASES
 
-### Phase 2 — Electron Desktop App ✅ Mostly complete
+### Phase 5 — Cloud Sync (BalanceIQ_SaaS_Guide.md)
 
-1. ✅ Scaffold Electron + React project
-2. ✅ Migrate current code, rebrand to BalanceIQ
-3. ✅ Replace `window.storage` with SQLite
-4. ✅ Wire gas price scraper (CAA Canada — fallback since Régie is JS-rendered)
-5. ✅ Wire Open-Meteo weather API — auto-fills Météo + Temp on daily report
-6. ✅ Configure electron-builder
-7. ✅ Build .exe (Windows) and .dmg (Mac — Apple Silicon + Intel)
-8. ✅ Test on both platforms
+- Supabase (Montreal region) for multi-device sync
+- Franchisee enters data on their own computer → syncs to franchisor dashboard
+- Stripe billing for Pro/Franchise plan enforcement
+- This is the missing link for true multi-location real-time data
 
-### Phase 3 — API Integrations
+### Phase 6 — Advanced Intelligence
 
-| Integration | Status | Next step |
-|-------------|--------|-----------|
-| Auphan POS | Config field ready | Contact Auphan for API docs |
-| Weather (Open-Meteo) | ✅ Done | Auto-fills weather + temp from current conditions |
-| Gas (CAA scraper) | ✅ Done | Working — fetches daily average from CAA Canada |
-| Holidays QC | ✅ Done | — |
-
-### Phase 4 — Multi-Location
-
-- Location selector in app
-- Franchisor dashboard — all locations at a glance, real-time
-- Location-to-location comparison
-- Benchmark: compare one location vs network average (sales, labour %, food cost %)
-- Franchisee scorecards (monthly)
-- Consolidated reports
-- Royalty auto-calculation
-- Per-product profitability analysis (ham vs hot dog margin, waste impact)
-
-### Phase 5 — Advanced Intelligence
-
-- Claude API for natural language analysis ("why were sales low?")
-- Weather correlation model
+- Claude API for natural language analysis ("why were sales low this week?")
 - Predictive ordering with confidence intervals
 - Proactive anomaly alerts (email/SMS)
 - Seasonal trend recognition
 
-### Phase 6 — Automation
+### Phase 7 — Automation
 
 - Supplier invoice scanning (OCR → auto-fill P&L)
 - Bank feed connection
-- Schedule integration
+- Auphan POS integration (waiting on API docs)
 - Auto-generated monthly reports sent to franchisor
 - Open API for third-party tools
 
@@ -226,10 +200,22 @@
 
 ## Immediate Next Steps
 
-1. **Contact Auphan** for POS API documentation
-2. **Apple code signing** — $99/year Apple Developer account eliminates "damaged app" warning for Mac users
-3. **Distribute to franchisees** — share Apple Silicon or Intel DMG based on their Mac model
+1. **Cloud sync (Supabase)** — the key missing piece for franchisee→franchisor real-time data
+2. **Stripe billing** — to enforce plan gating in production builds
+3. **Apple code signing** — $99/year Apple Developer account eliminates install warnings
+4. **Auphan POS** — contact Auphan for API documentation
 
 ---
 
-*BalanceIQ v1.0 — March 7, 2026*
+## Build Guides Status
+
+| Guide | Description | Status |
+|-------|-------------|--------|
+| BuildGuide_1_FREE.md | Core invoicing (free tier) | ✅ Complete |
+| BuildGuide_1B_AUDIT.md | Audit trail | ✅ Complete |
+| BuildGuide_2_PRO.md | Pro tier (9 steps) | ✅ Complete |
+| BuildGuide_3_FRANCHISE.md | Franchise tier (9 steps) | ✅ Complete |
+
+---
+
+*BalanceIQ v1.2.0 — March 9, 2026*

@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, net, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const { autoUpdater } = require('electron-updater');
 const { storageGet, storageSet, storageGetAll, auditInsert, auditQuery, getDeviceId, snapshotSave, snapshotGetByDate, snapshotGetLatest, snapshotListDates } = require('./src/db/database.js');
 
@@ -164,6 +165,47 @@ ipcMain.handle('backup:openDir', () => {
   const dir = BACKUP_DIR();
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   shell.openPath(dir);
+});
+
+// IPC handler — render HTML to PDF bytes (base64) using Chromium's print engine
+ipcMain.handle('pdf:toPDF', async (event, html) => {
+  const tmpFile = path.join(os.tmpdir(), `balanceiq-topdf-${Date.now()}.html`);
+  fs.writeFileSync(tmpFile, html, 'utf-8');
+  const pdfWin = new BrowserWindow({
+    width: 900, height: 1200, show: false,
+    webPreferences: { nodeIntegration: false, contextIsolation: true },
+  });
+  try {
+    await pdfWin.loadFile(tmpFile);
+    const pdfData = await pdfWin.webContents.printToPDF({
+      printBackground: true,
+      pageSize: 'Letter',
+      margins: { marginType: 'default' },
+    });
+    pdfWin.close();
+    try { fs.unlinkSync(tmpFile); } catch (_) {}
+    return { data: pdfData.toString('base64') };
+  } catch (err) {
+    try { pdfWin.close(); } catch (_) {}
+    try { fs.unlinkSync(tmpFile); } catch (_) {}
+    return { error: err.message };
+  }
+});
+
+// IPC handler — open print dialog for a document HTML string
+ipcMain.handle('pdf:print', async (event, html) => {
+  const tmpFile = path.join(os.tmpdir(), `balanceiq-print-${Date.now()}.html`);
+  fs.writeFileSync(tmpFile, html, 'utf-8');
+  const printWin = new BrowserWindow({
+    width: 900, height: 1100,
+    title: 'BalanceIQ — Impression',
+    webPreferences: { nodeIntegration: false, contextIsolation: true },
+  });
+  await printWin.loadFile(tmpFile);
+  printWin.webContents.print({}, () => {
+    try { fs.unlinkSync(tmpFile); } catch (_) {}
+  });
+  return { success: true };
 });
 
 // IPC handler — send email via Resend API

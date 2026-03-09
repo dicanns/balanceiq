@@ -1,9 +1,12 @@
 // ── FEATURE FLAGS ──
-// CURRENT_PLAN controls which features are active.
-// Will be dynamic (from license/cloud) in a future phase.
-// For now everything is FREE tier.
+// CURRENT_PLAN is a runtime-mutable variable.
+// Call setPlan('pro') from App when apiConfig.plan changes.
 
-export const CURRENT_PLAN = 'free';
+let _activePlan = 'free';
+export function setPlan(plan) { if(PLAN_FEATURES[plan]) _activePlan = plan; }
+export function getActivePlan() { return _activePlan; }
+// Keep CURRENT_PLAN as a getter alias for backward-compat display in JSX
+export const CURRENT_PLAN = 'free'; // static fallback — use getActivePlan() for live value
 
 export const PLAN_FEATURES = {
   free: {
@@ -32,6 +35,9 @@ export const PLAN_FEATURES = {
     royaltyAutoCalc: false,
     autoGenerateRoyaltyInvoices: false,
     multiLocationReconciliation: false,
+    franchiseeScorecards: false,
+    consolidatedAging: false,
+    whiteLabel: false,
   },
   pro: {
     clientDatabase: true,
@@ -56,6 +62,9 @@ export const PLAN_FEATURES = {
     royaltyAutoCalc: false,
     autoGenerateRoyaltyInvoices: false,
     multiLocationReconciliation: false,
+    franchiseeScorecards: false,
+    consolidatedAging: false,
+    whiteLabel: false,
   },
   franchise: {
     clientDatabase: true,
@@ -80,12 +89,15 @@ export const PLAN_FEATURES = {
     royaltyAutoCalc: true,
     autoGenerateRoyaltyInvoices: true,
     multiLocationReconciliation: true,
+    franchiseeScorecards: true,
+    consolidatedAging: true,
+    whiteLabel: true,
   },
 };
 
 // Returns true if the current plan includes this feature
 export function canUse(featureName) {
-  return PLAN_FEATURES[CURRENT_PLAN]?.[featureName] === true;
+  return PLAN_FEATURES[_activePlan]?.[featureName] === true;
 }
 
 // Tracks which upgrade prompts have already been shown this session
