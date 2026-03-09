@@ -214,7 +214,7 @@ function ReconLine({label,value,negative,bold,accent,borderTop}){
 }
 
 // ── CASH BLOCK ──
-function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,roster}){
+function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,roster,T}){
   const t=useT();
   const posOk=cash.posVentes!=null;const posT=(cash.posVentes||0)+(cash.posTPS||0)+(cash.posTVQ||0)+(cash.posLivraisons||0);
   const mc=cash.float!=null&&cash.deposits!=null&&cash.finalCash!=null;
@@ -226,7 +226,7 @@ function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,ro
   const headerBg=bal?t.reconBalBg:t.cashHeaderBg;
   return(<div style={{background:t.card,border:`1px solid ${outerBorder}`,borderRadius:10,overflow:"hidden"}}>
     <div onClick={onToggle} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 11px",cursor:"pointer",background:headerBg,borderBottom:collapsed?"none":`1px solid ${t.innerBorder}`,userSelect:"none"}}>
-      <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:12,color:collapsed?t.textMuted:"#f97316",transform:collapsed?"rotate(-90deg)":"rotate(0deg)",display:"inline-block"}}>▾</span><span style={{fontSize:12.5,fontWeight:700,color:t.text}}>{label}</span>{bal&&<Pill ok label="Balancé"/>}{canR&&!bal&&<Pill ok={false} label={`Écart: ${fmt(ecart)}`}/>}{!canR&&fc>0&&<Pill warn label="Incomplet"/>}</div>
+      <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:12,color:collapsed?t.textMuted:"#f97316",transform:collapsed?"rotate(-90deg)":"rotate(0deg)",display:"inline-block"}}>▾</span><span style={{fontSize:12.5,fontWeight:700,color:t.text}}>{label}</span>{bal&&<Pill ok label={T.dailyBalanced}/>}{canR&&!bal&&<Pill ok={false} label={T.dailyVariance(fmt(ecart))}/>}{!canR&&fc>0&&<Pill warn label="Incomplet"/>}</div>
       <div style={{display:"flex",gap:4,alignItems:"center"}} onClick={e=>e.stopPropagation()}>{manT!=null&&<span style={{fontSize:11,fontFamily:"'DM Mono',monospace",color:t.textSub,fontWeight:600}}>{fmt(manT)}</span>}{canRemove&&<button onClick={onRemove} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:4,color:"#ef4444",fontSize:10,padding:"2px 6px",cursor:"pointer",fontWeight:600}}>✕</button>}</div>
     </div>
     {!collapsed&&(<div style={{padding:11}}>
@@ -235,32 +235,32 @@ function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,ro
         <div>
           <div style={{fontSize:9.5,color:t.posColor,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,marginBottom:4}}><span style={{width:8,height:8,borderRadius:2,background:t.posColor,display:"inline-block",marginRight:4}}/> Lecture POS</div>
           <div style={{background:`rgba(${t.posRgb},0.05)`,borderRadius:7,padding:8,border:`1px solid rgba(${t.posRgb},0.12)`}}>
-            <F label="Ventes av. taxes" value={cash.posVentes} onChange={v=>onChange({...cash,posVentes:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+1} warn={cash.posVentes!=null&&cash.posVentes<0?"⚠️ Le montant ne peut pas être négatif":cash.posVentes!=null&&cash.posVentes>15000?"⚠️ Montant inhabituellement élevé — vérifier":null}/>
-            <F label="TPS" value={cash.posTPS} onChange={v=>onChange({...cash,posTPS:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+2} warn={cash.posTPS!=null&&cash.posTPS<0?"⚠️ Le montant ne peut pas être négatif":null}/>
-            <F label="TVQ" value={cash.posTVQ} onChange={v=>onChange({...cash,posTVQ:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+3} warn={cash.posTVQ!=null&&cash.posTVQ<0?"⚠️ Le montant ne peut pas être négatif":null}/>
-            <F label="Livraisons" value={cash.posLivraisons} onChange={v=>onChange({...cash,posLivraisons:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+4} warn={cash.posLivraisons!=null&&cash.posLivraisons<0?"⚠️ Le montant ne peut pas être négatif":null}/>
-            <div style={{marginTop:4,paddingTop:4,borderTop:`1px solid rgba(${t.posRgb},0.15)`}}><RR label="Total POS" value={posOk?posT:null} accent={t.posColor} bold/></div>
+            <F label={T.dailySalesTax} value={cash.posVentes} onChange={v=>onChange({...cash,posVentes:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+1} warn={cash.posVentes!=null&&cash.posVentes<0?T.warnNegativeAmount:cash.posVentes!=null&&cash.posVentes>15000?T.warnHighAmount:null}/>
+            <F label={T.dailyGST} value={cash.posTPS} onChange={v=>onChange({...cash,posTPS:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+2} warn={cash.posTPS!=null&&cash.posTPS<0?T.warnNegativeAmount:null}/>
+            <F label={T.dailyQST} value={cash.posTVQ} onChange={v=>onChange({...cash,posTVQ:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+3} warn={cash.posTVQ!=null&&cash.posTVQ<0?T.warnNegativeAmount:null}/>
+            <F label={T.dailyDeliveries} value={cash.posLivraisons} onChange={v=>onChange({...cash,posLivraisons:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+4} warn={cash.posLivraisons!=null&&cash.posLivraisons<0?T.warnNegativeAmount:null}/>
+            <div style={{marginTop:4,paddingTop:4,borderTop:`1px solid rgba(${t.posRgb},0.15)`}}><RR label={T.dailyTotalPOS} value={posOk?posT:null} accent={t.posColor} bold/></div>
           </div>
         </div>
         <div>
-          <div style={{fontSize:9.5,color:"#f97316",fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,marginBottom:4}}><span style={{width:8,height:8,borderRadius:2,background:"#f97316",display:"inline-block",marginRight:4}}/> Décompte</div>
+          <div style={{fontSize:9.5,color:"#f97316",fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,marginBottom:4}}><span style={{width:8,height:8,borderRadius:2,background:"#f97316",display:"inline-block",marginRight:4}}/> {T.dailySectionCount}</div>
           <div style={{background:"rgba(249,115,22,0.04)",borderRadius:7,padding:8,border:"1px solid rgba(249,115,22,0.1)"}}>
-            <F label="Float" value={cash.float} onChange={v=>onChange({...cash,float:v})} prefix="$" tabIndex={index*20+5} warn={cash.float!=null&&cash.float>500?"⚠️ Float inhabituellement élevé":cash.float!=null&&cash.float<0?"⚠️ Le float ne peut pas être négatif":null}/>
-            <F label="Interac" value={cash.interac} onChange={v=>onChange({...cash,interac:v})} prefix="$" tabIndex={index*20+6} warn={cash.interac!=null&&cash.interac<0?"⚠️ Le montant ne peut pas être négatif":null}/>
-            <F label="Livraisons" value={cash.livraisons} onChange={v=>onChange({...cash,livraisons:v})} prefix="$" tabIndex={index*20+7} warn={cash.livraisons!=null&&cash.livraisons<0?"⚠️ Le montant ne peut pas être négatif":null}/>
-            <F label="Dépôts" value={cash.deposits} onChange={v=>onChange({...cash,deposits:v})} prefix="$" tabIndex={index*20+8} warn={cash.deposits!=null&&cash.deposits<0?"⚠️ Les dépôts ne peuvent pas être négatifs":null}/>
-            <F label="Cash final" value={cash.finalCash} onChange={v=>onChange({...cash,finalCash:v})} prefix="$" tabIndex={index*20+9} warn={cash.finalCash!=null&&cash.finalCash<0?"⚠️ Le montant ne peut pas être négatif":null}/>
+            <F label={T.dailyFloat} value={cash.float} onChange={v=>onChange({...cash,float:v})} prefix="$" tabIndex={index*20+5} warn={cash.float!=null&&cash.float>500?T.warnHighFloat:cash.float!=null&&cash.float<0?T.warnNegativeFloat:null}/>
+            <F label={T.dailyInterac} value={cash.interac} onChange={v=>onChange({...cash,interac:v})} prefix="$" tabIndex={index*20+6} warn={cash.interac!=null&&cash.interac<0?T.warnNegativeAmount:null}/>
+            <F label={T.dailyDeliveries} value={cash.livraisons} onChange={v=>onChange({...cash,livraisons:v})} prefix="$" tabIndex={index*20+7} warn={cash.livraisons!=null&&cash.livraisons<0?T.warnNegativeAmount:null}/>
+            <F label={T.dailyDeposits} value={cash.deposits} onChange={v=>onChange({...cash,deposits:v})} prefix="$" tabIndex={index*20+8} warn={cash.deposits!=null&&cash.deposits<0?T.warnNegativeDeposits:null}/>
+            <F label={T.dailyFinalCash} value={cash.finalCash} onChange={v=>onChange({...cash,finalCash:v})} prefix="$" tabIndex={index*20+9} warn={cash.finalCash!=null&&cash.finalCash<0?T.warnNegativeAmount:null}/>
           </div>
         </div>
       </div>
       <div style={{marginTop:10,padding:"10px 12px",borderRadius:8,background:bal?t.reconBalBg:canR?t.reconErrBg:t.reconNeutralBg,border:`1px solid ${bal?t.reconBalBorder:canR?t.reconErrBorder:t.reconNeutralBorder}`}}>
-        <div style={{fontSize:10,color:t.textSub,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,marginBottom:6}}>Réconciliation</div>
+        <div style={{fontSize:10,color:t.textSub,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,marginBottom:6}}>{T.dailySectionRecon}</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:8,alignItems:"start"}}>
-          <div><div style={{fontSize:9,color:"#f97316",fontWeight:600,textTransform:"uppercase",marginBottom:4}}>Compté</div><ReconLine label="Interac" value={cash.interac??0}/><ReconLine label="Livraisons" value={cash.livraisons??0}/><ReconLine label="Dépôts" value={cash.deposits??0}/><ReconLine label="Cash final" value={cash.finalCash??0}/><ReconLine label="Float" value={cash.float??0} negative/><ReconLine label="TOTAL" value={manT} bold accent="#f97316" borderTop/></div>
+          <div><div style={{fontSize:9,color:"#f97316",fontWeight:600,textTransform:"uppercase",marginBottom:4}}>{T.dailyReconCounted}</div><ReconLine label={T.dailyInterac} value={cash.interac??0}/><ReconLine label={T.dailyDeliveries} value={cash.livraisons??0}/><ReconLine label={T.dailyDeposits} value={cash.deposits??0}/><ReconLine label={T.dailyFinalCash} value={cash.finalCash??0}/><ReconLine label={T.dailyFloat} value={cash.float??0} negative/><ReconLine label={T.dailyTotalManual} value={manT} bold accent="#f97316" borderTop/></div>
           <div style={{display:"flex",alignItems:"center",paddingTop:40}}><span style={{fontSize:13,fontWeight:700,color:t.textMuted}}>vs</span></div>
-          <div><div style={{fontSize:9,color:t.posColor,fontWeight:600,textTransform:"uppercase",marginBottom:4}}>POS</div><ReconLine label="Ventes" value={cash.posVentes??null}/><ReconLine label="TPS" value={cash.posTPS??0}/><ReconLine label="TVQ" value={cash.posTVQ??0}/><ReconLine label="Livraisons" value={cash.posLivraisons??0}/><ReconLine label="TOTAL" value={posOk?posT:null} bold accent={t.posColor} borderTop/></div>
+          <div><div style={{fontSize:9,color:t.posColor,fontWeight:600,textTransform:"uppercase",marginBottom:4}}>{T.dailyReconPOS}</div><ReconLine label="Ventes" value={cash.posVentes??null}/><ReconLine label={T.dailyGST} value={cash.posTPS??0}/><ReconLine label={T.dailyQST} value={cash.posTVQ??0}/><ReconLine label={T.dailyDeliveries} value={cash.posLivraisons??0}/><ReconLine label={T.dailyTotalManual} value={posOk?posT:null} bold accent={t.posColor} borderTop/></div>
         </div>
-        {canR?(<div style={{marginTop:8,padding:"7px 10px",borderRadius:6,textAlign:"center",background:bal?"rgba(34,197,94,0.08)":"rgba(239,68,68,0.08)"}}>{bal?<span style={{fontSize:13,fontWeight:700,color:"#16a34a"}}>✓ BALANCÉ — {fmt(manT)}</span>:<div><span style={{fontSize:13,fontWeight:700,color:"#dc2626"}}>✗ ÉCART {fmt(Math.abs(ecart))}</span><div style={{fontSize:11,color:"#dc2626",marginTop:1}}>{ecart>0?"Surplus":"Manque"} de {fmt(Math.abs(ecart))}</div></div>}</div>):(<div style={{marginTop:8,padding:"7px 10px",borderRadius:6,textAlign:"center",background:t.reconNeutralBg,border:`1px solid ${t.reconNeutralBorder}`}}><span style={{fontSize:11.5,color:t.textMuted}}>{fc===0?"Remplir pour réconcilier":!posOk?"⬅ Remplir POS":"➡ Compléter décompte"}</span></div>)}
+        {canR?(<div style={{marginTop:8,padding:"7px 10px",borderRadius:6,textAlign:"center",background:bal?"rgba(34,197,94,0.08)":"rgba(239,68,68,0.08)"}}>{bal?<span style={{fontSize:13,fontWeight:700,color:"#16a34a"}}>{T.dailyReconOK(fmt(manT))}</span>:<div><span style={{fontSize:13,fontWeight:700,color:"#dc2626"}}>{T.dailyReconErr(fmt(Math.abs(ecart)))}</span><div style={{fontSize:11,color:"#dc2626",marginTop:1}}>{ecart>0?T.dailySurplus:T.dailyShortage} de {fmt(Math.abs(ecart))}</div></div>}</div>):(<div style={{marginTop:8,padding:"7px 10px",borderRadius:6,textAlign:"center",background:t.reconNeutralBg,border:`1px solid ${t.reconNeutralBorder}`}}><span style={{fontSize:11.5,color:t.textMuted}}>{fc===0?T.dailyFillToRecon:!posOk?T.dailyFillPOS:T.dailyCompleteCount}</span></div>)}
       </div>
     </div>)}
   </div>);
@@ -610,11 +610,11 @@ function PDFPreviewModal({html,onClose}){
 }
 
 // ── EMPLOYEE ROW (daily tab) ──
-function EmpRow({emp,index,empRoster,selectedDate,updEmp,rmEmp}){
+function EmpRow({emp,index,empRoster,selectedDate,updEmp,rmEmp,T}){
   const t=useT();
   const [hTouched,setHTouched]=useState(false);
   const cost=(emp.hours||0)*(emp.wage||0);
-  const hoursWarn=hTouched?(emp.hours!=null&&emp.hours>16?"⚠️ Plus de 16 heures — vérifier":emp.hours!=null&&emp.hours<0?"⚠️ Ne peut pas être négatif":null):null;
+  const hoursWarn=hTouched?(emp.hours!=null&&emp.hours>16?(T?T.warnHighHours:"⚠️ Plus de 16 heures — vérifier"):emp.hours!=null&&emp.hours<0?(T?T.warnNegativeHours:"⚠️ Ne peut pas être négatif"):null):null;
   const wageWarn=emp.wage!=null&&emp.wage<15?"⚠️ Sous le salaire minimum":null;
   return(<div>
     <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr auto",gap:6,padding:"3px 0",borderBottom:`1px solid ${t.divider}`,alignItems:"center"}}>
@@ -5867,17 +5867,17 @@ export default function App(){
   },[]);
 
   const tabs=[
-    ...(appMode==="franchiseur"?[{id:"reseau",label:"🏢 Réseau"}]:[]),
-    {id:"daily",label:"Quotidien"},
-    {id:"monthly",label:"P&L Mensuel"},
-    {id:"encaisse",label:"💵 Encaisse"},
-    {id:"intelligence",label:"Intelligence"},
-    {id:"settings",label:"Config"}
+    ...(appMode==="franchiseur"?[{id:"reseau",label:T.tabNetwork}]:[]),
+    {id:"daily",label:T.tabDaily},
+    {id:"monthly",label:T.tabPL},
+    {id:"encaisse",label:T.tabCash},
+    {id:"intelligence",label:T.tabIntelligence},
+    {id:"settings",label:T.tabConfig}
   ];
 
   const inputStyle={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:12,padding:"5px 8px",outline:"none"};
 
-  if(loading)return(<div style={{minHeight:"100vh",background:DARK.bg,display:"flex",alignItems:"center",justifyContent:"center",color:"#4a4e5e",fontFamily:"'Outfit',sans-serif"}}>Chargement...</div>);
+  if(loading)return(<div style={{minHeight:"100vh",background:DARK.bg,display:"flex",alignItems:"center",justifyContent:"center",color:"#4a4e5e",fontFamily:"'Outfit',sans-serif"}}>{T.loading}</div>);
   if(appLocked)return(<PinLockScreen lockConfig={lockConfig} onUnlock={()=>setAppLocked(false)} saveLockConfig={saveLockConfig}/>);
   if(!appMode)return(<WelcomeScreen onSelect={saveAppMode}/>);
 
@@ -5934,7 +5934,7 @@ export default function App(){
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <button onClick={()=>{const n=new Date(d);n.setDate(n.getDate()-1);setSelectedDate(dk(n))}} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.text,padding:"3px 8px",cursor:"pointer",fontSize:13}}>←</button>
                 <div>
-                  <div style={{fontSize:15,fontWeight:700,textTransform:"capitalize",color:t.text,display:"flex",alignItems:"center",gap:6}}>{fmtD(d)}{isDayComplete&&<span style={{fontSize:9.5,fontWeight:700,color:"#16a34a",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:10,padding:"1px 7px",lineHeight:1.6}}>✓ Journée complète</span>}</div>
+                  <div style={{fontSize:15,fontWeight:700,textTransform:"capitalize",color:t.text,display:"flex",alignItems:"center",gap:6}}>{fmtD(d)}{isDayComplete&&<span style={{fontSize:9.5,fontWeight:700,color:"#16a34a",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:10,padding:"1px 7px",lineHeight:1.6}}>✓ {T.statusDayComplete}</span>}</div>
                   <div style={{display:"flex",gap:3,marginTop:1,flexWrap:"wrap"}}>
                     {holiday&&<span style={{fontSize:9,background:t.warnBg,color:t.warnText,padding:"1px 5px",borderRadius:8,fontWeight:600}}>{holiday}</span>}
                     {today.weather&&<span style={{fontSize:9,background:"rgba(56,189,248,0.07)",color:"#38bdf8",padding:"1px 5px",borderRadius:8}}>{today.weather}{today.tempC!=null?` ${today.tempC}°C`:""}</span>}
@@ -5950,7 +5950,7 @@ export default function App(){
             {tabs.map(tab=>(<button key={tab.id} onClick={()=>setActiveTab(tab.id)} style={{background:"none",border:"none",color:activeTab===tab.id?"#f97316":t.textMuted,fontSize:11.5,fontWeight:600,padding:"5px 9px",cursor:"pointer",borderBottom:activeTab===tab.id?"2px solid #f97316":"2px solid transparent",whiteSpace:"nowrap"}}>{tab.label}</button>))}
             <div style={{flex:1}}/>
             <div style={{width:1,height:16,background:t.dividerMid,margin:"0 6px",flexShrink:0}}/>
-            <button onClick={()=>setActiveTab("facturation")} style={{background:"none",border:"none",color:activeTab==="facturation"?"#f97316":t.textMuted,fontSize:11.5,fontWeight:600,padding:"5px 9px",cursor:"pointer",borderBottom:activeTab==="facturation"?"2px solid #f97316":"2px solid transparent",whiteSpace:"nowrap"}}>🧾 Facturation</button>
+            <button onClick={()=>setActiveTab("facturation")} style={{background:"none",border:"none",color:activeTab==="facturation"?"#f97316":t.textMuted,fontSize:11.5,fontWeight:600,padding:"5px 9px",cursor:"pointer",borderBottom:activeTab==="facturation"?"2px solid #f97316":"2px solid transparent",whiteSpace:"nowrap"}}>{T.tabInvoicing}</button>
           </div>
         </div>
 
@@ -5981,10 +5981,10 @@ export default function App(){
             <div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}>
                 <span style={{fontSize:13.5,fontWeight:700,color:t.text}}>Caisses</span>
-                <button onClick={()=>addCash(selectedDate)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.18)",background:"rgba(249,115,22,0.06)",color:"#f97316",cursor:"pointer",fontWeight:600}}>+ Caisse</button>
+                <button onClick={()=>addCash(selectedDate)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.18)",background:"rgba(249,115,22,0.06)",color:"#f97316",cursor:"pointer",fontWeight:600}}>{T.dailyNewCaisse}</button>
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {cashes.map((c,i)=>(<CashBlock key={`${selectedDate}-${i}-${cashes.length}`} cash={c} index={i} onChange={c=>updCash(selectedDate,i,c)} onRemove={()=>rmCash(selectedDate,i)} canRemove={cashes.length>1} collapsed={!!collapseMap[`${selectedDate}-${i}`]} onToggle={()=>togC(i)} roster={roster}/>))}
+                {cashes.map((c,i)=>(<CashBlock key={`${selectedDate}-${i}-${cashes.length}`} cash={c} index={i} onChange={c=>updCash(selectedDate,i,c)} onRemove={()=>rmCash(selectedDate,i)} canRemove={cashes.length>1} collapsed={!!collapseMap[`${selectedDate}-${i}`]} onToggle={()=>togC(i)} roster={roster} T={T}/>))}
               </div>
             </div>
 
@@ -6006,8 +6006,8 @@ export default function App(){
                     {!hasOv
                       ?(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"3.5px 0",borderBottom:`1px solid ${t.divider}`}}><span style={{fontSize:11.5,color:t.textSub}}>Début</span><div style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:t.text,fontWeight:600}}>{startV??"-"}</span><button onClick={()=>upd(selectedDate,`${pre}StartOverride`,startV??0)} style={{fontSize:9,padding:"1px 5px",borderRadius:3,border:"1px solid rgba(251,191,36,0.2)",background:"rgba(251,191,36,0.08)",color:t.warnText,cursor:"pointer"}}>✎</button></div></div>)
                       :(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"3.5px 0",borderBottom:"1px solid rgba(251,191,36,0.2)"}}><span style={{fontSize:11.5,color:t.warnText}}>Ajusté</span><div style={{display:"flex",alignItems:"center",gap:3}}><input type="number" value={raw[`${pre}StartOverride`]??""} onChange={e=>upd(selectedDate,`${pre}StartOverride`,e.target.value===""?null:parseFloat(e.target.value))} style={{width:50,padding:"2px 5px",borderRadius:4,border:"1px solid rgba(251,191,36,0.25)",background:"rgba(251,191,36,0.06)",color:t.warnText,fontFamily:"'DM Mono',monospace",fontSize:12,textAlign:"right",outline:"none"}}/><button onClick={()=>upd(selectedDate,`${pre}StartOverride`,null)} style={{fontSize:9,padding:"1px 4px",borderRadius:3,border:"none",background:"rgba(239,68,68,0.1)",color:"#ef4444",cursor:"pointer"}}>✕</button></div></div>)}
-                    <F label="+ Reçu" value={raw[`${pre}Received`]} onChange={v=>upd(selectedDate,`${pre}Received`,v)} warn={raw[`${pre}Received`]!=null&&raw[`${pre}Received`]<0?"⚠️ Ne peut pas être négatif":null}/>
-                    <F label="Fin journée" value={raw[`${pre}End`]} onChange={v=>upd(selectedDate,`${pre}End`,v)} warn={endV!=null&&endV<0?"⚠️ Ne peut pas être négatif":startV!=null&&endV!=null&&endV>(startV+(raw[`${pre}Received`]||0))?"⚠️ Fin > Début + Reçu — vérifier":null}/>
+                    <F label={T.invHamReceived} value={raw[`${pre}Received`]} onChange={v=>upd(selectedDate,`${pre}Received`,v)} warn={raw[`${pre}Received`]!=null&&raw[`${pre}Received`]<0?T.warnNegativeHours:null}/>
+                    <F label="Fin journée" value={raw[`${pre}End`]} onChange={v=>upd(selectedDate,`${pre}End`,v)} warn={endV!=null&&endV<0?T.warnNegativeHours:startV!=null&&endV!=null&&endV>(startV+(raw[`${pre}Received`]||0))?"⚠️ Fin > Début + Reçu — vérifier":null}/>
                     <div style={{marginTop:3,paddingTop:3,borderTop:`1px solid ${t.divider}`}}><RR label="Utilisé" value={usedV} unit=""/></div>
                     {endV!=null&&endV<5&&endV>=0&&<div style={{fontSize:9.5,color:t.warnText,marginTop:2}}>Stock faible</div>}
                   </div>))}
@@ -6018,14 +6018,14 @@ export default function App(){
                 </div>)}
                 {/* ── BREAD CHECKPOINTS ── */}
                 {(()=>{
-                  const TIMES=[["14h","B14"],["17h","B17"],["19h","B19"],["20h","B20"]];
+                  const TIMES=[[T.breadAt14,"B14"],[T.breadAt17,"B17"],[T.breadAt19,"B19"],[T.breadAt20,"B20"]];
                   const hamAvail=(today.hamStart??0)+(today.hamReceived||0);
                   const hotAvail=(today.hotStart??0)+(today.hotReceived||0);
                   const showHamPassed=hamAvail>0;const showHotPassed=hotAvail>0;
                   const inpStyle=(val)=>({width:"100%",padding:"3px 4px",borderRadius:4,border:`1px solid rgba(249,115,22,${val!=null?0.25:0.08})`,background:t.inputBg,color:t.inputText,fontFamily:"'DM Mono',monospace",fontSize:11,textAlign:"center",outline:"none",boxSizing:"border-box"});
                   const passedStyle=(p)=>({fontSize:11,fontFamily:"'DM Mono',monospace",textAlign:"center",color:p==null?t.textDim:p<0?"#ef4444":t.text,fontWeight:p!=null?600:400});
                   return(<div style={{marginTop:8,paddingTop:8,borderTop:`1px solid ${t.divider}`}}>
-                    <div style={{fontSize:10,color:"#f97316",fontWeight:700,textTransform:"uppercase",letterSpacing:0.7,marginBottom:5}}>Suivi du pain — Restant</div>
+                    <div style={{fontSize:10,color:"#f97316",fontWeight:700,textTransform:"uppercase",letterSpacing:0.7,marginBottom:5}}>{T.invBreadCheckpoints}</div>
                     <div style={{display:"grid",gridTemplateColumns:"80px repeat(4,1fr)",gap:"4px 6px",alignItems:"center"}}>
                       {/* Header */}
                       <span/>
@@ -6034,13 +6034,13 @@ export default function App(){
                       <span style={{fontSize:10.5,color:t.textSub,fontWeight:600}}>Ham</span>
                       {TIMES.map(([,sfx])=>{const k=`ham${sfx}`;return(<input key={k} type="number" inputMode="decimal" value={raw[k]??""} onChange={e=>upd(selectedDate,k,e.target.value===""?null:parseFloat(e.target.value))} style={inpStyle(raw[k])}/>);})}
                       {/* Ham passed */}
-                      {showHamPassed&&<span style={{fontSize:9,color:t.textMuted}}>Passé</span>}
+                      {showHamPassed&&<span style={{fontSize:9,color:t.textMuted}}>{T.breadPasse}</span>}
                       {showHamPassed&&TIMES.map(([,sfx])=>{const v=raw[`ham${sfx}`];const p=v!=null?hamAvail-v:null;return(<span key={sfx} style={passedStyle(p)}>{p!=null?p:"—"}</span>);})}
                       {/* Hot inputs */}
                       <span style={{fontSize:10.5,color:t.textSub,fontWeight:600}}>Hot</span>
                       {TIMES.map(([,sfx])=>{const k=`hot${sfx}`;return(<input key={k} type="number" inputMode="decimal" value={raw[k]??""} onChange={e=>upd(selectedDate,k,e.target.value===""?null:parseFloat(e.target.value))} style={inpStyle(raw[k])}/>);})}
                       {/* Hot passed */}
-                      {showHotPassed&&<span style={{fontSize:9,color:t.textMuted}}>Passé</span>}
+                      {showHotPassed&&<span style={{fontSize:9,color:t.textMuted}}>{T.breadPasse}</span>}
                       {showHotPassed&&TIMES.map(([,sfx])=>{const v=raw[`hot${sfx}`];const p=v!=null?hotAvail-v:null;return(<span key={sfx} style={passedStyle(p)}>{p!=null?p:"—"}</span>);})}
                     </div>
                     {(showHamPassed||showHotPassed)&&<div style={{fontSize:9,color:t.textDim,marginTop:3}}>Passé = Début + Reçu − Restant à l'heure</div>}
@@ -6077,20 +6077,20 @@ export default function App(){
                   <WeekChart selectedDate={selectedDate} computeDay={computeDay} getLR={getLR}/>
                 </div>
                 <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-                  <span style={{fontSize:13,fontWeight:700,marginBottom:4,display:"block",color:t.text}}>Facteurs externes</span>
+                  <span style={{fontSize:13,fontWeight:700,marginBottom:4,display:"block",color:t.text}}>{T.extTitle}</span>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}>
-                    <F label="Météo" value={raw.weather} onChange={v=>upd(selectedDate,"weather",v)} type="text" placeholder="Ensoleillé..." wide/>
-                    <F label="Temp." value={raw.tempC} onChange={v=>upd(selectedDate,"tempC",v)} suffix="°C"/>
+                    <F label={T.extWeather} value={raw.weather} onChange={v=>upd(selectedDate,"weather",v)} type="text" placeholder="Ensoleillé..." wide/>
+                    <F label={T.extTemp} value={raw.tempC} onChange={v=>upd(selectedDate,"tempC",v)} suffix="°C"/>
                     <div>
-                      <F label="Essence" value={raw.gas} onChange={v=>upd(selectedDate,"gas",v)} suffix="$/L"/>
+                      <F label={T.extGas} value={raw.gas} onChange={v=>upd(selectedDate,"gas",v)} suffix="$/L"/>
                       {lastGas&&(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"2px 0"}}>
                         <span style={{fontSize:10,color:t.warnText}}>Auto: {Number(lastGas.price).toFixed(3)}$/L (il y a {lastGas.daysAgo}j)</span>
-                        <button onClick={()=>upd(selectedDate,"gas",lastGas.price)} style={{fontSize:9,padding:"1px 6px",borderRadius:3,border:"1px solid rgba(34,197,94,0.2)",background:"rgba(34,197,94,0.08)",color:"#16a34a",cursor:"pointer",fontWeight:600}}>Confirmer</button>
+                        <button onClick={()=>upd(selectedDate,"gas",lastGas.price)} style={{fontSize:9,padding:"1px 6px",borderRadius:3,border:"1px solid rgba(34,197,94,0.2)",background:"rgba(34,197,94,0.08)",color:"#16a34a",cursor:"pointer",fontWeight:600}}>{T.extConfirmGas}</button>
                       </div>)}
-                      <button onClick={checkGasPrice} disabled={gasCheckLoading} style={{marginTop:3,fontSize:9.5,padding:"3px 8px",borderRadius:4,border:"1px solid rgba(56,189,248,0.2)",background:"rgba(56,189,248,0.06)",color:"#38bdf8",cursor:gasCheckLoading?"default":"pointer",fontWeight:600,width:"100%",textAlign:"center",opacity:gasCheckLoading?0.65:1}}>{gasCheckLoading?"Vérification...":"Vérifier le prix (Régie de l'énergie)"}</button>
+                      <button onClick={checkGasPrice} disabled={gasCheckLoading} style={{marginTop:3,fontSize:9.5,padding:"3px 8px",borderRadius:4,border:"1px solid rgba(56,189,248,0.2)",background:"rgba(56,189,248,0.06)",color:"#38bdf8",cursor:gasCheckLoading?"default":"pointer",fontWeight:600,width:"100%",textAlign:"center",opacity:gasCheckLoading?0.65:1}}>{gasCheckLoading?"Vérification...":T.extFetchGas}</button>
                       {gasCheckMsg&&<div style={{fontSize:9.5,marginTop:2,padding:"1px 4px",color:gasCheckMsg.ok?"#16a34a":"#f97316"}}>{gasCheckMsg.text}</div>}
                     </div>
-                    <F label="Événement" value={raw.events} onChange={v=>upd(selectedDate,"events",v)} type="text" placeholder="Festival..." wide/>
+                    <F label={T.extEvent} value={raw.events} onChange={v=>upd(selectedDate,"events",v)} type="text" placeholder="Festival..." wide/>
                   </div>
                 </div>
               </div>
@@ -6101,27 +6101,27 @@ export default function App(){
               <div onClick={()=>setEmpOpen(!empOpen)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 11px",cursor:"pointer",userSelect:"none"}}>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <span style={{fontSize:12,color:empOpen?"#f97316":t.textMuted,transform:empOpen?"rotate(0deg)":"rotate(-90deg)",display:"inline-block"}}>▾</span>
-                  <span style={{fontSize:13,fontWeight:700,color:t.text}}>Main d'œuvre</span>
+                  <span style={{fontSize:13,fontWeight:700,color:t.text}}>{T.empSectionTitle}</span>
                   {today.labourPct!=null&&<Pill ok={today.labourPct<=30} warn={today.labourPct>30&&today.labourPct<=35} label={`${today.labourPct.toFixed(1)}%`}/>}
                 </div>
                 <span style={{fontSize:10.5,color:t.textMuted}}>{emps.length} emp.</span>
               </div>
               {empOpen&&(<div style={{padding:"0 11px 11px"}}>
                 <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr auto",gap:6,padding:"4px 0",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:4}}>
-                  {["Employé","Heures","$/h","Coût",""].map((h,i)=>(<span key={i} style={{fontSize:10,color:t.textMuted,fontWeight:600,textAlign:i>0&&i<4?"right":"left"}}>{h}</span>))}
+                  {[T.empName,T.empHours,T.empWage,T.empCost,""].map((h,i)=>(<span key={i} style={{fontSize:10,color:t.textMuted,fontWeight:600,textAlign:i>0&&i<4?"right":"left"}}>{h}</span>))}
                 </div>
-                {emps.map((emp,i)=>(<EmpRow key={i} emp={emp} index={i} empRoster={empRoster} selectedDate={selectedDate} updEmp={updEmp} rmEmp={rmEmp}/>))}
+                {emps.map((emp,i)=>(<EmpRow key={i} emp={emp} index={i} empRoster={empRoster} selectedDate={selectedDate} updEmp={updEmp} rmEmp={rmEmp} T={T}/>))}
                 <div style={{display:"flex",gap:6,marginTop:6,flexWrap:"wrap"}}>
                   <select id="addEmpSelect" style={{background:t.inputBg,border:`1px solid rgba(249,115,22,0.18)`,borderRadius:5,color:t.text,fontSize:12,padding:"4px 8px",outline:"none"}}>
                     <option value="" style={{background:t.optionBg}}>— Ajouter un employé —</option>
                     {empRoster.filter(r=>!emps.some(e=>e.empId===r.id)).map(r=>(<option key={r.id} value={r.id} style={{background:t.optionBg}}>{r.name}</option>))}
                   </select>
                   <button onClick={()=>{const sel=document.getElementById("addEmpSelect");const eid=sel?.value;if(!eid)return;const re=empRoster.find(r=>r.id===eid);if(re)addEmp(selectedDate,{empId:re.id,name:re.name,hours:null,wage:re.wage});sel.value=""}} style={{fontSize:10.5,padding:"4px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.18)",background:"rgba(249,115,22,0.06)",color:"#f97316",cursor:"pointer",fontWeight:600}}>+ Ajouter</button>
-                  {(()=>{const prevDay=liveData[prevDk(selectedDate)];const prevEmps=prevDay?.employees;if(!prevEmps||prevEmps.length===0||emps.length>0)return null;return(<button onClick={()=>{prevEmps.forEach(e=>addEmp(selectedDate,{empId:e.empId||"",name:e.name||"",hours:null,wage:e.wage||null}))}} style={{fontSize:10.5,padding:"4px 10px",borderRadius:5,border:`1px solid rgba(${t.posRgb},0.18)`,background:`rgba(${t.posRgb},0.06)`,color:t.posColor,cursor:"pointer",fontWeight:600}}>Copier d'hier</button>)})()}
+                  {(()=>{const prevDay=liveData[prevDk(selectedDate)];const prevEmps=prevDay?.employees;if(!prevEmps||prevEmps.length===0||emps.length>0)return null;return(<button onClick={()=>{prevEmps.forEach(e=>addEmp(selectedDate,{empId:e.empId||"",name:e.name||"",hours:null,wage:e.wage||null}))}} style={{fontSize:10.5,padding:"4px 10px",borderRadius:5,border:`1px solid rgba(${t.posRgb},0.18)`,background:`rgba(${t.posRgb},0.06)`,color:t.posColor,cursor:"pointer",fontWeight:600}}>{T.empCopyYesterday}</button>)})()}
                 </div>
                 {today.labourCost>0&&(<div style={{marginTop:8,padding:"8px 10px",borderRadius:7,background:today.labourPct!=null&&today.labourPct>35?"rgba(239,68,68,0.06)":today.labourPct!=null&&today.labourPct>28?t.warnStatusBg:"rgba(34,197,94,0.06)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <div>
-                    <div style={{fontSize:10,fontWeight:700,color:today.labourPct!=null&&today.labourPct>35?"#dc2626":today.labourPct!=null&&today.labourPct>28?t.warnText:"#16a34a",textTransform:"uppercase"}}>Main d'œuvre</div>
+                    <div style={{fontSize:10,fontWeight:700,color:today.labourPct!=null&&today.labourPct>35?"#dc2626":today.labourPct!=null&&today.labourPct>28?t.warnText:"#16a34a",textTransform:"uppercase"}}>{T.empSectionTitle}</div>
                     <div style={{fontSize:10,color:t.textMuted}}>{today.labourHrs}h · {fmt(today.labourCost)}</div>
                   </div>
                   {today.labourPct!=null&&<span style={{fontSize:22,fontWeight:700,fontFamily:"'DM Mono',monospace",color:today.labourPct>35?"#dc2626":today.labourPct>28?t.warnText:"#16a34a"}}>{today.labourPct.toFixed(1)}%</span>}
