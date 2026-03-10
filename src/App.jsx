@@ -717,7 +717,7 @@ function MonthlyPL({computeDay,suppliers,liveData,platforms}){
 
   useEffect(()=>{setLoaded(false);setSaved(false);(async()=>{try{const r=await window.api.storage.get(`dicann-pl-${month}`);if(r?.value)setPlData(JSON.parse(r.value));else setPlData({})}catch(e){setPlData({})}setLoaded(true)})()},[month]);
 
-  const dbSave=useCallback(data=>{if(saveRef.current)clearTimeout(saveRef.current);saveRef.current=setTimeout(async()=>{try{await window.api.storage.set(`dicann-pl-${month}`,JSON.stringify(data))}catch(e){}},800)},[month]);
+  const dbSave=useCallback(data=>{if(saveRef.current)clearTimeout(saveRef.current);saveRef.current=setTimeout(async()=>{const v=JSON.stringify(data);try{await window.api.storage.set(`dicann-pl-${month}`,v)}catch(e){}schedulePush(`dicann-pl-${month}`,v);},800)},[month]);
   const updPL=useCallback((key,val)=>{setPlData(prev=>{const next={...prev,[key]:val};dbSave(next);return next});setSaved(false)},[dbSave]);
 
   const [y,m]=month.split("-").map(Number);const dim=new Date(y,m,0).getDate();
@@ -5534,7 +5534,12 @@ function CloudAccountSection({cloudUser,syncStatus,onSignIn,onSignUp,onSignOut,t
   };
   const doSignUp=async()=>{
     setLoading(true);setMsg(null);
-    try{await onSignUp({email:form.email,password:form.password,fullName:form.fullName,orgName:form.orgName});setMsg({ok:true,text:T.cfgCloudEmailConf});}
+    try{
+      await onSignUp({email:form.email,password:form.password,fullName:form.fullName,orgName:form.orgName});
+      // Switch to sign-in mode and show confirmation message
+      setMode("signin");
+      setMsg({ok:true,text:T.cfgCloudEmailConf});
+    }
     catch(e){setMsg({ok:false,text:e.message||T.cfgCloudAuthError});}
     finally{setLoading(false);}
   };
@@ -5899,37 +5904,37 @@ export default function App(){
   const persist=useCallback(data=>{if(saveTimer.current)clearTimeout(saveTimer.current);setSaving(true);saveTimer.current=setTimeout(async()=>{const s=JSON.stringify(data);try{await window.api.storage.set("dicann-v7",s)}catch(e){}setSaving(false);schedulePush("dicann-v7",s);},600)},[]);
   const saveRoster=useCallback(async r=>{const s=JSON.stringify(r);try{await window.api.storage.set("dicann-roster",s)}catch(e){}schedulePush("dicann-roster",s);},[]);
   const saveEmpRoster=useCallback(async r=>{const s=JSON.stringify(r);try{await window.api.storage.set("dicann-emp-roster",s)}catch(e){}schedulePush("dicann-emp-roster",s);},[]);
-  const saveSup=useCallback(async s=>{try{await window.api.storage.set("dicann-suppliers-v2",JSON.stringify(s))}catch(e){}},[]);
-  const savePlatforms=useCallback(async p=>{try{await window.api.storage.set("dicann-platforms",JSON.stringify(p))}catch(e){}},[]);
-  const saveApiCfg=useCallback(async c=>{try{await window.api.storage.set("dicann-api-config",JSON.stringify(c))}catch(e){}},[]);
-  const persistEncaisse=useCallback(data=>{setEncaisseData(data);if(encaisseTimer.current)clearTimeout(encaisseTimer.current);encaisseTimer.current=setTimeout(async()=>{try{await window.api.storage.set("dicann-encaisse",JSON.stringify(data))}catch(e){}},600)},[]);
-  const saveEncaisseConfig=useCallback(cfg=>{setEncaisseConfig(cfg);window.api.storage.set("dicann-encaisse-config",JSON.stringify(cfg)).catch(()=>{})},[]);
+  const saveSup=useCallback(async s=>{const v=JSON.stringify(s);try{await window.api.storage.set("dicann-suppliers-v2",v)}catch(e){}schedulePush("dicann-suppliers-v2",v);},[]);
+  const savePlatforms=useCallback(async p=>{const v=JSON.stringify(p);try{await window.api.storage.set("dicann-platforms",v)}catch(e){}schedulePush("dicann-platforms",v);},[]);
+  const saveApiCfg=useCallback(async c=>{const v=JSON.stringify(c);try{await window.api.storage.set("dicann-api-config",v)}catch(e){}schedulePush("dicann-api-config",v);},[]);
+  const persistEncaisse=useCallback(data=>{setEncaisseData(data);if(encaisseTimer.current)clearTimeout(encaisseTimer.current);encaisseTimer.current=setTimeout(async()=>{const v=JSON.stringify(data);try{await window.api.storage.set("dicann-encaisse",v)}catch(e){}schedulePush("dicann-encaisse",v);},600)},[]);
+  const saveEncaisseConfig=useCallback(cfg=>{setEncaisseConfig(cfg);const v=JSON.stringify(cfg);window.api.storage.set("dicann-encaisse-config",v).catch(()=>{});schedulePush("dicann-encaisse-config",v);},[]);
   const saveAppMode=useCallback(mode=>{setAppMode(mode);window.api.storage.set("balanceiq-mode",mode).catch(()=>{})},[]);
   const saveLocations=useCallback(list=>{setLocations(list);window.api.storage.set("balanceiq-locations",JSON.stringify(list)).catch(()=>{})},[]);
   const saveRoyaltyConfig=useCallback(cfg=>{setRoyaltyConfig(cfg);window.api.storage.set("balanceiq-royalty-config",JSON.stringify(cfg)).catch(()=>{})},[]);
   const saveWhiteLabel=useCallback(cfg=>{setWhiteLabelConfig(cfg);window.api.storage.set("balanceiq-whitelabel",JSON.stringify(cfg)).catch(()=>{})},[]);
   const saveLockConfig=useCallback(cfg=>{setLockConfig(cfg);window.api.storage.set("balanceiq-lock",JSON.stringify(cfg)).catch(()=>{})},[]);
-  const saveInvConfig=useCallback(cfg=>{setInvConfig(cfg);window.api.storage.set("dicann-inv-config",JSON.stringify(cfg)).catch(()=>{})},[]);
+  const saveInvConfig=useCallback(cfg=>{setInvConfig(cfg);const v=JSON.stringify(cfg);window.api.storage.set("dicann-inv-config",v).catch(()=>{});schedulePush("dicann-inv-config",v);},[]);
   const handleCloudSignIn=useCallback(async(creds)=>{const res=await cloudSignIn(creds);setCloudUser({email:res.session.user.email,plan:res.plan});if(res.plan!=='free'){setPlan(res.plan);setActivePlan(res.plan);}},[]);
-  const handleCloudSignUp=useCallback(async(creds)=>{const res=await cloudSignUp(creds);if(res?.session)setCloudUser({email:res.session.user.email,plan:res.plan});},[]);
+  const handleCloudSignUp=useCallback(async(creds)=>{await cloudSignUp(creds);/* trigger creates org/user server-side; user must confirm email then sign in */},[]);
   const handleCloudSignOut=useCallback(async()=>{await cloudSignOut();setCloudUser(null);setSyncStatus(null);},[]);
   const showUpgradePrompt=useCallback(featureName=>{if(shouldShowUpgradePrompt(featureName))setUpgradePromptOpen(true)},[]);
-  const saveCompanyInfo=useCallback(info=>{setCompanyInfo(info);window.api.storage.set("dicann-company-info",JSON.stringify(info)).catch(()=>{})},[]);
-  const saveInvoiceTemplate=useCallback(tpl=>{setInvoiceTemplate(tpl);window.api.storage.set("dicann-invoice-template",JSON.stringify(tpl)).catch(()=>{})},[]);
+  const saveCompanyInfo=useCallback(info=>{setCompanyInfo(info);const v=JSON.stringify(info);window.api.storage.set("dicann-company-info",v).catch(()=>{});schedulePush("dicann-company-info",v);},[]);
+  const saveInvoiceTemplate=useCallback(tpl=>{setInvoiceTemplate(tpl);const v=JSON.stringify(tpl);window.api.storage.set("dicann-invoice-template",v).catch(()=>{});schedulePush("dicann-invoice-template",v);},[]);
   // Merge white-label settings into invoiceTemplate for PDF builders
   const effectiveTemplate=useMemo(()=>{
     if(!whiteLabelConfig?.enabled)return invoiceTemplate;
     return{...invoiceTemplate,whiteLabelEnabled:true,whiteLabelName:whiteLabelConfig.franchiseName||"",accentColor:whiteLabelConfig.accentColor||invoiceTemplate.accentColor,footerText:[whiteLabelConfig.footer,invoiceTemplate.footerText].filter(Boolean).join(" · ")};
   },[invoiceTemplate,whiteLabelConfig]);
-  const saveFacCategories=useCallback(cats=>{setFacCategories(cats);window.api.storage.set("dicann-fac-categories",JSON.stringify(cats)).catch(()=>{})},[]);
-  const saveFacProduits=useCallback(prods=>{setFacProduits(prods);window.api.storage.set("dicann-fac-produits",JSON.stringify(prods)).catch(()=>{})},[]);
-  const saveFacClients=useCallback(list=>{setFacClients(list);window.api.storage.set("dicann-fac-clients",JSON.stringify(list)).catch(()=>{})},[]);
-  const saveDocNums=useCallback(nums=>{setDocNums(nums);window.api.storage.set("dicann-doc-nums",JSON.stringify(nums)).catch(()=>{})},[]);
-  const saveFacSoumissions=useCallback(list=>{setFacSoumissions(list);window.api.storage.set("dicann-fac-soumissions",JSON.stringify(list)).catch(()=>{})},[]);
-  const saveFacCommandes=useCallback(list=>{setFacCommandes(list);window.api.storage.set("dicann-fac-commandes",JSON.stringify(list)).catch(()=>{})},[]);
-  const saveFacFactures=useCallback(list=>{setFacFactures(list);window.api.storage.set("dicann-fac-factures",JSON.stringify(list)).catch(()=>{})},[]);
-  const saveFacCreditNotes=useCallback(list=>{setFacCreditNotes(list);window.api.storage.set("dicann-fac-creditnotes",JSON.stringify(list)).catch(()=>{})},[]);
-  const saveFacRecurrents=useCallback(list=>{setFacRecurrents(list);window.api.storage.set("dicann-fac-recurrents",JSON.stringify(list)).catch(()=>{})},[]);
+  const saveFacCategories=useCallback(cats=>{setFacCategories(cats);const v=JSON.stringify(cats);window.api.storage.set("dicann-fac-categories",v).catch(()=>{});schedulePush("dicann-fac-categories",v);},[]);
+  const saveFacProduits=useCallback(prods=>{setFacProduits(prods);const v=JSON.stringify(prods);window.api.storage.set("dicann-fac-produits",v).catch(()=>{});schedulePush("dicann-fac-produits",v);},[]);
+  const saveFacClients=useCallback(list=>{setFacClients(list);const v=JSON.stringify(list);window.api.storage.set("dicann-fac-clients",v).catch(()=>{});schedulePush("dicann-fac-clients",v);},[]);
+  const saveDocNums=useCallback(nums=>{setDocNums(nums);const v=JSON.stringify(nums);window.api.storage.set("dicann-doc-nums",v).catch(()=>{});schedulePush("dicann-doc-nums",v);},[]);
+  const saveFacSoumissions=useCallback(list=>{setFacSoumissions(list);const v=JSON.stringify(list);window.api.storage.set("dicann-fac-soumissions",v).catch(()=>{});schedulePush("dicann-fac-soumissions",v);},[]);
+  const saveFacCommandes=useCallback(list=>{setFacCommandes(list);const v=JSON.stringify(list);window.api.storage.set("dicann-fac-commandes",v).catch(()=>{});schedulePush("dicann-fac-commandes",v);},[]);
+  const saveFacFactures=useCallback(list=>{setFacFactures(list);const v=JSON.stringify(list);window.api.storage.set("dicann-fac-factures",v).catch(()=>{});schedulePush("dicann-fac-factures",v);},[]);
+  const saveFacCreditNotes=useCallback(list=>{setFacCreditNotes(list);const v=JSON.stringify(list);window.api.storage.set("dicann-fac-creditnotes",v).catch(()=>{});schedulePush("dicann-fac-creditnotes",v);},[]);
+  const saveFacRecurrents=useCallback(list=>{setFacRecurrents(list);const v=JSON.stringify(list);window.api.storage.set("dicann-fac-recurrents",v).catch(()=>{});schedulePush("dicann-fac-recurrents",v);},[]);
 
   // ── raw state updaters (no audit) ──
   const _updRaw=useCallback((dt,f,v)=>{setLiveData(p=>{const u={...p,[dt]:{...(p[dt]||{}),[f]:v}};persist(u);return u})},[persist]);
