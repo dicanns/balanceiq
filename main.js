@@ -349,6 +349,10 @@ ipcMain.handle('updater:downloadAndInstall', () => {
   autoUpdater.downloadUpdate().catch(() => {});
 });
 
+ipcMain.handle('shell:openExternal', (_event, url) => {
+  shell.openExternal(url);
+});
+
 app.whenReady().then(() => {
   createWindow();
 

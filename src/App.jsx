@@ -3,7 +3,7 @@ import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./config/features.js";
 import * as XLSX from "xlsx";
 import { logCreate, logUpdate, logVoid, logCorrection, isFinancialField, promptCorrectionReason } from "./services/auditLogger.js";
-import { initCloudSync, signIn as cloudSignIn, signUp as cloudSignUp, signOut as cloudSignOut, schedulePush, onSyncStatus, onPlanChange, refreshPlan } from "./services/cloudSync.js";
+import { initCloudSync, signIn as cloudSignIn, signUp as cloudSignUp, signOut as cloudSignOut, schedulePush, onSyncStatus, onPlanChange, refreshPlan, getCloudOrgId } from "./services/cloudSync.js";
 import { FR, EN } from "./i18n/translations.js";
 
 // ── THEME ──
@@ -5593,6 +5593,125 @@ function CloudAccountSection({cloudUser,syncStatus,onSignIn,onSignUp,onSignOut,t
   </div>);
 }
 
+// ── SUBSCRIPTION SECTION ──
+const SUPABASE_FUNCTIONS_URL = 'https://etiwnesxjypdwhxqnqqq.supabase.co/functions/v1';
+const PRICE_IDS = {
+  pro:               'price_1T9C86Gcfc7VEkjZJM9r5FeW',
+  franchise:         'price_1T9C8MGcfc7VEkjZH0iNcaoK',
+  franchiseLocation: 'price_1T9C8cGcfc7VEkjZxGdIU7tt',
+};
+
+function SubscriptionSection({cloudUser,activePlan,orgId,t,T}){
+  const [loading,setLoading]=useState(false);
+  const [msg,setMsg]=useState(null);
+
+  const openCheckout=async(priceId)=>{
+    if(!cloudUser){setMsg({ok:false,text:"Connectez-vous d'abord à votre compte cloud."});return;}
+    setLoading(true);setMsg(null);
+    try{
+      const {supabase}=await import('./services/supabase.js');
+      const {data:{session}}=await supabase.auth.getSession();
+      if(!session){setMsg({ok:false,text:T.subError});setLoading(false);return;}
+
+      const res=await fetch(`${SUPABASE_FUNCTIONS_URL}/create-checkout`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},
+        body:JSON.stringify({
+          priceId,
+          orgId,
+          successUrl:'balanceiq://subscription-success',
+          cancelUrl:'balanceiq://subscription-cancel',
+        }),
+      });
+      const json=await res.json();
+      if(json.url){
+        window.api?.shell?.openExternal(json.url);
+        setMsg({ok:true,text:'Ouverture du navigateur...'});
+      }else{
+        setMsg({ok:false,text:json.error||T.subError});
+      }
+    }catch(e){
+      setMsg({ok:false,text:T.subError});
+    }
+    setLoading(false);
+  };
+
+  const openPortal=async()=>{
+    if(!cloudUser){return;}
+    setLoading(true);setMsg(null);
+    try{
+      const {supabase}=await import('./services/supabase.js');
+      const {data:{session}}=await supabase.auth.getSession();
+      if(!session){setMsg({ok:false,text:T.subError});setLoading(false);return;}
+
+      const res=await fetch(`${SUPABASE_FUNCTIONS_URL}/create-portal`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},
+        body:JSON.stringify({orgId,returnUrl:'balanceiq://portal-return'}),
+      });
+      const json=await res.json();
+      if(json.url){window.api?.shell?.openExternal(json.url);}
+      else{setMsg({ok:false,text:json.error||T.subError});}
+    }catch(e){setMsg({ok:false,text:T.subError});}
+    setLoading(false);
+  };
+
+  const isPro=activePlan==='pro';
+  const isFranchise=activePlan==='franchise';
+  const isPaid=isPro||isFranchise;
+
+  return(<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+    <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:8}}>{T.subTitle}</div>
+
+    {/* Current plan badge */}
+    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
+      <span style={{fontSize:11,color:t.textMuted}}>{T.subCurrentPlan} :</span>
+      <span style={{fontSize:12,fontWeight:700,color:isPaid?'#22c55e':'#f97316',background:isPaid?'rgba(34,197,94,0.1)':'rgba(249,115,22,0.08)',borderRadius:6,padding:'2px 10px'}}>
+        {isFranchise?T.subFranchise:isPro?T.subPro:T.subFree}
+      </span>
+    </div>
+
+    {/* Free tier — show upgrade CTAs */}
+    {!isPaid&&(<>
+      <div style={{fontSize:11,color:t.textMuted,marginBottom:10,lineHeight:1.5}}>{T.subProFeatures}</div>
+      <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:6}}>
+        <button
+          onClick={()=>openCheckout(PRICE_IDS.pro)}
+          disabled={loading||!cloudUser}
+          style={{padding:'6px 16px',borderRadius:7,border:'none',background:loading||!cloudUser?'rgba(255,255,255,0.05)':'linear-gradient(135deg,#f97316,#ea580c)',color:loading||!cloudUser?t.textDim:'#fff',cursor:loading||!cloudUser?'default':'pointer',fontWeight:700,fontSize:12}}>
+          {loading?T.subLoading:T.subTrialPro}
+        </button>
+        <button
+          onClick={()=>openCheckout(PRICE_IDS.franchise)}
+          disabled={loading||!cloudUser}
+          style={{padding:'6px 14px',borderRadius:7,border:'1px solid rgba(249,115,22,0.3)',background:'rgba(249,115,22,0.07)',color:loading||!cloudUser?t.textDim:'#f97316',cursor:loading||!cloudUser?'default':'pointer',fontWeight:700,fontSize:12}}>
+          {loading?T.subLoading:T.subTrialFranchise}
+        </button>
+      </div>
+      {!cloudUser&&<div style={{fontSize:10,color:'#f59e0b',marginBottom:4}}>⚠ {T.cfgCloudFreeNote}</div>}
+      <div style={{fontSize:10,color:t.textMuted}}>{T.subCancelNote}</div>
+    </>)}
+
+    {/* Pro tier */}
+    {isPro&&(<>
+      <div style={{fontSize:11,color:t.textMuted,marginBottom:10,lineHeight:1.5}}>{T.subProFeatures}</div>
+      <button onClick={openPortal} disabled={loading} style={{padding:'5px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:loading?'default':'pointer',fontWeight:600,fontSize:11}}>
+        {loading?T.subLoading:T.subManage}
+      </button>
+    </>)}
+
+    {/* Franchise tier */}
+    {isFranchise&&(<>
+      <div style={{fontSize:11,color:t.textMuted,marginBottom:10,lineHeight:1.5}}>{T.subFranchiseFeatures}</div>
+      <button onClick={openPortal} disabled={loading} style={{padding:'5px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:loading?'default':'pointer',fontWeight:600,fontSize:11}}>
+        {loading?T.subLoading:T.subManage}
+      </button>
+    </>)}
+
+    {msg&&<div style={{fontSize:10.5,color:msg.ok?'#22c55e':'#ef4444',marginTop:6}}>{msg.text}</div>}
+  </div>);
+}
+
 // ── INVENTORY CONFIG SECTION ──
 function InvConfigSection({invConfig,saveInvConfig,t,T}){
   const UNITE_OPTIONS=["douzaines","unités","kg","litres","portions","boîtes"];
@@ -6850,6 +6969,8 @@ export default function App(){
             </div>
             {/* ── CLOUD ACCOUNT ── */}
             <CloudAccountSection cloudUser={cloudUser} syncStatus={syncStatus} onSignIn={handleCloudSignIn} onSignUp={handleCloudSignUp} onSignOut={handleCloudSignOut} t={t} T={T}/>
+            {/* ── SUBSCRIPTION ── */}
+            <SubscriptionSection cloudUser={cloudUser} activePlan={activePlan} orgId={getCloudOrgId()} t={t} T={T}/>
             {/* ── INVENTORY CONFIG ── */}
             <InvConfigSection invConfig={invConfig} saveInvConfig={saveInvConfig} t={t} T={T}/>
             <PinLockConfig lockConfig={lockConfig} saveLockConfig={saveLockConfig}/>
