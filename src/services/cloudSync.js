@@ -65,7 +65,18 @@ async function _loadOrgAndPlan() {
     .select('id')
     .eq('org_id', _orgId)
     .limit(1);
-  if (locs?.length) _locationId = locs[0].id;
+  if (locs?.length) {
+    _locationId = locs[0].id;
+  } else {
+    // No location yet (trigger didn't create one) — create it now
+    const { data: newLoc } = await supabase
+      .from('locations')
+      .insert({ org_id: _orgId, name: 'Mon restaurant' })
+      .select()
+      .single();
+    if (newLoc) _locationId = newLoc.id;
+    console.log('[CloudSync] auto-created location:', _locationId);
+  }
 }
 
 // ── SIGN UP ────────────────────────────────────────────────────────────────
