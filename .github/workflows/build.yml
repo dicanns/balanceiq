@@ -33,13 +33,6 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload macOS Apple Silicon artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: balanceiq-mac-apple-silicon
-          path: release/*.dmg
-          retention-days: 1
-
   build-mac-x64:
     runs-on: macos-12
     steps:
@@ -62,13 +55,6 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload macOS Intel artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: balanceiq-mac-intel
-          path: release/*.dmg
-          retention-days: 1
-
   build-win:
     runs-on: windows-latest
     steps:
@@ -90,9 +76,3 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: balanceiq-win
-          path: release/*.exe
-          retention-days: 1
