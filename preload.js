@@ -35,4 +35,7 @@ contextBridge.exposeInMainWorld('api', {
     getLatest:  (date)       => ipcRenderer.invoke('snapshot:getLatest', date),
     listDates:  ()           => ipcRenderer.invoke('snapshot:listDates'),
   },
+  shell: {
+    openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+  },
 });
