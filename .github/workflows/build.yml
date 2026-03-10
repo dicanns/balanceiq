@@ -38,7 +38,7 @@ jobs:
         with:
           name: balanceiq-mac-apple-silicon
           path: release/*.dmg
-          retention-days: 30
+          retention-days: 1
 
   build-mac-x64:
     runs-on: macos-12
@@ -67,7 +67,7 @@ jobs:
         with:
           name: balanceiq-mac-intel
           path: release/*.dmg
-          retention-days: 30
+          retention-days: 1
 
   build-win:
     runs-on: windows-latest
@@ -95,4 +95,4 @@ jobs:
         with:
           name: balanceiq-win
           path: release/*.exe
-          retention-days: 30
+          retention-days: 1
