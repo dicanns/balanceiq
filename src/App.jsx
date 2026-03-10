@@ -5610,26 +5610,12 @@ function SubscriptionSection({cloudUser,activePlan,orgId,t,T}){
     setLoading(true);setMsg(null);
     try{
       const {supabase}=await import('./services/supabase.js');
-      const {data:{session}}=await supabase.auth.getSession();
-      if(!session){setMsg({ok:false,text:T.subError});setLoading(false);return;}
-
-      const res=await fetch(`${SUPABASE_FUNCTIONS_URL}/create-checkout`,{
-        method:'POST',
-        headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},
-        body:JSON.stringify({
-          priceId,
-          orgId,
-          successUrl:'balanceiq://subscription-success',
-          cancelUrl:'balanceiq://subscription-cancel',
-        }),
+      const {data,error}=await supabase.functions.invoke('create-checkout',{
+        body:{priceId,orgId,successUrl:'balanceiq://subscription-success',cancelUrl:'balanceiq://subscription-cancel'},
       });
-      const json=await res.json();
-      if(json.url){
-        window.api?.shell?.openExternal(json.url);
-        setMsg({ok:true,text:'Ouverture du navigateur...'});
-      }else{
-        setMsg({ok:false,text:json.error||T.subError});
-      }
+      if(error||!data?.url){setMsg({ok:false,text:data?.error||T.subError});setLoading(false);return;}
+      window.api?.shell?.openExternal(data.url);
+      setMsg({ok:true,text:T.subOpening});
     }catch(e){
       setMsg({ok:false,text:T.subError});
     }
@@ -5641,17 +5627,11 @@ function SubscriptionSection({cloudUser,activePlan,orgId,t,T}){
     setLoading(true);setMsg(null);
     try{
       const {supabase}=await import('./services/supabase.js');
-      const {data:{session}}=await supabase.auth.getSession();
-      if(!session){setMsg({ok:false,text:T.subError});setLoading(false);return;}
-
-      const res=await fetch(`${SUPABASE_FUNCTIONS_URL}/create-portal`,{
-        method:'POST',
-        headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},
-        body:JSON.stringify({orgId,returnUrl:'balanceiq://portal-return'}),
+      const {data,error}=await supabase.functions.invoke('create-portal',{
+        body:{orgId,returnUrl:'balanceiq://portal-return'},
       });
-      const json=await res.json();
-      if(json.url){window.api?.shell?.openExternal(json.url);}
-      else{setMsg({ok:false,text:json.error||T.subError});}
+      if(error||!data?.url){setMsg({ok:false,text:data?.error||T.subError});setLoading(false);return;}
+      window.api?.shell?.openExternal(data.url);
     }catch(e){setMsg({ok:false,text:T.subError});}
     setLoading(false);
   };
