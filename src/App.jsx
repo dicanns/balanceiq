@@ -2091,7 +2091,7 @@ function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveD
   const todayStr=dk(new Date());
   const exp30=dk(new Date(Date.now()+30*86400000));
   const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none"};
-  const [form,setForm]=useState(soumission?{...soumission}:{date:todayStr,dateExpiration:exp30,clientId:initClientId||"",referenceClient:"",statut:"Brouillon",notes:invoiceTemplate?.defaultNotes||"Soumission valide 30 jours."});
+  const [form,setForm]=useState(soumission?{...soumission}:{date:todayStr,dateExpiration:exp30,clientId:initClientId||"",referenceClient:"",statut:"Brouillon",notes:invoiceTemplate?.defaultNotes||T.facDefaultNotesSoum});
   const [lignes,setLignes]=useState(soumission?.lignes?.length?soumission.lignes:[newLigne()]);
   const [savedId,setSavedId]=useState(soumission?.id||null);
   const [savedNumero,setSavedNumero]=useState(soumission?.numero||null);
@@ -2149,8 +2149,8 @@ function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveD
     {/* Top bar */}
     <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
       {onBackToClient?<><button onClick={onBackToList} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToList}</button><button onClick={onBackToClient} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToClient}</button></>:<button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.back}</button>}
-      <span style={{fontSize:14,fontWeight:700,color:t.text}}>{savedNumero||(isNew?"Nouvelle soumission":soumission?.numero)}</span>
-      <span style={{fontSize:10,fontWeight:700,color:SC[form.statut]||t.textMuted,background:"rgba(0,0,0,0.06)",borderRadius:10,padding:"2px 8px"}}>{form.statut}</span>
+      <span style={{fontSize:14,fontWeight:700,color:t.text}}>{savedNumero||(isNew?T.facNouvellesSoumission:soumission?.numero)}</span>
+      <span style={{fontSize:10,fontWeight:700,color:SC[form.statut]||t.textMuted,background:"rgba(0,0,0,0.06)",borderRadius:10,padding:"2px 8px"}}>{T.facStatuts?.[form.statut]||form.statut}</span>
       <div style={{flex:1}}/>
       <button onClick={doSave} style={{padding:"5px 14px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'Outfit',sans-serif"}}>💾 {T.save}</button>
       {flash&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>{T.saved}</span>}
@@ -2192,7 +2192,7 @@ function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveD
         <div style={{flex:"2 1 200px"}}>
           <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Client</div>
           <select value={form.clientId||""} onChange={e=>upd({clientId:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box"}}>
-            <option value="">— Choisir un client —</option>
+            <option value="">{T.facChooseClient}</option>
             {clients.filter(c=>c.statut==="actif").map(c=><option key={c.id} value={c.id}>{c.entreprise} ({c.code})</option>)}
           </select>
         </div>
@@ -2201,13 +2201,13 @@ function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveD
           <input type="date" value={form.date||todayStr} onChange={e=>upd({date:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
         </div>
         <div style={{flex:"1 1 120px"}}>
-          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Date d'expiration</div>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.facDateExpiration}</div>
           <input type="date" value={form.dateExpiration||exp30} onChange={e=>upd({dateExpiration:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
         </div>
         <div style={{flex:"1 1 140px"}}>
-          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Statut</div>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.facStatut}</div>
           <select value={form.statut} onChange={e=>upd({statut:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box",color:SC[form.statut]||t.inputText,fontWeight:700}}>
-            {STATUTS_SOUMISSION.map(s=><option key={s} value={s}>{s}</option>)}
+            {STATUTS_SOUMISSION.map(s=><option key={s} value={s}>{T.facStatuts?.[s]||s}</option>)}
           </select>
         </div>
         <div style={{flex:"2 1 180px"}}>
@@ -2225,9 +2225,9 @@ function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveD
     </div>
     {/* Lines */}
     <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
-      <span style={{fontSize:12,fontWeight:700,color:t.text,display:"block",marginBottom:8}}>Lignes</span>
+      <span style={{fontSize:12,fontWeight:700,color:t.text,display:"block",marginBottom:8}}>{T.facLignes}</span>
       <div style={{display:"grid",gridTemplateColumns:"1.8fr 2fr 65px 85px 65px 28px 28px 90px 24px",gap:5,padding:"2px 4px",marginBottom:4}}>
-        {["Produit","Description",T.facQty,T.facUnitPrice,"Remise %","TPS","TVQ",T.facLineTotal,""].map((h,i)=>(
+        {[T.facProduit,"Description",T.facQty,T.facUnitPrice,T.facRemise,"TPS","TVQ",T.facLineTotal,""].map((h,i)=>(
           <span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i>=2&&i<=7?"center":"left"}}>{h}</span>
         ))}
       </div>
@@ -2235,7 +2235,7 @@ function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveD
         const lt=(l.quantite||0)*(l.prixUnitaire||0)*(1-(l.remise||0)/100);
         return(<div key={l.id} style={{display:"grid",gridTemplateColumns:"1.8fr 2fr 65px 85px 65px 28px 28px 90px 24px",gap:5,marginBottom:6,alignItems:"center"}}>
           <select value={l.produitId||""} onChange={e=>selectProd(l.id,e.target.value)} style={{...inputS,width:"100%",boxSizing:"border-box",fontSize:11}}>
-            <option value="">— Libre —</option>
+            <option value="">{T.facLibre}</option>
             {produits.filter(p=>p.actif!==false).map(p=><option key={p.id} value={p.id}>{p.code} {p.description}</option>)}
           </select>
           <input value={l.description} onChange={e=>updL(l.id,{description:e.target.value})} placeholder="Description" style={{...inputS,width:"100%",boxSizing:"border-box",fontSize:11}}/>
@@ -2366,8 +2366,8 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
       {onBackToClient?<><button onClick={onBackToList} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToList}</button><button onClick={onBackToClient} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToClient}</button></>:<button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.back}</button>}
-      <span style={{fontSize:14,fontWeight:700,color:t.text}}>{savedNumero||(isNew?"Nouvelle commande":commande?.numero)}</span>
-      <span style={{fontSize:10,fontWeight:700,color:SC[form.statut]||t.textMuted,background:"rgba(0,0,0,0.06)",borderRadius:10,padding:"2px 8px"}}>{form.statut}</span>
+      <span style={{fontSize:14,fontWeight:700,color:t.text}}>{savedNumero||(isNew?T.facNouvelleCommande:commande?.numero)}</span>
+      <span style={{fontSize:10,fontWeight:700,color:SC[form.statut]||t.textMuted,background:"rgba(0,0,0,0.06)",borderRadius:10,padding:"2px 8px"}}>{T.facStatuts?.[form.statut]||form.statut}</span>
       {form.sourceNumero&&<span style={{fontSize:10,color:t.textMuted}}>← Soumission {form.sourceNumero}</span>}
       <div style={{flex:1}}/>
       <button onClick={doSave} style={{padding:"5px 14px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'Outfit',sans-serif"}}>💾 {T.save}</button>
@@ -2402,7 +2402,7 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
         <div style={{flex:"2 1 200px"}}>
           <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Client</div>
           <select value={form.clientId||""} onChange={e=>upd({clientId:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box"}}>
-            <option value="">— Choisir un client —</option>
+            <option value="">{T.facChooseClient}</option>
             {clients.filter(c=>c.statut==="actif").map(c=><option key={c.id} value={c.id}>{c.entreprise} ({c.code})</option>)}
           </select>
         </div>
@@ -2411,13 +2411,13 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
           <input type="date" value={form.date||todayStr} onChange={e=>upd({date:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
         </div>
         <div style={{flex:"1 1 120px"}}>
-          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Date de livraison (opt.)</div>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.facDateLivraison}</div>
           <input type="date" value={form.dateLivraison||""} onChange={e=>upd({dateLivraison:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
         </div>
         <div style={{flex:"1 1 140px"}}>
-          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Statut</div>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.facStatut}</div>
           <select value={form.statut} onChange={e=>upd({statut:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box",color:SC[form.statut]||t.inputText,fontWeight:700}}>
-            {STATUTS_COMMANDE.map(s=><option key={s} value={s}>{s}</option>)}
+            {STATUTS_COMMANDE.map(s=><option key={s} value={s}>{T.facStatuts?.[s]||s}</option>)}
           </select>
         </div>
         <div style={{flex:"2 1 180px"}}>
@@ -2435,11 +2435,11 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
     </div>
     <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-        <span style={{fontSize:12,fontWeight:700,color:t.text}}>Lignes</span>
+        <span style={{fontSize:12,fontWeight:700,color:t.text}}>{T.facLignes}</span>
         {locked&&<span style={{fontSize:10,color:"#f59e0b",fontWeight:600,background:"rgba(245,158,11,0.1)",borderRadius:8,padding:"1px 7px"}}>{T.facLockedLines}</span>}
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1.8fr 2fr 65px 85px 65px 28px 28px 90px 24px",gap:5,padding:"2px 4px",marginBottom:4}}>
-        {["Produit","Description",T.facQty,T.facUnitPrice,"Remise %","TPS","TVQ",T.facLineTotal,""].map((h,i)=>(
+        {[T.facProduit,"Description",T.facQty,T.facUnitPrice,T.facRemise,"TPS","TVQ",T.facLineTotal,""].map((h,i)=>(
           <span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i>=2&&i<=7?"center":"left"}}>{h}</span>
         ))}
       </div>
@@ -2447,7 +2447,7 @@ function CommandeEditor({commande,clients,produits,companyInfo,docNums,saveDocNu
         const lt=(l.quantite||0)*(l.prixUnitaire||0)*(1-(l.remise||0)/100);
         return(<div key={l.id} style={{display:"grid",gridTemplateColumns:"1.8fr 2fr 65px 85px 65px 28px 28px 90px 24px",gap:5,marginBottom:6,alignItems:"center"}}>
           <select value={l.produitId||""} onChange={e=>selectProd(l.id,e.target.value)} disabled={locked} style={{...inputS,width:"100%",boxSizing:"border-box",fontSize:11,opacity:locked?0.6:1}}>
-            <option value="">— Libre —</option>
+            <option value="">{T.facLibre}</option>
             {produits.filter(p=>p.actif!==false).map(p=><option key={p.id} value={p.id}>{p.code} {p.description}</option>)}
           </select>
           <input value={l.description} onChange={e=>updL(l.id,{description:e.target.value})} disabled={locked} placeholder="Description" style={{...inputS,width:"100%",boxSizing:"border-box",fontSize:11,opacity:locked?0.6:1}}/>
@@ -2630,8 +2630,8 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
       {onBackToClient?<><button onClick={onBackToList} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToList}</button><button onClick={onBackToClient} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToClient}</button></>:<button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.back}</button>}
-      <span style={{fontSize:14,fontWeight:700,color:t.text}}>{savedNumero||(isNew?"Nouvelle facture":facture?.numero)}</span>
-      <span style={{fontSize:10,fontWeight:700,color:SC[displayStatut]||t.textMuted,background:"rgba(0,0,0,0.06)",borderRadius:10,padding:"2px 8px"}}>{displayStatut}{isOverdue&&" ⚠"}</span>
+      <span style={{fontSize:14,fontWeight:700,color:t.text}}>{savedNumero||(isNew?T.facNouvelleFacture:facture?.numero)}</span>
+      <span style={{fontSize:10,fontWeight:700,color:SC[displayStatut]||t.textMuted,background:"rgba(0,0,0,0.06)",borderRadius:10,padding:"2px 8px"}}>{T.facStatuts?.[displayStatut]||displayStatut}{isOverdue&&" ⚠"}</span>
       <div style={{flex:1}}/>
       <button onClick={doSave} style={{padding:"5px 14px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'Outfit',sans-serif"}}>💾 {T.save}</button>
       {flash&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>{T.saved}</span>}
@@ -2667,7 +2667,7 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
         <div style={{flex:"2 1 200px"}}>
           <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Client</div>
           <select value={form.clientId||""} onChange={e=>upd({clientId:e.target.value})} disabled={locked} style={{...inputS,width:"100%",boxSizing:"border-box",opacity:locked?0.6:1}}>
-            <option value="">— Choisir un client —</option>
+            <option value="">{T.facChooseClient}</option>
             {clients.filter(c=>c.statut==="actif").map(c=><option key={c.id} value={c.id}>{c.entreprise} ({c.code})</option>)}
           </select>
         </div>
@@ -2680,9 +2680,9 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
           <input type="date" value={form.dateEcheance||""} onChange={e=>upd({dateEcheance:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace",borderColor:isOverdue?"#ef4444":undefined}}/>
         </div>
         <div style={{flex:"1 1 140px"}}>
-          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Statut</div>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.facStatut}</div>
           <select value={form.statut} onChange={e=>upd({statut:e.target.value})} style={{...inputS,width:"100%",boxSizing:"border-box",color:SC[form.statut]||t.inputText,fontWeight:700}}>
-            {STATUTS_FACTURE.map(s=><option key={s} value={s}>{s}</option>)}
+            {STATUTS_FACTURE.map(s=><option key={s} value={s}>{T.facStatuts?.[s]||s}</option>)}
           </select>
         </div>
         <div style={{flex:"2 1 180px"}}>
@@ -2701,9 +2701,9 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
       {locked&&<div style={{marginTop:8,padding:"4px 8px",borderRadius:5,background:"rgba(99,102,241,0.07)",border:"1px solid rgba(99,102,241,0.15)",fontSize:10,color:"#6366f1",fontWeight:600}}>Lignes verrouillées — utilisez une note de crédit pour les ajustements.</div>}
     </div>
     <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
-      <span style={{fontSize:12,fontWeight:700,color:t.text,display:"block",marginBottom:8}}>Lignes</span>
+      <span style={{fontSize:12,fontWeight:700,color:t.text,display:"block",marginBottom:8}}>{T.facLignes}</span>
       <div style={{display:"grid",gridTemplateColumns:"1.8fr 2fr 65px 85px 65px 28px 28px 90px 24px",gap:5,padding:"2px 4px",marginBottom:4}}>
-        {["Produit","Description","Qté","Prix unit.","Remise %","TPS","TVQ","Total",""].map((h,i)=>(
+        {[T.facProduit,"Description",T.facQty,T.facUnitPrice,T.facRemise,"TPS","TVQ",T.facLineTotal,""].map((h,i)=>(
           <span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i>=2&&i<=7?"center":"left"}}>{h}</span>
         ))}
       </div>
@@ -2711,7 +2711,7 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
         const lt=(l.quantite||0)*(l.prixUnitaire||0)*(1-(l.remise||0)/100);
         return(<div key={l.id} style={{display:"grid",gridTemplateColumns:"1.8fr 2fr 65px 85px 65px 28px 28px 90px 24px",gap:5,marginBottom:6,alignItems:"center"}}>
           <select value={l.produitId||""} onChange={e=>selectProd(l.id,e.target.value)} disabled={locked} style={{...inputS,width:"100%",boxSizing:"border-box",fontSize:11,opacity:locked?0.6:1}}>
-            <option value="">— Libre —</option>
+            <option value="">{T.facLibre}</option>
             {produits.filter(p=>p.actif!==false).map(p=><option key={p.id} value={p.id}>{p.code} {p.description}</option>)}
           </select>
           <input value={l.description} onChange={e=>updL(l.id,{description:e.target.value})} disabled={locked} placeholder="Description" style={{...inputS,width:"100%",boxSizing:"border-box",fontSize:11,opacity:locked?0.6:1}}/>
@@ -2728,7 +2728,7 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
           <button onClick={()=>setLignes(ls=>ls.filter(x=>x.id!==l.id))} disabled={lignes.length===1||locked} style={{background:"none",border:"none",color:(lignes.length===1||locked)?t.textDim:"#ef4444",cursor:(lignes.length===1||locked)?"default":"pointer",fontSize:14,padding:0,fontWeight:700}}>✕</button>
         </div>);
       })}
-      {!locked&&<button onClick={()=>setLignes(ls=>[...ls,newLigne()])} style={{marginTop:2,padding:"5px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>+ Ajouter une ligne</button>}
+      {!locked&&<button onClick={()=>setLignes(ls=>[...ls,newLigne()])} style={{marginTop:2,padding:"5px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>{T.facAjouterLigne}</button>}
     </div>
     <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
       <div style={{flex:"2 1 200px",background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
@@ -2765,7 +2765,7 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
         {(montantPaye>0||totalAcomptes>0)&&<div style={{display:"flex",justifyContent:"space-between",fontSize:13,fontWeight:800,color:soldeDu<=0?"#22c55e":"#ef4444",borderTop:`1px solid ${t.dividerMid}`,paddingTop:5,marginTop:2}}>
           <span>Solde dû</span><span style={{fontFamily:"'DM Mono',monospace"}}>{fmt(Math.max(0,soldeDu))}</span>
         </div>}
-        {montantPaye===0&&totalAcomptes===0&&<div style={{fontSize:10,color:t.textMuted,textAlign:"center",marginTop:4}}>Aucun paiement enregistré</div>}
+        {montantPaye===0&&totalAcomptes===0&&<div style={{fontSize:10,color:t.textMuted,textAlign:"center",marginTop:4}}>{T.facAucunPaiement}</div>}
         {(form.paiements||[]).length>0&&(
           <div style={{marginTop:8,borderTop:`1px solid ${t.divider}`,paddingTop:8}}>
             <div style={{fontSize:10,fontWeight:700,color:t.textMuted,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:4}}>Historique des paiements</div>
@@ -2787,7 +2787,7 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
         )}
         {!locked&&(showDepotForm
           ?<div style={{borderTop:`1px solid ${t.dividerMid}`,paddingTop:8,marginTop:4,display:"flex",flexDirection:"column",gap:5}}>
-            <div style={{fontSize:11,fontWeight:700,color:t.text}}>Enregistrer un dépôt</div>
+            <div style={{fontSize:11,fontWeight:700,color:t.text}}>{T.facEnregistrerDepot}</div>
             <input type="date" value={depotForm.date} onChange={e=>setDepotForm(p=>({...p,date:e.target.value}))} style={{...inputS,fontSize:11}}/>
             <input type="number" value={depotForm.montant} onChange={e=>setDepotForm(p=>({...p,montant:e.target.value}))} placeholder="Montant" style={{...inputS,fontSize:11}}/>
             <select value={depotForm.mode} onChange={e=>setDepotForm(p=>({...p,mode:e.target.value}))} style={{...inputS,fontSize:11}}>
@@ -2800,7 +2800,7 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
             </div>
           </div>
           :<button onClick={()=>setShowDepotForm(true)} style={{marginTop:6,padding:"5px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:600,fontSize:11,display:"flex",alignItems:"center",gap:5}}>
-            + Enregistrer un dépôt
+            + {T.facEnregistrerDepot}
           </button>
         )}
       </div>
@@ -3348,87 +3348,87 @@ function genClientCode(clients){
   const max=nums.length?Math.max(...nums):0;
   return`CLI-${String(max+1).padStart(3,"0")}`;
 }
-function ClientForm({form,setForm,inputS,t,autoFocusEntreprise}){
+function ClientForm({form,setForm,inputS,t,T,autoFocusEntreprise}){
   return(<div style={{display:"flex",flexDirection:"column",gap:7}}>
     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
       <div style={{flex:"1 1 100px"}}>
-        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Code client</div>
-        <input value={form.code||""} onChange={e=>setForm(f=>({...f,code:e.target.value}))} placeholder="auto-généré" style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.cliCodeClient}</div>
+        <input value={form.code||""} onChange={e=>setForm(f=>({...f,code:e.target.value}))} placeholder={T.facAutoGenerated} style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
       </div>
       <div style={{flex:"3 1 200px"}}>
-        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Entreprise <span style={{color:"#f97316"}}>*</span></div>
-        <input value={form.entreprise||""} onChange={e=>setForm(f=>({...f,entreprise:e.target.value}))} placeholder="Nom de l'entreprise" autoFocus={!!autoFocusEntreprise} style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.cliEntreprise} <span style={{color:"#f97316"}}>*</span></div>
+        <input value={form.entreprise||""} onChange={e=>setForm(f=>({...f,entreprise:e.target.value}))} placeholder={T.cliNomEntreprise} autoFocus={!!autoFocusEntreprise} style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
       </div>
       <div style={{flex:"2 1 160px"}}>
         <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Contact</div>
-        <input value={form.contact||""} onChange={e=>setForm(f=>({...f,contact:e.target.value}))} placeholder="Nom du contact" style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+        <input value={form.contact||""} onChange={e=>setForm(f=>({...f,contact:e.target.value}))} placeholder={T.cliNomContact} style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
       </div>
     </div>
     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
       <div style={{flex:"2 1 180px"}}>
-        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Adresse</div>
-        <input value={form.adresse||""} onChange={e=>setForm(f=>({...f,adresse:e.target.value}))} placeholder="123 rue Principale" style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.cliAdresse}</div>
+        <input value={form.adresse||""} onChange={e=>setForm(f=>({...f,adresse:e.target.value}))} placeholder={T.cliAdressePH} style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
       </div>
       <div style={{flex:"1 1 120px"}}>
-        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Ville</div>
-        <input value={form.ville||""} onChange={e=>setForm(f=>({...f,ville:e.target.value}))} placeholder="Montréal" style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.cliVille}</div>
+        <input value={form.ville||""} onChange={e=>setForm(f=>({...f,ville:e.target.value}))} placeholder={T.cliVillePH} style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
       </div>
       <div style={{flex:"0 0 80px"}}>
-        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Province</div>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.cliProvince}</div>
         <select value={form.province||"QC"} onChange={e=>setForm(f=>({...f,province:e.target.value}))} style={{...inputS,width:"100%",boxSizing:"border-box"}}>
           {PROVINCES_CA.map(p=><option key={p} value={p}>{p}</option>)}
         </select>
       </div>
       <div style={{flex:"1 1 90px"}}>
-        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Code postal</div>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.cliCodePostal}</div>
         <input value={form.codePostal||""} onChange={e=>setForm(f=>({...f,codePostal:e.target.value}))} placeholder="H1A 1A1" style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
       </div>
       <div style={{flex:"1 1 100px"}}>
-        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Pays</div>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.cliPays}</div>
         <input value={form.pays||"Canada"} onChange={e=>setForm(f=>({...f,pays:e.target.value}))} placeholder="Canada" style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
       </div>
     </div>
     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
       <div style={{flex:"1 1 130px"}}>
-        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Téléphone #1</div>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.cliTel1}</div>
         <input value={form.tel1||""} onChange={e=>setForm(f=>({...f,tel1:e.target.value}))} placeholder="514-555-0000" style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
       </div>
       <div style={{flex:"1 1 130px"}}>
-        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Téléphone #2</div>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.cliTel2}</div>
         <input value={form.tel2||""} onChange={e=>setForm(f=>({...f,tel2:e.target.value}))} placeholder="450-555-0000" style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
       </div>
       <div style={{flex:"1 1 130px"}}>
-        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Cellulaire</div>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.cliCellulaire}</div>
         <input value={form.cell||""} onChange={e=>setForm(f=>({...f,cell:e.target.value}))} placeholder="514-555-0000" style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
       </div>
       <div style={{flex:"2 1 180px"}}>
-        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Courriel</div>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.cliCourriel}</div>
         <input type="email" value={form.courriel||""} onChange={e=>setForm(f=>({...f,courriel:e.target.value}))} placeholder="client@exemple.com" style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
       </div>
     </div>
     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
       <div style={{flex:"1 1 120px"}}>
-        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Langue</div>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.cliLangue}</div>
         <select value={form.langue||"Français"} onChange={e=>setForm(f=>({...f,langue:e.target.value}))} style={{...inputS,width:"100%",boxSizing:"border-box"}}>
-          <option>Français</option><option>English</option>
+          <option value="Français">{T.cliFrancais}</option><option value="English">English</option>
         </select>
       </div>
       <div style={{flex:"1 1 180px"}}>
-        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Conditions de paiement</div>
+        <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.cliCondPaiement}</div>
         <select value={form.conditionsPaiement||"Net 30"} onChange={e=>setForm(f=>({...f,conditionsPaiement:e.target.value}))} style={{...inputS,width:"100%",boxSizing:"border-box"}}>
-          {CONDITIONS_PAIEMENT.map(c=><option key={c}>{c}</option>)}
+          {CONDITIONS_PAIEMENT.map(c=><option key={c} value={c}>{T.facCondPaiements?.[c]||c}</option>)}
         </select>
       </div>
       {form.conditionsPaiement==="Personnalisé"&&(
         <div style={{flex:"0 0 100px"}}>
-          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Nombre de jours</div>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.cliNbJours}</div>
           <input type="number" min="1" value={form.nbJours||""} onChange={e=>setForm(f=>({...f,nbJours:e.target.value}))} placeholder="45" style={{...inputS,width:"100%",boxSizing:"border-box"}}/>
         </div>
       )}
     </div>
     <div>
-      <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Notes internes</div>
-      <textarea value={form.notes||""} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Notes internes..." rows={2} style={{...inputS,width:"100%",boxSizing:"border-box",resize:"vertical",fontFamily:"'Outfit',sans-serif"}}/>
+      <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.cliNotesInternes}</div>
+      <textarea value={form.notes||""} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder={T.cliNotesInternesPH} rows={2} style={{...inputS,width:"100%",boxSizing:"border-box",resize:"vertical",fontFamily:"'Outfit',sans-serif"}}/>
     </div>
   </div>);
 }
@@ -3680,7 +3680,7 @@ function ClientProfile({client,saveClient,onBack,onNewDoc,onOpenDoc,soumissions,
       <button onClick={()=>setShowEtatCompte(true)} style={{fontSize:10,padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600}}>{T.clientAccountStatement}</button>
     </div>
     <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}>
-      <ClientForm form={form} setForm={setForm} inputS={inputS} t={t}/>
+      <ClientForm form={form} setForm={setForm} inputS={inputS} t={t} T={T}/>
       <div style={{display:"flex",gap:6,marginTop:10,alignItems:"center"}}>
         <button onClick={doSave} disabled={!form.entreprise?.trim()} style={{padding:"6px 16px",borderRadius:6,border:"none",background:form.entreprise?.trim()?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:form.entreprise?.trim()?"#fff":t.textDim,cursor:form.entreprise?.trim()?"pointer":"default",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>✓ {T.save}</button>
         {saved&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>{T.saved}</span>}
@@ -3799,12 +3799,12 @@ function ClientsSection({clients,saveClients,onNewDoc,onOpenDoc,soumissions,comm
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}>
       <div style={{display:"flex",alignItems:"center",gap:6}}>
         <span style={{fontSize:13.5,fontWeight:700,color:t.text}}>Clients</span>
-        <span style={{fontSize:11,color:t.textMuted}}>{clients.filter(c=>c.statut==="actif").length} actif{clients.filter(c=>c.statut==="actif").length!==1?"s":""}</span>
+        <span style={{fontSize:11,color:t.textMuted}}>{T.cliActifsCount(clients.filter(c=>c.statut==="actif").length)}</span>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Rechercher..." style={{...inputS,fontSize:11,padding:"4px 8px"}}/>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder={T.cliSearch} style={{...inputS,fontSize:11,padding:"4px 8px"}}/>
         <div style={{display:"flex",gap:2}}>
-          {[{v:"actif",l:"Actifs"},{v:"inactif",l:"Inactifs"},{v:"tous",l:"Tous"}].map(({v,l})=>(
+          {[{v:"actif",l:T.cliActifs},{v:"inactif",l:T.cliInactifs},{v:"tous",l:T.cliTous}].map(({v,l})=>(
             <button key={v} onClick={()=>setFilterStatut(v)} style={{fontSize:10,padding:"3px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:filterStatut===v?"rgba(249,115,22,0.08)":t.section,color:filterStatut===v?"#f97316":t.textSub,cursor:"pointer",fontWeight:600}}>{l}</button>
           ))}
         </div>
@@ -3812,20 +3812,20 @@ function ClientsSection({clients,saveClients,onNewDoc,onOpenDoc,soumissions,comm
       </div>
     </div>
     {addOpen&&(<div style={{background:t.card,border:"1px solid rgba(249,115,22,0.2)",borderRadius:9,padding:12}}>
-      <span style={{fontSize:12,fontWeight:700,color:"#f97316",display:"block",marginBottom:8}}>Nouveau client</span>
-      <ClientForm form={form} setForm={setForm} inputS={inputS} t={t} autoFocusEntreprise/>
+      <span style={{fontSize:12,fontWeight:700,color:"#f97316",display:"block",marginBottom:8}}>{T.cliNouveauClient}</span>
+      <ClientForm form={form} setForm={setForm} inputS={inputS} t={t} T={T} autoFocusEntreprise/>
       <div style={{display:"flex",gap:6,marginTop:8}}>
         <button onClick={addClient} disabled={!form.entreprise.trim()} style={{padding:"6px 16px",borderRadius:6,border:"none",background:form.entreprise.trim()?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:form.entreprise.trim()?"#fff":t.textDim,cursor:form.entreprise.trim()?"pointer":"default",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>{T.save}</button>
         <button onClick={()=>{setAddOpen(false);setForm(BLANK);}} style={{padding:"6px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>{T.cancel}</button>
       </div>
     </div>)}
     {filtered.length>0&&(<div style={{display:"grid",gridTemplateColumns:"90px 2fr 1.5fr 1fr 1fr 100px",gap:6,padding:"3px 8px",borderBottom:`1px solid ${t.dividerMid}`}}>
-      <ColH col="code" label="Code"/><ColH col="entreprise" label="Entreprise"/><ColH col="contact" label="Contact"/><ColH col="ville" label="Ville"/>
-      <span style={{fontSize:9.5,color:t.textMuted,fontWeight:600}}>Téléphone</span>
-      <ColH col="_solde" label="Solde dû" right/>
+      <ColH col="code" label="Code"/><ColH col="entreprise" label={T.cliEntreprise}/><ColH col="contact" label="Contact"/><ColH col="ville" label={T.cliVille}/>
+      <span style={{fontSize:9.5,color:t.textMuted,fontWeight:600}}>{T.cliTelephone}</span>
+      <ColH col="_solde" label={T.cliSoldeDu} right/>
     </div>)}
     {filtered.length===0&&!addOpen&&(<div style={{textAlign:"center",padding:"24px 0",color:t.textMuted,fontSize:12}}>
-      {clients.length===0?"Aucun client — cliquez sur \"+ Nouveau client\" pour commencer.":"Aucun résultat."}
+      {clients.length===0?T.cliAucunClientStart(T.facNewClient):T.cliAucunResultat}
     </div>)}
     {filtered.map(c=>(
       <div key={c.id} onClick={()=>setSelectedId(c.id)}
