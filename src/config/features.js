@@ -31,6 +31,7 @@ export const PLAN_FEATURES = {
     depositTracking: false,
     customTemplates: false,
     cloudBackup: false,
+    posIntegration: false,
     // Franchise features (hidden in restaurant mode)
     royaltyAutoCalc: false,
     autoGenerateRoyaltyInvoices: false,
@@ -59,6 +60,7 @@ export const PLAN_FEATURES = {
     depositTracking: true,
     customTemplates: true,
     cloudBackup: true,
+    posIntegration: true,
     royaltyAutoCalc: false,
     autoGenerateRoyaltyInvoices: false,
     multiLocationReconciliation: false,
@@ -86,6 +88,7 @@ export const PLAN_FEATURES = {
     depositTracking: true,
     customTemplates: true,
     cloudBackup: true,
+    posIntegration: true,
     royaltyAutoCalc: true,
     autoGenerateRoyaltyInvoices: true,
     multiLocationReconciliation: true,
