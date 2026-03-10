@@ -111,6 +111,7 @@ export async function signOut() {
 // ── PUSH DATA ──────────────────────────────────────────────────────────────
 export function schedulePush(key, value) {
   if (!_session || !_orgId || !_locationId) return;
+  if (_plan === 'free') return;
 
   _offlineQueue = _offlineQueue.filter(q => q.key !== key);
   _offlineQueue.push({ key, value });
