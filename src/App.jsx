@@ -4,6 +4,7 @@ import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./confi
 import * as XLSX from "xlsx";
 import { logCreate, logUpdate, logVoid, logCorrection, isFinancialField, promptCorrectionReason } from "./services/auditLogger.js";
 import { initCloudSync, signIn as cloudSignIn, signUp as cloudSignUp, signOut as cloudSignOut, schedulePush, onSyncStatus, onPlanChange, refreshPlan, getCloudOrgId } from "./services/cloudSync.js";
+import { POS_CONFIG, POS_COMING_SOON } from "./config/posConfig.js";
 import { FR, EN } from "./i18n/translations.js";
 
 // ── THEME ──
@@ -5593,6 +5594,195 @@ function CloudAccountSection({cloudUser,syncStatus,onSignIn,onSignUp,onSignOut,t
   </div>);
 }
 
+// ── POS INTEGRATION SECTION ──
+function POSIntegrationSection({posCredentials,setPosCredentials,t,T,canUse,showUpgradePrompt}){
+  const [expandedPos,setExpandedPos]=useState(null);
+  const [manualToken,setManualToken]=useState({});
+  const [shopDomain,setShopDomain]=useState({});
+  const [oauthStatus,setOauthStatus]=useState({}); // posType → 'waiting'|'success'|'error'|null
+  const [testStatus,setTestStatus]=useState({}); // posType → 'ok'|'fail'|null
+  const [disconnecting,setDisconnecting]=useState({});
+
+  const POS_LIST=[
+    {id:'square',  name:'Square',      desc:T.posSquareDesc,  logo:'◼'},
+    {id:'clover',  name:'Clover',      desc:T.posCloverDesc,  logo:'🍀'},
+    {id:'shopify', name:'Shopify POS', desc:T.posShopifyDesc, logo:'🛍'},
+  ];
+
+  const doOAuth=async(posType)=>{
+    setOauthStatus(s=>({...s,[posType]:'waiting'}));
+    try{
+      const sd=posType==='shopify'?shopDomain[posType]||'':undefined;
+      await window.api.pos.startOAuth(posType,sd);
+    }catch(e){
+      setOauthStatus(s=>({...s,[posType]:'error'}));
+    }
+  };
+
+  // Listen for OAuth result
+  useEffect(()=>{
+    const cb=(data)=>{
+      if(data?.success&&data?.credentials){
+        setPosCredentials(data.credentials);
+        setOauthStatus(s=>({...s,[data.posType]:'success'}));
+        setTimeout(()=>setOauthStatus(s=>({...s,[data.posType]:null})),3000);
+      } else if(data&&!data.success){
+        setOauthStatus(s=>({...s,[data.posType]:'error'}));
+      }
+    };
+    window.api?.pos?.onOAuthResult?.(cb);
+    return()=>window.api?.pos?.offOAuthResult?.(cb);
+  },[]);
+
+  const doSaveManual=async(posType)=>{
+    const token=manualToken[posType]||'';
+    if(!token.trim())return;
+    setOauthStatus(s=>({...s,[posType]:'waiting'}));
+    try{
+      const sd=posType==='shopify'?shopDomain[posType]||'':undefined;
+      const r=await window.api.pos.saveManualToken(posType,token.trim(),sd);
+      if(r?.success){
+        const creds=await window.api.pos.getCredentials();
+        setPosCredentials(creds);
+        setManualToken(m=>({...m,[posType]:''}));
+        setOauthStatus(s=>({...s,[posType]:'success'}));
+        setTimeout(()=>setOauthStatus(s=>({...s,[posType]:null})),3000);
+      } else {
+        setOauthStatus(s=>({...s,[posType]:'error:'+( r?.error||'unknown')}));
+      }
+    }catch(e){setOauthStatus(s=>({...s,[posType]:'error:'+e.message}));}
+  };
+
+  const doDisconnect=async(posType)=>{
+    setDisconnecting(d=>({...d,[posType]:true}));
+    try{
+      await window.api.pos.disconnect(posType);
+      const creds=await window.api.pos.getCredentials();
+      setPosCredentials(creds);
+    }catch(e){}
+    setDisconnecting(d=>({...d,[posType]:false}));
+  };
+
+  const doTest=async(posType)=>{
+    try{
+      const r=await window.api.pos.testConnection(posType);
+      const status=r?.connected?'ok':('fail:'+(r?.error||'unknown'));
+      setTestStatus(s=>({...s,[posType]:status}));
+      setTimeout(()=>setTestStatus(s=>({...s,[posType]:null})),6000);
+    }catch(e){setTestStatus(s=>({...s,[posType]:'fail:'+e.message}));}
+  };
+
+  const isConnected=(posType)=>!!posCredentials[posType]?.connected;
+
+  if(!canUse('posIntegration')){
+    return(
+      <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+          <span style={{fontSize:13,fontWeight:700,color:t.text}}>{T.posTitle}</span>
+          <span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"1px 6px",borderRadius:6}}>PRO</span>
+        </div>
+        <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{T.posProOnly}</div>
+        <button onClick={()=>showUpgradePrompt('posIntegration')} style={{padding:"5px 14px",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>Passer à Pro</button>
+      </div>
+    );
+  }
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+        <span style={{fontSize:13,fontWeight:700,color:t.text,display:"block",marginBottom:4}}>{T.posTitle}</span>
+        <span style={{fontSize:11,color:t.textMuted}}>Connectez votre caisse enregistreuse pour importer automatiquement les ventes quotidiennes.</span>
+      </div>
+
+      {POS_LIST.map(pos=>{
+        const cred=posCredentials[pos.id]||{};
+        const connected=!!cred.connected;
+        const oauth=oauthStatus[pos.id];
+        const test=testStatus[pos.id];
+        const expanded=expandedPos===pos.id;
+        return(
+          <div key={pos.id} style={{background:t.card,border:`1px solid ${connected?"rgba(34,197,94,0.25)":t.cardBorder}`,borderRadius:9,overflow:"hidden"}}>
+            <div onClick={()=>setExpandedPos(expanded?null:pos.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 11px",cursor:"pointer"}}>
+              <div style={{display:"flex",alignItems:"center",gap:9}}>
+                <span style={{fontSize:18}}>{pos.logo}</span>
+                <div>
+                  <div style={{fontSize:12,fontWeight:700,color:t.text}}>{pos.name}</div>
+                  <div style={{fontSize:10,color:t.textMuted}}>{pos.desc}</div>
+                </div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                {connected&&cred.merchantName&&<span style={{fontSize:10,color:t.textSub,fontStyle:"italic"}}>{cred.merchantName}</span>}
+                <span style={{fontSize:10,fontWeight:600,color:connected?"#22c55e":t.textDim,background:connected?"rgba(34,197,94,0.1)":"transparent",padding:"2px 7px",borderRadius:12}}>{connected?`● ${T.posConnected}`:`○ ${T.posNotConfigured}`}</span>
+                <span style={{fontSize:11,color:t.textDim}}>{expanded?"▲":"▼"}</span>
+              </div>
+            </div>
+
+            {expanded&&(
+              <div style={{borderTop:`1px solid ${t.cardBorder}`,padding:"10px 11px",display:"flex",flexDirection:"column",gap:8}}>
+                {connected?(
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                    <button onClick={()=>doTest(pos.id)} style={{padding:"4px 12px",borderRadius:5,border:"1px solid rgba(34,197,94,0.3)",background:"rgba(34,197,94,0.08)",color:"#16a34a",cursor:"pointer",fontWeight:600,fontSize:11}}>
+                      {T.cfgTestConnection}
+                    </button>
+                    {test==='ok'&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>✓ {T.posTestOK}</span>}
+                    {test&&test.startsWith('fail')&&<span style={{fontSize:11,color:"#ef4444",fontWeight:600}}>✗ {test.includes(':')?test.slice(5):T.posTestFail}</span>}
+                    <button onClick={()=>doDisconnect(pos.id)} disabled={disconnecting[pos.id]} style={{padding:"4px 12px",borderRadius:5,border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.06)",color:"#ef4444",cursor:"pointer",fontWeight:600,fontSize:11,marginLeft:"auto"}}>
+                      {disconnecting[pos.id]?"...":T.posDisconnect}
+                    </button>
+                  </div>
+                ):(
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {pos.id==='shopify'&&(
+                      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                        <div style={{background:"rgba(56,189,248,0.06)",border:"1px solid rgba(56,189,248,0.15)",borderRadius:6,padding:"8px 10px"}}>
+                          <div style={{fontSize:10,fontWeight:700,color:"#38bdf8",marginBottom:4}}>{T.posShopifyHowToTitle}</div>
+                          <ol style={{fontSize:10,color:t.textMuted,paddingLeft:14,margin:0,lineHeight:1.7}}>
+                            {T.posShopifyHowToSteps.map((s,i)=><li key={i}>{s}</li>)}
+                          </ol>
+                        </div>
+                        <div>
+                          <div style={{fontSize:11,fontWeight:600,color:t.text,marginBottom:3}}>{T.posShopDomain}</div>
+                          <input value={shopDomain[pos.id]||""} onChange={e=>setShopDomain(d=>({...d,[pos.id]:e.target.value}))} placeholder={T.posShopDomainPH} style={{width:"100%",padding:"5px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.text,fontSize:11,boxSizing:"border-box"}}/>
+                        </div>
+                      </div>
+                    )}
+                    {pos.id!=='shopify'&&(<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                      <button onClick={()=>doOAuth(pos.id)} disabled={oauth==='waiting'} style={{padding:"5px 14px",borderRadius:5,border:"none",background:oauth==='waiting'?"rgba(255,255,255,0.05)":"linear-gradient(135deg,#f97316,#ea580c)",color:oauth==='waiting'?"rgba(255,255,255,0.3)":"#fff",cursor:oauth==='waiting'?"default":"pointer",fontWeight:700,fontSize:11}}>
+                        {oauth==='waiting'?T.posConnecting:T.posConnect}
+                      </button>
+                      {oauth==='waiting'&&<span style={{fontSize:10,color:t.textMuted}}>{T.posOAuthWaiting}</span>}
+                      {oauth==='success'&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>✓ {T.posOAuthSuccess}</span>}
+                      {oauth&&oauth.startsWith('error')&&<span style={{fontSize:11,color:"#ef4444",fontWeight:600}}>✗ {oauth.includes(':')?oauth.slice(6):T.posOAuthError}</span>}
+                    </div>)}
+                    <div style={{borderTop:`1px dashed ${t.cardBorder}`,paddingTop:8}}>
+                      <div style={{fontSize:10,fontWeight:600,color:t.textMuted,marginBottom:4}}>{pos.id==='shopify'?T.posShopifyTokenLabel:T.posManualToken}</div>
+                      <div style={{display:"flex",gap:6}}>
+                        <input value={manualToken[pos.id]||""} onChange={e=>setManualToken(m=>({...m,[pos.id]:e.target.value}))} placeholder={pos.id==='shopify'?"shpat_xxxxxxxxxxxxxxxxxxxxxxxx":T.posManualTokenPH} style={{flex:1,padding:"4px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.text,fontSize:11,fontFamily:"'DM Mono',monospace"}}/>
+                        <button onClick={()=>doSaveManual(pos.id)} disabled={!manualToken[pos.id]?.trim()||(pos.id==='shopify'&&!shopDomain[pos.id]?.trim())} style={{padding:"4px 12px",borderRadius:5,border:"none",background:(manualToken[pos.id]?.trim()&&(pos.id!=='shopify'||shopDomain[pos.id]?.trim()))?"rgba(249,115,22,0.15)":"rgba(255,255,255,0.03)",color:(manualToken[pos.id]?.trim()&&(pos.id!=='shopify'||shopDomain[pos.id]?.trim()))?"#f97316":t.textDim,cursor:(manualToken[pos.id]?.trim()&&(pos.id!=='shopify'||shopDomain[pos.id]?.trim()))?"pointer":"default",fontWeight:600,fontSize:11,whiteSpace:"nowrap"}}>{T.posManualSave}</button>
+                      </div>
+                      {pos.id==='shopify'&&!shopDomain[pos.id]?.trim()&&manualToken[pos.id]?.trim()&&<div style={{fontSize:10,color:"#f97316",marginTop:3}}>{T.posShopifyDomainFirst}</div>}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Coming Soon */}
+      <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:10}}>
+        <div style={{fontSize:11,fontWeight:600,color:t.textMuted,marginBottom:6}}>{T.posSoon}</div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {POS_COMING_SOON.map(p=>(
+            <span key={p.id} style={{fontSize:10,color:t.textDim,background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,padding:"3px 8px"}}>{p.name}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── SUBSCRIPTION SECTION ──
 const SUPABASE_FUNCTIONS_URL = 'https://etiwnesxjypdwhxqnqqq.supabase.co/functions/v1';
 const PRICE_IDS = {
@@ -5875,6 +6065,8 @@ export default function App(){
   const [newPlatformName,setNewPlatformName]=useState("");
   const [gasCheckLoading,setGasCheckLoading]=useState(false);
   const [gasCheckMsg,setGasCheckMsg]=useState(null);
+  const [posImporting,setPosImporting]=useState(false);
+  const [posImportMsg,setPosImportMsg]=useState(null);
   const [encaisseData,setEncaisseData]=useState({});
   const [encaisseConfig,setEncaisseConfig]=useState(DEFAULT_ENCAISSE_CONFIG);
   const [cfgEditCatId,setCfgEditCatId]=useState(null);
@@ -5888,6 +6080,7 @@ export default function App(){
   const [lockConfig,setLockConfig]=useState({enabled:false,pin:"",lockedUntil:null});
   const [appLocked,setAppLocked]=useState(false);
   const [locations,setLocations]=useState([]);
+  const [posCredentials,setPosCredentials]=useState({});
   const [activeLocationId,setActiveLocationId]=useState("all");
   const [royaltyConfig,setRoyaltyConfig]=useState({type:'percent',structure:'fixed',rate:6,adRate:2,frequency:'monthly',categoryId:null,produitId:null,tranches:[{from:0,to:50000,rate:6},{from:50000,to:null,rate:5}]});
   const [whiteLabelConfig,setWhiteLabelConfig]=useState({enabled:false,franchiseName:"",accentColor:"#f97316",footer:""});
@@ -5938,6 +6131,7 @@ export default function App(){
     try{const r18=await window.api.storage.get("dicann-fac-creditnotes");if(r18?.value)setFacCreditNotes(JSON.parse(r18.value))}catch(e){}
     try{const r19=await window.api.storage.get("dicann-fac-recurrents");if(r19?.value)setFacRecurrents(JSON.parse(r19.value))}catch(e){}
     try{const rIC=await window.api.storage.get("dicann-inv-config");if(rIC?.value){const p=JSON.parse(rIC.value);setInvConfig({...DEFAULT_INV_CONFIG,...p,items:p.items||DEFAULT_INV_CONFIG.items});}}catch(e){}
+    try{const rPOS=await window.api.pos?.getCredentials?.();if(rPOS)setPosCredentials(rPOS);}catch(e){}
     setLoading(false);
     // Load auto-backup info after a short delay (backup runs at t+3s)
     setTimeout(async()=>{try{const info=await window.api.backup.getInfo();setBackupInfo(info)}catch(_){}},4000);
@@ -5956,6 +6150,15 @@ export default function App(){
     if(window.api?.updater){
       window.api.updater.onAvailable(()=>setUpdateAvailable(true));
     }
+  },[]);
+
+  // POS OAuth callback listener
+  useEffect(()=>{
+    const cb=(data)=>{
+      if(data?.success&&data?.credentials)setPosCredentials(data.credentials);
+    };
+    window.api?.pos?.onOAuthResult?.(cb);
+    return()=>{ window.api?.pos?.offOAuthResult?.(cb); };
   },[]);
 
   // Keep liveDataRef in sync so audit callbacks can read old values synchronously
@@ -6305,6 +6508,7 @@ export default function App(){
             <div style={{display:"flex",alignItems:"center",gap:6}}>
               {saving&&<span style={{fontSize:9,color:"#f97316",fontFamily:"'DM Mono',monospace"}}>sauvegarde...</span>}
               {cloudUser&&syncStatus&&(()=>{const sc=syncStatus==="synced"?"#22c55e":syncStatus==="syncing"?"#f97316":"#ef4444";const si=syncStatus==="synced"?"✓":syncStatus==="syncing"?"⟳":"✗";return<span title={cloudUser.email} style={{fontSize:11,color:sc,fontWeight:700,cursor:"default",display:"flex",alignItems:"center",gap:2}}><span style={{display:"inline-block",animation:syncStatus==="syncing"?"biq-spin 1.2s linear infinite":"none"}}>☁</span>{si}</span>;})()}
+              {(()=>{const connectedPOS=Object.entries(posCredentials).find(([,v])=>v?.connected);if(!connectedPOS)return null;const posName=connectedPOS[0];const dot=<span style={{display:"inline-block",width:6,height:6,borderRadius:"50%",background:"#22c55e",marginLeft:2}}/>;return<span title={`POS: ${posName}`} style={{fontSize:11,color:t.textSub,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:1}} onClick={()=>{setActiveTab("config");setConfigSubTab("integrations");}}>📡{dot}</span>})()}
               {hasL&&<Pill ok label={T.entryMode}/>}
               <button onClick={()=>{saveAppMode(null)}} title="Changer de mode" style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textMuted,fontSize:10,padding:"3px 8px",cursor:"pointer",fontWeight:600}}>
                 ⇄ {T.modeToggle}
@@ -6379,9 +6583,35 @@ export default function App(){
             </div>
 
             <div>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7,flexWrap:"wrap",gap:4}}>
                 <span style={{fontSize:13.5,fontWeight:700,color:t.text}}>{T.dailyCaisses}</span>
-                <button onClick={()=>addCash(selectedDate)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.18)",background:"rgba(249,115,22,0.06)",color:"#f97316",cursor:"pointer",fontWeight:600}}>{T.dailyNewCaisse}</button>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  {canUse('posIntegration')&&(()=>{const connectedPOS=Object.entries(posCredentials).find(([,v])=>v?.connected);if(!connectedPOS)return null;const [posType,posCred]=connectedPOS;return(<button onClick={async()=>{
+                    if(posImporting)return;
+                    setPosImporting(true);setPosImportMsg(null);
+                    try{
+                      const result=await window.api.pos.fetchDailySales(posType,selectedDate);
+                      if(result?.error){setPosImportMsg({err:result.error||T.posImportError});setPosImporting(false);return;}
+                      const sales=(result.registers||[]).filter(s=>s.posVentes>0);
+                      if(sales.length===0){setPosImportMsg({err:T.posNoSales});setPosImporting(false);return;}
+                      if(window.confirm(T.posOverwriteWarn)){
+                        const newCashes=[...cashes];
+                        sales.forEach((s,idx)=>{
+                          if(idx<newCashes.length){
+                            const upd={...newCashes[idx],posVentes:s.posVentes,posTPS:s.posTPS,posTVQ:s.posTVQ,posLivraisons:s.posLivraisons||0};
+                            newCashes[idx]=upd;
+                          }
+                        });
+                        newCashes.forEach((c,i)=>updCash(selectedDate,i,c));
+                        setPosImportMsg({ok:T.posImported(sales.length,posCred.merchantName||posType)});
+                      }
+                    }catch(e){setPosImportMsg({err:T.posImportError});}
+                    setPosImporting(false);
+                    setTimeout(()=>setPosImportMsg(null),4000);
+                  }} disabled={posImporting} style={{fontSize:10.5,padding:"3px 10px",borderRadius:5,border:"1px solid rgba(56,189,248,0.3)",background:"rgba(56,189,248,0.06)",color:"#38bdf8",cursor:posImporting?"default":"pointer",fontWeight:600,whiteSpace:"nowrap",opacity:posImporting?0.65:1}}>{posImporting?T.posImporting:T.posImport(posCred.merchantName||posType)}</button>)})()}
+                  {posImportMsg&&(posImportMsg.ok?<span style={{fontSize:10,color:"#22c55e",fontWeight:600}}>{posImportMsg.ok}</span>:<span style={{fontSize:10,color:"#ef4444",fontWeight:600}}>{posImportMsg.err}</span>)}
+                  <button onClick={()=>addCash(selectedDate)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.18)",background:"rgba(249,115,22,0.06)",color:"#f97316",cursor:"pointer",fontWeight:600}}>{T.dailyNewCaisse}</button>
+                </div>
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 {cashes.map((c,i)=>(<CashBlock key={`${selectedDate}-${i}-${cashes.length}`} cash={c} index={i} onChange={c=>updCash(selectedDate,i,c)} onRemove={()=>rmCash(selectedDate,i)} canRemove={cashes.length>1} collapsed={!!collapseMap[`${selectedDate}-${i}`]} onToggle={()=>togC(i)} roster={roster}/>))}
@@ -6813,16 +7043,6 @@ export default function App(){
               <GeoSearch apiConfig={apiConfig} saveApiCfg={nc=>{setApiConfig(nc);saveApiCfg(nc);}}/>
             </div>
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.cfgAPIIntegrations}</span>
-              {[["auphanKey","Auphan POS",T.cfgAuphanKey,T.cfgAuphanHint],["gasKey",T.cfgGasPrice,"URL...",T.cfgGasHint]].map(([key,label,ph,note])=>(
-                <div key={key} style={{marginBottom:8}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}><span style={{fontSize:12,fontWeight:600,color:t.text}}>{label}</span><Pill ok={apiConfig[key]?.length>0} label={apiConfig[key]?.length>0?T.statusConfigured:T.statusNotConfigured}/></div>
-                  <input value={apiConfig[key]||""} onChange={e=>{const nc={...apiConfig,[key]:e.target.value};setApiConfig(nc);saveApiCfg(nc)}} placeholder={ph} style={{...inputStyle,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
-                  <div style={{fontSize:10,color:t.textDim,marginTop:2}}>{note}</div>
-                </div>
-              ))}
-            </div>
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
                 <span style={{fontSize:13,fontWeight:700,color:t.text}}>{T.cfgEmailService}</span>
                 {canUse("directEmailSend")?<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"1px 6px",borderRadius:6}}>PRO</span>:<span style={{fontSize:9,color:"#6b7280"}}>Pro</span>}
@@ -6855,6 +7075,8 @@ export default function App(){
                   :<span style={{fontSize:11,color:"#ef4444",fontWeight:600}}>✗ {resendTestStatus.err}</span>)}
               </div>
             </div>
+            {/* POS Integration */}
+            <POSIntegrationSection posCredentials={posCredentials} setPosCredentials={setPosCredentials} t={t} T={T} canUse={canUse} showUpgradePrompt={showUpgradePrompt}/>
             </div>)}
 
             {/* 💾 DONNÉES */}

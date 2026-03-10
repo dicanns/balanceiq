@@ -38,4 +38,14 @@ contextBridge.exposeInMainWorld('api', {
   shell: {
     openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   },
+  pos: {
+    getCredentials:   ()                          => ipcRenderer.invoke('pos:getCredentials'),
+    startOAuth:       (posType, shopDomain)       => ipcRenderer.invoke('pos:startOAuth', posType, shopDomain),
+    saveManualToken:  (posType, token, shopDomain)=> ipcRenderer.invoke('pos:saveManualToken', posType, token, shopDomain),
+    disconnect:       (posType)                   => ipcRenderer.invoke('pos:disconnect', posType),
+    testConnection:   (posType)                   => ipcRenderer.invoke('pos:testConnection', posType),
+    fetchDailySales:  (posType, date)             => ipcRenderer.invoke('pos:fetchDailySales', posType, date),
+    onOAuthResult:    (cb) => ipcRenderer.on('pos:oauth-result', (_e, data) => cb(data)),
+    offOAuthResult:   (cb) => ipcRenderer.removeListener('pos:oauth-result', cb),
+  },
 });
