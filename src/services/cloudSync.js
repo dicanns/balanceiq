@@ -69,42 +69,23 @@ async function _loadOrgAndPlan() {
 }
 
 // ── SIGN UP ────────────────────────────────────────────────────────────────
+// The DB trigger handle_new_user() creates the organization and user records
+// automatically on auth.users insert. We just call signUp and return.
+// The app should prompt email confirmation, then signIn to load org data.
 export async function signUp({ email, password, fullName, orgName }) {
   setStatus('syncing');
   const { data: authData, error: authErr } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { full_name: fullName } },
+    options: { data: { full_name: fullName || orgName || email } },
   });
   if (authErr) { setStatus('error'); throw authErr; }
   _session = authData.session;
-
-  const { data: org, error: orgErr } = await supabase
-    .from('organizations')
-    .insert({ name: orgName || fullName || email, plan: 'free' })
-    .select()
-    .single();
-  if (orgErr) { setStatus('error'); throw orgErr; }
-  _orgId = org.id;
-
-  await supabase.from('users').insert({
-    id: authData.user.id,
-    org_id: _orgId,
-    email,
-    full_name: fullName,
-    role: 'owner',
-  });
-
-  const { data: loc } = await supabase
-    .from('locations')
-    .insert({ org_id: _orgId, name: orgName || 'Mon restaurant' })
-    .select()
-    .single();
-  _locationId = loc?.id || null;
-
   _plan = 'free';
-  setStatus('synced');
-  return { session: _session, plan: _plan, orgId: _orgId, locationId: _locationId };
+  setStatus(null);
+  // Return without org/location — trigger creates them server-side.
+  // User must confirm email then sign in.
+  return { session: _session, plan: _plan, orgId: null, locationId: null };
 }
 
 // ── SIGN IN ────────────────────────────────────────────────────────────────
@@ -130,7 +111,6 @@ export async function signOut() {
 // ── PUSH DATA ──────────────────────────────────────────────────────────────
 export function schedulePush(key, value) {
   if (!_session || !_orgId || !_locationId) return;
-  if (_plan === 'free') return;
 
   _offlineQueue = _offlineQueue.filter(q => q.key !== key);
   _offlineQueue.push({ key, value });
