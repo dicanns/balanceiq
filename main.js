@@ -877,6 +877,9 @@ app.setAsDefaultProtocolClient('balanceiq');
 app.on('open-url', (event, url) => {
   event.preventDefault();
   if (url.startsWith('balanceiq://oauth/')) handlePosOAuthCallback(url);
+  if (url.startsWith('balanceiq://subscription-success') || url.startsWith('balanceiq://portal-return')) {
+    if (mainWindow) mainWindow.webContents.send('subscription:planRefresh');
+  }
 });
 
 // Windows: deep link arrives as second argv when app is already running
@@ -884,8 +887,11 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', (_event, argv) => {
-    const url = argv.find(a => a.startsWith('balanceiq://oauth/'));
-    if (url) handlePosOAuthCallback(url);
+    const url = argv.find(a => a.startsWith('balanceiq://'));
+    if (url?.startsWith('balanceiq://oauth/')) handlePosOAuthCallback(url);
+    if (url?.startsWith('balanceiq://subscription-success') || url?.startsWith('balanceiq://portal-return')) {
+      if (mainWindow) mainWindow.webContents.send('subscription:planRefresh');
+    }
     if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.focus(); }
   });
 }
