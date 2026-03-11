@@ -48,4 +48,14 @@ contextBridge.exposeInMainWorld('api', {
     onOAuthResult:    (cb) => ipcRenderer.on('pos:oauth-result', (_e, data) => cb(data)),
     offOAuthResult:   (cb) => ipcRenderer.removeListener('pos:oauth-result', cb),
   },
+  ocr: {
+    selectImage: () => ipcRenderer.invoke('ocr:selectImage'),
+  },
+  delivery: {
+    watchDownloads: () => ipcRenderer.invoke('delivery:watchDownloads'),
+    stopWatch:      () => ipcRenderer.invoke('delivery:stopWatch'),
+    openPortal:     (platform) => ipcRenderer.invoke('delivery:openPortal', platform),
+    onFileDetected: (cb) => ipcRenderer.on('delivery:file-detected', (_e, data) => cb(data)),
+    offFileDetected:(cb) => ipcRenderer.removeListener('delivery:file-detected', cb),
+  },
 });

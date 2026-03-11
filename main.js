@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, net, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, net, dialog, shell, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -670,14 +670,46 @@ ipcMain.handle('pos:fetchDailySales', async (_event, posType, dateStr) => {
         if (loc.id) params.set('location_id', loc.id);
         const res = await netRequest({ method: 'GET', url: `${posBaseUrl('square')}/v2/payments?${params}`, headers: { Authorization: `Bearer ${cred.accessToken}`, 'Square-Version': '2024-02-28' } });
         const payments = (res.body?.payments || []).filter(p => p.status === 'COMPLETED');
-        let totalCents = 0, deliveryCents = 0;
+        let totalCents = 0, deliveryCents = 0, tipCents = 0;
+        let pVisa = 0, pMC = 0, pDebit = 0, pAmex = 0, pCash = 0, pOther = 0;
+        const hourlyMap = {};
         for (const p of payments) {
           const amt = p.amount_money?.amount ?? 0;
-          totalCents += amt;
-          if (p.source_type === 'EXTERNAL' && p.external_details?.type === 'DELIVERY') deliveryCents += amt;
+          const tip = p.tip_money?.amount ?? 0;
+          const net = amt - tip;
+          totalCents += net;
+          tipCents += tip;
+          if (p.source_type === 'EXTERNAL' && p.external_details?.type === 'DELIVERY') deliveryCents += net;
+          if (p.source_type === 'CASH') pCash += net;
+          else if (p.source_type === 'CARD') {
+            const brand = p.card_details?.card?.card_brand || '';
+            if (brand === 'VISA') pVisa += net;
+            else if (brand === 'MASTERCARD') pMC += net;
+            else if (brand === 'INTERAC') pDebit += net;
+            else if (brand === 'AMERICAN_EXPRESS') pAmex += net;
+            else pOther += net;
+          } else pOther += net;
+          const hour = new Date(p.created_at).getHours();
+          if (!hourlyMap[hour]) hourlyMap[hour] = { sales: 0, transactions: 0 };
+          hourlyMap[hour].sales += net;
+          hourlyMap[hour].transactions++;
         }
         const posVentes = totalCents / 100;
-        registers.push({ name: loc.name || `Caisse ${registers.length + 1}`, posVentes, posTPS: Math.round(posVentes * 0.05 * 100) / 100, posTVQ: Math.round(posVentes * 0.09975 * 100) / 100, posLivraisons: deliveryCents / 100 });
+        const hourlySales = Object.entries(hourlyMap)
+          .map(([h, d]) => ({ hour: parseInt(h), sales: Math.round(d.sales) / 100, transactions: d.transactions }))
+          .sort((a, b) => a.hour - b.hour);
+        registers.push({
+          name: loc.name || `Caisse ${registers.length + 1}`,
+          grossSales: posVentes, discounts: 0, refunds: 0, netSales: posVentes,
+          taxableSales: posVentes, nonTaxableSales: 0,
+          posVentes, posTPS: Math.round(posVentes * 0.05 * 100) / 100, posTVQ: Math.round(posVentes * 0.09975 * 100) / 100,
+          payments: { visa: pVisa/100, mastercard: pMC/100, debit: pDebit/100, amex: pAmex/100, cash: pCash/100, other: pOther/100 },
+          tips: tipCents / 100,
+          deliveryOrders: { doordash: 0, ubereats: 0, skip: 0, other: deliveryCents / 100 },
+          transactionCount: payments.length,
+          hourlySales,
+          posLivraisons: deliveryCents / 100,
+        });
       }
       return { registers };
     }
@@ -686,22 +718,156 @@ ipcMain.handle('pos:fetchDailySales', async (_event, posType, dateStr) => {
       const end   = new Date(`${dateStr}T23:59:59-05:00`).getTime();
       const res = await netRequest({ method: 'GET', url: `${posBaseUrl('clover')}/v3/merchants/${cred.merchantId}/orders?filter=createdTime>=${start}&limit=200`, headers: { Authorization: `Bearer ${cred.accessToken}` } });
       const orders = (res.body?.elements || []).filter(o => o.state === 'locked');
-      let totalCents = 0;
-      for (const o of orders) totalCents += ((o.total ?? 0) - (o.taxAmount ?? 0));
+      let totalCents = 0, tipCents = 0, discountCents = 0;
+      const hourlyMap = {};
+      for (const o of orders) {
+        const net = (o.total ?? 0) - (o.taxAmount ?? 0) - (o.tipAmount ?? 0);
+        totalCents += net;
+        tipCents += (o.tipAmount ?? 0);
+        discountCents += (o.discountAmount ?? 0);
+        const hour = new Date(o.createdTime).getHours();
+        if (!hourlyMap[hour]) hourlyMap[hour] = { sales: 0, transactions: 0 };
+        hourlyMap[hour].sales += net;
+        hourlyMap[hour].transactions++;
+      }
       const posVentes = totalCents / 100;
-      return { registers: [{ name: cred.merchantName || 'Clover', posVentes, posTPS: Math.round(posVentes * 0.05 * 100) / 100, posTVQ: Math.round(posVentes * 0.09975 * 100) / 100, posLivraisons: 0 }] };
+      const hourlySales = Object.entries(hourlyMap)
+        .map(([h, d]) => ({ hour: parseInt(h), sales: Math.round(d.sales) / 100, transactions: d.transactions }))
+        .sort((a, b) => a.hour - b.hour);
+      return { registers: [{
+        name: cred.merchantName || 'Clover',
+        grossSales: (totalCents + discountCents) / 100, discounts: discountCents / 100, refunds: 0, netSales: posVentes,
+        taxableSales: posVentes, nonTaxableSales: 0,
+        posVentes, posTPS: Math.round(posVentes * 0.05 * 100) / 100, posTVQ: Math.round(posVentes * 0.09975 * 100) / 100,
+        payments: { visa: 0, mastercard: 0, debit: 0, amex: 0, cash: 0, other: posVentes },
+        tips: tipCents / 100,
+        deliveryOrders: { doordash: 0, ubereats: 0, skip: 0, other: 0 },
+        transactionCount: orders.length,
+        hourlySales,
+        posLivraisons: 0,
+      }]};
     }
     if (posType === 'shopify') {
       const params = new URLSearchParams({ status: 'any', financial_status: 'paid', source_name: 'pos', created_at_min: `${dateStr}T00:00:00-05:00`, created_at_max: `${dateStr}T23:59:59-05:00`, limit: '250' });
       const res = await netRequest({ method: 'GET', url: `https://${cred.shopDomain}/admin/api/2024-01/orders.json?${params}`, headers: { 'X-Shopify-Access-Token': cred.accessToken } });
       const orders = res.body?.orders || [];
-      let totalNet = 0;
-      for (const o of orders) totalNet += parseFloat(o.subtotal_price ?? 0);
+      let totalNet = 0, tipCents = 0, discountCents = 0, nonTaxable = 0;
+      const hourlyMap = {};
+      for (const o of orders) {
+        const sub = parseFloat(o.subtotal_price ?? 0);
+        totalNet += sub;
+        tipCents += Math.round(parseFloat(o.total_tip_received ?? 0) * 100);
+        discountCents += Math.round(parseFloat(o.total_discounts ?? 0) * 100);
+        for (const item of (o.line_items || [])) {
+          if (!item.taxable) nonTaxable += parseFloat(item.price ?? 0) * (parseInt(item.quantity) || 1);
+        }
+        const hour = new Date(o.created_at).getHours();
+        if (!hourlyMap[hour]) hourlyMap[hour] = { sales: 0, transactions: 0 };
+        hourlyMap[hour].sales += sub;
+        hourlyMap[hour].transactions++;
+      }
       const posVentes = Math.round(totalNet * 100) / 100;
-      return { registers: [{ name: cred.shopName || 'Shopify POS', posVentes, posTPS: Math.round(posVentes * 0.05 * 100) / 100, posTVQ: Math.round(posVentes * 0.09975 * 100) / 100, posLivraisons: 0 }] };
+      const hourlySales = Object.entries(hourlyMap)
+        .map(([h, d]) => ({ hour: parseInt(h), sales: Math.round(d.sales * 100) / 100, transactions: d.transactions }))
+        .sort((a, b) => a.hour - b.hour);
+      return { registers: [{
+        name: cred.shopName || 'Shopify POS',
+        grossSales: posVentes + discountCents/100, discounts: discountCents/100, refunds: 0, netSales: posVentes,
+        taxableSales: posVentes - Math.round(nonTaxable * 100) / 100, nonTaxableSales: Math.round(nonTaxable * 100) / 100,
+        posVentes, posTPS: Math.round(posVentes * 0.05 * 100) / 100, posTVQ: Math.round(posVentes * 0.09975 * 100) / 100,
+        payments: { visa: 0, mastercard: 0, debit: 0, amex: 0, cash: 0, other: posVentes },
+        tips: tipCents / 100,
+        deliveryOrders: { doordash: 0, ubereats: 0, skip: 0, other: 0 },
+        transactionCount: orders.length,
+        hourlySales,
+        posLivraisons: 0,
+      }]};
     }
   } catch (err) { return { error: err.message }; }
   return { error: 'Unknown POS type' };
+});
+
+// ── DELIVERY PAYOUT WATCHER ────────────────────────────────────────────────
+const DELIVERY_PATTERNS = {
+  doordash: [/doordash/i, /door.dash/i, /dd.payout/i, /merchant.payment/i],
+  ubereats: [/uber.eats/i, /ubereats/i, /ue.payout/i, /eats.report/i],
+  skip: [/skipthedishes/i, /skip.dishes/i, /skip.payout/i, /skip.report/i],
+};
+function detectDeliveryPlatform(filename) {
+  for (const [platform, patterns] of Object.entries(DELIVERY_PATTERNS)) {
+    if (patterns.some(p => p.test(filename))) return platform;
+  }
+  return null;
+}
+let deliveryWatcher = null;
+
+ipcMain.handle('delivery:watchDownloads', () => {
+  if (deliveryWatcher) return { ok: true };
+  const downloadsDir = app.getPath('downloads');
+  try {
+    deliveryWatcher = fs.watch(downloadsDir, (event, filename) => {
+      if (!filename || event !== 'rename') return;
+      if (!filename.toLowerCase().endsWith('.csv')) return;
+      const platform = detectDeliveryPlatform(filename);
+      if (!platform) return;
+      const fullPath = path.join(downloadsDir, filename);
+      setTimeout(() => {
+        try {
+          if (!fs.existsSync(fullPath)) return;
+          const stat = fs.statSync(fullPath);
+          if (stat.size < 50) return;
+          const content = fs.readFileSync(fullPath, 'utf-8');
+          mainWindow?.webContents.send('delivery:file-detected', { platform, fileName: filename, content });
+        } catch {}
+      }, 1200);
+    });
+    return { ok: true, dir: downloadsDir };
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+
+ipcMain.handle('delivery:stopWatch', () => {
+  if (deliveryWatcher) { deliveryWatcher.close(); deliveryWatcher = null; }
+  return { ok: true };
+});
+
+ipcMain.handle('ocr:selectImage', async () => {
+  const result = await dialog.showOpenDialog({
+    title: 'Sélectionner une facture',
+    filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp'] }],
+    properties: ['openFile'],
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+  const filePath = result.filePaths[0];
+
+  // Load image and resize to max 1800px on longest side (plenty for OCR)
+  let img = nativeImage.createFromPath(filePath);
+  const { width, height } = img.getSize();
+  const MAX_DIM = 1800;
+  if (width > MAX_DIM || height > MAX_DIM) {
+    const scale = MAX_DIM / Math.max(width, height);
+    img = img.resize({ width: Math.round(width * scale), height: Math.round(height * scale) });
+  }
+
+  // Always output JPEG at quality 85 — consistent and compact
+  const jpeg = img.toJPEG(85);
+  return {
+    base64: jpeg.toString('base64'),
+    mimeType: 'image/jpeg',
+    fileName: path.basename(filePath),
+  };
+});
+
+ipcMain.handle('delivery:openPortal', (_event, platform) => {
+  const urls = {
+    doordash: 'https://www.doordash.com/merchant/financials/payouts',
+    ubereats: 'https://merchants.ubereats.com/manager/reports',
+    skip: 'https://restaurants.skipthedishes.com/',
+  };
+  const url = urls[platform];
+  if (url) shell.openExternal(url);
+  return { ok: !!url };
 });
 
 // Register balanceiq:// as protocol handler for OAuth callbacks
