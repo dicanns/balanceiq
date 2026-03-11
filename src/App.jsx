@@ -131,11 +131,19 @@ const DEFAULT_INV_CONFIG={
     {id:"hot",nom:"Hot Dog",unite:"douzaines",seuil:5,intraDayEnabled:true,intraDayTimes:[14,17,19,20]},
   ]
 };
-const EXPENSE_ITEMS=[["hydro","Hydro"],["gazNat","Gaz Nat/Prop"],["allocAuto","Alloc. d'auto"],["depenseAuto","Dépense Auto"],["cell","Cell"],["telInternet","Tel/Internet"],["fraisProf","Frais Prof"],["assurances","Assurances"],["adPromo","Ad & Promo"],["dons","Dons"],["taxMuni","Tax Muni"],["permisGov","Permis Gov't"],["loyer","Loyer"],["csst","CSST"],["reparations","Réparations"],["equipDecor","Équipement/Décor"]];
+const DEFAULT_EXPENSE_ITEMS=[{id:"hydro",label:"Hydro"},{id:"gazNat",label:"Gaz Nat/Prop"},{id:"allocAuto",label:"Alloc. d'auto"},{id:"depenseAuto",label:"Dépense Auto"},{id:"cell",label:"Cell"},{id:"telInternet",label:"Tel/Internet"},{id:"fraisProf",label:"Frais Prof"},{id:"assurances",label:"Assurances"},{id:"adPromo",label:"Ad & Promo"},{id:"dons",label:"Dons"},{id:"taxMuni",label:"Tax Muni"},{id:"permisGov",label:"Permis Gov't"},{id:"loyer",label:"Loyer"},{id:"csst",label:"CSST"},{id:"reparations",label:"Réparations"},{id:"equipDecor",label:"Équipement/Décor"}];
+const DEFAULT_GL_ACCOUNTS={
+  revenue:"4000",tps:"2310",tvq:"2315",
+  ar:"1100",bank:"1000",fp:"5100",labour:"5200",
+  hydro:"6100",gazNat:"6110",loyer:"6120",csst:"6130",
+  telephone:"6140",internet:"6150",assurances:"6160",
+  entretien:"6170",fournitures:"6180",publicite:"6190",
+  transport:"6200",autre:"6210",
+};
 const BLANK_CASH={cashierId:"",posVentes:null,posTPS:null,posTVQ:null,posLivraisons:null,float:null,interac:null,livraisons:null,deposits:null,finalCash:null};
 const BLANK_EMP={name:"",hours:null,wage:null};
 const BLANK_DAY={cashes:[{...BLANK_CASH}],employees:[],hamEnd:null,hamReceived:null,hamStartOverride:null,hotEnd:null,hotReceived:null,hotStartOverride:null,weather:"",tempC:null,gas:null,notes:"",events:""};
-const OWNER_EMAIL="info@dicanns.ca";
+// OWNER_EMAIL removed — use apiConfig.reportEmail (configurable in Settings → Application)
 const DAILY_FIELD_LABELS={posVentes:"Ventes POS",posTPS:"TPS POS",posTVQ:"TVQ POS",posLivraisons:"Livraisons POS",float:"Float",interac:"Interac",livraisons:"Livraisons caisse",deposits:"Dépôts",finalCash:"Cash final",hamEnd:"Hamburgers — fin",hotEnd:"Hot dogs — fin",hamReceived:"Hamburgers — reçus",hotReceived:"Hot dogs — reçus"};
 const WMO_FR=code=>{if(code===0)return"Ensoleillé";if(code<=2)return"Peu nuageux";if(code===3)return"Couvert";if(code<=48)return"Brouillard";if(code<=55)return"Bruine";if(code<=65)return"Pluie";if(code<=75)return"Neige";if(code<=82)return"Averses";if(code<=86)return"Averses de neige";if(code<=99)return"Orageux";return"Variable"};
 const WMO_DESC=(code,T_)=>{const k=code===0?"wSunny":code<=2?"wPartlyCloudy":code===3?"wOvercast":code<=48?"wFog":code<=55?"wDrizzle":code<=65?"wRain":code<=75?"wSnow":code<=82?"wShowers":code<=86?"wSnowShowers":code<=99?"wThunderstorm":"wVariable";return T_?.[k]||WMO_FR(code);};
@@ -236,7 +244,7 @@ function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,ro
   const mc=cash.float!=null&&cash.deposits!=null&&cash.finalCash!=null;
   const manT=mc?(cash.interac||0)+(cash.livraisons||0)+(cash.deposits||0)+(cash.finalCash||0)-(cash.float||0):null;
   const canR=posOk&&mc;const ecart=canR?manT-posT:null;const bal=canR&&Math.abs(ecart)<=1;
-  const rN=roster.find(r=>r.id===cash.cashierId)?.name;const label=rN||`Caisse ${index+1}`;
+  const rN=roster.find(r=>r.id===cash.cashierId)?.name;const label=rN||(T.cashRegisterLabel?`${T.cashRegisterLabel} ${index+1}`:`Caisse ${index+1}`);
   const fc=[cash.posVentes,cash.float,cash.interac,cash.deposits,cash.finalCash].filter(v=>v!=null).length;
   const outerBorder=bal?t.reconBalBorder:canR&&!bal?t.reconErrBorder:t.cardBorder;
   const headerBg=bal?t.reconBalBg:t.cashHeaderBg;
@@ -246,7 +254,7 @@ function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,ro
       <div style={{display:"flex",gap:4,alignItems:"center"}} onClick={e=>e.stopPropagation()}>{manT!=null&&<span style={{fontSize:11,fontFamily:"'DM Mono',monospace",color:t.textSub,fontWeight:600}}>{fmt(manT)}</span>}{canRemove&&<button onClick={onRemove} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:4,color:"#ef4444",fontSize:10,padding:"2px 6px",cursor:"pointer",fontWeight:600}}>✕</button>}</div>
     </div>
     {!collapsed&&(<div style={{padding:11}}>
-      <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:8,paddingBottom:7,borderBottom:`1px solid ${t.innerBorder}`}}><span style={{fontSize:11}}>👤</span><select value={cash.cashierId||""} onChange={e=>onChange({...cash,cashierId:e.target.value})} style={{flex:1,background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:12,padding:"4px 7px",outline:"none"}}><option value="" style={{background:t.optionBg}}>— Sélectionner —</option>{roster.map(r=>(<option key={r.id} value={r.id} style={{background:t.optionBg}}>{r.name}</option>))}</select></div>
+      <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:8,paddingBottom:7,borderBottom:`1px solid ${t.innerBorder}`}}><span style={{fontSize:11}}>👤</span><select value={cash.cashierId||""} onChange={e=>onChange({...cash,cashierId:e.target.value})} style={{flex:1,background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:12,padding:"4px 7px",outline:"none"}}><option value="" style={{background:t.optionBg}}>— {T.select} —</option>{roster.map(r=>(<option key={r.id} value={r.id} style={{background:t.optionBg}}>{r.name}</option>))}</select></div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
         <div>
           <div style={{fontSize:9.5,color:t.posColor,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,marginBottom:4}}><span style={{width:8,height:8,borderRadius:2,background:t.posColor,display:"inline-block",marginRight:4}}/> {T.dailyLecturePOS}</div>
@@ -335,9 +343,21 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
   const [preview,setPreview]=useState([]);
   const [conflictItems,setConflictItems]=useState([]);
   const [importMsg,setImportMsg]=useState(null);
+  const [detectedFile,setDetectedFile]=useState(null); // {platform, fileName, content}
+  const [lastImports,setLastImports]=useState(()=>{try{return JSON.parse(localStorage.getItem('biq-last-imports')||'{}')}catch{return{}}});
+  const [watchActive,setWatchActive]=useState(false);
+  const [showWatchInfo,setShowWatchInfo]=useState(false);
+  const [portalIntro,setPortalIntro]=useState(null); // {platformId, url} — pending open after intro
+  const portalIntroSeen=useRef(!!localStorage.getItem('biq-portal-intro-seen'));
   const fileRef=useRef(null);
   const pidRef=useRef(null);
   const csvMaps=apiConfig?.csvColumnMaps||{};
+  useEffect(()=>{
+    window.api.delivery?.watchDownloads?.().then(r=>setWatchActive(!!r?.ok)).catch(()=>{});
+    const cb=(data)=>setDetectedFile(data);
+    window.api.delivery?.onFileDetected?.(cb);
+    return()=>{window.api.delivery?.offFileDetected?.(cb);};
+  },[]);
   const platData=raw.platformLivraisons||{};
   const getPD=pid=>platData[pid]||{ventes:null,depot:null};
   const updPD=(pid,field,val)=>{const cur=platData[pid]||{ventes:null,depot:null};upd(selectedDate,"platformLivraisons",{...platData,[pid]:{...cur,[field]:val}});};
@@ -383,6 +403,9 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
     items.forEach(({date,amount})=>{const dp=liveData[date]?.platformLivraisons||{};const pd=dp[pid]||{ventes:null,depot:null};upd(date,"platformLivraisons",{...dp,[pid]:{...pd,depot:amount}});});
     const n=items.length;
     setImportMsg(`✓ ${n} dépôt${n!==1?'s':''} importé${n!==1?'s':''} pour ${pName}`);
+    const now=new Date().toLocaleDateString('fr-CA');
+    const pid2=pidRef.current;
+    setLastImports(prev=>{const next={...prev,[pid2]:now};localStorage.setItem('biq-last-imports',JSON.stringify(next));return next;});
     setImportStep('done');setTimeout(()=>{setImportStep('idle');setImportPid(null);setImportMsg(null);},4000);
   };
   const startImport=()=>{
@@ -404,14 +427,56 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
 
   return(<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,overflow:'hidden'}}>
     <input ref={fileRef} type="file" accept=".csv" style={{display:'none'}} onChange={handleFile}/>
+    {detectedFile&&(
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"8px 12px",background:"rgba(249,115,22,0.1)",borderBottom:`1px solid rgba(249,115,22,0.25)`}}>
+        <div style={{display:"flex",alignItems:"center",gap:7}}>
+          <span style={{fontSize:16}}>📥</span>
+          <div>
+            <div style={{fontSize:12,fontWeight:700,color:"#f97316"}}>{T.delivFileDetected(platforms.find(p=>p.id===detectedFile.platform)?.name||detectedFile.platform)}</div>
+            <div style={{fontSize:10,color:t.textMuted}}>{detectedFile.fileName}</div>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:6}}>
+          <button onClick={()=>{
+            pidRef.current=detectedFile.platform;
+            setImportPid(detectedFile.platform);
+            setCsvData(null);setPreview([]);setConflictItems([]);setImportMsg(null);setImportStep('idle');
+            const {headers,rows}=parseCSVText(detectedFile.content);
+            if(!headers.length){setDetectedFile(null);return;}
+            setCsvData({headers,rows});
+            const pid=detectedFile.platform;
+            const saved=csvMaps[pid];const auto=autoDetectCols(headers,pid);
+            const dc=saved?.dateCol&&headers.includes(saved.dateCol)?saved.dateCol:auto.dateCol;
+            const ac=saved?.amountCol&&headers.includes(saved.amountCol)?saved.amountCol:auto.amountCol;
+            setColMap({dateCol:dc,amountCol:ac});
+            if(dc&&ac){doBuildPreview({headers,rows},dc,ac);}else{setImportStep('mapping');}
+            setDetectedFile(null);
+          }} style={{padding:"5px 12px",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>{T.delivImportNow}</button>
+          <button onClick={()=>setDetectedFile(null)} style={{padding:"5px 10px",borderRadius:5,border:`1px solid rgba(249,115,22,0.3)`,background:"none",color:"#f97316",cursor:"pointer",fontSize:11}}>{T.delivIgnore}</button>
+        </div>
+      </div>
+    )}
     {/* Header */}
     <div onClick={()=>setCollapsed(!collapsed)} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'9px 11px',cursor:'pointer',background:t.cashHeaderBg,borderBottom:collapsed?'none':`1px solid ${t.innerBorder}`,userSelect:'none'}}>
       <div style={{display:'flex',alignItems:'center',gap:6}}>
         <span style={{fontSize:12,color:collapsed?t.textMuted:'#f97316',transform:collapsed?'rotate(-90deg)':'rotate(0deg)',display:'inline-block'}}>▾</span>
         <span style={{fontSize:13,fontWeight:700,color:t.text}}>📱 {T.livTitle2}</span>
       </div>
-      <span style={{fontSize:10,color:t.textMuted,fontStyle:'italic'}}>{T.livInfoOnly2}</span>
+      <div style={{display:'flex',alignItems:'center',gap:8}}>
+        {watchActive&&(
+          <div style={{display:'flex',alignItems:'center',gap:4}} onClick={e=>{e.stopPropagation();setShowWatchInfo(v=>!v);}}>
+            <span style={{width:6,height:6,borderRadius:'50%',background:'#22c55e',display:'inline-block',boxShadow:'0 0 4px #22c55e'}}/>
+            <span style={{fontSize:9,color:'#22c55e',fontWeight:600,cursor:'pointer'}}>{T.delivWatching} <span style={{opacity:0.7}}>(?)</span></span>
+          </div>
+        )}
+        <span style={{fontSize:10,color:t.textMuted,fontStyle:'italic'}}>{T.livInfoOnly2}</span>
+      </div>
     </div>
+    {showWatchInfo&&(
+      <div style={{padding:'8px 12px',background:'rgba(34,197,94,0.06)',borderBottom:`1px solid rgba(34,197,94,0.15)`,fontSize:10,color:t.textSub,lineHeight:1.5}}>
+        {T.delivWatchHow}
+      </div>
+    )}
     {!collapsed&&(<div style={{padding:11}}>
       <div style={{fontSize:10,color:t.textMuted,marginBottom:8,fontStyle:'italic'}}>{T.livInfoOnly}</div>
 
@@ -424,7 +489,7 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
 
         {/* Step: column mapping */}
         {importStep==='mapping'&&csvData&&(<div>
-          <div style={{fontSize:11,color:t.textSub,marginBottom:6}}>Colonnes non détectées automatiquement. Sélectionner :</div>
+          <div style={{fontSize:11,color:t.textSub,marginBottom:6}}>{T.csvSelectColumns}</div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:8}}>
             <div>
               <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Colonne date</div>
@@ -506,8 +571,14 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
         const active=importPid===platform.id&&importStep!=='idle'&&importStep!=='done';
         return(<div key={platform.id} style={{marginBottom:8,padding:10,borderRadius:7,background:t.section,border:`1px solid ${active?'rgba(56,189,248,0.35)':t.sectionBorder}`}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-            <span style={{fontSize:12,fontWeight:700,color:t.text}}>{platform.emoji} {platform.name}</span>
-            <button onClick={e=>{e.stopPropagation();openImport(platform.id);}} style={{fontSize:9.5,padding:'2px 8px',borderRadius:4,border:'1px solid rgba(56,189,248,0.2)',background:'rgba(56,189,248,0.06)',color:'#38bdf8',cursor:'pointer',fontWeight:600,whiteSpace:'nowrap'}}>{T.livImportStatement}</button>
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              <span style={{fontSize:12,fontWeight:700,color:t.text}}>{platform.emoji} {platform.name}</span>
+              {lastImports[platform.id]&&<span style={{fontSize:9,color:t.textMuted}}>{T.delivLastImport(lastImports[platform.id])}</span>}
+            </div>
+            <div style={{display:'flex',gap:5,alignItems:'center'}}>
+              <button onClick={()=>{const urls={doordash:'https://www.doordash.com/merchant/financials/payouts',ubereats:'https://merchants.ubereats.com/manager/reports',skip:'https://restaurants.skipthedishes.com/'};const u=urls[platform.id];if(!u)return;if(portalIntroSeen.current){window.api.shell.openExternal(u);}else{setPortalIntro({platformId:platform.id,url:u});}}} style={{padding:"3px 9px",borderRadius:4,border:`1px solid rgba(249,115,22,0.25)`,background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontSize:10,fontWeight:600,whiteSpace:"nowrap"}}>{T.delivOpenPortal}</button>
+              <button onClick={e=>{e.stopPropagation();openImport(platform.id);}} style={{fontSize:9.5,padding:'2px 8px',borderRadius:4,border:'1px solid rgba(56,189,248,0.2)',background:'rgba(56,189,248,0.06)',color:'#38bdf8',cursor:'pointer',fontWeight:600,whiteSpace:'nowrap'}}>{T.livImportStatement}</button>
+            </div>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
             <F label={T.livPlatformSales} value={pd.ventes} onChange={v=>updPD(platform.id,'ventes',v)} prefix="$"/>
@@ -529,6 +600,22 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
           <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:'#f97316',fontWeight:700}}>{fmt(totalComm)} ({totalCommPct.toFixed(1)}%)</span>
         </div>)}
       </div>)}
+    </div>)}
+    {/* Portal intro modal */}
+    {portalIntro&&(<div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={()=>setPortalIntro(null)}>
+      <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:12,padding:22,maxWidth:420,width:'100%',boxShadow:'0 8px 32px rgba(0,0,0,0.3)'}} onClick={e=>e.stopPropagation()}>
+        <div style={{fontSize:15,fontWeight:700,color:t.text,marginBottom:14}}>{T.delivPortalIntroTitle}</div>
+        <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:16}}>
+          <div style={{fontSize:12,color:t.textSub,lineHeight:1.5}}>{T.delivPortalIntroStep1}</div>
+          <div style={{fontSize:12,color:'#f97316',fontWeight:600,lineHeight:1.5,padding:'7px 10px',background:'rgba(249,115,22,0.08)',borderRadius:6,border:'1px solid rgba(249,115,22,0.2)'}}>{T.delivPortalIntroStep2}</div>
+          <div style={{fontSize:12,color:t.textSub,lineHeight:1.5}}>{T.delivPortalIntroStep3}</div>
+        </div>
+        <div style={{fontSize:10,color:t.textMuted,lineHeight:1.5,marginBottom:14,padding:'6px 8px',background:t.section,borderRadius:5}}>{T.delivPortalIntroMacPerm}</div>
+        <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+          <button onClick={()=>setPortalIntro(null)} style={{padding:'6px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:'none',color:t.textSub,cursor:'pointer',fontSize:12}}>{T.delivPortalIntroSkip}</button>
+          <button onClick={()=>{localStorage.setItem('biq-portal-intro-seen','1');portalIntroSeen.current=true;window.api.shell.openExternal(portalIntro.url);setPortalIntro(null);}} style={{padding:'6px 16px',borderRadius:6,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontWeight:700,fontSize:12}}>{T.delivPortalIntroOk}</button>
+        </div>
+      </div>
     </div>)}
   </div>);
 }
@@ -708,13 +795,195 @@ function GeoSearch({apiConfig,saveApiCfg}){
   </div>);
 }
 
+// ── INVOICE OCR MODAL ──
+function InvoiceOCRModal({section,suppliers,expenseItems,updPL,plData,ocrMappings,setOcrMappings,month,apiConfig,onClose}){
+  const t=useT();
+  const T=useL();
+  const [step,setStep]=useState('select'); // 'select' | 'scanning' | 'review'
+  const [result,setResult]=useState(null);
+  const [error,setError]=useState(null);
+  const [selectedKey,setSelectedKey]=useState('');
+  const [billDate,setBillDate]=useState('');
+  const [billNote,setBillNote]=useState('');
+  const [editedAmount,setEditedAmount]=useState('');
+  const [editedTPS,setEditedTPS]=useState('');
+  const [editedTVQ,setEditedTVQ]=useState('');
+  const [editedTotal,setEditedTotal]=useState('');
+
+  const fpOpts=[
+    {baseKey:'pettyCashFP',label:T.plPettyCashFP||'Petite caisse F&P'},
+    ...suppliers.map(s=>({baseKey:`sup_${s.id}`,label:s.name})),
+  ];
+  const expOpts=[
+    {baseKey:'pettyCashMisc',label:T.plPettyCashMisc||'Petite caisse Misc'},
+    ...expenseItems.map(i=>({baseKey:`exp_${i.id}`,label:i.label})),
+  ];
+  const options=section==='fp'?fpOpts:expOpts;
+
+  const doScan=async()=>{
+    setError(null);
+    const img=await window.api.ocr?.selectImage?.();
+    if(!img)return;
+    setStep('scanning');
+    try{
+      const {supabase}=await import('./services/supabase.js');
+      const {getCloudOrgId}=await import('./services/cloudSync.js');
+      const ownApiKey=apiConfig?.anthropicApiKey||null;
+      const {data,error:fnErr}=await supabase.functions.invoke('ocr-invoice',{
+        body:{imageBase64:img.base64,imageType:img.mimeType,orgId:getCloudOrgId(),ownApiKey},
+      });
+      if(fnErr){throw new Error(fnErr.message||'Erreur réseau');}
+      if(data?.error==='no_auth'){setError(T.ocrNotLoggedIn);setStep('select');return;}
+      if(data?.error==='limit_reached'){setError(T.ocrLimitReached);setStep('select');return;}
+      if(data?.error==='upgrade_required'){setError(T.ocrUpgradeRequired);setStep('select');return;}
+      if(data?.error){throw new Error(data.message||data.error);}
+      setResult(data);
+      const knownKey=data.supplier?ocrMappings[(data.supplier||'').toLowerCase().trim()]:null;
+      setSelectedKey(knownKey&&options.find(o=>o.baseKey===knownKey)?knownKey:options[0]?.baseKey||'');
+      setBillDate(data.date||`${month}-01`);
+      setBillNote(data.invoiceNumber?`Fact. ${data.invoiceNumber}`:(data.supplier||''));
+      const tps=data.tps||0;const tvq=data.tvq||0;const total=data.total||0;
+      const ht=total>0?Math.round((total-tps-tvq)*100)/100:(data.subtotalBeforeTax??((data.subtotalTaxable||0)+(data.subtotalNonTaxable||0)));
+      setEditedTPS(tps>0?tps.toFixed(2):'0');
+      setEditedTVQ(tvq>0?tvq.toFixed(2):'0');
+      setEditedTotal(total>0?total.toFixed(2):'');
+      setEditedAmount(ht>0?ht.toFixed(2):'');
+      setStep('review');
+    }catch(e){
+      setError(e.message||'Erreur inattendue');
+      setStep('select');
+    }
+  };
+
+  const doConfirm=()=>{
+    if(!selectedKey||!result)return;
+    const subtotal=parseFloat(editedAmount);
+    if(!subtotal||isNaN(subtotal)||subtotal<=0)return;
+    const bill={id:Date.now().toString(),date:billDate,amount:subtotal,note:billNote.trim()};
+    const existing=plData[`${selectedKey}_bills`]||[];
+    updPL(`${selectedKey}_bills`,[...existing,bill]);
+    logCreate('pl','facture_fournisseur_ocr',bill.id,{...bill,supplier:result.supplier});
+    if(result.supplier){
+      const k=(result.supplier||'').toLowerCase().trim();
+      const nm={...ocrMappings,[k]:selectedKey};
+      setOcrMappings(nm);
+      window.api.storage.set('dicann-ocr-mappings',JSON.stringify(nm)).catch(()=>{});
+    }
+    onClose();
+  };
+
+  const inpSt={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.inputText,fontSize:11,padding:'4px 6px',outline:'none',width:'100%'};
+
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={onClose}>
+      <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:12,padding:24,maxWidth:460,width:'100%',boxShadow:'0 8px 32px rgba(0,0,0,0.3)'}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
+          <div style={{fontSize:15,fontWeight:700,color:t.text}}>📷 {T.ocrScanTitle}</div>
+          <button onClick={onClose} style={{background:'none',border:'none',color:t.textMuted,fontSize:18,cursor:'pointer',lineHeight:1}}>✕</button>
+        </div>
+
+        {step==='select'&&(
+          <div style={{textAlign:'center',padding:'16px 0'}}>
+            <div style={{fontSize:12,color:t.textSub,marginBottom:16,lineHeight:1.6}}>{T.ocrScanHint}</div>
+            {error&&<div style={{fontSize:11,color:'#ef4444',marginBottom:14,padding:'8px 12px',background:'rgba(239,68,68,0.08)',borderRadius:6,textAlign:'left',lineHeight:1.5}}>{error}</div>}
+            <button onClick={doScan} style={{padding:'10px 28px',borderRadius:8,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer'}}>
+              {T.ocrSelectImage}
+            </button>
+            <div style={{marginTop:14,fontSize:10,color:t.textMuted,lineHeight:1.5,padding:'7px 10px',background:t.section,borderRadius:5,textAlign:'left'}}>{T.ocrDisclaimer}</div>
+          </div>
+        )}
+
+        {step==='scanning'&&(
+          <div style={{textAlign:'center',padding:'28px 0'}}>
+            <div style={{fontSize:28,marginBottom:12,animation:'spin 1s linear infinite'}}>🔄</div>
+            <div style={{fontSize:13,fontWeight:600,color:t.text,marginBottom:6}}>{T.ocrScanning}</div>
+            <div style={{fontSize:11,color:t.textMuted,lineHeight:1.5}}>{T.ocrScanningHint}</div>
+          </div>
+        )}
+
+        {step==='review'&&result&&(
+          <div style={{display:'flex',flexDirection:'column',gap:12}}>
+            {/* Summary card */}
+            <div style={{background:t.section,borderRadius:8,padding:12}}>
+              <div style={{fontSize:11,fontWeight:700,color:t.text,marginBottom:8,textTransform:'uppercase',letterSpacing:0.5}}>{T.ocrResultTitle}</div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:5,marginBottom:8}}>
+                {result.supplier&&<span style={{fontSize:11,color:t.textSub,gridColumn:'1/-1'}}>
+                  <span style={{color:t.textMuted}}>{T.ocrSupplier}: </span><strong style={{color:t.text}}>{result.supplier}</strong>
+                </span>}
+                {result.date&&<span style={{fontSize:11,color:t.textSub}}>
+                  <span style={{color:t.textMuted}}>{T.ocrDate}: </span><strong style={{color:t.text}}>{result.date}</strong>
+                </span>}
+                {result.invoiceNumber&&<span style={{fontSize:11,color:t.textSub}}>
+                  <span style={{color:t.textMuted}}>{T.ocrInvNum}: </span><strong style={{color:t.text}}>{result.invoiceNumber}</strong>
+                </span>}
+              </div>
+              {/* Editable tax fields */}
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,marginBottom:8}}>
+                {[['TPS'  ,editedTPS ,v=>{setEditedTPS(v); const t2=parseFloat(v)||0,vq=parseFloat(editedTVQ)||0,tot=parseFloat(editedTotal)||0;if(tot>0)setEditedAmount((Math.round((tot-t2-vq)*100)/100).toFixed(2));}],
+                  ['TVQ'  ,editedTVQ ,v=>{setEditedTVQ(v); const tp=parseFloat(editedTPS)||0,v2=parseFloat(v)||0,tot=parseFloat(editedTotal)||0;if(tot>0)setEditedAmount((Math.round((tot-tp-v2)*100)/100).toFixed(2));}],
+                  ['Total',editedTotal,v=>{setEditedTotal(v);const tp=parseFloat(editedTPS)||0,vq=parseFloat(editedTVQ)||0,tot=parseFloat(v)||0;if(tot>0)setEditedAmount((Math.round((tot-tp-vq)*100)/100).toFixed(2));}],
+                ].map(([lbl,val,onChange])=>(
+                  <div key={lbl}>
+                    <div style={{fontSize:9,color:t.textMuted,marginBottom:2,fontWeight:600}}>{lbl}</div>
+                    <input type="number" inputMode="decimal" value={val} onChange={e=>onChange(e.target.value)}
+                      style={{width:'100%',background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.inputText,fontFamily:"'DM Mono',monospace",fontSize:11,padding:'3px 5px',outline:'none',textAlign:'right',boxSizing:'border-box'}}/>
+                  </div>
+                ))}
+              </div>
+              {/* HT amount — editable, goes into P&L */}
+              <div style={{padding:'8px 10px',background:'rgba(34,197,94,0.07)',borderRadius:6,border:'1px solid rgba(34,197,94,0.2)'}}>
+                <div style={{display:'flex',alignItems:'center',gap:8}}>
+                  <span style={{fontSize:11,color:'#16a34a',fontWeight:700,whiteSpace:'nowrap'}}>{T.ocrAmountHT}</span>
+                  <input type="number" inputMode="decimal" value={editedAmount} onChange={e=>setEditedAmount(e.target.value)}
+                    style={{flex:1,background:'rgba(34,197,94,0.1)',border:'1px solid rgba(34,197,94,0.35)',borderRadius:4,color:'#16a34a',fontFamily:"'DM Mono',monospace",fontSize:14,fontWeight:700,padding:'3px 7px',outline:'none',textAlign:'right'}}/>
+                </div>
+                <div style={{fontSize:9,color:t.textMuted,marginTop:3}}>{T.ocrBeforeTax}</div>
+              </div>
+            </div>
+
+            {/* Map to P&L line */}
+            <div>
+              <div style={{fontSize:11,fontWeight:600,color:t.textSub,marginBottom:4}}>{T.ocrMapTo}</div>
+              <select value={selectedKey} onChange={e=>setSelectedKey(e.target.value)} style={{width:'100%',background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:12,padding:'5px 8px',outline:'none'}}>
+                {options.map(o=>(<option key={o.baseKey} value={o.baseKey} style={{background:t.optionBg}}>{o.label}</option>))}
+              </select>
+            </div>
+
+            {/* Date + Note */}
+            <div style={{display:'grid',gridTemplateColumns:'130px 1fr',gap:8}}>
+              <div>
+                <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.ocrBillDate}</div>
+                <input type="date" value={billDate} onChange={e=>setBillDate(e.target.value)} style={inpSt}/>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.ocrBillNote}</div>
+                <input type="text" value={billNote} onChange={e=>setBillNote(e.target.value)} placeholder="N° facture…" style={inpSt}/>
+              </div>
+            </div>
+
+            {/* Disclaimer */}
+            <div style={{fontSize:10,color:t.textMuted,lineHeight:1.5,padding:'6px 9px',background:t.section,borderRadius:5,border:`1px solid ${t.cardBorder}`}}>{T.ocrReviewWarning}</div>
+
+            {/* Actions */}
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+              <button onClick={()=>{setStep('select');setResult(null);setError(null);setEditedAmount('');setEditedTPS('');setEditedTVQ('');setEditedTotal('');}}style={{padding:'7px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:'none',color:t.textSub,cursor:'pointer',fontSize:12}}>📷 {T.ocrScanAnother}</button>
+              <button onClick={doConfirm} disabled={!selectedKey} style={{padding:'7px 18px',borderRadius:6,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',fontWeight:700,fontSize:12,cursor:selectedKey?'pointer':'default',opacity:selectedKey?1:0.5}}>✓ {T.ocrAddToPL}</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── P&L MONTHLY ──
-function MonthlyPL({computeDay,suppliers,liveData,platforms}){
+function MonthlyPL({computeDay,suppliers,liveData,platforms,expenseItems,glAccounts,apiConfig,ocrMappings,setOcrMappings,payrollConfig}){
   const t=useT();
   const T=useL();
   const [month,setMonth]=useState(()=>{const n=new Date();return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`});
   const [plData,setPlData]=useState({});const [saved,setSaved]=useState(false);const [loaded,setLoaded]=useState(false);const saveRef=useRef(null);
   const [revTouched,setRevTouched]=useState(false);
+  const [showOCRModal,setShowOCRModal]=useState(null); // null | 'fp' | 'exp'
 
   useEffect(()=>{setLoaded(false);setSaved(false);(async()=>{try{const r=await window.api.storage.get(`dicann-pl-${month}`);if(r?.value)setPlData(JSON.parse(r.value));else setPlData({})}catch(e){setPlData({})}setLoaded(true)})()},[month]);
 
@@ -726,7 +995,7 @@ function MonthlyPL({computeDay,suppliers,liveData,platforms}){
   const revenue=plData._revenueOverride!=null?plData._revenueOverride:autoRev;
   const billsSum=key=>{const bills=plData[`${key}_bills`];return bills&&bills.length?bills.reduce((s,b)=>s+(b.amount||0),0):(plData[key]||0);};
   let fpT=billsSum('pettyCashFP');suppliers.forEach(s=>{fpT+=billsSum(`sup_${s.id}`)});
-  let expT=billsSum('pettyCashMisc');EXPENSE_ITEMS.forEach(([k])=>{expT+=billsSum(`exp_${k}`)});
+  let expT=billsSum('pettyCashMisc');expenseItems.forEach(item=>{expT+=billsSum(`exp_${item.id}`)});
   const labC=plData.labourOverride!=null?plData.labourOverride:autoLab;
   const gp=revenue-fpT;const np=gp-labC-expT;
   const deliveryStats=(platforms||[]).map(p=>{let tv=0,td=0;for(let day=1;day<=dim;day++){const k=`${y}-${String(m).padStart(2,"0")}-${String(day).padStart(2,"0")}`;const dd=liveData[k];if(!dd?.platformLivraisons)continue;const pd=dd.platformLivraisons[p.id]||{};if(pd.ventes!=null)tv+=pd.ventes;if(pd.depot!=null)td+=pd.depot;}const comm=tv-td;const commPct=tv>0?(comm/tv*100):0;return{...p,totalVentes:tv,totalDepots:td,commission:comm,commPct};});
@@ -746,10 +1015,10 @@ function MonthlyPL({computeDay,suppliers,liveData,platforms}){
     h+=`<tr style="font-weight:700;border-top:2px solid #ddd"><td>Total F&P</td><td>${fmt(fpT)} (${fpP.toFixed(1)}%)</td></tr></table>`;
     h+=`<h3>Main d'œuvre</h3><table><tr><td><b>Total</b></td><td><b>${fmt(labC)} (${labP.toFixed(1)}%)</b></td></tr></table>`;
     h+=`<h3>Dépenses d'exploitation (avant taxes)</h3><table>${billRows('pettyCashMisc','Petite caisse Misc')}`;
-    EXPENSE_ITEMS.forEach(([k,l])=>{h+=billRows(`exp_${k}`,l)});
+    expenseItems.forEach(item=>{h+=billRows(`exp_${item.id}`,item.label)});
     h+=`<tr style="font-weight:700"><td>Total dépenses</td><td>${fmt(expT)}</td></tr></table>`;
     h+=`<h3>Résultat</h3><table><tr><td>Revenus</td><td>${fmt(revenue)}</td></tr><tr><td>− Food & Paper</td><td>${fmt(fpT)}</td></tr><tr style="font-weight:700"><td>Profit brut</td><td>${fmt(gp)}</td></tr><tr><td>− Main d'œuvre</td><td>${fmt(labC)}</td></tr><tr><td>− Dépenses</td><td>${fmt(expT)}</td></tr><tr><td class="${np>=0?"g":"r"}" style="font-size:14px">${np>=0?"PROFIT NET":"PERTE NETTE"}</td><td class="${np>=0?"g":"r"}" style="font-size:14px">${fmt(Math.abs(np))} (${npP.toFixed(1)}%)</td></tr></table>`;
-    h+=`<p class="sub" style="margin-top:20px">BalanceIQ · ${OWNER_EMAIL}</p></body></html>`;
+    h+=`<p class="sub" style="margin-top:20px">BalanceIQ${apiConfig?.reportEmail?` · ${apiConfig.reportEmail}`:""}</p></body></html>`;
     return h;
   };
 
@@ -763,7 +1032,7 @@ function MonthlyPL({computeDay,suppliers,liveData,platforms}){
   const handleEmail=()=>{
     const subj=encodeURIComponent(`BalanceIQ — P&L ${MONTHS_FR[m-1]} ${y}`);
     const body=encodeURIComponent(`P&L — ${MONTHS_FR[m-1]} ${y}\n\nRevenus: ${fmt(revenue)}\nF&P: ${fmt(fpT)} (${fpP.toFixed(1)}%)\nMain d'œuvre: ${fmt(labC)} (${labP.toFixed(1)}%)\nDépenses: ${fmt(expT)}\n\n${np>=0?"PROFIT NET":"PERTE NETTE"}: ${fmt(Math.abs(np))} (${npP.toFixed(1)}%)\n\n— BalanceIQ`);
-    window.open(`mailto:${OWNER_EMAIL}?subject=${subj}&body=${body}`);
+    window.open(`mailto:${apiConfig?.reportEmail||""}?subject=${subj}&body=${body}`);
   };
 
   const handleReset=()=>{
@@ -772,11 +1041,68 @@ function MonthlyPL({computeDay,suppliers,liveData,platforms}){
     window.api.storage.set(`dicann-pl-${month}`,JSON.stringify({})).catch(()=>{});
   };
 
+  const exportPLAcomba=(fmt)=>{
+    if(!canUse("excelExport"))return;
+    const GL={...DEFAULT_GL_ACCOUNTS,...(glAccounts||{})};
+    const [y,m]=month.split("-");
+    const dim=new Date(parseInt(y),parseInt(m),0).getDate();
+    const lastDay=`${y}-${m}-${String(dim).padStart(2,"0")}`;
+    const ref=`PL-${month}`;
+    const note=`${T.plMonthLabel||"Mois"}: ${month}`;
+    let totalRev=0,totalTPS=0,totalTVQ=0,totalLab=0;
+    for(let d=1;d<=dim;d++){
+      const k=`${y}-${m}-${String(d).padStart(2,"0")}`;
+      const cd=computeDay(k);
+      totalRev+=cd.venteNet||0;
+      totalTPS+=(cd.venteNet||0)*0.05;
+      totalTVQ+=(cd.venteNet||0)*0.09975;
+      totalLab+=cd.labourCost||0;
+    }
+    const labC=plData.labourOverride!=null?plData.labourOverride:totalLab;
+    const rows=[];
+    if(fmt==="acomba"){
+      const hdr=["Date","Journal","Référence","Description","Compte GL","Débit","Crédit","Note"];
+      rows.push(hdr);
+      if(totalRev>0){
+        rows.push([lastDay,"VT",ref,T.plRevenue||"Ventes nettes",GL.revenue,"",totalRev.toFixed(2),note]);
+        rows.push([lastDay,"VT",ref,"TPS collectée",GL.tps,"",totalTPS.toFixed(2),note]);
+        rows.push([lastDay,"VT",ref,"TVQ collectée",GL.tvq,"",totalTVQ.toFixed(2),note]);
+      }
+      if(labC>0)rows.push([lastDay,"VT",ref,T.plLabour||"Salaires",GL.labour,labC.toFixed(2),"",note]);
+      expenseItems.forEach(item=>{const amt=billsSum(`exp_${item.id}`);if(amt>0){const acct=GL[item.id]||GL.autre;rows.push([lastDay,"VT",ref,item.label,acct,amt.toFixed(2),"",note]);}});
+      const fpAmt=billsSum('pettyCashFP');if(fpAmt>0)rows.push([lastDay,"VT",ref,"Food & Paper",GL.fp,fpAmt.toFixed(2),"",note]);
+      suppliers.forEach(s=>{const amt=billsSum(`sup_${s.id}`);if(amt>0)rows.push([lastDay,"VT",ref,s.name,GL.fp,amt.toFixed(2),"",note]);});
+    } else {
+      const hdr=["Date","Source","Comment","Account Number","Account Description","Debit","Credit"];
+      rows.push(hdr);
+      if(totalRev>0){
+        rows.push([lastDay,ref,T.plRevenue||"Net Sales",GL.revenue,"Sales Revenue","",totalRev.toFixed(2)]);
+        rows.push([lastDay,ref,"GST/TPS Collected",GL.tps,"GST Payable","",totalTPS.toFixed(2)]);
+        rows.push([lastDay,ref,"QST/TVQ Collected",GL.tvq,"QST Payable","",totalTVQ.toFixed(2)]);
+      }
+      if(labC>0)rows.push([lastDay,ref,T.plLabour||"Labour",GL.labour,"Wages Expense",labC.toFixed(2),""]);
+      expenseItems.forEach(item=>{const amt=billsSum(`exp_${item.id}`);if(amt>0){const acct=GL[item.id]||GL.autre;rows.push([lastDay,ref,item.label,acct,"Operating Expense",amt.toFixed(2),""]);}});
+      const fpAmt=billsSum('pettyCashFP');if(fpAmt>0)rows.push([lastDay,ref,"Food & Paper",GL.fp,"Cost of Goods",fpAmt.toFixed(2),""]);
+      suppliers.forEach(s=>{const amt=billsSum(`sup_${s.id}`);if(amt>0)rows.push([lastDay,ref,s.name,GL.fp,"Cost of Goods",amt.toFixed(2),""]);});
+    }
+    if(rows.length<=1)return;
+    const csv=rows.map(r=>r.map(v=>`"${String(v==null?"":v).replace(/"/g,'""')}"`).join(",")).join("\n");
+    const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;
+    a.download=`${fmt==="acomba"?"acomba":"sage50"}-pl-${month}.csv`;
+    a.click();URL.revokeObjectURL(url);
+  };
+
   // P&L section — light theme uses left border instead of tinted bg
-  const Sec=({title,color,children})=>{
+  const Sec=({title,color,children,action})=>{
     const isLight=t.name==='light';
     return(<div style={{background:isLight?t.section:`rgba(${color},0.03)`,border:isLight?'none':`1px solid rgba(${color},0.1)`,borderLeft:isLight?`3px solid rgb(${color})`:undefined,borderRadius:8,padding:10,paddingLeft:isLight?13:10}}>
-      <div style={{fontSize:10,color:`rgb(${color})`,fontWeight:700,textTransform:"uppercase",letterSpacing:0.7,marginBottom:6}}>{title}</div>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
+        <div style={{fontSize:10,color:`rgb(${color})`,fontWeight:700,textTransform:"uppercase",letterSpacing:0.7}}>{title}</div>
+        {action}
+      </div>
       {children}
     </div>);
   };
@@ -798,21 +1124,53 @@ function MonthlyPL({computeDay,suppliers,liveData,platforms}){
       </div>
     </Sec>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-      <Sec title={T.plCOGS} color="249,115,22">
+      <Sec title={T.plCOGS} color="249,115,22" action={
+        canUse('ocrScanning')
+          ?<button onClick={()=>setShowOCRModal('fp')} style={{fontSize:10,padding:'2px 8px',borderRadius:4,border:'1px solid rgba(249,115,22,0.3)',background:'rgba(249,115,22,0.08)',color:'#f97316',cursor:'pointer',fontWeight:600,whiteSpace:'nowrap'}}>📷 {T.ocrScan}</button>
+          :<button title={T.upgradeToPro} style={{fontSize:10,padding:'2px 8px',borderRadius:4,border:'1px solid rgba(107,114,128,0.15)',background:'none',color:'#9ca3af',cursor:'default',whiteSpace:'nowrap'}}>📷 <span style={{fontSize:8,color:'#f97316',fontWeight:700}}>Pro</span></button>
+      }>
         <BillEntry label={T.plPettyCashFP} baseKey="pettyCashFP" plData={plData} updPL={updPL} accent="249,115,22"/>
         {suppliers.map(s=>(<BillEntry key={s.id} label={s.name} baseKey={`sup_${s.id}`} plData={plData} updPL={updPL} accent="249,115,22"/>))}
         <div style={{marginTop:6,paddingTop:6,borderTop:`1px solid rgba(249,115,22,0.15)`}}><RR label={T.plTotalFP} value={fpT} accent="#f97316" bold/>{revenue>0&&<RR label={T.plFPPct} value={`${fpP.toFixed(1)}%`} unit="" accent={fpP>35?"#ef4444":fpP>30?t.warnText:"#22c55e"}/>}</div>
       </Sec>
-      <Sec title={T.plOpExp} color="129,140,248">
+      <Sec title={T.plOpExp} color="129,140,248" action={
+        canUse('ocrScanning')
+          ?<button onClick={()=>setShowOCRModal('exp')} style={{fontSize:10,padding:'2px 8px',borderRadius:4,border:'1px solid rgba(129,140,248,0.3)',background:'rgba(129,140,248,0.08)',color:'#818cf8',cursor:'pointer',fontWeight:600,whiteSpace:'nowrap'}}>📷 {T.ocrScan}</button>
+          :<button title={T.upgradeToPro} style={{fontSize:10,padding:'2px 8px',borderRadius:4,border:'1px solid rgba(107,114,128,0.15)',background:'none',color:'#9ca3af',cursor:'default',whiteSpace:'nowrap'}}>📷 <span style={{fontSize:8,color:'#f97316',fontWeight:700}}>Pro</span></button>
+      }>
         <BillEntry label={T.plPettyCashMisc} baseKey="pettyCashMisc" plData={plData} updPL={updPL} accent="129,140,248"/>
-        {EXPENSE_ITEMS.map(([k,l])=>(<BillEntry key={k} label={l} baseKey={`exp_${k}`} plData={plData} updPL={updPL} accent="129,140,248"/>))}
+        {expenseItems.map(item=>(<BillEntry key={item.id} label={T[`exp_${item.id}`]||item.label} baseKey={`exp_${item.id}`} plData={plData} updPL={updPL} accent="129,140,248"/>))}
         <div style={{marginTop:6,paddingTop:6,borderTop:`1px solid rgba(129,140,248,0.15)`}}><RR label={T.plTotalExp} value={expT} accent="#818cf8" bold/></div>
       </Sec>
     </div>
+    {/* OCR Modal */}
+    {showOCRModal&&<InvoiceOCRModal section={showOCRModal} suppliers={suppliers} expenseItems={expenseItems} updPL={updPL} plData={plData} ocrMappings={ocrMappings||{}} setOcrMappings={setOcrMappings||(()=>{})} month={month} apiConfig={apiConfig} onClose={()=>setShowOCRModal(null)}/>}
     <Sec title={T.plLabour} color="56,189,248">
       <div style={{fontSize:11,color:t.textMuted,marginBottom:4}}>{T.plLabourAuto}: {fmt(autoLab)}</div>
       <PL label={T.plMonthlyOverride} value={plData.labourOverride} onChange={v=>updPL("labourOverride",v)} prefix="$" warn={plData.labourOverride!=null&&plData.labourOverride<0?T.warnNegativeAmount:null}/>
       <RR label="Total" value={labC} accent="#38bdf8" bold/>{revenue>0&&<RR label={T.plExpPct} value={`${labP.toFixed(1)}%`} unit="" accent={labP>35?"#ef4444":labP>28?t.warnText:"#22c55e"}/>}
+      {labC>0&&payrollConfig?.contributions?.length>0&&(()=>{
+        const contribs=payrollConfig.contributions;
+        const empRate=contribs.filter(c=>c.type==='employer').reduce((s,c)=>s+(parseFloat(c.rate)||0),0);
+        const eeRate=contribs.filter(c=>c.type==='employee').reduce((s,c)=>s+(parseFloat(c.rate)||0),0);
+        const empAmt=labC*empRate/100;const eeAmt=labC*eeRate/100;
+        const totalRemit=empAmt+eeAmt;const totalCost=labC+empAmt;
+        return(
+          <div style={{marginTop:10,padding:"10px 12px",borderRadius:8,border:"1px solid rgba(56,189,248,0.15)",background:"rgba(56,189,248,0.04)"}}>
+            <div style={{fontSize:11,fontWeight:700,color:'#38bdf8',marginBottom:8}}>💰 {T.payrollRemitTitle}</div>
+            <div style={{display:"flex",flexDirection:"column",gap:3}}>
+              <RR label={T.payrollGross} value={labC} accent="#38bdf8"/>
+              <RR label={`${T.payrollEmpCharges} (${empRate.toFixed(1)}%)`} value={empAmt} accent="#a78bfa"/>
+              <RR label={`${T.payrollEeDeduct} (${eeRate.toFixed(1)}%)`} value={eeAmt} accent="#a78bfa"/>
+              <div style={{borderTop:"1px solid rgba(56,189,248,0.15)",marginTop:4,paddingTop:4}}>
+                <RR label={T.payrollTotalRemit} value={totalRemit} accent="#f59e0b" bold/>
+                <RR label={T.payrollTotalCost} value={totalCost} accent="#38bdf8" bold/>
+              </div>
+            </div>
+            <div style={{fontSize:9.5,color:t.textDim,marginTop:8,fontStyle:"italic"}}>⚠ {T.payrollDisclaimer}</div>
+          </div>
+        );
+      })()}
     </Sec>
     {deliveryStats.length>0&&delGrandV>0&&(<Sec title={T.plDeliveries} color="249,115,22">
       <div style={{fontSize:10,color:t.textMuted,marginBottom:6,fontStyle:"italic"}}>{T.plDeliveryInfo}</div>
@@ -836,7 +1194,13 @@ function MonthlyPL({computeDay,suppliers,liveData,platforms}){
     </div>
     <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
       <button onClick={handleSave} style={{padding:"9px 20px",borderRadius:7,border:"none",cursor:"pointer",fontWeight:700,fontSize:13,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>{T.plSaveAndPrint}</button>
-      <button onClick={handleEmail} style={{padding:"9px 16px",borderRadius:7,border:"1px solid rgba(34,197,94,0.2)",background:"rgba(34,197,94,0.08)",color:"#16a34a",cursor:"pointer",fontWeight:600,fontSize:12}}>{T.plSendEmail(OWNER_EMAIL)}</button>
+      <button onClick={handleEmail} style={{padding:"9px 16px",borderRadius:7,border:"1px solid rgba(34,197,94,0.2)",background:"rgba(34,197,94,0.08)",color:"#16a34a",cursor:"pointer",fontWeight:600,fontSize:12}}>{T.plSendEmailBtn(apiConfig?.reportEmail||"")}</button>
+      {canUse("excelExport")
+        ?(<div style={{display:"flex",gap:4}}>
+            <button onClick={()=>exportPLAcomba("acomba")} style={{padding:"7px 12px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:600,fontSize:11}}>⬇ Acomba</button>
+            <button onClick={()=>exportPLAcomba("sage50")} style={{padding:"7px 12px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:600,fontSize:11}}>⬇ Sage 50</button>
+          </div>)
+        :(<span style={{padding:"7px 12px",borderRadius:6,border:"1px solid rgba(107,114,128,0.2)",background:"none",color:"#6b7280",fontSize:11,display:"inline-flex",alignItems:"center",gap:5}}>{T.exportPLAcomba||"⬇ Acomba / Sage 50"} <span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"1px 5px",borderRadius:4}}>Pro</span></span>)}
       {saved&&<span style={{fontSize:12,color:"#16a34a",fontWeight:600}}>{T.saved}</span>}
       <button onClick={handleReset} style={{padding:"9px 16px",borderRadius:7,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.08)",color:"#ef4444",cursor:"pointer",fontWeight:600,fontSize:12,marginLeft:"auto"}}>{T.plResetMonth}</button>
     </div>
@@ -855,9 +1219,15 @@ function SH({label,children}){
 }
 
 // ── ENCAISSE TAB ──
+// Lookup maps: default ID → translation key (for cash locations and outflow categories)
+const ENC_LOC_KEY={tills:"encLocTills",petty:"encLocPetty",office:"encLocOffice"};
+const ENC_CAT_KEY={fournisseur_cash:"encCatSupplier",avance_employe:"encCatAdvance",achats_divers:"encCatMisc",reparations:"encCatRepairs",autre:"encCatOther"};
+
 function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveEncaisseConfig}){
   const T=useL();
   const t=useT();
+  const locName=loc=>T[ENC_LOC_KEY[loc.id]]||loc.name;
+  const catName=cat=>T[ENC_CAT_KEY[cat.id]]||cat.name;
   const [selDate,setSelDate]=useState(()=>dk(new Date()));
   const [month,setMonth]=useState(()=>{const n=new Date();return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`});
   const [summaryOpen,setSummaryOpen]=useState(false);
@@ -876,6 +1246,8 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
   const [newLocName,setNewLocName]=useState("");
   const [editCatId,setEditCatId]=useState(null);
   const [editCatName,setEditCatName]=useState("");
+  const [editLocId,setEditLocId]=useState(null);
+  const [editLocName,setEditLocName]=useState("");
 
   const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none"};
 
@@ -1038,7 +1410,7 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
       {enc.sorties.map(s=>(<div key={s.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 0",borderBottom:`1px solid ${t.divider}`}}>
         <div>
           <span style={{fontSize:11,color:t.textSub}}>{s.description||"—"}</span>
-          <span style={{fontSize:9,color:t.textDim,marginLeft:6}}>{encaisseConfig.sortieCategories.find(c=>c.id===s.categorie)?.name||s.categorie}</span>
+          <span style={{fontSize:9,color:t.textDim,marginLeft:6}}>{(c=>catName(c)||s.categorie)(encaisseConfig.sortieCategories.find(c=>c.id===s.categorie)||{id:s.categorie,name:s.categorie})}</span>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:"#ef4444"}}>−{fmt(s.montant)}</span>
@@ -1048,7 +1420,7 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
       <div style={{display:"flex",gap:4,marginTop:6,flexWrap:"wrap",alignItems:"center"}}>
         <select value={newSortCat} onChange={e=>setNewSortCat(e.target.value)} style={{...inputS,flex:"0 0 auto",minWidth:160}}>
           <option value="">{T.encCategory}</option>
-          {encaisseConfig.sortieCategories.map(c=>(<option key={c.id} value={c.id}>{c.name}</option>))}
+          {encaisseConfig.sortieCategories.map(c=>(<option key={c.id} value={c.id}>{catName(c)}</option>))}
         </select>
         <input value={newSortDesc} onChange={e=>setNewSortDesc(e.target.value)} placeholder={T.encDescPlaceholder} style={{...inputS,flex:1,minWidth:80}}/>
         <input type="number" inputMode="decimal" value={newSortMt} onChange={e=>setNewSortMt(e.target.value)} placeholder={T.encAmount} style={{...inputS,width:80,textAlign:"right",fontFamily:"'DM Mono',monospace"}} onKeyDown={e=>{if(e.key==="Enter")addSortie()}}/>
@@ -1058,9 +1430,9 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
 
     {/* S5: Comptage physique */}
     <SH label={T.encPhysical}>
-      {encaisseConfig.cashLocations.map(loc=>(<F key={loc.id} label={loc.name} value={enc.physicalCount[loc.id]??null} onChange={v=>updEnc("physicalCount",{...enc.physicalCount,[loc.id]:v})} wide/>))}
+      {encaisseConfig.cashLocations.map(loc=>(<F key={loc.id} label={locName(loc)} value={enc.physicalCount[loc.id]??null} onChange={v=>updEnc("physicalCount",{...enc.physicalCount,[loc.id]:v})} wide/>))}
       {dr.physEntered&&(<div style={{display:"flex",justifyContent:"space-between",padding:"5px 0",marginTop:4,borderTop:`1px solid ${t.dividerStrong}`}}>
-        <span style={{fontSize:12,fontWeight:700,color:t.text}}>Total physique</span>
+        <span style={{fontSize:12,fontWeight:700,color:t.text}}>{T.encPhysTotal}</span>
         <span style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:700,color:t.text}}>{fmt(dr.physTotal)}</span>
       </div>)}
     </SH>
@@ -1095,30 +1467,20 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
     {/* Config */}
     <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
       <div onClick={()=>setConfigOpen(o=>!o)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none"}}>
-        <span style={{fontSize:13,fontWeight:700,color:t.text}}>Configuration</span>
+        <span style={{fontSize:13,fontWeight:700,color:t.text}}>{T.encConfigTitle}</span>
         <span style={{fontSize:9,color:t.textDim,display:"inline-block",transform:configOpen?"rotate(0deg)":"rotate(-90deg)",transition:"transform 0.15s"}}>▾</span>
       </div>
       {configOpen&&(<>
+        <div style={{marginTop:10,fontSize:10,color:t.textMuted}}>{T.encOutflowCatHint||"Configure outflow categories in Settings → Finances."}</div>
         <div style={{marginTop:10}}>
-          <span style={{fontSize:11.5,fontWeight:700,color:t.textSub,display:"block",marginBottom:5}}>{T.encOutflowCategories}</span>
-          {encaisseConfig.sortieCategories.map(c=>(<div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 6px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:4,marginBottom:3}}>
-            {editCatId===c.id
-              ?(<input value={editCatName} onChange={e=>setEditCatName(e.target.value)} autoFocus
-                  onBlur={()=>{if(editCatName.trim()){saveEncaisseConfig({...encaisseConfig,sortieCategories:encaisseConfig.sortieCategories.map(x=>x.id===c.id?{...x,name:editCatName.trim()}:x)})}setEditCatId(null)}}
-                  onKeyDown={e=>{if(e.key==="Enter")e.target.blur();if(e.key==="Escape")setEditCatId(null)}}
-                  style={{flex:1,background:t.inputBg,border:`1px solid rgba(249,115,22,0.3)`,borderRadius:3,color:t.inputText,fontSize:11,padding:"2px 5px",outline:"none",marginRight:6}}/>)
-              :(<span style={{fontSize:11,cursor:"pointer",color:t.text,flex:1}} onClick={()=>{setEditCatId(c.id);setEditCatName(c.name)}}>{c.name} <span style={{fontSize:9,color:t.textDim}}>✎</span></span>)}
-            <button onClick={()=>saveEncaisseConfig({...encaisseConfig,sortieCategories:encaisseConfig.sortieCategories.filter(x=>x.id!==c.id)})} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:3,color:"#ef4444",fontSize:9,padding:"1px 5px",cursor:"pointer"}}>✕</button>
-          </div>))}
-          <div style={{display:"flex",gap:4,marginTop:3}}>
-            <input value={newCatName} onChange={e=>setNewCatName(e.target.value)} placeholder={T.encNewCategory} style={{flex:1,background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.inputText,fontSize:11,padding:"3px 6px",outline:"none"}} onKeyDown={e=>{if(e.key==="Enter"&&newCatName.trim()){saveEncaisseConfig({...encaisseConfig,sortieCategories:[...encaisseConfig.sortieCategories,{id:Date.now().toString(),name:newCatName.trim()}]});setNewCatName("")}}}/>
-            <button onClick={()=>{if(!newCatName.trim())return;saveEncaisseConfig({...encaisseConfig,sortieCategories:[...encaisseConfig.sortieCategories,{id:Date.now().toString(),name:newCatName.trim()}]});setNewCatName("")}} style={{padding:"3px 10px",borderRadius:4,border:"none",cursor:"pointer",fontWeight:700,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>+</button>
-          </div>
-        </div>
-        <div style={{marginTop:10}}>
-          <span style={{fontSize:11.5,fontWeight:700,color:t.textSub,display:"block",marginBottom:5}}>{T.encCashLocations}</span>
+          <span style={{fontSize:11.5,fontWeight:700,color:t.textSub,display:"block",marginBottom:5}}>{T.encCashLocationsConfig}</span>
           {encaisseConfig.cashLocations.map(loc=>(<div key={loc.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 6px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:4,marginBottom:3}}>
-            <span style={{fontSize:11,color:t.text,flex:1}}>{loc.name}</span>
+            {editLocId===loc.id
+              ?(<input value={editLocName} onChange={e=>setEditLocName(e.target.value)} autoFocus
+                  onBlur={()=>{if(editLocName.trim()){saveEncaisseConfig({...encaisseConfig,cashLocations:encaisseConfig.cashLocations.map(x=>x.id===loc.id?{...x,name:editLocName.trim()}:x)})}setEditLocId(null)}}
+                  onKeyDown={e=>{if(e.key==="Enter")e.target.blur();if(e.key==="Escape")setEditLocId(null)}}
+                  style={{flex:1,background:t.inputBg,border:`1px solid rgba(249,115,22,0.3)`,borderRadius:3,color:t.inputText,fontSize:11,padding:"2px 5px",outline:"none",marginRight:6}}/>)
+              :(<span style={{fontSize:11,cursor:"pointer",color:t.text,flex:1}} onClick={()=>{setEditLocId(loc.id);setEditLocName(locName(loc));}}>{locName(loc)} <span style={{fontSize:9,color:t.textDim}}>✎</span></span>)}
             <button onClick={()=>saveEncaisseConfig({...encaisseConfig,cashLocations:encaisseConfig.cashLocations.filter(x=>x.id!==loc.id)})} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:3,color:"#ef4444",fontSize:9,padding:"1px 5px",cursor:"pointer"}}>✕</button>
           </div>))}
           <div style={{display:"flex",gap:4,marginTop:3}}>
@@ -1132,7 +1494,7 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
 }
 
 // ── COMPTABILITE EXPORT ──
-function ComptabiliteExport({factures,clients,produits,categories,companyInfo,onClose,showUpgradePrompt}){
+function ComptabiliteExport({factures,clients,produits,categories,companyInfo,onClose,showUpgradePrompt,glAccounts}){
   const t=useT();
   const T=useL();
   const today=dk(new Date());
@@ -1191,6 +1553,74 @@ function ComptabiliteExport({factures,clients,produits,categories,companyInfo,on
       const soldFerm=soldOuv+facture-credited-encaisse;
       if(soldOuv===0&&facture===0&&credited===0&&encaisse===0)continue;
       data.push([cl?.code||"",cl?.entreprise||cid,parseFloat(soldOuv.toFixed(2)),parseFloat(facture.toFixed(2)),parseFloat(credited.toFixed(2)),parseFloat(encaisse.toFixed(2)),parseFloat(soldFerm.toFixed(2))]);
+    }
+    return{hdr,data};
+  };
+
+  const GL=glAccounts||DEFAULT_GL_ACCOUNTS;
+
+  const buildAcombaRows=()=>{
+    const hdr=["Date","Journal","Référence","Description","Compte GL","Débit","Crédit","Note"];
+    const data=[];
+    const facs=factures.filter(f=>!["Annulée","Brouillon"].includes(f.statut)&&(!dateFrom||f.date>=dateFrom)&&(!dateTo||f.date<=dateTo));
+    for(const fac of facs){
+      const cl=clients.find(c=>c.id===fac.clientId);
+      const clName=cl?.entreprise||"";
+      const totals=computeSoumTotals(fac.lignes||[]);
+      for(const l of fac.lignes||[]){
+        const prod=produits.find(p=>p.id===l.produitId);
+        const cat=categories.find(c=>c.id===prod?.categorieId);
+        const acct=cat?.compteRevenu||GL.revenue;
+        const st=(l.prixUnitaire||0)*(l.quantite||0)*(1-(l.remise||0)/100);
+        if(st!==0)data.push([fac.date,"VE",fac.numero,l.description||cat?.nom||"Ventes",acct,"",st.toFixed(2),clName]);
+      }
+      if(totals.tpsTotal>0)data.push([fac.date,"VE",fac.numero,"TPS",GL.tps,"",totals.tpsTotal.toFixed(2),clName]);
+      if(totals.tvqTotal>0)data.push([fac.date,"VE",fac.numero,"TVQ",GL.tvq,"",totals.tvqTotal.toFixed(2),clName]);
+      data.push([fac.date,"VE",fac.numero,`Ctes clients — ${fac.numero}`,GL.ar,totals.total.toFixed(2),"",clName]);
+    }
+    for(const fac of factures){
+      const cl=clients.find(c=>c.id===fac.clientId);
+      for(const p of fac.paiements||[]){
+        if(p.fromCredit)continue;
+        if(dateFrom&&p.date<dateFrom)continue;
+        if(dateTo&&p.date>dateTo)continue;
+        const amt=(p.montant||0);
+        data.push([p.date,"CA",p.numero||fac.numero,`Paiement ${fac.numero}`,GL.bank,amt.toFixed(2),"",cl?.entreprise||""]);
+        data.push([p.date,"CA",p.numero||fac.numero,`Paiement ${fac.numero}`,GL.ar,"",amt.toFixed(2),cl?.entreprise||""]);
+      }
+    }
+    return{hdr,data};
+  };
+
+  const buildSage50Rows=()=>{
+    const hdr=["Date","Source","Comment","Account Number","Account Description","Debit","Credit"];
+    const data=[];
+    const facs=factures.filter(f=>!["Annulée","Brouillon"].includes(f.statut)&&(!dateFrom||f.date>=dateFrom)&&(!dateTo||f.date<=dateTo));
+    for(const fac of facs){
+      const cl=clients.find(c=>c.id===fac.clientId);
+      const clName=cl?.entreprise||"";
+      const totals=computeSoumTotals(fac.lignes||[]);
+      for(const l of fac.lignes||[]){
+        const prod=produits.find(p=>p.id===l.produitId);
+        const cat=categories.find(c=>c.id===prod?.categorieId);
+        const acct=cat?.compteRevenu||GL.revenue;
+        const st=(l.prixUnitaire||0)*(l.quantite||0)*(1-(l.remise||0)/100);
+        if(st!==0)data.push([fac.date,fac.numero,l.description||cat?.nom||"Revenue",acct,"Sales Revenue","",st.toFixed(2)]);
+      }
+      if(totals.tpsTotal>0)data.push([fac.date,fac.numero,"GST/TPS",GL.tps,"GST Payable","",totals.tpsTotal.toFixed(2)]);
+      if(totals.tvqTotal>0)data.push([fac.date,fac.numero,"QST/TVQ",GL.tvq,"QST Payable","",totals.tvqTotal.toFixed(2)]);
+      data.push([fac.date,fac.numero,`A/R — ${fac.numero} — ${clName}`,GL.ar,"Accounts Receivable",totals.total.toFixed(2),""]);
+    }
+    for(const fac of factures){
+      const cl=clients.find(c=>c.id===fac.clientId);
+      for(const p of fac.paiements||[]){
+        if(p.fromCredit)continue;
+        if(dateFrom&&p.date<dateFrom)continue;
+        if(dateTo&&p.date>dateTo)continue;
+        const amt=(p.montant||0);
+        data.push([p.date,p.numero||fac.numero,`Payment — ${fac.numero}`,GL.bank,"Bank",amt.toFixed(2),""]);
+        data.push([p.date,p.numero||fac.numero,`Payment — ${fac.numero}`,GL.ar,"Accounts Receivable","",amt.toFixed(2)]);
+      }
     }
     return{hdr,data};
   };
@@ -1263,9 +1693,19 @@ function ComptabiliteExport({factures,clients,produits,categories,companyInfo,on
       }
       if(rows.length<=1){setMsg("Aucune activité dans cette période.");return;}
       buildCSV(rows,"grand-livre-comptes-recevables");setMsg(`${rows.length-1} client${rows.length>2?"s":""} exporté${rows.length>2?"s":""}.`);
+    } else if(exportType==="acomba"){
+      if(!canUse("excelExport")){if(showUpgradePrompt)showUpgradePrompt("excelExport");else setUpgradeMsg(true);return;}
+      const{hdr,data}=buildAcombaRows();
+      if(!data.length){setMsg(T.exportNoData||"Aucune donnée dans cette période.");return;}
+      buildCSV([hdr,...data],"acomba-journal");setMsg(`${data.length} écritures exportées — Acomba.`);
+    } else if(exportType==="sage50"){
+      if(!canUse("excelExport")){if(showUpgradePrompt)showUpgradePrompt("excelExport");else setUpgradeMsg(true);return;}
+      const{hdr,data}=buildSage50Rows();
+      if(!data.length){setMsg(T.exportNoData||"Aucune donnée dans cette période.");return;}
+      buildCSV([hdr,...data],"sage50-journal");setMsg(`${data.length} journal entries exported — Sage 50.`);
     }
   };
-  const OPTS=[{id:"facturation",label:T.exportJournalInv,desc:T.exportInvDesc},{id:"encaissements",label:T.exportJournalPay,desc:T.exportPayDesc},{id:"grandlivre",label:T.exportLedger,desc:T.exportLedgerDesc}];
+  const OPTS=[{id:"facturation",label:T.exportJournalInv,desc:T.exportInvDesc},{id:"encaissements",label:T.exportJournalPay,desc:T.exportPayDesc},{id:"grandlivre",label:T.exportLedger,desc:T.exportLedgerDesc},{id:"acomba",label:T.exportAcomba,desc:T.exportAcombaDesc,pro:true},{id:"sage50",label:T.exportSage50,desc:T.exportSage50Desc,pro:true}];
   return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
     <div style={{background:t.bg,border:`1px solid ${t.cardBorder}`,borderRadius:12,padding:22,width:"100%",maxWidth:500,display:"flex",flexDirection:"column",gap:12,boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -1279,9 +1719,9 @@ function ComptabiliteExport({factures,clients,produits,categories,companyInfo,on
         <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={iS}/>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:6}}>
-        {OPTS.map(o=>(<label key={o.id} onClick={()=>setExportType(o.id)} style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",padding:"9px 12px",borderRadius:8,border:`1px solid ${exportType===o.id?"#f97316":t.cardBorder}`,background:exportType===o.id?"rgba(249,115,22,0.06)":t.card}}>
-          <input type="radio" checked={exportType===o.id} onChange={()=>setExportType(o.id)} style={{accentColor:"#f97316",flexShrink:0}}/>
-          <div><div style={{fontSize:12,fontWeight:600,color:t.text}}>{o.label}</div><div style={{fontSize:10,color:t.textMuted,marginTop:1}}>{o.desc}</div></div>
+        {OPTS.map(o=>(<label key={o.id} onClick={()=>!o.pro||canUse("excelExport")?setExportType(o.id):showUpgradePrompt?showUpgradePrompt("excelExport"):setUpgradeMsg(true)} style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",padding:"9px 12px",borderRadius:8,border:`1px solid ${exportType===o.id?"#f97316":t.cardBorder}`,background:exportType===o.id?"rgba(249,115,22,0.06)":t.card,opacity:o.pro&&!canUse("excelExport")?0.65:1}}>
+          <input type="radio" checked={exportType===o.id} onChange={()=>{}} style={{accentColor:"#f97316",flexShrink:0}}/>
+          <div><div style={{fontSize:12,fontWeight:600,color:t.text,display:"flex",alignItems:"center",gap:6}}>{o.label}{o.pro&&<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"1px 5px",borderRadius:4}}>Pro</span>}</div><div style={{fontSize:10,color:t.textMuted,marginTop:1}}>{o.desc}</div></div>
         </label>))}
       </div>
       <div style={{display:"flex",gap:8,alignItems:"center",borderTop:`1px solid ${t.dividerMid}`,paddingTop:10,flexWrap:"wrap"}}>
@@ -1301,7 +1741,7 @@ const TYPE_PILL={soumission:{label:"S",bg:"rgba(59,130,246,0.12)",color:"#3b82f6
 function getStatutColor(doc){if(doc._type==="soumission")return STATUT_SOUM_C[doc.statut]||"#6b7280";if(doc._type==="commande")return STATUT_CMD_C[doc.statut]||"#6b7280";if(doc._type==="facture"||doc._type==="creditnote")return STATUT_FAC_C[doc.statut]||STATUT_NC_C[doc.statut]||"#6b7280";return"#6b7280";}
 function getStatutColorFn(type,statut){if(type==="soumission")return STATUT_SOUM_C[statut]||"#6b7280";if(type==="commande")return STATUT_CMD_C[statut]||"#6b7280";if(type==="facture")return STATUT_FAC_C[statut]||"#6b7280";if(type==="creditnote")return STATUT_NC_C[statut]||"#6b7280";return"#6b7280";}
 function getDocSolde(doc){if(doc._type==="facture"){const paye=(doc.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);return Math.max(0,computeSoumTotals(doc.lignes||[]).total-paye);}return null;}
-function FacturationDashboard({soumissions,commandes,factures,creditNotes,clients,produits,categories,companyInfo,showUpgradePrompt,openDoc}){
+function FacturationDashboard({soumissions,commandes,factures,creditNotes,clients,produits,categories,companyInfo,showUpgradePrompt,openDoc,glAccounts}){
   const t=useT();
   const T=useL();
   const [showCompta,setShowCompta]=useState(false);
@@ -1364,9 +1804,9 @@ function FacturationDashboard({soumissions,commandes,factures,creditNotes,client
       </button>))}
       <div style={{flex:1}}/>
       <button onClick={exportCSV} style={{fontSize:10,padding:"3px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,marginBottom:3}}>⬇ CSV</button>
-      <button onClick={()=>setShowCompta(true)} style={{fontSize:10,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,marginBottom:3}}>📊 Comptabilité</button>
+      <button onClick={()=>setShowCompta(true)} style={{fontSize:10,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,marginBottom:3}}>📊 {T.exportAccounting}</button>
     </div>
-    {showCompta&&<ComptabiliteExport factures={factures} clients={clients} produits={produits} categories={categories} companyInfo={companyInfo} showUpgradePrompt={showUpgradePrompt} onClose={()=>setShowCompta(false)}/>}
+    {showCompta&&<ComptabiliteExport factures={factures} clients={clients} produits={produits} categories={categories} companyInfo={companyInfo} showUpgradePrompt={showUpgradePrompt} onClose={()=>setShowCompta(false)} glAccounts={glAccounts}/>}
     {/* Search + date range */}
     <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
       <input value={search} onChange={e=>setSearch(e.target.value)} placeholder={T.facSearchDoc} style={{...inputS,flex:"1 1 160px"}}/>
@@ -1708,7 +2148,7 @@ function AgingReport({factures,clients,creditNotes,companyInfo,apiConfig,showUpg
 }
 
 // ── FACTURATION TAB ──
-function FacturationTab({categories,saveCategories,produits,saveProduits,clients,saveClients,soumissions,saveSoumissions,commandes,saveCommandes,factures,saveFactures,creditNotes,saveCreditNotes,docNums,saveDocNums,companyInfo,encaisseData,persistEncaisse,showUpgradePrompt,apiConfig,recurrents,saveRecurrents,invoiceTemplate}){
+function FacturationTab({categories,saveCategories,produits,saveProduits,clients,saveClients,soumissions,saveSoumissions,commandes,saveCommandes,factures,saveFactures,creditNotes,saveCreditNotes,docNums,saveDocNums,companyInfo,encaisseData,persistEncaisse,showUpgradePrompt,apiConfig,recurrents,saveRecurrents,invoiceTemplate,rawInvoiceTemplate,saveInvoiceTemplate,canUse,glAccounts,saveGlAccounts}){
   const t=useT();
   const T=useL();
   const [subTab,setSubTab]=useState("documents");
@@ -1769,7 +2209,7 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
   const toggleActif=cat=>saveCategories(categories.map(c=>c.id===cat.id?{...c,actif:!c.actif}:c));
   const addCat=()=>{if(!newForm.nom.trim())return;saveCategories([...categories,{id:Date.now().toString(),nom:newForm.nom.trim(),compteRevenu:newForm.compteRevenu.trim(),compteEscompte:newForm.compteEscompte.trim(),description:newForm.description.trim(),actif:true}]);setNewForm({nom:"",compteRevenu:"",compteEscompte:"",description:""});setAddOpen(false)};
 
-  const subTabs=[{id:"documents",label:T.factDocs},{id:"clients",label:T.factClients},{id:"categories",label:T.factCategories},{id:"produits",label:T.factProducts},{id:"vieillissement",label:T.factAging}];
+  const subTabs=[{id:"documents",label:T.factDocs},{id:"clients",label:T.factClients},{id:"categories",label:T.factCategories},{id:"produits",label:T.factProducts},{id:"vieillissement",label:T.factAging},{id:"parametres",label:T.factSettings||"⚙️"}];
 
   if(activeDoc?.type==="soumission"){
     const fc=activeDoc.fromClient;
@@ -1815,7 +2255,7 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
     {showRecurringModal&&<RecurringGenerateModal recurrents={recurrents||[]} saveRecurrents={saveRecurrents} factures={factures} saveFactures={saveFactures} docNums={docNums} saveDocNums={saveDocNums} clients={clients} companyInfo={companyInfo} apiConfig={apiConfig} onClose={()=>setShowRecurringModal(false)}/>}
 
     {/* Dashboard */}
-    {subTab==="documents"&&<FacturationDashboard soumissions={soumissions} commandes={commandes} factures={factures} creditNotes={creditNotes} clients={clients} produits={produits} categories={categories} companyInfo={companyInfo} showUpgradePrompt={showUpgradePrompt} openDoc={openDoc}/>}
+    {subTab==="documents"&&<FacturationDashboard soumissions={soumissions} commandes={commandes} factures={factures} creditNotes={creditNotes} clients={clients} produits={produits} categories={categories} companyInfo={companyInfo} showUpgradePrompt={showUpgradePrompt} openDoc={openDoc} glAccounts={glAccounts}/>}
 
     {/* Clients */}
     {subTab==="clients"&&<ClientsSection clients={clients} saveClients={saveClients} onNewDoc={(type,clientId)=>openDoc(type,clientId,null,true)} onOpenDoc={(type,clientId,doc)=>openDoc(type,clientId,doc,true)} soumissions={soumissions} commandes={commandes} factures={factures} creditNotes={creditNotes} companyInfo={companyInfo} invoiceTemplate={invoiceTemplate} recurrents={recurrents} saveRecurrents={saveRecurrents} showUpgradePrompt={showUpgradePrompt} selectedClientId={selectedClientId} setSelectedClientId={setSelectedClientId}/>}
@@ -1916,6 +2356,62 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
         </div>
       ))}
     </div>)}
+
+    {/* Paramètres / Invoice Template */}
+    {subTab==="parametres"&&rawInvoiceTemplate&&saveInvoiceTemplate&&(
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:14}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+            <span style={{fontSize:13,fontWeight:700,color:t.text}}>{T.cfgInvoiceTemplate}</span>
+            {canUse&&canUse("customTemplates")?<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"1px 6px",borderRadius:6}}>PRO</span>:<span style={{fontSize:9,fontWeight:700,color:"#6b7280",background:"rgba(255,255,255,0.06)",padding:"1px 6px",borderRadius:6}}>Pro</span>}
+          </div>
+          {canUse&&canUse("customTemplates")
+            ?<div style={{display:"flex",flexDirection:"column",gap:8}}>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <div style={{flex:"1 1 120px"}}>
+                  <div style={{fontSize:11,color:t.textMuted,marginBottom:3}}>{T.cfgLogoPosition}</div>
+                  <select value={rawInvoiceTemplate.logoPosition} onChange={e=>saveInvoiceTemplate({...rawInvoiceTemplate,logoPosition:e.target.value})} style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none",width:"100%",boxSizing:"border-box"}}>
+                    <option value="gauche">{T.cfgLogoLeft}</option><option value="centre">{T.cfgLogoCenter}</option><option value="droite">{T.cfgLogoRight}</option>
+                  </select>
+                </div>
+                <div style={{flex:"1 1 120px"}}>
+                  <div style={{fontSize:11,color:t.textMuted,marginBottom:3}}>{T.cfgAccentColor}</div>
+                  <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                    <input type="color" value={rawInvoiceTemplate.accentColor} onChange={e=>saveInvoiceTemplate({...rawInvoiceTemplate,accentColor:e.target.value})} style={{width:38,height:32,border:`1px solid ${t.inputBorder}`,borderRadius:5,padding:2,background:t.inputBg,cursor:"pointer"}}/>
+                    <input value={rawInvoiceTemplate.accentColor} onChange={e=>saveInvoiceTemplate({...rawInvoiceTemplate,accentColor:e.target.value})} style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none",flex:1,fontFamily:"'DM Mono',monospace"}} placeholder="#f97316"/>
+                    <button onClick={()=>saveInvoiceTemplate({...rawInvoiceTemplate,accentColor:"#f97316"})} style={{padding:"3px 8px",borderRadius:4,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"pointer",fontSize:10}}>Reset</button>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <div style={{fontSize:11,color:t.textMuted,marginBottom:3}}>{T.cfgFooterText}</div>
+                <input value={rawInvoiceTemplate.footerText} onChange={e=>saveInvoiceTemplate({...rawInvoiceTemplate,footerText:e.target.value})} placeholder={T.cfgFooterPlaceholder} style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none",width:"100%",boxSizing:"border-box"}}/>
+              </div>
+              <div>
+                <div style={{fontSize:11,color:t.textMuted,marginBottom:3}}>{T.cfgDefaultNotes}</div>
+                <textarea value={rawInvoiceTemplate.defaultNotes} onChange={e=>saveInvoiceTemplate({...rawInvoiceTemplate,defaultNotes:e.target.value})} rows={2} placeholder={T.cfgDefaultNotesPlaceholder} style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none",width:"100%",boxSizing:"border-box",resize:"vertical",fontFamily:"'Outfit',sans-serif"}}/>
+              </div>
+              <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:11,color:t.text}}>
+                <input type="checkbox" checked={rawInvoiceTemplate.showTaxNumbers} onChange={e=>saveInvoiceTemplate({...rawInvoiceTemplate,showTaxNumbers:e.target.checked})} style={{accentColor:"#f97316"}}/>
+                {T.cfgShowTaxNums}
+              </label>
+              <div style={{fontSize:10,color:"#22c55e",fontWeight:600}}>✓ {T.cfgTemplateApplied}</div>
+              <button onClick={()=>{
+                const sampleClient={entreprise:companyInfo.nom||"Entreprise Exemple inc.",contact:"Jean Dupont",adresse:"123 rue Principale",ville:"Montréal",province:"QC",codePostal:"H1A 1A1",courriel:"jean@exemple.ca",tel1:"514-555-0100"};
+                const sampleLignes=[{id:"1",description:"Service de consultation",quantite:10,prixUnitaire:150,remise:0,tps:true,tvq:true},{id:"2",description:"Frais de déplacement",quantite:1,prixUnitaire:75,remise:10,tps:true,tvq:false}];
+                const sampleTotals=computeSoumTotals(sampleLignes);
+                openPDF(buildFactureHTML({numero:"F-DEMO",date:dk(new Date()),dateEcheance:"2026-04-07",statut:"Envoyée",referenceClient:"REF-DEMO",lignes:sampleLignes,notes:rawInvoiceTemplate.defaultNotes||"Merci de votre confiance.",totals:sampleTotals,client:sampleClient,companyInfo,montantPaye:0,acomptes:[],sourceType:null,sourceNumero:null,invoiceTemplate:rawInvoiceTemplate}));
+              }} style={{padding:"7px 16px",borderRadius:6,border:"1px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11}}>
+                👁️ {T.cfgTemplatePreview2}
+              </button>
+            </div>
+            :<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+              <span style={{fontSize:11,color:t.textSub}}>{T.cfgInvoiceTplMovedHint||"Personnalisez les couleurs, logo et pied de page de vos documents."}</span>
+              <button onClick={()=>showUpgradePrompt&&showUpgradePrompt("customTemplates")} style={{padding:"4px 12px",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:10,whiteSpace:"nowrap"}}>{T.upgradeToPro}</button>
+            </div>}
+        </div>
+      </div>
+    )}
   </div>);
 }
 
@@ -3474,7 +3970,7 @@ function RecurringTab({clientId,recurrents,saveRecurrents,produits,showUpgradePr
     return(<div style={{textAlign:"center",padding:"24px 0"}}>
       <div style={{fontSize:13,color:"#f97316",fontWeight:700,marginBottom:6}}>🔒 Fonctionnalité Pro</div>
       <div style={{fontSize:11,color:t.textMuted,marginBottom:12}}>Les factures récurrentes sont disponibles avec BalanceIQ Pro.</div>
-      <button onClick={()=>showUpgradePrompt&&showUpgradePrompt("recurringInvoices")} style={{padding:"6px 18px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>Passer à Pro</button>
+      <button onClick={()=>showUpgradePrompt&&showUpgradePrompt("recurringInvoices")} style={{padding:"6px 18px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>{T.upgradeToPro}</button>
     </div>);
   }
   return(<div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -4027,6 +4523,66 @@ function ProduitsSection({produits,saveProduits,categories}){
 }
 
 // ── INTELLIGENCE TAB ──
+function CashierVarianceCard({cashierVariances,T,t}){
+  const [expanded,setExpanded]=useState(null);
+  const fmt2=v=>`${v>=0?"+":""}${Math.abs(v).toLocaleString("fr-CA",{style:"currency",currency:"CAD",minimumFractionDigits:2})}`;
+  const alerts=cashierVariances.filter(v=>v.lossAlert||v.isShort||v.isOver);
+  return(
+    <div style={{background:t.card,border:`1px solid ${alerts.length>0?"rgba(239,68,68,0.35)":t.cardBorder}`,borderRadius:9,padding:11}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+        <span style={{fontSize:13,fontWeight:700,color:t.text}}>👤 {T.intelCashVariance}</span>
+        {alerts.length>0&&<span style={{fontSize:10,fontWeight:700,color:"#dc2626",background:"rgba(239,68,68,0.1)",padding:"2px 8px",borderRadius:10}}>{alerts.length} {T.intelCVAlert}</span>}
+      </div>
+      {cashierVariances.length===0
+        ?<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>{T.intelCVNoData}</div>
+        :<div style={{display:"flex",flexDirection:"column",gap:0}}>
+          {/* Header row */}
+          <div style={{display:"grid",gridTemplateColumns:"2fr 0.7fr 1fr 1fr 1.4fr",gap:4,padding:"3px 6px",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:2}}>
+            {[T.cfgName||"Caissier",T.intelCVShifts,T.intelCVAvg,T.intelCVCumul,T.intelCVStatus].map((h,i)=>(
+              <span key={i} style={{fontSize:10,color:t.textMuted,fontWeight:600,textAlign:i>0?"right":"left"}}>{h}</span>
+            ))}
+          </div>
+          {cashierVariances.map(v=>{
+            const statusColor=v.lossAlert?"#dc2626":v.isShort?"#f59e0b":v.isOver?"#3b82f6":"#16a34a";
+            const statusLabel=v.lossAlert?T.intelCVAlert:v.isShort?T.intelCVShort:v.isOver?T.intelCVOver:T.intelCVOK;
+            const isExp=expanded===v.name;
+            return(
+              <div key={v.name} style={{borderBottom:`1px solid ${t.divider}`}}>
+                <div onClick={()=>setExpanded(isExp?null:v.name)} style={{display:"grid",gridTemplateColumns:"2fr 0.7fr 1fr 1fr 1.4fr",gap:4,padding:"6px 6px",cursor:"pointer",background:isExp?t.rowBg:"transparent",borderRadius:isExp?5:0,alignItems:"center"}}>
+                  <span style={{fontSize:12,fontWeight:600,color:v.lossAlert?"#dc2626":t.text,display:"flex",alignItems:"center",gap:4}}>
+                    {v.lossAlert&&"🚨"}{v.name}
+                  </span>
+                  <span style={{fontSize:11,color:t.textMuted,textAlign:"right"}}>{v.n}</span>
+                  <span style={{fontSize:12,fontFamily:"'DM Mono',monospace",textAlign:"right",color:v.avg<-2?"#dc2626":v.avg>2?"#3b82f6":"#16a34a",fontWeight:600}}>{fmt2(v.avg)}</span>
+                  <span style={{fontSize:12,fontFamily:"'DM Mono',monospace",textAlign:"right",color:v.cumul<-10?"#dc2626":v.cumul>10?"#3b82f6":"#16a34a",fontWeight:700}}>{fmt2(v.cumul)}</span>
+                  <span style={{fontSize:10,fontWeight:700,color:statusColor,textAlign:"right",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{statusLabel}</span>
+                </div>
+                {isExp&&(
+                  <div style={{padding:"4px 6px 8px",background:t.section,borderRadius:"0 0 5px 5px"}}>
+                    {v.lossAlert&&<div style={{fontSize:11,color:"#dc2626",fontWeight:600,marginBottom:6,padding:"5px 8px",background:"rgba(239,68,68,0.07)",borderRadius:5,border:"1px solid rgba(239,68,68,0.2)"}}>🚨 {T.intelCVAlertMsg(v.name,fmt(Math.abs(v.cumul)))}</div>}
+                    <div style={{fontSize:10,fontWeight:600,color:t.textMuted,marginBottom:4}}>{T.intelCVHistory}</div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4,marginBottom:4}}>
+                      <span style={{fontSize:10,color:t.textMuted,fontWeight:600}}>{T.intelCVColDate}</span>
+                      <span style={{fontSize:10,color:t.textMuted,fontWeight:600,textAlign:"right"}}>{T.intelCVColVar}</span>
+                    </div>
+                    {[...v.ecarts].reverse().map((e,i)=>(
+                      <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4,padding:"2px 0",borderBottom:`1px solid ${t.divider}`}}>
+                        <span style={{fontSize:11,color:t.textSub}}>{e.date}</span>
+                        <span style={{fontSize:11,fontFamily:"'DM Mono',monospace",textAlign:"right",fontWeight:600,color:Math.abs(e.ecart)<=1?"#16a34a":e.ecart<0?"#dc2626":"#3b82f6"}}>
+                          {Math.abs(e.ecart)<=1?"✓":fmt2(e.ecart)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>}
+    </div>
+  );
+}
+
 function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProfiles,getLR,platforms,encaisseData,encaisseConfig}){
   const T=useL();
   const t=useT();
@@ -4060,20 +4616,33 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
   },[d,computeDay,dowProfiles]);
 
   const cashierVariances=useMemo(()=>{
+    const cutoff=new Date();cutoff.setDate(cutoff.getDate()-30);
     const vars={};
-    Object.entries(liveData).forEach(([date,dayData])=>{
+    Object.entries(liveData).sort(([a],[b])=>a.localeCompare(b)).forEach(([date,dayData])=>{
       if(!dayData.cashes)return;
+      if(new Date(date+"T12:00:00")<cutoff)return;
       dayData.cashes.forEach(c=>{
-        if(!c.cashierId||c.posVentes==null||c.float==null||c.deposits==null||c.finalCash==null)return;
+        const name=c.nom||c.cashierId;
+        if(!name||c.posVentes==null||c.float==null||c.finalCash==null)return;
         const manT=(c.interac||0)+(c.livraisons||0)+(c.deposits||0)+(c.finalCash||0)-(c.float||0);
         const posT=(c.posVentes||0)+(c.posTPS||0)+(c.posTVQ||0)+(c.posLivraisons||0);
-        const ecart=manT-posT;
-        if(!vars[c.cashierId])vars[c.cashierId]={ecarts:[],total:0};
-        vars[c.cashierId].ecarts.push({date,ecart});
-        vars[c.cashierId].total+=ecart;
+        const ecart=Math.round((manT-posT)*100)/100;
+        if(!vars[name])vars[name]={name,ecarts:[],cumul:0};
+        vars[name].ecarts.push({date,ecart,manT,posT});
+        vars[name].cumul+=ecart;
       });
     });
-    return vars;
+    // Compute stats and pattern flags
+    return Object.values(vars).map(v=>{
+      const n=v.ecarts.length;
+      const avg=n>0?v.cumul/n:0;
+      const shortCount=v.ecarts.filter(e=>e.ecart<-2).length;
+      const overCount=v.ecarts.filter(e=>e.ecart>2).length;
+      const lossAlert=v.cumul<-50;
+      const isShort=!lossAlert&&shortCount>=3&&shortCount/n>=0.5;
+      const isOver=!lossAlert&&overCount>=3&&overCount/n>=0.5;
+      return{...v,n,avg,shortCount,overCount,lossAlert,isShort,isOver};
+    }).sort((a,b)=>(a.lossAlert?-1:b.lossAlert?1:0)||(a.isShort?-1:b.isShort?1:0)||a.name.localeCompare(b.name));
   },[liveData]);
 
   const hasDowData=dowProfiles.some(p=>p.n>0);
@@ -4149,13 +4718,7 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
         <div style={{display:"flex",gap:8,alignItems:"center"}}><span style={{fontSize:11,color:t.textMuted}}>Moy: {fmt(a.avg)}</span><span style={{fontSize:11,color:t.textSub}}>→</span><span style={{fontSize:12,fontWeight:600,fontFamily:"'DM Mono',monospace",color:t.text}}>{fmt(a.venteNet)}</span><span style={{fontSize:11,fontWeight:700,color:a.pct>0?"#22c55e":"#ef4444",fontFamily:"'DM Mono',monospace"}}>{a.pct>0?"+":""}{a.pct.toFixed(0)}%</span></div>
       </div>)):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>{T.intelAnomalyEmpty}</div>)}
     </ICard>
-    <ICard>
-      <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.intelCashVariance}</span>
-      {Object.keys(cashierVariances).length>0?Object.entries(cashierVariances).map(([id,data])=>(<div key={id} style={{marginBottom:8}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}><span style={{fontSize:12,fontWeight:600,color:t.text}}>{id.length>8?`Caissier ${id.slice(-4)}`:id}</span><span style={{fontSize:12,fontFamily:"'DM Mono',monospace",color:data.total>=0?"#16a34a":"#dc2626",fontWeight:700}}>Total: {data.total>=0?"+":""}{fmt(data.total)}</span></div>
-        {data.ecarts.slice(-5).map((e,i)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",padding:"2px 0",fontSize:11}}><span style={{color:t.textMuted}}>{e.date}</span><span style={{fontFamily:"'DM Mono',monospace",color:Math.abs(e.ecart)<=1?"#16a34a":"#dc2626"}}>{Math.abs(e.ecart)<=1?"✓ OK":e.ecart>0?`+${fmt(e.ecart)}`:fmt(e.ecart)}</span></div>))}
-      </div>)):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>Aucune donnée — les écarts apparaîtront après réconciliation</div>)}
-    </ICard>
+    <CashierVarianceCard cashierVariances={cashierVariances} T={T} t={t}/>
     <ICard>
       <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.intelVelocityTitle(T.days[dow])}</span>
       {velocityData.some(v=>v.n>0)?(<div>
@@ -4227,7 +4790,7 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
       <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.intelEncaisseSorties}</span>
       {(()=>{
         const n=new Date();const y=n.getFullYear();const m=String(n.getMonth()+1).padStart(2,"0");const dim=new Date(y,n.getMonth()+1,0).getDate();
-        const catTotals={};(encaisseConfig?.sortieCategories||DEFAULT_SORTIE_CATS).forEach(c=>{catTotals[c.id]={name:c.name,total:0,prevTotal:0}});
+        const catTotals={};(encaisseConfig?.sortieCategories||DEFAULT_SORTIE_CATS).forEach(c=>{catTotals[c.id]={name:T[ENC_CAT_KEY[c.id]]||c.name,total:0,prevTotal:0}});
         let totalSort=0,totalSortPrev=0,daysWithData=0;
         const pm=n.getMonth()===0?12:n.getMonth();const py=n.getMonth()===0?y-1:y;const pmStr=`${py}-${String(pm).padStart(2,"0")}`;
         const dimPrev=new Date(py,pm,0).getDate();
@@ -4289,7 +4852,7 @@ function LocationsConfig({locations,saveLocations,facClients}){
   const T=useL();
   const [editing,setEditing]=useState(null);
   const [form,setForm]=useState({});
-  const newLoc=()=>{setForm({nom:"",adresse:"",ville:"",responsable:"",email:"",telephone:"",clientId:"",statut:"active",royaltyOverride:false,royaltyRate:null,adRate:null});setEditing("new")};
+  const newLoc=()=>{setForm({nom:"",adresse:"",ville:"",responsable:"",email:"",telephone:"",clientId:"",statut:"active",royaltyOverride:false,royaltyRate:null,adRate:null,payFrequency:"biweekly"});setEditing("new")};
   const editLoc=(loc)=>{setForm({...loc});setEditing(loc.id)};
   const saveLoc=()=>{
     if(!form.nom?.trim())return;
@@ -4332,6 +4895,15 @@ function LocationsConfig({locations,saveLocations,facClients}){
                 <option value="inactive">{T.recurringInactive}</option>
               </select>
             </div>
+            <div>
+              <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.payrollFrequency}</div>
+              <select value={form.payFrequency||"biweekly"} onChange={e=>setForm(p=>({...p,payFrequency:e.target.value}))} style={{...inp,height:28}}>
+                <option value="weekly">{T.payrollWeekly}</option>
+                <option value="biweekly">{T.payrollBiweekly}</option>
+                <option value="semimonthly">{T.payrollSemimonth}</option>
+                <option value="monthly">{T.payrollMonthly}</option>
+              </select>
+            </div>
           </div>
           <div style={{marginTop:8}}>
             <label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:t.textSub,cursor:"pointer"}}>
@@ -4363,6 +4935,7 @@ function LocationsConfig({locations,saveLocations,facClients}){
           <div>
             <div style={{fontSize:12,fontWeight:700,color:t.text}}>{loc.nom}</div>
             <div style={{fontSize:10.5,color:t.textMuted,marginTop:2}}>{[loc.ville,loc.responsable,loc.email].filter(Boolean).join(" · ")}</div>
+            {loc.payFrequency&&<div style={{fontSize:9.5,color:t.textDim,marginTop:1}}>💼 {T[loc.payFrequency==='weekly'?'payrollWeekly':loc.payFrequency==='biweekly'?'payrollBiweekly':loc.payFrequency==='semimonthly'?'payrollSemimonth':'payrollMonthly']}</div>}
           </div>
           <div style={{display:"flex",gap:6,alignItems:"center"}}>
             <span style={{fontSize:9.5,padding:"2px 7px",borderRadius:6,background:loc.statut==="active"?"rgba(34,197,94,0.1)":"rgba(239,68,68,0.1)",color:loc.statut==="active"?"#4ade80":"#fca5a5",fontWeight:600}}>{loc.statut==="active"?T.cfgActive:T.recurringInactive}</span>
@@ -4375,14 +4948,63 @@ function LocationsConfig({locations,saveLocations,facClients}){
   );
 }
 
+// ── PAYROLL CONFIG ──
+function PayrollConfig({payrollConfig,savePayrollConfig,appMode}){
+  const t=useT();const T=useL();
+  const [contribs,setContribs]=useState(payrollConfig?.contributions||[]);
+  useEffect(()=>setContribs(payrollConfig?.contributions||[]),[payrollConfig]);
+  const inp={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:12,padding:"5px 8px",outline:"none"};
+  const empTotal=contribs.filter(c=>c.type==='employer').reduce((s,c)=>s+(parseFloat(c.rate)||0),0);
+  const eeTotal=contribs.filter(c=>c.type==='employee').reduce((s,c)=>s+(parseFloat(c.rate)||0),0);
+  const addLine=()=>setContribs(p=>[...p,{id:`custom-${Date.now()}`,label:"",rate:0,type:'employer'}]);
+  const removeLine=id=>setContribs(p=>p.filter(c=>c.id!==id));
+  const updateLine=(id,field,val)=>setContribs(p=>p.map(c=>c.id===id?{...c,[field]:val}:c));
+  const isFranchisor=appMode==='franchiseur';
+  return(
+    <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:14}}>
+      <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:4}}>💼 {T.payrollTitle}</div>
+      <div style={{fontSize:11,color:t.textSub,marginBottom:isFranchisor?6:12}}>{T.payrollDesc}</div>
+      {isFranchisor&&<div style={{fontSize:11,color:'#a78bfa',background:'rgba(167,139,250,0.07)',border:'1px solid rgba(167,139,250,0.2)',borderRadius:6,padding:'6px 10px',marginBottom:12}}>
+        📊 {T.payrollNetworkNote}
+      </div>}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 90px 120px 32px",gap:6,alignItems:"center",marginBottom:6}}>
+        <div style={{fontSize:10,fontWeight:600,color:t.textMuted}}>{T.payrollContrib}</div>
+        <div style={{fontSize:10,fontWeight:600,color:t.textMuted}}>{T.payrollRate}</div>
+        <div style={{fontSize:10,fontWeight:600,color:t.textMuted}}>{T.payrollTypeLabel}</div>
+        <div/>
+      </div>
+      {contribs.map(c=>(
+        <div key={c.id} style={{display:"grid",gridTemplateColumns:"1fr 90px 120px 32px",gap:6,alignItems:"center",marginBottom:5}}>
+          <input value={c.label} onChange={e=>updateLine(c.id,'label',e.target.value)} style={{...inp,width:"100%"}} placeholder="Ex: CNESST"/>
+          <input type="number" min={0} max={100} step={0.01} value={c.rate} onChange={e=>updateLine(c.id,'rate',parseFloat(e.target.value)||0)} style={{...inp,width:"100%"}}/>
+          <select value={c.type} onChange={e=>updateLine(c.id,'type',e.target.value)} style={{...inp,height:28,width:"100%"}}>
+            <option value="employer">{T.payrollEmployer}</option>
+            <option value="employee">{T.payrollEmployee}</option>
+          </select>
+          <button onClick={()=>removeLine(c.id)} style={{padding:"2px 0",width:28,borderRadius:5,border:"1px solid rgba(239,68,68,0.3)",background:"none",color:"#ef4444",cursor:"pointer",fontSize:13,lineHeight:1}}>✕</button>
+        </div>
+      ))}
+      <button onClick={addLine} style={{marginTop:4,padding:"4px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textSub,cursor:"pointer",fontSize:11}}>{T.payrollAddLine}</button>
+      <div style={{marginTop:10,padding:"8px 10px",borderRadius:7,background:t.section,fontSize:11,color:t.textSub,display:"flex",gap:16,flexWrap:"wrap"}}>
+        <span>{T.payrollEmpCharges}: <strong style={{color:t.text}}>{empTotal.toFixed(2)}%</strong></span>
+        <span>{T.payrollEeDeduct}: <strong style={{color:t.text}}>{eeTotal.toFixed(2)}%</strong></span>
+        <span>{T.payrollTotalRemit}: <strong style={{color:'#38bdf8'}}>{(empTotal+eeTotal).toFixed(2)}%</strong></span>
+      </div>
+      <button onClick={()=>savePayrollConfig({...payrollConfig,contributions:contribs})} style={{marginTop:12,padding:"6px 16px",borderRadius:7,border:`1px solid rgba(249,115,22,0.3)`,background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontWeight:600,fontSize:11}}>{T.save}</button>
+    </div>
+  );
+}
+
 // ── REDEVANCES CONFIG ──
-function RedevancesConfig({royaltyConfig,saveRoyaltyConfig,facCategories,facProduits}){
+function RedevancesConfig({royaltyConfig,saveRoyaltyConfig,facCategories,facProduits,perfTargets,savePerfTargets}){
   const t=useT();
   const T=useL();
   const [cfg,setCfg]=useState(royaltyConfig);
   useEffect(()=>setCfg(royaltyConfig),[royaltyConfig]);
+  const [tgt,setTgt]=useState(perfTargets||{fpMax:35,labMax:35,netMinPct:0,revMin:0});
+  useEffect(()=>setTgt(perfTargets||{fpMax:35,labMax:35,netMinPct:0,revMin:0}),[perfTargets]);
   const inp={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:12,padding:"5px 8px",outline:"none"};
-  return(
+  return(<>
     <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:14}}>
       <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:12}}>💰 {T.frcRoyaltyConfig}</div>
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -4471,7 +5093,36 @@ function RedevancesConfig({royaltyConfig,saveRoyaltyConfig,facCategories,facProd
         <button onClick={()=>saveRoyaltyConfig(cfg)} style={{alignSelf:"flex-start",padding:"6px 16px",borderRadius:7,border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.1)",color:"#c4b5fd",cursor:"pointer",fontWeight:600,fontSize:11}}>{T.save}</button>
       </div>
     </div>
-  );
+
+    {/* Performance targets card */}
+    <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:14,marginTop:12}}>
+      <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:4}}>🎯 {T.perfTargetsTitle}</div>
+      <div style={{fontSize:11,color:t.textSub,marginBottom:12}}>{T.perfTargetsDesc}</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.perfFpMax}</div>
+          <input type="number" min={0} max={100} step={0.5} value={tgt.fpMax} onChange={e=>setTgt(p=>({...p,fpMax:parseFloat(e.target.value)||0}))} style={{...inp,width:100}}/>
+          <div style={{fontSize:9,color:t.textDim,marginTop:2}}>{T.perfFpHint}</div>
+        </div>
+        <div>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.perfLabMax}</div>
+          <input type="number" min={0} max={100} step={0.5} value={tgt.labMax} onChange={e=>setTgt(p=>({...p,labMax:parseFloat(e.target.value)||0}))} style={{...inp,width:100}}/>
+          <div style={{fontSize:9,color:t.textDim,marginTop:2}}>{T.perfLabHint}</div>
+        </div>
+        <div>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.perfNetMin}</div>
+          <input type="number" min={-100} max={100} step={0.5} value={tgt.netMinPct} onChange={e=>setTgt(p=>({...p,netMinPct:parseFloat(e.target.value)||0}))} style={{...inp,width:100}}/>
+          <div style={{fontSize:9,color:t.textDim,marginTop:2}}>{T.perfNetHint}</div>
+        </div>
+        <div>
+          <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.perfRevMin}</div>
+          <input type="number" min={0} step={1000} value={tgt.revMin} onChange={e=>setTgt(p=>({...p,revMin:parseFloat(e.target.value)||0}))} style={{...inp,width:100}}/>
+          <div style={{fontSize:9,color:t.textDim,marginTop:2}}>{T.perfRevHint}</div>
+        </div>
+      </div>
+      <button onClick={()=>savePerfTargets(tgt)} style={{marginTop:12,alignSelf:"flex-start",padding:"6px 16px",borderRadius:7,border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.1)",color:"#c4b5fd",cursor:"pointer",fontWeight:600,fontSize:11}}>{T.save}</button>
+    </div>
+  </>);
 }
 
 // ── MARQUE BLANCHE CONFIG ──
@@ -4515,8 +5166,9 @@ function MarqueBlancheConfig({whiteLabelConfig,saveWhiteLabel}){
 }
 
 // ── RÉSEAU TAB ──
-function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfig,facCategories,facProduits,saveFacFactures,docNums,saveDocNums,companyInfo,apiConfig}){
+function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfig,facCategories,facProduits,saveFacFactures,docNums,saveDocNums,companyInfo,apiConfig,perfTargets,payrollConfig}){
   const t=useT();
+  const T=useL();
   const [monthlyData,setMonthlyData]=useState({});
   const [loading,setLoading]=useState(true);
   const [scoreTab,setScoreTab]=useState("performance");
@@ -4525,6 +5177,8 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
   const [genPreview,setGenPreview]=useState(null);
   const [genLoading,setGenLoading]=useState(false);
   const [genResult,setGenResult]=useState(null);
+  const [plMonth,setPlMonth]=useState(reconMonth);
+  const [plAnalysis,setPlAnalysis]=useState([]);
 
   useEffect(()=>{
     (async()=>{
@@ -4590,6 +5244,49 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
     })();
   },[locations]);
 
+  useEffect(()=>{
+    (async()=>{
+      const [y,m]=plMonth.split('-').map(Number);
+      const dim=new Date(y,m,0).getDate();
+      const results=[];
+      for(const loc of locations.filter(l=>l.statut!=='inactive')){
+        try{
+          // Load P&L data
+          const rPL=await window.api.storage.get(`dicann-pl-${plMonth}-loc-${loc.id}`);
+          const pl=rPL?.value?JSON.parse(rPL.value):{};
+          // Load daily data for revenue + labour
+          const rDaily=await window.api.storage.get(`dicann-v7-loc-${loc.id}`);
+          const daily=rDaily?.value?JSON.parse(rDaily.value):{};
+          let autoRev=0,autoLab=0;
+          for(let d=1;d<=dim;d++){
+            const k=`${plMonth}-${String(d).padStart(2,'0')}`;
+            const day=daily[k];if(!day)continue;
+            const cashes=day.cashes||[];
+            const net=cashes.reduce((s,c)=>(c.float!=null&&c.deposits!=null&&c.finalCash!=null)?s+(c.interac||0)+(c.livraisons||0)+(c.deposits||0)+(c.finalCash||0)-(c.float||0):s,0);
+            autoRev+=net;autoLab+=day.labourCost||0;
+          }
+          const revenue=pl._revenueOverride!=null?pl._revenueOverride:autoRev;
+          const labC=pl.labourOverride!=null?pl.labourOverride:autoLab;
+          // Sum all bills
+          const billsSum=prefix=>Object.entries(pl).filter(([k])=>k.startsWith(prefix+'_bills')||k===prefix).reduce((s,[k,v])=>{
+            if(k.endsWith('_bills')&&Array.isArray(v))return s+v.reduce((a,b)=>a+(b.amount||0),0);
+            if(!k.endsWith('_bills')&&typeof v==='number')return s+v;
+            return s;
+          },0);
+          const fpT=billsSum('pettyCashFP')+Object.keys(pl).filter(k=>k.startsWith('sup_')&&k.endsWith('_bills')).reduce((s,k)=>s+(pl[k]||[]).reduce((a,b)=>a+(b.amount||0),0),0)+Object.keys(pl).filter(k=>k.startsWith('sup_')&&!k.endsWith('_bills')).reduce((s,k)=>s+(typeof pl[k]==='number'?pl[k]:0),0);
+          const expT=billsSum('pettyCashMisc')+Object.keys(pl).filter(k=>k.startsWith('exp_')&&k.endsWith('_bills')).reduce((s,k)=>s+(pl[k]||[]).reduce((a,b)=>a+(b.amount||0),0),0)+Object.keys(pl).filter(k=>k.startsWith('exp_')&&!k.endsWith('_bills')).reduce((s,k)=>s+(typeof pl[k]==='number'?pl[k]:0),0);
+          const np=revenue-fpT-labC-expT;
+          const fpP=revenue>0?fpT/revenue*100:0;
+          const labP=revenue>0?labC/revenue*100:0;
+          const npP=revenue>0?np/revenue*100:0;
+          const hasPLData=revenue>0||fpT>0||labC>0||expT>0;
+          results.push({locId:loc.id,locName:loc.nom,revenue,fpT,fpP,labC,labP,expT,np,npP,hasPLData});
+        }catch(e){results.push({locId:loc.id,locName:loc.nom,revenue:0,fpT:0,fpP:0,labC:0,labP:0,expT:0,np:0,npP:0,hasPLData:false});}
+      }
+      setPlAnalysis(results);
+    })();
+  },[plMonth,locations]);
+
   const fmt=v=>v>=1000?`$${(v/1000).toFixed(1)}k`:`$${v.toFixed(0)}`;
   const fmtFull=v=>`$${v.toLocaleString('fr-CA',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   const activeLocs=locations.filter(l=>l.statut!=="inactive");
@@ -4602,9 +5299,9 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
   activeLocs.forEach(loc=>{
     const d=monthlyData[loc.id];
     if(!d)return;
-    if(d.daysSinceFilled>=3)alerts.push({type:"warning",msg:`${loc.nom} n'a pas saisi depuis ${d.daysSinceFilled} jour${d.daysSinceFilled!==1?"s":""}`});
-    if(d.avgLabourPct>35)alerts.push({type:"error",msg:`${loc.nom}: main d'œuvre ${d.avgLabourPct.toFixed(1)}% ce mois (cible <30%)`});
-    if(d.todayStatus==="error")alerts.push({type:"error",msg:`${loc.nom}: écart de caisse aujourd'hui`});
+    if(d.daysSinceFilled>=3)alerts.push({type:"warning",msg:T.alertNoData(loc.nom,d.daysSinceFilled)});
+    if(d.avgLabourPct>35)alerts.push({type:"error",msg:T.alertHighLabour(loc.nom,d.avgLabourPct.toFixed(1))});
+    if(d.todayStatus==="error")alerts.push({type:"error",msg:T.alertCashError(loc.nom)});
   });
 
   // Scorecard calculation
@@ -4616,15 +5313,15 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
     const metrics=[];
     // Labour %
     const labOk=d.avgLabourPct>0&&d.avgLabourPct<=targets.labourPctCible;
-    metrics.push({label:"Main d'œuvre %",val:`${d.avgLabourPct.toFixed(1)}%`,target:`<${targets.labourPctCible}%`,ok:labOk});
+    metrics.push({label:T.colLabourPct,val:`${d.avgLabourPct.toFixed(1)}%`,target:`<${targets.labourPctCible}%`,ok:labOk});
     if(!labOk&&d.avgLabourPct>0)score-=20;
     // Avg $/dz
     const dzOk=d.avgDz>=targets.dzCible;
-    metrics.push({label:"$/douzaine moyen",val:d.avgDz>0?fmtFull(d.avgDz):"—",target:`>${fmtFull(targets.dzCible)}`,ok:dzOk});
+    metrics.push({label:T.scoreDzAvg,val:d.avgDz>0?fmtFull(d.avgDz):"—",target:`>${fmtFull(targets.dzCible)}`,ok:dzOk});
     if(!dzOk&&d.avgDz>0)score-=15;
     // Days without data
     const incomplete=d.daysSinceFilled>0?Math.min(d.daysSinceFilled,5):0;
-    metrics.push({label:"Jours incomplets",val:`${incomplete}`,target:"0",ok:incomplete===0});
+    metrics.push({label:T.scoreIncomplDays,val:`${incomplete}`,target:"0",ok:incomplete===0});
     score-=incomplete*5;
     return{score:Math.max(0,score),metrics,loc};
   };
@@ -4687,14 +5384,14 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
   };
 
   if(!canUse('royaltyAutoCalc')&&!canUse('multiLocationReconciliation')){
-    return(<div style={{padding:24,textAlign:"center",color:"#8b8fa3",fontSize:13}}>🔒 Module Franchise requis pour accéder au tableau de bord réseau.</div>);
+    return(<div style={{padding:24,textAlign:"center",color:"#8b8fa3",fontSize:13}}>{T.reseauLocked}</div>);
   }
 
   return(
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       {/* Sub-tabs */}
       <div style={{display:"flex",gap:2,borderBottom:`1px solid ${t.dividerMid}`,paddingBottom:1}}>
-        {[{id:"performance",label:"📊 Performance"},{id:"scorecards",label:"🏆 Scorecards"},{id:"redevances",label:"💰 Redevances"},{id:"reconciliation",label:"🔄 Réconciliation"},{id:"audit",label:"📋 Audit réseau"}].map(st=>(
+        {[{id:"performance",label:"📊 Performance"},{id:"scorecards",label:"🏆 Scorecards"},{id:"redevances",label:T.reseauRedevances},{id:"reconciliation",label:T.reseauRecon},{id:"audit",label:T.reseauAudit}].map(st=>(
           <button key={st.id} onClick={()=>setScoreTab(st.id)} style={{background:"none",border:"none",color:scoreTab===st.id?"#a78bfa":t.textMuted,fontSize:11,fontWeight:scoreTab===st.id?700:500,padding:"5px 11px",cursor:"pointer",borderBottom:scoreTab===st.id?"2px solid #a78bfa":"2px solid transparent",whiteSpace:"nowrap"}}>
             {st.label}
           </button>
@@ -4706,10 +5403,10 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
         {/* Summary cards */}
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           {[
-            {label:"Ventes réseau (mois)",value:fmtFull(networkTotal),accent:"#a78bfa"},
-            {label:"Succursales actives",value:`${activeLocs.length}`,accent:"#22c55e"},
-            {label:"Balancées aujourd'hui",value:`${balancedToday}/${activeLocs.length}`,accent:"#38bdf8"},
-            {label:"Redevances en attente",value:fmtFull(royaltyDue),accent:"#f97316"},
+            {label:T.netSales,value:fmtFull(networkTotal),accent:"#a78bfa"},
+            {label:T.netActiveLocs,value:`${activeLocs.length}`,accent:"#22c55e"},
+            {label:T.netBalanced,value:`${balancedToday}/${activeLocs.length}`,accent:"#38bdf8"},
+            {label:T.netRoyaltyDue,value:fmtFull(royaltyDue),accent:"#f97316"},
           ].map(card=>(
             <div key={card.label} style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:"10px 14px",minWidth:140,flex:"1 1 auto"}}>
               <div style={{fontSize:8.5,color:t.textMuted,textTransform:"uppercase",letterSpacing:0.8,fontWeight:600,marginBottom:4}}>{card.label}</div>
@@ -4722,12 +5419,12 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
         {loading?<div style={{color:t.textMuted,fontSize:12,padding:16,textAlign:"center"}}>Chargement des données...</div>:(
           <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,overflow:"hidden"}}>
             <div style={{padding:"10px 14px",borderBottom:`1px solid ${t.dividerMid}`}}>
-              <span style={{fontSize:13,fontWeight:700,color:t.text}}>Performance par succursale</span>
+              <span style={{fontSize:13,fontWeight:700,color:t.text}}>{T.perfByStore}</span>
             </div>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
               <thead>
                 <tr style={{background:t.section}}>
-                  {["Succursale","Ventes (mois)","Ventes (hier)","$/dz moy","Main d'œuvre %","Statut"].map(h=>(
+                  {[T.colStore,T.colMonthlySales,T.colYdSales,T.colAvgDz,T.colLabourPct,T.colStatus].map(h=>(
                     <th key={h} style={{padding:"7px 12px",textAlign:"left",fontWeight:600,color:t.textSub,fontSize:10.5,textTransform:"uppercase",letterSpacing:0.5}}>{h}</th>
                   ))}
                 </tr>
@@ -4748,7 +5445,7 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
                     </tr>
                   );
                 })}
-                {activeLocs.length===0&&<tr><td colSpan={6} style={{padding:20,textAlign:"center",color:t.textMuted,fontSize:12}}>Aucune succursale active. Ajoutez des succursales dans Config → Succursales.</td></tr>}
+                {activeLocs.length===0&&<tr><td colSpan={6} style={{padding:20,textAlign:"center",color:t.textMuted,fontSize:12}}>{T.noActiveStores}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -4757,7 +5454,7 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
         {/* Alerts */}
         {alerts.length>0&&(
           <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:"10px 14px"}}>
-            <div style={{fontSize:12,fontWeight:700,color:t.text,marginBottom:8}}>⚠️ Alertes réseau</div>
+            <div style={{fontSize:12,fontWeight:700,color:t.text,marginBottom:8}}>{T.reseauAlerts}</div>
             <div style={{display:"flex",flexDirection:"column",gap:4}}>
               {alerts.map((a,i)=>(
                 <div key={i} style={{fontSize:11,padding:"6px 10px",borderRadius:6,background:a.type==="error"?"rgba(239,68,68,0.08)":"rgba(251,191,36,0.08)",border:`1px solid ${a.type==="error"?"rgba(239,68,68,0.2)":"rgba(251,191,36,0.2)"}`,color:a.type==="error"?"#fca5a5":"#fcd34d"}}>
@@ -4767,15 +5464,102 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
             </div>
           </div>
         )}
+
+        {/* P&L Analysis */}
+        {(()=>{
+          const withData=plAnalysis.filter(r=>r.hasPLData);
+          if(withData.length===0&&plAnalysis.length===0)return null;
+          const sorted=[...withData].sort((a,b)=>b.npP-a.npP);
+          const top=sorted[0]||null;
+          const bottom=sorted[sorted.length-1]||null;
+          const fpMax=perfTargets?.fpMax??35;const labMax=perfTargets?.labMax??35;const netMinPct=perfTargets?.netMinPct??0;const revMin=perfTargets?.revMin??0;
+          const dangers=plAnalysis.filter(r=>r.hasPLData&&(r.fpP>fpMax||r.labP>labMax||r.npP<netMinPct||(revMin>0&&r.revenue<revMin)));
+          return(
+            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,overflow:'hidden'}}>
+              <div style={{padding:"10px 14px",borderBottom:`1px solid ${t.dividerMid}`,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                <span style={{fontSize:13,fontWeight:700,color:t.text,flex:1}}>📊 Analyse P&L mensuelle</span>
+                <input type="month" value={plMonth} onChange={e=>setPlMonth(e.target.value)}
+                  style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,padding:"3px 7px",fontSize:11,fontFamily:"'DM Mono',monospace"}}/>
+              </div>
+              {withData.length===0?(
+                <div style={{padding:20,textAlign:'center',color:t.textMuted,fontSize:12}}>Aucune donnée P&L saisie pour {plMonth}. Demandez aux succursales de compléter leur P&L mensuel.</div>
+              ):(
+                <div style={{padding:'10px 14px',display:'flex',flexDirection:'column',gap:10}}>
+                  {/* Flags row */}
+                  <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                    {top&&<div style={{flex:'1 1 180px',background:'rgba(34,197,94,0.07)',border:'1px solid rgba(34,197,94,0.2)',borderRadius:7,padding:'8px 12px'}}>
+                      <div style={{fontSize:9,color:'#16a34a',fontWeight:700,textTransform:'uppercase',letterSpacing:0.8,marginBottom:3}}>🏆 Meilleure performance</div>
+                      <div style={{fontSize:13,fontWeight:700,color:t.text}}>{top.locName}</div>
+                      <div style={{fontSize:11,color:'#16a34a',fontFamily:"'DM Mono',monospace"}}>{top.npP>=0?'+':''}{top.npP.toFixed(1)}% profit net · {fmtFull(top.np)}</div>
+                    </div>}
+                    {bottom&&bottom.locId!==top?.locId&&<div style={{flex:'1 1 180px',background:'rgba(249,115,22,0.07)',border:'1px solid rgba(249,115,22,0.2)',borderRadius:7,padding:'8px 12px'}}>
+                      <div style={{fontSize:9,color:'#f97316',fontWeight:700,textTransform:'uppercase',letterSpacing:0.8,marginBottom:3}}>{bottom.np<0?'🔴 En perte':'📉 Performance la plus faible'}</div>
+                      <div style={{fontSize:13,fontWeight:700,color:t.text}}>{bottom.locName}</div>
+                      <div style={{fontSize:11,color:bottom.np<0?'#ef4444':'#f97316',fontFamily:"'DM Mono',monospace"}}>{bottom.npP.toFixed(1)}% profit net · {fmtFull(bottom.np)}</div>
+                    </div>}
+                  </div>
+                  {/* Danger flags */}
+                  {dangers.length>0&&<div style={{display:'flex',flexDirection:'column',gap:4}}>
+                    <div style={{fontSize:10,fontWeight:700,color:'#ef4444',textTransform:'uppercase',letterSpacing:0.6}}>🚨 Zones à risque</div>
+                    {dangers.map(r=>{
+                      const flags=[];
+                      if(r.npP<netMinPct)flags.push(`profit net ${r.npP.toFixed(1)}% (cible ≥${netMinPct}%)`);
+                      if(r.fpP>fpMax)flags.push(`F&P ${r.fpP.toFixed(1)}% (cible <${fpMax}%)`);
+                      if(r.labP>labMax)flags.push(`main d'œuvre ${r.labP.toFixed(1)}% (cible <${labMax}%)`);
+                      if(revMin>0&&r.revenue<revMin)flags.push(`revenu ${fmtFull(r.revenue)} (cible ≥${fmtFull(revMin)})`);
+                      return(<div key={r.locId} style={{fontSize:11,padding:'6px 10px',borderRadius:6,background:'rgba(239,68,68,0.07)',border:'1px solid rgba(239,68,68,0.2)',color:'#fca5a5'}}>
+                        <strong>{r.locName}</strong> — {flags.join(' · ')}
+                      </div>);
+                    })}
+                  </div>}
+                  {/* P&L table */}
+                  {(()=>{
+                    const contribs=payrollConfig?.contributions||[];
+                    const remitRate=contribs.reduce((s,c)=>s+(parseFloat(c.rate)||0),0);
+                    const freqLabel=loc=>{const f=loc?.payFrequency||'biweekly';return f==='weekly'?T.payrollWeekly:f==='biweekly'?T.payrollBiweekly:f==='semimonthly'?T.payrollSemimonth:T.payrollMonthly;};
+                    return(
+                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+                      <thead>
+                        <tr style={{background:t.section}}>
+                          {[T.colStore,T.colRevenue,T.plFPPct,T.colLabourPct,T.colExpenses,T.colNetProfit,'%',T.colRemitEst,T.colPayFreq].map(h=>(
+                            <th key={h} style={{padding:'6px 10px',textAlign:'left',fontWeight:600,color:t.textSub,fontSize:10,textTransform:'uppercase',letterSpacing:0.5}}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sorted.map((r,i)=>{
+                          const loc=locations.find(l=>l.id===r.locId);
+                          const remitAmt=r.labC>0?r.labC*remitRate/100:0;
+                          return(
+                          <tr key={r.locId} style={{borderTop:`1px solid ${t.divider}`,background:i===0?'rgba(34,197,94,0.03)':r.np<0?'rgba(239,68,68,0.03)':'transparent'}}>
+                            <td style={{padding:'7px 10px',fontWeight:600,color:t.text}}>{r.locName}{i===0&&<span style={{marginLeft:5,fontSize:9,color:'#16a34a'}}>🏆</span>}{r.np<0&&<span style={{marginLeft:5,fontSize:9,color:'#ef4444'}}>🔴</span>}</td>
+                            <td style={{padding:'7px 10px',fontFamily:"'DM Mono',monospace",color:'#a78bfa'}}>{fmtFull(r.revenue)}</td>
+                            <td style={{padding:'7px 10px',fontFamily:"'DM Mono',monospace",color:r.fpP>fpMax?'#ef4444':r.fpP>(fpMax*0.9)?'#fbbf24':'#22c55e'}}>{r.revenue>0?`${r.fpP.toFixed(1)}%`:'—'}</td>
+                            <td style={{padding:'7px 10px',fontFamily:"'DM Mono',monospace",color:r.labP>labMax?'#ef4444':r.labP>(labMax*0.9)?'#fbbf24':'#22c55e'}}>{r.revenue>0?`${r.labP.toFixed(1)}%`:'—'}</td>
+                            <td style={{padding:'7px 10px',fontFamily:"'DM Mono',monospace",color:t.textSub}}>{fmtFull(r.expT)}</td>
+                            <td style={{padding:'7px 10px',fontFamily:"'DM Mono',monospace",fontWeight:700,color:r.np>=0?'#22c55e':'#ef4444'}}>{fmtFull(r.np)}</td>
+                            <td style={{padding:'7px 10px',fontFamily:"'DM Mono',monospace",color:r.npP>=0?'#22c55e':'#ef4444'}}>{r.revenue>0?`${r.npP.toFixed(1)}%`:'—'}</td>
+                            <td style={{padding:'7px 10px',fontFamily:"'DM Mono',monospace",color:'#f59e0b'}}>{remitAmt>0?fmtFull(remitAmt):'—'}</td>
+                            <td style={{padding:'7px 10px',fontSize:10,color:t.textSub,whiteSpace:'nowrap'}}>{freqLabel(loc)}</td>
+                          </tr>
+                        )})}
+                      </tbody>
+                    </table>
+                  );})()}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </>)}
 
       {/* Scorecards sub-tab */}
       {scoreTab==="scorecards"&&(
         !canUse('franchiseeScorecards')?
-        <div style={{padding:24,textAlign:"center",color:"#8b8fa3",fontSize:13}}>🔒 Scorecards disponibles avec le plan Franchise.</div>:
+        <div style={{padding:24,textAlign:"center",color:"#8b8fa3",fontSize:13}}>{T.scorecardsLocked}</div>:
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          <div style={{fontSize:12,color:t.textSub,marginBottom:4}}>Scorecards du mois en cours — basées sur les données réelles de chaque succursale</div>
-          {loading?<div style={{color:t.textMuted,fontSize:12,padding:16,textAlign:"center"}}>Chargement...</div>:
+          <div style={{fontSize:12,color:t.textSub,marginBottom:4}}>{T.scorecardsDesc}</div>
+          {loading?<div style={{color:t.textMuted,fontSize:12,padding:16,textAlign:"center"}}>{T.loading}</div>:
           activeLocs.map(loc=>{
             const sc=calcScore(loc.id);if(!sc)return null;
             const scoreColor=sc.score>=85?"#22c55e":sc.score>=70?"#fbbf24":"#ef4444";
@@ -4784,14 +5568,14 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
                 <div style={{padding:"10px 14px",borderBottom:`1px solid ${t.dividerMid}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <span style={{fontSize:13,fontWeight:700,color:t.text}}>{loc.nom}</span>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontSize:10,color:t.textMuted}}>Score global</span>
+                    <span style={{fontSize:10,color:t.textMuted}}>{T.scoreGlobal}</span>
                     <span style={{fontSize:18,fontWeight:800,fontFamily:"'DM Mono',monospace",color:scoreColor}}>{sc.score}/100</span>
                   </div>
                 </div>
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
                   <thead>
                     <tr style={{background:t.section}}>
-                      {["Métrique","Valeur","Cible","Statut"].map(h=><th key={h} style={{padding:"6px 12px",textAlign:"left",fontWeight:600,color:t.textSub,fontSize:10.5}}>{h}</th>)}
+                      {[T.scoreMetric,T.scoreValue,T.scoreTarget,T.colStatus].map(h=><th key={h} style={{padding:"6px 12px",textAlign:"left",fontWeight:600,color:t.textSub,fontSize:10.5}}>{h}</th>)}
                     </tr>
                   </thead>
                   <tbody>
@@ -4800,7 +5584,7 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
                         <td style={{padding:"6px 12px",color:t.text}}>{m.label}</td>
                         <td style={{padding:"6px 12px",fontFamily:"'DM Mono',monospace",color:t.text}}>{m.val}</td>
                         <td style={{padding:"6px 12px",fontFamily:"'DM Mono',monospace",color:t.textMuted}}>{m.target}</td>
-                        <td style={{padding:"6px 12px",fontWeight:700,color:m.ok?"#22c55e":"#ef4444"}}>{m.val==="—"?"—":m.ok?"✓ Atteint":"✗ Manqué"}</td>
+                        <td style={{padding:"6px 12px",fontWeight:700,color:m.ok?"#22c55e":"#ef4444"}}>{m.val==="—"?"—":m.ok?T.scoreAchieved:T.scoreMissed}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -4808,7 +5592,7 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
               </div>
             );
           })}
-          {activeLocs.length===0&&<div style={{color:t.textMuted,fontSize:12,padding:16,textAlign:"center"}}>Aucune succursale active.</div>}
+          {activeLocs.length===0&&<div style={{color:t.textMuted,fontSize:12,padding:16,textAlign:"center"}}>{T.noActiveStoresShort}</div>}
         </div>
       )}
 
@@ -4818,11 +5602,11 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
         <div style={{padding:24,textAlign:"center",color:"#8b8fa3",fontSize:13}}>🔒 Génération de redevances disponible avec le plan Franchise.</div>:
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:"10px 14px"}}>
-            <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:10}}>💰 Générer les factures de redevances</div>
+            <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:10}}>{T.royGenTitle}</div>
             <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
               <input type="month" value={genPeriod} onChange={e=>setGenPeriod(e.target.value)} style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:12,padding:"5px 8px",outline:"none"}}/>
               <button onClick={buildRoyaltyPreview} disabled={genLoading} style={{padding:"6px 14px",borderRadius:7,border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.1)",color:"#c4b5fd",cursor:"pointer",fontWeight:600,fontSize:11,opacity:genLoading?0.6:1}}>
-                {genLoading?"Calcul...":"Calculer les redevances"}
+                {genLoading?T.royCalcBusy:T.royCalcBtn}
               </button>
             </div>
             {genResult&&<div style={{marginTop:8,fontSize:12,color:"#22c55e",fontWeight:600}}>{genResult}</div>}
@@ -4830,15 +5614,15 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
           {genPreview&&(
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,overflow:"hidden"}}>
               <div style={{padding:"10px 14px",borderBottom:`1px solid ${t.dividerMid}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{fontSize:12,fontWeight:700,color:t.text}}>Aperçu — {genPeriod}</span>
+                <span style={{fontSize:12,fontWeight:700,color:t.text}}>{T.royPreview} — {genPeriod}</span>
                 <button onClick={createRoyaltyInvoices} style={{padding:"6px 14px",borderRadius:7,border:"1px solid rgba(34,197,94,0.3)",background:"rgba(34,197,94,0.1)",color:"#4ade80",cursor:"pointer",fontWeight:600,fontSize:11}}>
-                  ✓ Créer les factures
+                  {T.royCreateInvoices}
                 </button>
               </div>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
                 <thead>
                   <tr style={{background:t.section}}>
-                    {["","Succursale","Client","Ventes nettes","Redevance","Pub.","Total"].map(h=><th key={h} style={{padding:"6px 10px",textAlign:"left",fontWeight:600,color:t.textSub,fontSize:10}}>{h}</th>)}
+                    {["",T.colStore,T.colClient,T.colNetSales,T.colRoyalty,T.colAdFee,T.colTotal].map(h=><th key={h} style={{padding:"6px 10px",textAlign:"left",fontWeight:600,color:t.textSub,fontSize:10}}>{h}</th>)}
                   </tr>
                 </thead>
                 <tbody>
@@ -4846,7 +5630,7 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
                     <tr key={i} style={{borderTop:`1px solid ${t.divider}`,opacity:p.client?1:0.5}}>
                       <td style={{padding:"6px 10px"}}><input type="checkbox" checked={p.checked&&!!p.client} disabled={!p.client} onChange={e=>{const np=[...genPreview];np[i]={...np[i],checked:e.target.checked};setGenPreview(np)}}/></td>
                       <td style={{padding:"6px 10px",fontWeight:600,color:t.text}}>{p.loc.nom}</td>
-                      <td style={{padding:"6px 10px",color:p.client?t.textSub:"#ef4444"}}>{p.client?p.client.nom:"Aucun client lié"}</td>
+                      <td style={{padding:"6px 10px",color:p.client?t.textSub:"#ef4444"}}>{p.client?p.client.nom:T.royNoClient}</td>
                       <td style={{padding:"6px 10px",fontFamily:"'DM Mono',monospace",color:"#a78bfa"}}>{fmtFull(p.sales)}</td>
                       <td style={{padding:"6px 10px",fontFamily:"'DM Mono',monospace",color:t.text}}>{fmtFull(p.royalty)}</td>
                       <td style={{padding:"6px 10px",fontFamily:"'DM Mono',monospace",color:t.text}}>{fmtFull(p.ad)}</td>
@@ -4863,17 +5647,17 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
       {/* Réconciliation sub-tab */}
       {scoreTab==="reconciliation"&&(
         !canUse('multiLocationReconciliation')?
-        <div style={{padding:24,textAlign:"center",color:"#8b8fa3",fontSize:13}}>🔒 Réconciliation multi-succursales disponible avec le plan Franchise.</div>:
+        <div style={{padding:24,textAlign:"center",color:"#8b8fa3",fontSize:13}}>{T.reconLocked}</div>:
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            <span style={{fontSize:12,color:t.textSub}}>Période:</span>
+            <span style={{fontSize:12,color:t.textSub}}>{T.reconPeriod}</span>
             <input type="month" value={reconMonth} onChange={e=>setReconMonth(e.target.value)} style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:12,padding:"5px 8px",outline:"none"}}/>
           </div>
           <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,overflow:"hidden"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
               <thead>
                 <tr style={{background:t.section}}>
-                  {["Succursale","Ventes (mois)","Redevance due","Facturé","Payé","Solde","Statut"].map(h=>(
+                  {[T.colStore,T.colMonthlySales,T.colRoyaltyDue,T.colBilled,T.colPaid,T.colBalance,T.colStatus].map(h=>(
                     <th key={h} style={{padding:"7px 12px",textAlign:"left",fontWeight:600,color:t.textSub,fontSize:10.5}}>{h}</th>
                   ))}
                 </tr>
@@ -4888,7 +5672,7 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
                   const paid=facFactures.filter(f=>f.clientId===loc.clientId&&f.tags?.includes("redevance")&&(f.date||"").startsWith(reconMonth.slice(0,7))&&f.status==="paid").reduce((s,f)=>s+(f.total||0),0);
                   const solde=billed-paid;
                   const statusColor=solde<=0?"#22c55e":paid>0?"#fbbf24":"#ef4444";
-                  const statusLabel=solde<=0?"✓ Payé":paid>0?"Partiel":"Impayé";
+                  const statusLabel=solde<=0?T.reconPaidStatus:paid>0?T.reconPartialStatus:T.reconUnpaidStatus;
                   return(
                     <tr key={loc.id} style={{borderTop:`1px solid ${t.divider}`}}>
                       <td style={{padding:"8px 12px",fontWeight:600,color:t.text}}>{loc.nom}</td>
@@ -4916,7 +5700,7 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
                     <td></td>
                   </tr>);
                 })()}
-                {activeLocs.length===0&&<tr><td colSpan={7} style={{padding:20,textAlign:"center",color:t.textMuted,fontSize:12}}>Aucune succursale active.</td></tr>}
+                {activeLocs.length===0&&<tr><td colSpan={7} style={{padding:20,textAlign:"center",color:t.textMuted,fontSize:12}}>{T.noActiveStoresShort}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -4933,6 +5717,7 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
 
 function AuditReseauPanel({locations}){
   const t=useT();
+  const T=useL();
   const [entries,setEntries]=useState([]);
   const [loading,setLoading]=useState(true);
   const [filterType,setFilterType]=useState("all");
@@ -4945,24 +5730,24 @@ function AuditReseauPanel({locations}){
   },[]);
   const filtered=filterType==="all"?entries:entries.filter(e=>e.action===filterType);
   const actionColor=a=>a==="create"?"#22c55e":a==="void"?"#ef4444":a==="correction"?"#f97316":"#8b8fa3";
-  const actionLabel=a=>a==="create"?"Créé":a==="update"?"Modifié":a==="void"?"Annulé":a==="correction"?"Correction":a;
+  const actionLabel=a=>a==="create"?T.actCreated:a==="update"?T.actUpdated:a==="void"?T.actVoided:a==="correction"?T.actCorrection:a;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
       <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-        <span style={{fontSize:12,fontWeight:600,color:t.text}}>Journal d'audit — toutes succursales</span>
+        <span style={{fontSize:12,fontWeight:600,color:t.text}}>{T.auditNetTitle}</span>
         <div style={{flex:1}}/>
         {["all","create","update","correction","void"].map(f=>(
           <button key={f} onClick={()=>setFilterType(f)} style={{padding:"3px 9px",borderRadius:5,border:`1px solid ${filterType===f?"rgba(167,139,250,0.5)":t.cardBorder}`,background:filterType===f?"rgba(167,139,250,0.12)":"none",color:filterType===f?"#c4b5fd":t.textMuted,fontSize:10,fontWeight:600,cursor:"pointer"}}>
-            {f==="all"?"Tous":actionLabel(f)}
+            {f==="all"?T.auditFilterAll:actionLabel(f)}
           </button>
         ))}
       </div>
-      {loading?<div style={{color:t.textMuted,fontSize:12,padding:16,textAlign:"center"}}>Chargement...</div>:(
+      {loading?<div style={{color:t.textMuted,fontSize:12,padding:16,textAlign:"center"}}>{T.loading}</div>:(
         <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,overflow:"hidden"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
             <thead>
               <tr style={{background:t.section}}>
-                {["Horodatage","Action","Type","Entité","Champ","Détail"].map(h=>(
+                {[T.colTimestamp,T.colAction,T.colType,T.colEntity,T.colField,T.colDetail].map(h=>(
                   <th key={h} style={{padding:"6px 10px",textAlign:"left",fontWeight:600,color:t.textSub,fontSize:10.5}}>{h}</th>
                 ))}
               </tr>
@@ -5595,7 +6380,7 @@ function CloudAccountSection({cloudUser,syncStatus,onSignIn,onSignUp,onSignOut,t
 }
 
 // ── POS INTEGRATION SECTION ──
-function POSIntegrationSection({posCredentials,setPosCredentials,t,T,canUse,showUpgradePrompt}){
+function POSIntegrationSection({posCredentials,setPosCredentials,posAdvancedConfig,onSavePosAdvanced,t,T,canUse,showUpgradePrompt}){
   const [expandedPos,setExpandedPos]=useState(null);
   const [manualToken,setManualToken]=useState({});
   const [shopDomain,setShopDomain]=useState({});
@@ -5674,27 +6459,24 @@ function POSIntegrationSection({posCredentials,setPosCredentials,t,T,canUse,show
 
   const isConnected=(posType)=>!!posCredentials[posType]?.connected;
 
-  if(!canUse('posIntegration')){
-    return(
-      <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-          <span style={{fontSize:13,fontWeight:700,color:t.text}}>{T.posTitle}</span>
-          <span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"1px 6px",borderRadius:6}}>PRO</span>
-        </div>
-        <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{T.posProOnly}</div>
-        <button onClick={()=>showUpgradePrompt('posIntegration')} style={{padding:"5px 14px",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>Passer à Pro</button>
-      </div>
-    );
-  }
-
   return(
     <div style={{display:"flex",flexDirection:"column",gap:8}}>
       <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-        <span style={{fontSize:13,fontWeight:700,color:t.text,display:"block",marginBottom:4}}>{T.posTitle}</span>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+          <span style={{fontSize:13,fontWeight:700,color:t.text}}>{T.posTitle}</span>
+          <span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"1px 6px",borderRadius:6}}>PRO</span>
+        </div>
         <span style={{fontSize:11,color:t.textMuted}}>Connectez votre caisse enregistreuse pour importer automatiquement les ventes quotidiennes.</span>
       </div>
 
-      {POS_LIST.map(pos=>{
+      {!canUse('posIntegration')&&(
+        <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+          <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{T.posProOnly}</div>
+          <button onClick={()=>showUpgradePrompt('posIntegration')} style={{padding:"5px 14px",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>{T.upgradeToPro}</button>
+        </div>
+      )}
+
+      {canUse('posIntegration')&&<>{POS_LIST.map(pos=>{
         const cred=posCredentials[pos.id]||{};
         const connected=!!cred.connected;
         const oauth=oauthStatus[pos.id];
@@ -5779,6 +6561,44 @@ function POSIntegrationSection({posCredentials,setPosCredentials,t,T,canUse,show
           ))}
         </div>
       </div>
+      </>}
+
+      {/* Advanced POS Data — always visible regardless of plan */}
+      {(
+        <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+          <div onClick={()=>onSavePosAdvanced({...posAdvancedConfig,enabled:!posAdvancedConfig.enabled})} style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6,cursor:"pointer",userSelect:"none"}}>
+            <span style={{fontSize:12,fontWeight:700,color:t.text}}>{T.posAdvTitle}</span>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <div style={{width:34,height:18,borderRadius:9,background:posAdvancedConfig.enabled?"#f97316":"rgba(120,120,120,0.25)",position:"relative",transition:"background 0.2s",flexShrink:0}}>
+                <div style={{position:"absolute",top:2,left:posAdvancedConfig.enabled?18:2,width:14,height:14,borderRadius:"50%",background:"#fff",transition:"left 0.2s"}}/>
+              </div>
+              <span style={{fontSize:11,color:posAdvancedConfig.enabled?"#f97316":t.textDim,fontWeight:600}}>{posAdvancedConfig.enabled?"ON":"OFF"}</span>
+            </div>
+          </div>
+          {posAdvancedConfig.enabled?(
+            <div style={{display:"flex",flexDirection:"column",gap:5}}>
+              <div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.posAdvChoose}</div>
+              {[
+                {key:"payments",   label:T.posAdvPayments},
+                {key:"tips",       label:T.posAdvTips},
+                {key:"nonTaxable", label:T.posAdvNonTaxable},
+                {key:"discounts",  label:T.posAdvDiscounts},
+                {key:"transactionCount", label:T.posAdvTxCount},
+                {key:"hourlySales",label:T.posAdvHourly},
+              ].map(({key,label})=>(
+                <label key={key} style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer"}}>
+                  <input type="checkbox" checked={!!posAdvancedConfig.fields[key]}
+                    onChange={e=>onSavePosAdvanced({...posAdvancedConfig,fields:{...posAdvancedConfig.fields,[key]:e.target.checked}})}
+                    style={{accentColor:"#f97316",width:13,height:13}}/>
+                  <span style={{fontSize:11,color:t.text}}>{label}</span>
+                </label>
+              ))}
+            </div>
+          ):(
+            <div style={{fontSize:10,color:t.textDim}}>{T.posAdvOffNote}</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -6026,6 +6846,21 @@ function InvConfigSection({invConfig,saveInvConfig,t,T}){
   </div>);
 }
 
+// ── CfgCard ──
+function CfgCard({id,title,cfgExpanded,onToggle,children}){
+  const t=useT();
+  const isOpen=!!cfgExpanded?.[id];
+  return(
+    <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,overflow:"hidden"}}>
+      <div onClick={()=>onToggle(id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 11px",cursor:"pointer",userSelect:"none",borderBottom:isOpen?`1px solid ${t.divider}`:"none"}}>
+        <div style={{flex:1}}>{typeof title==="string"?<span style={{fontSize:13,fontWeight:700,color:t.text}}>{title}</span>:title}</div>
+        <span style={{fontSize:11,color:t.textMuted,marginLeft:8}}>{isOpen?"▾":"▸"}</span>
+      </div>
+      {isOpen&&<div style={{padding:11}}>{children}</div>}
+    </div>
+  );
+}
+
 // ── MAIN ──
 export default function App(){
   const [demoData]=useState(()=>genDemo());
@@ -6038,6 +6873,8 @@ export default function App(){
   const [restoreMsg,setRestoreMsg]=useState('');
   const [backupInfo,setBackupInfo]=useState(null);
   const [configSubTab,setConfigSubTab]=useState("entreprise");
+  const [cfgExpanded,setCfgExpanded]=useState({});
+  const toggleCfg=useCallback(id=>setCfgExpanded(prev=>{const next={...prev,[id]:!prev[id]};window.api.storage.set("balanceiq-cfg-expanded",JSON.stringify(next)).catch(()=>{});return next;}),[]);
   const [resendTestStatus,setResendTestStatus]=useState(null);
   const [updateAvailable,setUpdateAvailable]=useState(false);
   const [updating,setUpdating]=useState(false);
@@ -6061,12 +6898,18 @@ export default function App(){
   const sessionCorrectionRef=useRef(new Map()); // date → correction reason already captured
   const [editingSupId,setEditingSupId]=useState(null);
   const [editingSupName,setEditingSupName]=useState("");
+  const [expenseItems,setExpenseItems]=useState(DEFAULT_EXPENSE_ITEMS);
+  const [ocrMappings,setOcrMappings]=useState({});
+  const [glAccounts,setGlAccounts]=useState(DEFAULT_GL_ACCOUNTS);
+  const [editingExpId,setEditingExpId]=useState(null);
+  const [editingExpName,setEditingExpName]=useState("");
   const [platforms,setPlatforms]=useState(DEFAULT_PLATFORMS);
   const [newPlatformName,setNewPlatformName]=useState("");
   const [gasCheckLoading,setGasCheckLoading]=useState(false);
   const [gasCheckMsg,setGasCheckMsg]=useState(null);
   const [posImporting,setPosImporting]=useState(false);
   const [posImportMsg,setPosImportMsg]=useState(null);
+  const [posAdvancedConfig,setPosAdvancedConfig]=useState({enabled:false,fields:{payments:false,tips:false,nonTaxable:false,discounts:false,transactionCount:false,hourlySales:false}});
   const [encaisseData,setEncaisseData]=useState({});
   const [encaisseConfig,setEncaisseConfig]=useState(DEFAULT_ENCAISSE_CONFIG);
   const [cfgEditCatId,setCfgEditCatId]=useState(null);
@@ -6083,6 +6926,18 @@ export default function App(){
   const [posCredentials,setPosCredentials]=useState({});
   const [activeLocationId,setActiveLocationId]=useState("all");
   const [royaltyConfig,setRoyaltyConfig]=useState({type:'percent',structure:'fixed',rate:6,adRate:2,frequency:'monthly',categoryId:null,produitId:null,tranches:[{from:0,to:50000,rate:6},{from:50000,to:null,rate:5}]});
+  const [perfTargets,setPerfTargets]=useState({fpMax:35,labMax:35,netMinPct:0,revMin:0});
+  const DEFAULT_PAYROLL_CONTRIBUTIONS=[
+    {id:'qpp_emp',label:'QPP employeur',rate:5.40,type:'employer'},
+    {id:'ei_emp',label:'AE employeur',rate:2.32,type:'employer'},
+    {id:'qpip_emp',label:'RQAP employeur',rate:0.69,type:'employer'},
+    {id:'fss',label:'FSS',rate:4.26,type:'employer'},
+    {id:'cnesst',label:'CNESST',rate:2.50,type:'employer'},
+    {id:'qpp_ee',label:'QPP employé (retenu)',rate:5.40,type:'employee'},
+    {id:'ei_ee',label:'AE employé (retenu)',rate:1.66,type:'employee'},
+    {id:'qpip_ee',label:'RQAP employé (retenu)',rate:0.49,type:'employee'},
+  ];
+  const [payrollConfig,setPayrollConfig]=useState({contributions:DEFAULT_PAYROLL_CONTRIBUTIONS});
   const [whiteLabelConfig,setWhiteLabelConfig]=useState({enabled:false,franchiseName:"",accentColor:"#f97316",footer:""});
   const [locationDataCache,setLocationDataCache]=useState({});
   const [upgradePromptOpen,setUpgradePromptOpen]=useState(false);
@@ -6108,6 +6963,8 @@ export default function App(){
     try{const r2=await window.api.storage.get("dicann-roster");if(r2?.value)setRoster(JSON.parse(r2.value))}catch(e){}
     try{const r2b=await window.api.storage.get("dicann-emp-roster");if(r2b?.value)setEmpRoster(JSON.parse(r2b.value))}catch(e){}
     try{const r3=await window.api.storage.get("dicann-suppliers-v2");if(r3?.value)setSuppliers(JSON.parse(r3.value))}catch(e){}
+    try{const rEI=await window.api.storage.get("dicann-pl-expense-items");if(rEI?.value)setExpenseItems(JSON.parse(rEI.value))}catch(e){}
+    try{const rGL=await window.api.storage.get("dicann-gl-accounts");if(rGL?.value)setGlAccounts(prev=>({...DEFAULT_GL_ACCOUNTS,...JSON.parse(rGL.value)}))}catch(e){}
     try{const r4=await window.api.storage.get("dicann-api-config");if(r4?.value){const cfg=JSON.parse(r4.value);setApiConfig(cfg);if(cfg.plan&&import.meta.env.DEV){setPlan(cfg.plan);setActivePlan(cfg.plan);}}}catch(e){}
     try{const r5=await window.api.storage.get("balanceiq-theme");if(r5?.value==='light'||r5?.value==='dark')setThemeName(r5.value)}catch(e){}
     try{const r6=await window.api.storage.get("dicann-platforms");if(r6?.value)setPlatforms(JSON.parse(r6.value))}catch(e){}
@@ -6116,6 +6973,8 @@ export default function App(){
     try{const r9=await window.api.storage.get("balanceiq-mode");if(r9?.value)setAppMode(r9.value);else setAppMode(null)}catch(e){setAppMode(null)}
     try{const rL=await window.api.storage.get("balanceiq-locations");if(rL?.value)setLocations(JSON.parse(rL.value))}catch(e){}
     try{const rR=await window.api.storage.get("balanceiq-royalty-config");if(rR?.value)setRoyaltyConfig(prev=>({...prev,...JSON.parse(rR.value)}))}catch(e){}
+    try{const rPT=await window.api.storage.get("balanceiq-perf-targets");if(rPT?.value)setPerfTargets(prev=>({...prev,...JSON.parse(rPT.value)}))}catch(e){}
+    try{const rPC=await window.api.storage.get("balanceiq-payroll-config");if(rPC?.value)setPayrollConfig(prev=>({...prev,...JSON.parse(rPC.value)}))}catch(e){}
     try{const rWL=await window.api.storage.get("balanceiq-whitelabel");if(rWL?.value)setWhiteLabelConfig(prev=>({...prev,...JSON.parse(rWL.value)}))}catch(e){}
     try{const rLock=await window.api.storage.get("balanceiq-lock");if(rLock?.value){const lc=JSON.parse(rLock.value);setLockConfig(lc);if(lc.enabled&&lc.pin)setAppLocked(true);}}catch(e){}
     try{const rLang=await window.api.storage.get("balanceiq-lang");if(rLang?.value==="en"||rLang?.value==="fr")setLang(rLang.value);}catch(e){}
@@ -6132,6 +6991,9 @@ export default function App(){
     try{const r19=await window.api.storage.get("dicann-fac-recurrents");if(r19?.value)setFacRecurrents(JSON.parse(r19.value))}catch(e){}
     try{const rIC=await window.api.storage.get("dicann-inv-config");if(rIC?.value){const p=JSON.parse(rIC.value);setInvConfig({...DEFAULT_INV_CONFIG,...p,items:p.items||DEFAULT_INV_CONFIG.items});}}catch(e){}
     try{const rPOS=await window.api.pos?.getCredentials?.();if(rPOS)setPosCredentials(rPOS);}catch(e){}
+    try{const rPA=await window.api.storage.get("pos-advanced-config");if(rPA?.value)setPosAdvancedConfig(prev=>({...prev,...JSON.parse(rPA.value),fields:{...prev.fields,...JSON.parse(rPA.value).fields}}));}catch(e){}
+    try{const cfgExp=await window.api.storage.get("balanceiq-cfg-expanded");if(cfgExp?.value){try{setCfgExpanded(JSON.parse(cfgExp.value));}catch(e){}}}catch(e){}
+    try{const rOCR=await window.api.storage.get("dicann-ocr-mappings");if(rOCR?.value)setOcrMappings(JSON.parse(rOCR.value))}catch(e){}
     setLoading(false);
     // Load auto-backup info after a short delay (backup runs at t+3s)
     setTimeout(async()=>{try{const info=await window.api.backup.getInfo();setBackupInfo(info)}catch(_){}},4000);
@@ -6207,6 +7069,8 @@ export default function App(){
   const saveRoster=useCallback(async r=>{const s=JSON.stringify(r);try{await window.api.storage.set("dicann-roster",s)}catch(e){}schedulePush("dicann-roster",s);},[]);
   const saveEmpRoster=useCallback(async r=>{const s=JSON.stringify(r);try{await window.api.storage.set("dicann-emp-roster",s)}catch(e){}schedulePush("dicann-emp-roster",s);},[]);
   const saveSup=useCallback(async s=>{const v=JSON.stringify(s);try{await window.api.storage.set("dicann-suppliers-v2",v)}catch(e){}schedulePush("dicann-suppliers-v2",v);},[]);
+  const saveExpItems=useCallback(async items=>{const v=JSON.stringify(items);try{await window.api.storage.set("dicann-pl-expense-items",v)}catch(e){}schedulePush("dicann-pl-expense-items",v);},[]);
+  const saveGlAccounts=useCallback(accs=>{setGlAccounts(accs);const v=JSON.stringify(accs);window.api.storage.set("dicann-gl-accounts",v).catch(()=>{});schedulePush("dicann-gl-accounts",v);},[]);
   const savePlatforms=useCallback(async p=>{const v=JSON.stringify(p);try{await window.api.storage.set("dicann-platforms",v)}catch(e){}schedulePush("dicann-platforms",v);},[]);
   const saveApiCfg=useCallback(async c=>{const v=JSON.stringify(c);try{await window.api.storage.set("dicann-api-config",v)}catch(e){}schedulePush("dicann-api-config",v);},[]);
   const persistEncaisse=useCallback(data=>{setEncaisseData(data);if(encaisseTimer.current)clearTimeout(encaisseTimer.current);encaisseTimer.current=setTimeout(async()=>{const v=JSON.stringify(data);try{await window.api.storage.set("dicann-encaisse",v)}catch(e){}schedulePush("dicann-encaisse",v);},600)},[]);
@@ -6214,6 +7078,8 @@ export default function App(){
   const saveAppMode=useCallback(mode=>{setAppMode(mode);window.api.storage.set("balanceiq-mode",mode).catch(()=>{})},[]);
   const saveLocations=useCallback(list=>{setLocations(list);window.api.storage.set("balanceiq-locations",JSON.stringify(list)).catch(()=>{})},[]);
   const saveRoyaltyConfig=useCallback(cfg=>{setRoyaltyConfig(cfg);window.api.storage.set("balanceiq-royalty-config",JSON.stringify(cfg)).catch(()=>{})},[]);
+  const savePerfTargets=useCallback(tgt=>{setPerfTargets(tgt);window.api.storage.set("balanceiq-perf-targets",JSON.stringify(tgt)).catch(()=>{})},[]);
+  const savePayrollConfig=useCallback(cfg=>{setPayrollConfig(cfg);window.api.storage.set("balanceiq-payroll-config",JSON.stringify(cfg)).catch(()=>{})},[]);
   const saveWhiteLabel=useCallback(cfg=>{setWhiteLabelConfig(cfg);window.api.storage.set("balanceiq-whitelabel",JSON.stringify(cfg)).catch(()=>{})},[]);
   const saveLockConfig=useCallback(cfg=>{setLockConfig(cfg);window.api.storage.set("balanceiq-lock",JSON.stringify(cfg)).catch(()=>{})},[]);
   const saveInvConfig=useCallback(cfg=>{setInvConfig(cfg);const v=JSON.stringify(cfg);window.api.storage.set("dicann-inv-config",v).catch(()=>{});schedulePush("dicann-inv-config",v);},[]);
@@ -6448,7 +7314,7 @@ export default function App(){
     if(raw.weather||raw.tempC!=null||raw.gas!=null){h+=`<h3>Facteurs externes</h3><table><tr>`;if(raw.weather)h+=`<th>Météo</th><td>${raw.weather}</td>`;if(raw.tempC!=null)h+=`<th>Température</th><td>${raw.tempC}°C</td>`;if(raw.gas!=null)h+=`<th>Essence</th><td>${Number(raw.gas).toFixed(3)} $/L</td>`;if(raw.events)h+=`<th>Événement</th><td>${raw.events}</td>`;h+=`</tr></table>`;}
     if(emps.length>0){h+=`<h3>Main d'œuvre</h3><table><tr><th>Employé</th><th>Heures</th><th>$/h</th><th>Coût</th></tr>`;emps.forEach(e=>{const cost=(e.hours||0)*(e.wage||0);h+=`<tr><td>${e.name||"—"}</td><td>${e.hours??"-"}</td><td>${e.wage?`${e.wage.toFixed(2)}`:"-"}</td><td>${cost>0?fmt(cost):"—"}</td></tr>`});h+=`<tr style="font-weight:700"><td colspan="2">Total: ${today.labourHrs}h</td><td></td><td>${fmt(today.labourCost)}${today.labourPct!=null?` (${today.labourPct.toFixed(1)}%)`:""}</td></tr></table>`;}
     if(raw.notes)h+=`<h3>Notes</h3><p style="font-size:12px;white-space:pre-wrap;padding:8px;background:#f9f9f9;border-radius:4px">${raw.notes}</p>`;
-    h+=`<p class="sub" style="margin-top:24px">BalanceIQ · ${OWNER_EMAIL}</p></body></html>`;
+    h+=`<p class="sub" style="margin-top:24px">BalanceIQ${apiConfig.reportEmail?` · ${apiConfig.reportEmail}`:""}</p></body></html>`;
     return h;
   };
 
@@ -6562,7 +7428,7 @@ export default function App(){
         <div style={{maxWidth:1120,margin:"0 auto",padding:"10px 15px 30px"}}>
 
           {/* RÉSEAU TAB */}
-          {activeTab==="reseau"&&<ReseauTab locations={locations} facFactures={facFactures} facCreditNotes={facCreditNotes} facClients={facClients} royaltyConfig={royaltyConfig} facCategories={facCategories} facProduits={facProduits} saveFacFactures={saveFacFactures} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} apiConfig={apiConfig}/>}
+          {activeTab==="reseau"&&<ReseauTab locations={locations} facFactures={facFactures} facCreditNotes={facCreditNotes} facClients={facClients} royaltyConfig={royaltyConfig} facCategories={facCategories} facProduits={facProduits} saveFacFactures={saveFacFactures} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} apiConfig={apiConfig} perfTargets={perfTargets} payrollConfig={payrollConfig}/>}
 
           {/* DAILY TAB */}
           {activeTab==="daily"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -6598,7 +7464,9 @@ export default function App(){
                         const newCashes=[...cashes];
                         sales.forEach((s,idx)=>{
                           if(idx<newCashes.length){
-                            const upd={...newCashes[idx],posVentes:s.posVentes,posTPS:s.posTPS,posTVQ:s.posTVQ,posLivraisons:s.posLivraisons||0};
+                            const upd={...newCashes[idx],posVentes:s.posVentes,posTPS:s.posTPS,posTVQ:s.posTVQ,posLivraisons:s.posLivraisons||0,
+                              posGrossSales:s.grossSales,posDiscounts:s.discounts,posRefunds:s.refunds,posNonTaxable:s.nonTaxableSales,
+                              posTips:s.tips,posTransactionCount:s.transactionCount,posPayments:s.payments,posHourlySales:s.hourlySales};
                             newCashes[idx]=upd;
                           }
                         });
@@ -6623,6 +7491,85 @@ export default function App(){
                 ?<span style={{fontSize:12,color:"#16a34a",fontWeight:600}}>✓ Toutes les caisses balancent</span>
                 :<span style={{fontSize:12,color:t.warnText,fontWeight:600}}>{T.verifyCaisses}</span>}
             </div>)}
+
+            {/* POS Advanced Data Panel */}
+            {posAdvancedConfig.enabled&&(()=>{
+              const adv=posAdvancedConfig.fields;
+              const hasPosData=cashes.some(c=>c.posTransactionCount||c.posPayments||c.posTips||c.posDiscounts||c.posHourlySales?.length);
+              if(!hasPosData)return null;
+              const f=s=>typeof s==='number'?`$${s.toFixed(2)}`:'—';
+              return(
+                <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
+                  <span style={{fontSize:12,fontWeight:700,color:t.text,display:"block",marginBottom:8}}>{T.posAdvTitle}</span>
+                  {cashes.map((c,i)=>{
+                    if(!c.posTransactionCount&&!c.posPayments&&!c.posTips)return null;
+                    return(
+                      <div key={i} style={{marginBottom:i<cashes.length-1?10:0}}>
+                        {cashes.length>1&&<div style={{fontSize:10,fontWeight:700,color:t.textMuted,marginBottom:5}}>{c.cashier||(T.cashRegisterLabel?`${T.cashRegisterLabel} ${i+1}`:`Caisse ${i+1}`)}</div>}
+
+                        {adv.discounts&&(c.posGrossSales||c.posDiscounts)&&(
+                          <div style={{display:"flex",gap:10,fontSize:11,color:t.textSub,marginBottom:5,flexWrap:"wrap"}}>
+                            <span>{T.posAdvGross}: <b style={{color:t.text}}>{f(c.posGrossSales)}</b></span>
+                            {c.posDiscounts>0&&<span style={{color:"#f97316"}}>{T.posAdvDisc}: <b>-{f(c.posDiscounts)}</b></span>}
+                            {c.posRefunds>0&&<span style={{color:"#ef4444"}}>{T.posAdvRefunds}: <b>-{f(c.posRefunds)}</b></span>}
+                          </div>
+                        )}
+
+                        {adv.nonTaxable&&c.posNonTaxable>0&&(
+                          <div style={{fontSize:11,color:t.textSub,marginBottom:5}}>
+                            {T.posAdvNTLabel}: <b style={{color:t.text}}>{f(c.posNonTaxable)}</b>
+                          </div>
+                        )}
+
+                        {adv.tips&&c.posTips>0&&(
+                          <div style={{fontSize:11,color:t.textSub,marginBottom:5}}>
+                            {T.posAdvTipsLabel}: <b style={{color:"#a78bfa"}}>{f(c.posTips)}</b> <span style={{fontSize:9,color:t.textDim}}>(informatif)</span>
+                          </div>
+                        )}
+
+                        {adv.transactionCount&&c.posTransactionCount>0&&(
+                          <div style={{fontSize:11,color:t.textSub,marginBottom:5}}>
+                            {T.posAdvTxLabel}: <b style={{color:t.text}}>{c.posTransactionCount}</b>
+                            {c.posVentes>0&&<span style={{color:t.textMuted,marginLeft:8}}>{T.posAdvAvg}: <b style={{color:t.text}}>{f(c.posVentes/c.posTransactionCount)}</b></span>}
+                          </div>
+                        )}
+
+                        {adv.payments&&c.posPayments&&(
+                          <div style={{marginBottom:5}}>
+                            <div style={{fontSize:10,fontWeight:600,color:t.textMuted,marginBottom:3}}>{T.posAdvPmtTitle}</div>
+                            <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:4}}>
+                              {[["Visa",c.posPayments.visa],["MC",c.posPayments.mastercard],["Débit",c.posPayments.debit],["Amex",c.posPayments.amex],["Cash",c.posPayments.cash],["Autre",c.posPayments.other]].map(([lbl,val])=>(
+                                <div key={lbl} style={{background:t.section,borderRadius:5,padding:"4px 6px",textAlign:"center"}}>
+                                  <div style={{fontSize:9,color:t.textDim,marginBottom:1}}>{lbl}</div>
+                                  <div style={{fontSize:11,fontWeight:700,color:val>0?t.text:t.textDim}}>{f(val||0)}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {adv.hourlySales&&c.posHourlySales?.length>0&&(()=>{
+                          const maxSales=Math.max(...c.posHourlySales.map(h=>h.sales),1);
+                          return(
+                            <details style={{marginTop:4}}>
+                              <summary style={{fontSize:10,fontWeight:600,color:t.textMuted,cursor:"pointer",userSelect:"none"}}>{T.posAdvHourlyTitle}</summary>
+                              <div style={{display:"flex",alignItems:"flex-end",gap:3,height:50,marginTop:6,padding:"0 2px"}}>
+                                {c.posHourlySales.map(h=>(
+                                  <div key={h.hour} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                                    <div style={{width:"100%",background:"rgba(249,115,22,0.6)",borderRadius:"2px 2px 0 0",height:`${Math.round((h.sales/maxSales)*44)+4}px`,minHeight:4}}/>
+                                    <div style={{fontSize:8,color:t.textDim}}>{h.hour}h</div>
+                                  </div>
+                                ))}
+                              </div>
+                            </details>
+                          );
+                        })()}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
 
             <LivraisonsSection platforms={platforms} selectedDate={selectedDate} raw={raw} upd={upd} liveData={liveData} apiConfig={apiConfig} saveApiCfg={nc=>{setApiConfig(nc);saveApiCfg(nc);}}/>
 
@@ -6795,9 +7742,9 @@ export default function App(){
             </div>
           </div>)}
 
-          {activeTab==="monthly"&&<MonthlyPL computeDay={computeDay} suppliers={suppliers} liveData={liveData} platforms={platforms}/>}
+          {activeTab==="monthly"&&<MonthlyPL computeDay={computeDay} suppliers={suppliers} liveData={liveData} platforms={platforms} expenseItems={expenseItems} glAccounts={glAccounts} apiConfig={apiConfig} ocrMappings={ocrMappings} setOcrMappings={setOcrMappings} payrollConfig={payrollConfig}/>}
           {activeTab==="encaisse"&&<EncaisseTab liveData={liveData} encaisseData={encaisseData} persistEncaisse={persistEncaisse} encaisseConfig={encaisseConfig} saveEncaisseConfig={saveEncaisseConfig}/>}
-          {activeTab==="facturation"&&<FacturationTab categories={facCategories} saveCategories={saveFacCategories} produits={facProduits} saveProduits={saveFacProduits} clients={facClients} saveClients={saveFacClients} soumissions={facSoumissions} saveSoumissions={saveFacSoumissions} commandes={facCommandes} saveCommandes={saveFacCommandes} factures={facFactures} saveFactures={saveFacFactures} creditNotes={facCreditNotes} saveCreditNotes={saveFacCreditNotes} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData} persistEncaisse={persistEncaisse} showUpgradePrompt={showUpgradePrompt} apiConfig={apiConfig} recurrents={facRecurrents} saveRecurrents={saveFacRecurrents} invoiceTemplate={effectiveTemplate}/>}
+          {activeTab==="facturation"&&<FacturationTab categories={facCategories} saveCategories={saveFacCategories} produits={facProduits} saveProduits={saveFacProduits} clients={facClients} saveClients={saveFacClients} soumissions={facSoumissions} saveSoumissions={saveFacSoumissions} commandes={facCommandes} saveCommandes={saveFacCommandes} factures={facFactures} saveFactures={saveFacFactures} creditNotes={facCreditNotes} saveCreditNotes={saveFacCreditNotes} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData} persistEncaisse={persistEncaisse} showUpgradePrompt={showUpgradePrompt} apiConfig={apiConfig} recurrents={facRecurrents} saveRecurrents={saveFacRecurrents} invoiceTemplate={effectiveTemplate} rawInvoiceTemplate={invoiceTemplate} saveInvoiceTemplate={saveInvoiceTemplate} canUse={canUse} glAccounts={glAccounts} saveGlAccounts={saveGlAccounts}/>}
           {activeTab==="intelligence"&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR} platforms={platforms} encaisseData={encaisseData} encaisseConfig={encaisseConfig}/>}
 
           {/* SETTINGS TAB */}
@@ -6810,6 +7757,7 @@ export default function App(){
                 {id:"fournisseurs",label:T.cfgSuppliers},
                 {id:"finances",label:T.cfgFinances},
                 {id:"integrations",label:T.cfgIntegrations},
+                {id:"paie",label:T.cfgPayroll},
                 {id:"donnees",label:T.cfgData},
                 {id:"apparence",label:T.cfgAppearance},
                 {id:"application",label:T.cfgApplication},
@@ -6827,8 +7775,7 @@ export default function App(){
 
             {/* 🏢 ENTREPRISE */}
             {configSubTab==="entreprise"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:10,display:"block",color:t.text}}>🏢 {T.cfgCompanyInfo}</span>
+            <CfgCard id="companyInfo" title={"🏢 "+T.cfgCompanyInfo} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               <div style={{display:"flex",flexDirection:"column",gap:6}}>
                 {/* Logo */}
                 <div style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0",borderBottom:`1px solid ${t.divider}`,marginBottom:2}}>
@@ -6859,7 +7806,8 @@ export default function App(){
                   [T.cfgEmail,"courriel","email",false],
                   [T.cfgWebsite,"siteWeb","text",false],
                   [T.cfgGSTNum,"numeroTPS","text",false],
-                  [T.cfgQSTNum,"numeroTVQ","text",false],
+                  ...(["QC"].includes(companyInfo.province||"QC")?[[T.cfgQSTNum,"numeroTVQ","text",false]]:[]),
+                  ...(["BC","MB","SK"].includes(companyInfo.province||"QC")?[[T.cfgPSTNum,"numeroTVQ","text",false]]:[]),
                 ].map(([label,key,type,required])=>(
                   <div key={key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"3.5px 0",borderBottom:`1px solid ${t.divider}`,gap:8}}>
                     <span style={{fontSize:11.5,color:t.textSub,fontWeight:500,whiteSpace:"nowrap",flexShrink:0}}>{label}{required&&<span style={{color:"#f97316",marginLeft:2}}>*</span>}</span>
@@ -6883,23 +7831,22 @@ export default function App(){
                   {(companyInfo.ville||companyInfo.province)&&<div style={{fontSize:11,color:t.textSub}}>{[companyInfo.ville,companyInfo.province,companyInfo.codePostal].filter(Boolean).join(", ")}</div>}
                   {companyInfo.telephone&&<div style={{fontSize:11,color:t.textSub}}>{companyInfo.telephone}</div>}
                   {companyInfo.courriel&&<div style={{fontSize:11,color:t.textSub}}>{companyInfo.courriel}</div>}
-                  {companyInfo.numeroTPS&&<div style={{fontSize:10,color:t.textMuted,marginTop:2}}>TPS: {companyInfo.numeroTPS}{companyInfo.numeroTVQ?` · TVQ: ${companyInfo.numeroTVQ}`:""}</div>}
+                  {companyInfo.numeroTPS&&<div style={{fontSize:10,color:t.textMuted,marginTop:2}}>TPS: {companyInfo.numeroTPS}{companyInfo.numeroTVQ&&["QC","BC","MB","SK"].includes(companyInfo.province||"QC")?` · ${companyInfo.province==="QC"||!companyInfo.province?"TVQ":"PST"}: ${companyInfo.numeroTVQ}`:""}</div>}
                 </div>)}
               </div>
-            </div>
+            </CfgCard>
 
             {/* Document numbering */}
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:10,display:"block",color:t.text}}>🔢 {T.cfgDocNumbering}</span>
+            <CfgCard id="docNumbers" title={"🔢 "+T.cfgDocNumbering} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
                 <span style={{fontSize:11,color:t.textSub,minWidth:160}}>{T.cfgPrefix}</span>
                 <input value={docNums.prefix||""} onChange={e=>saveDocNums({...docNums,prefix:e.target.value})} placeholder='ex: BIQ-' style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.inputText,fontSize:12,padding:"3.5px 6px",outline:"none",width:100,fontFamily:"'DM Mono',monospace"}}/>
                 <span style={{fontSize:10,color:t.textMuted}}>{T.cfgPrefixHint}</span>
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                {[{key:"soumission",label:"Soumission",code:"S"},{key:"commande",label:"Commande",code:"C"},{key:"facture",label:"Facture",code:"F"},{key:"creditNote",label:"Note de crédit",code:"NC"},{key:"encaissement",label:"Encaissement",code:"E"}].map(({key,label,code})=>(
+                {[{key:"soumission",tkey:"docQuote",code:"S"},{key:"commande",tkey:"docOrder",code:"C"},{key:"facture",tkey:"docInvoice",code:"F"},{key:"creditNote",tkey:"docCreditNote",code:"NC"},{key:"encaissement",tkey:"docEncaissement",code:"E"}].map(({key,tkey,code})=>(
                   <div key={key} style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                    <span style={{fontSize:11,color:t.textSub,minWidth:160}}>{label}</span>
+                    <span style={{fontSize:11,color:t.textSub,minWidth:160}}>{T[tkey]}</span>
                     <div style={{display:"flex",alignItems:"center",gap:4}}>
                       <span style={{fontSize:11,color:t.textMuted}}>{T.cfgNextNum}</span>
                       <input type="number" min="1" value={docNums[key]||1} onChange={e=>{const v=parseInt(e.target.value)||1;saveDocNums({...docNums,[key]:Math.max(1,v)});}} style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.inputText,fontSize:12,padding:"3.5px 6px",outline:"none",width:70,fontFamily:"'DM Mono',monospace",textAlign:"right"}}/>
@@ -6909,21 +7856,19 @@ export default function App(){
                 ))}
               </div>
               <div style={{fontSize:10,color:t.textMuted,marginTop:10}}>{T.cfgNumHint}</div>
-            </div>
+            </CfgCard>
             </div>)}
 
             {/* 👥 PERSONNEL */}
             {configSubTab==="personnel"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.cfgCashiers}</span>
+            <CfgCard id="cashiers" title={T.cfgCashiers} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               {roster.map(r=>(<div key={r.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:5,marginBottom:3}}><span style={{fontSize:12,color:t.text}}>{r.name}</span><button onClick={()=>{const n=roster.filter(x=>x.id!==r.id);setRoster(n);saveRoster(n)}} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:4,color:"#ef4444",fontSize:10,padding:"2px 6px",cursor:"pointer"}}>✕</button></div>))}
               <div style={{display:"flex",gap:6,marginTop:4}}>
                 <input value={newCN} onChange={e=>setNewCN(e.target.value)} placeholder={T.cfgNamePlaceholder} onKeyDown={e=>e.key==="Enter"&&addRC()} style={{...inputStyle,flex:1}}/>
                 <button onClick={addRC} style={{padding:"5px 14px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>+</button>
               </div>
-            </div>
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.cfgEmployees}</span>
+            </CfgCard>
+            <CfgCard id="employees" title={T.cfgEmployees} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               <div style={{fontSize:11,color:t.textMuted,marginBottom:6}}>{T.cfgWageHint}</div>
               {empRoster.map(r=>(<div key={r.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:5,marginBottom:3}}>
                 <span style={{fontSize:12,color:t.text}}>{r.name} <span style={{fontSize:11,color:t.textSub,fontFamily:"'DM Mono',monospace"}}>{r.wage?`${r.wage.toFixed(2)}$/h`:""}</span></span>
@@ -6934,13 +7879,12 @@ export default function App(){
                 <input value={newEW} onChange={e=>setNewEW(e.target.value)} placeholder="$/h" type="number" style={{...inputStyle,flex:1,fontFamily:"'DM Mono',monospace",textAlign:"right"}}/>
                 <button onClick={()=>{if(!newEN.trim())return;const nr=[...empRoster,{id:Date.now().toString(),name:newEN.trim(),wage:newEW?parseFloat(newEW):null}];setEmpRoster(nr);saveEmpRoster(nr);setNewEN("");setNewEW("")}} style={{padding:"5px 14px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>+</button>
               </div>
-            </div>
+            </CfgCard>
             </div>)}
 
             {/* 📦 FOURNISSEURS & PRODUITS */}
             {configSubTab==="fournisseurs"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.cfgSuppliers}</span>
+            <CfgCard id="suppliers" title={T.cfgSuppliers} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               {suppliers.map(s=>(<div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:5,marginBottom:3}}>
                 {editingSupId===s.id
                   ?(<input value={editingSupName} onChange={e=>setEditingSupName(e.target.value)} onBlur={()=>{if(editingSupName.trim()){const ns=suppliers.map(x=>x.id===s.id?{...x,name:editingSupName.trim()}:x);setSuppliers(ns);saveSup(ns)}setEditingSupId(null)}} onKeyDown={e=>{if(e.key==="Enter")e.target.blur();if(e.key==="Escape")setEditingSupId(null)}} autoFocus style={{flex:1,...inputStyle,border:"1px solid rgba(249,115,22,0.3)",marginRight:6}}/>)
@@ -6950,9 +7894,23 @@ export default function App(){
               <div style={{display:"flex",gap:6,marginTop:4}}>
                 <input placeholder={T.cfgNewSupplier} onKeyDown={e=>{if(e.key==="Enter"&&e.target.value.trim()){const ns=[...suppliers,{id:Date.now().toString(),name:e.target.value.trim()}];setSuppliers(ns);saveSup(ns);e.target.value=""}}} style={{...inputStyle,flex:1}}/>
               </div>
-            </div>
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.cfgDeliveryPlatforms}</span>
+            </CfgCard>
+            <CfgCard id="expenseItems" title={T.cfgExpenseItems} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
+              <div style={{display:"flex",justifyContent:"flex-end",marginBottom:6}}>
+                <button onClick={()=>{setExpenseItems(DEFAULT_EXPENSE_ITEMS);saveExpItems(DEFAULT_EXPENSE_ITEMS);}} style={{fontSize:10,padding:"2px 8px",borderRadius:4,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textMuted,cursor:"pointer"}}>{T.cfgExpenseReset}</button>
+              </div>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{T.cfgExpenseItemsHint}</div>
+              {expenseItems.map(item=>(<div key={item.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:5,marginBottom:3}}>
+                {editingExpId===item.id
+                  ?(<input value={editingExpName} onChange={e=>setEditingExpName(e.target.value)} onBlur={()=>{if(editingExpName.trim()){const ni=expenseItems.map(x=>x.id===item.id?{...x,label:editingExpName.trim()}:x);setExpenseItems(ni);saveExpItems(ni);}setEditingExpId(null);}} onKeyDown={e=>{if(e.key==="Enter")e.target.blur();if(e.key==="Escape")setEditingExpId(null);}} autoFocus style={{flex:1,...inputStyle,border:"1px solid rgba(129,140,248,0.3)",marginRight:6}}/>)
+                  :(<span style={{fontSize:12,cursor:"pointer",color:t.text}} onClick={()=>{setEditingExpId(item.id);setEditingExpName(item.label);}}>{item.label} <span style={{fontSize:9,color:t.textDim}}>✎</span></span>)}
+                <button onClick={()=>{const ni=expenseItems.filter(x=>x.id!==item.id);setExpenseItems(ni);saveExpItems(ni);}} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:4,color:"#ef4444",fontSize:10,padding:"2px 6px",cursor:"pointer"}}>✕</button>
+              </div>))}
+              <div style={{display:"flex",gap:6,marginTop:4}}>
+                <input placeholder={T.cfgNewExpenseItem} onKeyDown={e=>{if(e.key==="Enter"&&e.target.value.trim()){const ni=[...expenseItems,{id:Date.now().toString(),label:e.target.value.trim()}];setExpenseItems(ni);saveExpItems(ni);e.target.value=""}}} style={{...inputStyle,flex:1}}/>
+              </div>
+            </CfgCard>
+            <CfgCard id="platforms" title={T.cfgDeliveryPlatforms} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               <div style={{fontSize:11,color:t.textMuted,marginBottom:6}}>{T.cfgPlatformHint}</div>
               {platforms.map(p=>(<div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:5,marginBottom:3}}>
                 <span style={{fontSize:12,color:t.text}}>{p.emoji} {p.name}</span>
@@ -6962,91 +7920,59 @@ export default function App(){
                 <input value={newPlatformName} onChange={e=>setNewPlatformName(e.target.value)} placeholder={T.cfgPlatformName} onKeyDown={e=>{if(e.key==="Enter"&&newPlatformName.trim()){const np=[...platforms,{id:Date.now().toString(),name:newPlatformName.trim(),emoji:"📦"}];setPlatforms(np);savePlatforms(np);setNewPlatformName("")}}} style={{...inputStyle,flex:1}}/>
                 <button onClick={()=>{if(!newPlatformName.trim())return;const np=[...platforms,{id:Date.now().toString(),name:newPlatformName.trim(),emoji:"📦"}];setPlatforms(np);savePlatforms(np);setNewPlatformName("")}} style={{padding:"5px 14px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>+</button>
               </div>
-            </div>
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.cfgBillingCategories}</span>
+            </CfgCard>
+            <CfgCard id="billingCats" title={T.cfgBillingCategories} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{T.cfgBillingCatHint}</div>
               <ProduitsSection produits={facProduits} saveProduits={saveFacProduits} categories={facCategories} configOnly/>
-            </div>
+            </CfgCard>
+            <CfgCard id="glAccounts" title={<>{T.cfgGLAccounts}{canUse("excelExport")?<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"1px 6px",borderRadius:6,marginLeft:6}}>PRO</span>:<span style={{fontSize:9,color:"#6b7280",marginLeft:6}}>Pro</span>}</>} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{T.cfgGLAccountsHint}</div>
+              {canUse("excelExport")?(
+                <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                  {[
+                    {key:"revenue",label:T.cfgGLRevenue||"Ventes / Revenue"},
+                    {key:"tps",label:"TPS / GST"},
+                    {key:"tvq",label:"TVQ / QST"},
+                    {key:"ar",label:T.cfgGLAR},
+                    {key:"bank",label:T.cfgGLBank},
+                    {key:"fp",label:T.cfgGLFP},
+                    {key:"labour",label:T.cfgGLLabour},
+                    ...expenseItems.map(item=>({key:item.id,label:item.label})),
+                  ].map(({key,label})=>(
+                    <div key={key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"3px 0",borderBottom:`1px solid ${t.divider}`}}>
+                      <span style={{fontSize:11,color:t.textSub,flex:1}}>{label}</span>
+                      <input value={glAccounts[key]||""} onChange={e=>saveGlAccounts({...glAccounts,[key]:e.target.value})} placeholder="0000" style={{...inputStyle,width:80,textAlign:"right",fontFamily:"'DM Mono',monospace",padding:"2px 6px",fontSize:11}}/>
+                    </div>
+                  ))}
+                  <button onClick={()=>saveGlAccounts(DEFAULT_GL_ACCOUNTS)} style={{marginTop:6,padding:"4px 12px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textMuted,cursor:"pointer",fontSize:10,alignSelf:"flex-start"}}>{T.cfgExpenseReset}</button>
+                </div>
+              ):(
+                <button onClick={()=>showUpgradePrompt("excelExport")} style={{padding:"5px 14px",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>{T.upgradeToPro}</button>
+              )}
+            </CfgCard>
             </div>)}
 
             {/* 💵 FINANCES */}
             {configSubTab==="finances"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.cfgOutflowCats}</span>
+            <CfgCard id="outflowCats" title={T.cfgOutflowCats} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{T.cfgOutflowCatHint}</div>
               {encaisseConfig.sortieCategories.map(c=>(<div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 6px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:4,marginBottom:3}}>
                 {cfgEditCatId===c.id
                   ?<input autoFocus value={cfgEditCatName} onChange={e=>setCfgEditCatName(e.target.value)} style={{flex:1,background:t.inputBg,border:`1px solid rgba(249,115,22,0.3)`,borderRadius:4,color:t.inputText,fontSize:11,padding:"2px 6px",outline:"none"}} onBlur={()=>{if(cfgEditCatName.trim()){saveEncaisseConfig({...encaisseConfig,sortieCategories:encaisseConfig.sortieCategories.map(x=>x.id===c.id?{...x,name:cfgEditCatName.trim()}:x)})}setCfgEditCatId(null)}} onKeyDown={e=>{if(e.key==="Enter")e.target.blur()}}/>
-                  :<span style={{fontSize:11,color:t.text,cursor:"pointer",flex:1}} onClick={()=>{setCfgEditCatId(c.id);setCfgEditCatName(c.name)}}>{c.name} <span style={{fontSize:9,color:t.textDim}}>✎</span></span>}
+                  :<span style={{fontSize:11,color:t.text,cursor:"pointer",flex:1}} onClick={()=>{setCfgEditCatId(c.id);setCfgEditCatName(T[ENC_CAT_KEY[c.id]]||c.name)}}>{T[ENC_CAT_KEY[c.id]]||c.name} <span style={{fontSize:9,color:t.textDim}}>✎</span></span>}
                 <button onClick={()=>saveEncaisseConfig({...encaisseConfig,sortieCategories:encaisseConfig.sortieCategories.filter(x=>x.id!==c.id)})} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:3,color:"#ef4444",fontSize:9,padding:"1px 5px",cursor:"pointer"}}>✕</button>
               </div>))}
               <input value={cfgNewCatName} onChange={e=>setCfgNewCatName(e.target.value)} placeholder={T.cfgNewCategory} style={{flex:1,background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.inputText,fontSize:11,padding:"3px 6px",outline:"none",width:"100%",boxSizing:"border-box",marginTop:4}} onKeyDown={e=>{if(e.key==="Enter"&&cfgNewCatName.trim()){saveEncaisseConfig({...encaisseConfig,sortieCategories:[...encaisseConfig.sortieCategories,{id:Date.now().toString(),name:cfgNewCatName.trim()}]});setCfgNewCatName("")}}}/>
-            </div>
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-                <span style={{fontSize:13,fontWeight:700,color:t.text}}>{T.cfgInvoiceTemplate}</span>
-                {canUse("customTemplates")?<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"1px 6px",borderRadius:6}}>PRO</span>:<span style={{fontSize:9,fontWeight:700,color:"#6b7280",background:"rgba(255,255,255,0.06)",padding:"1px 6px",borderRadius:6}}>Pro</span>}
-              </div>
-              {canUse("customTemplates")
-                ?<div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                    <div style={{flex:"1 1 120px"}}>
-                      <div style={{fontSize:11,color:t.textMuted,marginBottom:3}}>{T.cfgLogoPosition}</div>
-                      <select value={invoiceTemplate.logoPosition} onChange={e=>saveInvoiceTemplate({...invoiceTemplate,logoPosition:e.target.value})} style={{...inputStyle,width:"100%",boxSizing:"border-box"}}>
-                        <option value="gauche">{T.cfgLogoLeft}</option><option value="centre">{T.cfgLogoCenter}</option><option value="droite">{T.cfgLogoRight}</option>
-                      </select>
-                    </div>
-                    <div style={{flex:"1 1 120px"}}>
-                      <div style={{fontSize:11,color:t.textMuted,marginBottom:3}}>{T.cfgAccentColor}</div>
-                      <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                        <input type="color" value={invoiceTemplate.accentColor} onChange={e=>saveInvoiceTemplate({...invoiceTemplate,accentColor:e.target.value})} style={{width:38,height:32,border:`1px solid ${t.inputBorder}`,borderRadius:5,padding:2,background:t.inputBg,cursor:"pointer"}}/>
-                        <input value={invoiceTemplate.accentColor} onChange={e=>saveInvoiceTemplate({...invoiceTemplate,accentColor:e.target.value})} style={{...inputStyle,flex:1,fontFamily:"'DM Mono',monospace"}} placeholder="#f97316"/>
-                        <button onClick={()=>saveInvoiceTemplate({...invoiceTemplate,accentColor:"#f97316"})} style={{padding:"3px 8px",borderRadius:4,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"pointer",fontSize:10}}>Reset</button>
-                      </div>
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{fontSize:11,color:t.textMuted,marginBottom:3}}>{T.cfgFooterText}</div>
-                    <input value={invoiceTemplate.footerText} onChange={e=>saveInvoiceTemplate({...invoiceTemplate,footerText:e.target.value})} placeholder={T.cfgFooterPlaceholder} style={{...inputStyle,width:"100%",boxSizing:"border-box"}}/>
-                  </div>
-                  <div>
-                    <div style={{fontSize:11,color:t.textMuted,marginBottom:3}}>{T.cfgDefaultNotes}</div>
-                    <textarea value={invoiceTemplate.defaultNotes} onChange={e=>saveInvoiceTemplate({...invoiceTemplate,defaultNotes:e.target.value})} rows={2} placeholder={T.cfgDefaultNotesPlaceholder} style={{...inputStyle,width:"100%",boxSizing:"border-box",resize:"vertical",fontFamily:"'Outfit',sans-serif"}}/>
-                  </div>
-                  <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:11,color:t.text}}>
-                    <input type="checkbox" checked={invoiceTemplate.showTaxNumbers} onChange={e=>saveInvoiceTemplate({...invoiceTemplate,showTaxNumbers:e.target.checked})} style={{accentColor:"#f97316"}}/>
-                    {T.cfgShowTaxNums}
-                  </label>
-                  <div style={{fontSize:10,color:"#22c55e",fontWeight:600}}>✓ {T.cfgTemplateApplied}</div>
-                  <button onClick={()=>{
-                    const sampleClient={entreprise:companyInfo.nom||"Entreprise Exemple inc.",contact:"Jean Dupont",adresse:"123 rue Principale",ville:"Montréal",province:"QC",codePostal:"H1A 1A1",courriel:"jean@exemple.ca",tel1:"514-555-0100"};
-                    const sampleLignes=[{id:"1",description:"Service de consultation",quantite:10,prixUnitaire:150,remise:0,tps:true,tvq:true},{id:"2",description:"Frais de déplacement",quantite:1,prixUnitaire:75,remise:10,tps:true,tvq:false},{id:"3",description:"Licence logicielle annuelle",quantite:3,prixUnitaire:200,remise:0,tps:true,tvq:true}];
-                    const sampleTotals=computeSoumTotals(sampleLignes);
-                    openPDF(buildFactureHTML({numero:"F-DEMO",date:dk(new Date()),dateEcheance:"2026-04-07",statut:"Envoyée",referenceClient:"REF-2026-001",lignes:sampleLignes,notes:invoiceTemplate.defaultNotes||"Merci de votre confiance. Paiement dû dans 30 jours.",totals:sampleTotals,client:sampleClient,companyInfo,montantPaye:0,acomptes:[],sourceType:null,sourceNumero:null,invoiceTemplate}));
-                  }} style={{padding:"7px 16px",borderRadius:6,border:"1px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11}}>
-                    👁️ {T.cfgTemplatePreview2}
-                  </button>
-                </div>
-                :<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-                  <span style={{fontSize:11,color:t.textSub}}>Personnalisez les couleurs, logo et pied de page de vos documents.</span>
-                  <button onClick={()=>showUpgradePrompt("customTemplates")} style={{padding:"4px 12px",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:10,whiteSpace:"nowrap"}}>Passer à Pro</button>
-                </div>}
-            </div>
+            </CfgCard>
             </div>)}
 
             {/* 🔌 INTÉGRATIONS */}
             {configSubTab==="integrations"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:4,display:"block",color:t.text}}>{T.cfgWeatherCoords}</span>
+            <CfgCard id="weather" title={T.cfgWeatherCoords} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{T.cfgWeatherHint}</div>
               <GeoSearch apiConfig={apiConfig} saveApiCfg={nc=>{setApiConfig(nc);saveApiCfg(nc);}}/>
-            </div>
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-                <span style={{fontSize:13,fontWeight:700,color:t.text}}>{T.cfgEmailService}</span>
-                {canUse("directEmailSend")?<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"1px 6px",borderRadius:6}}>PRO</span>:<span style={{fontSize:9,color:"#6b7280"}}>Pro</span>}
-              </div>
+            </CfgCard>
+            <CfgCard id="emailService" title={<>{T.cfgEmailService}{canUse("directEmailSend")?<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"1px 6px",borderRadius:6,marginLeft:6}}>PRO</span>:<span style={{fontSize:9,color:"#6b7280",marginLeft:6}}>Pro</span>}</>} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{T.cfgEmailServiceHint}</div>
               <div style={{marginBottom:8}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
@@ -7074,9 +8000,47 @@ export default function App(){
                   ?<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>{T.cfgTestSuccess}</span>
                   :<span style={{fontSize:11,color:"#ef4444",fontWeight:600}}>✗ {resendTestStatus.err}</span>)}
               </div>
-            </div>
+            </CfgCard>
             {/* POS Integration */}
-            <POSIntegrationSection posCredentials={posCredentials} setPosCredentials={setPosCredentials} t={t} T={T} canUse={canUse} showUpgradePrompt={showUpgradePrompt}/>
+            <POSIntegrationSection posCredentials={posCredentials} setPosCredentials={setPosCredentials} posAdvancedConfig={posAdvancedConfig} onSavePosAdvanced={cfg=>{setPosAdvancedConfig(cfg);window.api.storage.set("pos-advanced-config",JSON.stringify(cfg));}} t={t} T={T} canUse={canUse} showUpgradePrompt={showUpgradePrompt}/>
+            {/* Delivery API Credentials */}
+            <CfgCard id="deliveryApi" title={T.delivApiConfig} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:10,padding:"6px 8px",background:"rgba(249,115,22,0.06)",border:"1px solid rgba(249,115,22,0.15)",borderRadius:5}}>{T.delivApiConfigHint}</div>
+              {[
+                {id:'doordash',name:'DoorDash',emoji:'🔴'},
+                {id:'ubereats',name:'Uber Eats',emoji:'🟢'},
+                {id:'skip',name:'Skip',emoji:'🔵'},
+              ].map(({id,name,emoji})=>(
+                <div key={id} style={{marginBottom:10}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                    <span style={{fontSize:13}}>{emoji}</span>
+                    <span style={{fontSize:12,fontWeight:600,color:t.text}}>{name}</span>
+                    <span style={{fontSize:9,color:"#6b7280",background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:4,padding:"1px 6px"}}>{T.delivApiComingSoon}</span>
+                  </div>
+                  <input
+                    value={apiConfig[`delivery_${id}_key`]||""}
+                    onChange={e=>{const nc={...apiConfig,[`delivery_${id}_key`]:e.target.value};setApiConfig(nc);saveApiCfg(nc);}}
+                    placeholder={`${name} ${T.delivApiKey}...`}
+                    disabled
+                    style={{...inputStyle,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace",opacity:0.5,cursor:"not-allowed"}}
+                  />
+                </div>
+              ))}
+            </CfgCard>
+            {/* OCR — Anthropic API Key */}
+            <CfgCard id="ocrConfig" title={<div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:13,fontWeight:700,color:t.text}}>📷 {T.ocrScanTitle}</span><span style={{fontSize:9,fontWeight:700,color:'#f97316',background:'rgba(249,115,22,0.1)',padding:'1px 6px',borderRadius:4}}>Pro</span></div>} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:10,lineHeight:1.5}}>{T.cfgAnthropicKeyHint}</div>
+              <div style={{marginBottom:4}}>
+                <div style={{fontSize:11,color:t.textSub,marginBottom:4,fontWeight:500}}>{T.cfgAnthropicKey}</div>
+                <input
+                  type="password"
+                  value={apiConfig.anthropicApiKey||""}
+                  onChange={e=>{const nc={...apiConfig,anthropicApiKey:e.target.value};setApiConfig(nc);saveApiCfg(nc);}}
+                  placeholder="sk-ant-api03-..."
+                  style={{width:"100%",boxSizing:"border-box",padding:"6px 8px",borderRadius:5,border:`1px solid ${t.inputBorder}`,background:t.inputBg,color:t.inputText,fontFamily:"'DM Mono',monospace",fontSize:11,outline:"none"}}
+                />
+              </div>
+            </CfgCard>
             </div>)}
 
             {/* 💾 DONNÉES */}
@@ -7084,8 +8048,7 @@ export default function App(){
             <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
               <span style={{fontSize:11.5,color:t.textSub}}>Jours: <strong style={{color:"#f97316"}}>{Object.keys(liveData).length}</strong> · Caissiers: <strong style={{color:"#f97316"}}>{roster.length}</strong> · Employés: <strong style={{color:"#f97316"}}>{empRoster.length}</strong> · Fournisseurs: <strong style={{color:"#f97316"}}>{suppliers.length}</strong> · Plateformes: <strong style={{color:"#f97316"}}>{platforms.length}</strong></span>
             </div>
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>Export</span>
+            <CfgCard id="dataExport" title="Export" cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                 <button onClick={()=>{const h="Date,Vente Nette,Total Brut,TPS,TVQ\n";let r="";Object.keys(liveData).sort().forEach(k=>{const c=computeDay(k);if(c.venteNet>0)r+=`${k},${c.venteNet},${c.total},${c.tps},${c.tvq}\n`});const b=new Blob([h+r],{type:"text/csv"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="balanceiq.csv";document.body.appendChild(a);a.click();document.body.removeChild(a)}} style={{padding:"7px 14px",borderRadius:6,border:"1px solid rgba(34,197,94,0.2)",background:"rgba(34,197,94,0.08)",color:"#16a34a",cursor:"pointer",fontWeight:600,fontSize:12}}>CSV</button>
                 <button onClick={()=>{let h=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>BalanceIQ</title><style>body{font:12px Arial;margin:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:3px 6px;text-align:right}th{background:#f5f5f5}td:first-child{text-align:left}h1{color:#ea580c}</style></head><body><h1>Rapport BalanceIQ</h1><table><tr><th>Date</th><th>Vente Nette</th><th>Total</th></tr>`;Object.keys(liveData).sort().forEach(k=>{const c=computeDay(k);if(c.venteNet>0)h+=`<tr><td>${k}</td><td>${c.venteNet.toFixed(2)}</td><td>${c.total.toFixed(2)}</td></tr>`});h+=`</table></body></html>`;openPDF(h)}} style={{padding:"7px 14px",borderRadius:6,border:`1px solid rgba(${t.posRgb},0.2)`,background:`rgba(${t.posRgb},0.08)`,color:t.posColor,cursor:"pointer",fontWeight:600,fontSize:12}}>PDF</button>
@@ -7093,46 +8056,45 @@ export default function App(){
                 <button onClick={async()=>{setRestoreMsg('');const r=await window.api.backup.restore();if(r?.error)setRestoreMsg(r.error);}} style={{padding:"7px 14px",borderRadius:6,border:"1px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontWeight:600,fontSize:12}}>{T.cfgRestoreBackup}</button>
               </div>
               {restoreMsg&&<div style={{marginTop:6,fontSize:12,color:"#ef4444"}}>{restoreMsg}</div>}
-            </div>
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.cfgAutoBackup}</span>
+            </CfgCard>
+            <CfgCard id="autoBackup" title={T.cfgAutoBackup} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{T.cfgAutoBackupDesc}</div>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}>
                 <span style={{fontSize:11.5,color:t.textSub}}>{backupInfo==null?T.statusLoading:backupInfo.lastBackup?T.cfgLastBackup(backupInfo.lastBackup,backupInfo.count):"Aucune sauvegarde encore"}</span>
                 <button onClick={()=>window.api.backup.openDir()} style={{padding:"5px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>{T.cfgOpenFolder}</button>
               </div>
               {backupInfo?.dir&&<div style={{marginTop:5,fontSize:9.5,color:t.textMuted,fontFamily:"'DM Mono',monospace",wordBreak:"break-all"}}>{backupInfo.dir}</div>}
-            </div>
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:10,display:"block",color:t.text}}>{T.cfgAuditLog}</span>
+            </CfgCard>
+            <CfgCard id="auditLog" title={T.cfgAuditLog} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               <AuditSection/>
-            </div>
+            </CfgCard>
             </div>)}
 
             {/* 🎨 APPARENCE */}
             {configSubTab==="apparence"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:8,display:"block",color:t.text}}>{T.cfgTheme}</span>
+            <CfgCard id="theme" title={T.cfgTheme} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               <div style={{display:"flex",gap:8}}>
                 {[['dark',T.cfgThemeDark],['light',T.cfgThemeLight]].map(([name,label])=>(
                   <button key={name} onClick={()=>setThemeTo(name)} style={{flex:1,padding:"8px 12px",borderRadius:7,border:`2px solid ${themeName===name?"#f97316":t.cardBorder}`,background:themeName===name?"rgba(249,115,22,0.08)":t.section,color:themeName===name?"#f97316":t.textSub,cursor:"pointer",fontWeight:themeName===name?700:500,fontSize:12,transition:"all 0.15s"}}>{label}</button>
                 ))}
               </div>
-            </div>
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:8,display:"block",color:t.text}}>{T.cfgLanguage}</span>
+            </CfgCard>
+            <CfgCard id="language" title={T.cfgLanguage} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               <div style={{display:"flex",gap:8}}>
                 {[["fr",T.cfgLanguageFR],["en",T.cfgLanguageEN]].map(([code,label])=>(
                   <button key={code} onClick={()=>setLangTo(code)} style={{flex:1,padding:"8px 12px",borderRadius:7,border:`2px solid ${lang===code?"#f97316":t.cardBorder}`,background:lang===code?"rgba(249,115,22,0.08)":t.section,color:lang===code?"#f97316":t.textSub,cursor:"pointer",fontWeight:lang===code?700:500,fontSize:12,transition:"all 0.15s"}}>{label}</button>
                 ))}
               </div>
-            </div>
+            </CfgCard>
             </div>)}
 
             {/* 📱 APPLICATION */}
             {configSubTab==="application"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.cfgAppMode}</span>
+            <CfgCard id="reportEmail" title={T.cfgReportEmail} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{T.cfgReportEmailHint}</div>
+              <input value={apiConfig.reportEmail||""} onChange={e=>{const nc={...apiConfig,reportEmail:e.target.value};setApiConfig(nc);saveApiCfg(nc);}} placeholder="rapport@monentreprise.ca" style={{...inputStyle,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
+            </CfgCard>
+            <CfgCard id="appMode" title={T.cfgAppMode} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <span style={{fontSize:18}}>{appMode==="franchiseur"?"🏢":"🏪"}</span>
@@ -7144,12 +8106,8 @@ export default function App(){
                 <span style={{fontSize:10,fontWeight:700,color:"#16a34a",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:10,padding:"2px 8px"}}>{T.cfgActive}</span>
               </div>
               <div style={{fontSize:10.5,color:t.textMuted,marginTop:8}}>{T.cfgModeChangeBtn}</div>
-            </div>
-            <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                <span style={{fontSize:13,fontWeight:700,color:t.text}}>{T.cfgActivePlan}</span>
-                {import.meta.env.DEV&&<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"2px 7px",borderRadius:8,letterSpacing:"0.3px"}}>{T.cfgDevMode}</span>}
-              </div>
+            </CfgCard>
+            <CfgCard id="activePlan" title={<>{T.cfgActivePlan}{import.meta.env.DEV&&<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"2px 7px",borderRadius:8,letterSpacing:"0.3px",marginLeft:6}}>{T.cfgDevMode}</span>}</>} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               {import.meta.env.DEV
                 ?<>
                   <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
@@ -7168,7 +8126,7 @@ export default function App(){
                   <div style={{fontSize:10,color:t.textDim,marginTop:4}}>{T.cfgPlanChangeNote}</div>
                 </>
               }
-            </div>
+            </CfgCard>
             {/* ── CLOUD ACCOUNT ── */}
             <CloudAccountSection cloudUser={cloudUser} syncStatus={syncStatus} onSignIn={handleCloudSignIn} onSignUp={handleCloudSignUp} onSignOut={handleCloudSignOut} t={t} T={T}/>
             {/* ── SUBSCRIPTION ── */}
@@ -7181,6 +8139,11 @@ export default function App(){
             </div>
             </div>)}
 
+            {/* 💼 PAIE */}
+            {configSubTab==="paie"&&(
+              <PayrollConfig payrollConfig={payrollConfig} savePayrollConfig={savePayrollConfig} appMode={appMode}/>
+            )}
+
             {/* 📍 SUCCURSALES — franchiseur only */}
             {configSubTab==="succursales"&&appMode==="franchiseur"&&(
               <LocationsConfig locations={locations} saveLocations={saveLocations} facClients={facClients}/>
@@ -7188,7 +8151,7 @@ export default function App(){
 
             {/* 💰 REDEVANCES — franchiseur only */}
             {configSubTab==="redevances"&&appMode==="franchiseur"&&(
-              <RedevancesConfig royaltyConfig={royaltyConfig} saveRoyaltyConfig={saveRoyaltyConfig} facCategories={facCategories} facProduits={facProduits}/>
+              <RedevancesConfig royaltyConfig={royaltyConfig} saveRoyaltyConfig={saveRoyaltyConfig} facCategories={facCategories} facProduits={facProduits} perfTargets={perfTargets} savePerfTargets={savePerfTargets}/>
             )}
 
             {/* 🏷️ MARQUE BLANCHE — franchiseur only */}
