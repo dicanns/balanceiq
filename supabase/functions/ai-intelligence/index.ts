@@ -61,6 +61,18 @@ ${(ctx.cashiers as Array<{name:string,n:number,cumul:number,shortCount:number,ov
   .map(c => `- ${c.name}: ${c.n} shifts, cumul ${c.cumul>=0?'+':''}$${c.cumul}${c.lossAlert?' [ALERT: cumul loss >$50]':''}, shorts: ${c.shortCount}, overs: ${c.overCount}`)
   .join('\n')}`;
 
+    case 'network_summary':
+      return `${fr
+        ? 'Tu es un conseiller d\'affaires pour un réseau de franchises de restauration rapide au Québec. Analyse ces données multi-succursales et donne un résumé de 4-5 phrases: identifie le meilleur et le moins bon performeur, signale les problèmes urgents (main d\'œuvre élevée, données manquantes), et donne une recommandation concrète pour améliorer le réseau. Sois direct. Réponds en français seulement.'
+        : 'You are a business advisor for a Quebec fast-food franchise network. Analyze this multi-location data and provide a 4-5 sentence summary: identify the top and bottom performer, flag urgent issues (high labour, missing data), and give one concrete recommendation to improve the network. Be direct. Reply in English only.'
+      }
+
+Network: ${ctx.totalLocations} locations, monthly total $${ctx.networkTotal}
+
+${(ctx.locations as Array<{name:string,monthlySales:number,labourPct:number,avgDz:number,daysSinceFilled:number,isCloud:boolean}>)
+  .map(l => `- ${l.name}: $${l.monthlySales}/mo, labour ${l.labourPct>0?l.labourPct.toFixed(1)+'%':'n/a'}, $/dz ${l.avgDz>0?'$'+l.avgDz.toFixed(2):'n/a'}${l.daysSinceFilled>=3?' [WARNING: '+l.daysSinceFilled+' days no data]':''}${l.isCloud?' [cloud sync]':' [local only]'}`)
+  .join('\n')}`;
+
     default:
       return '';
   }

@@ -13,9 +13,10 @@ const supabase = createClient(
 
 // Maps Stripe price IDs to plan names
 const PRICE_TO_PLAN: Record<string, string> = {
-  'price_1T9C86Gcfc7VEkjZJM9r5FeW': 'pro',        // BalanceIQ Pro
+  'price_1T9C86Gcfc7VEkjZJM9r5FeW': 'pro',        // BalanceIQ Pro ($49/mo standalone)
   'price_1T9C8MGcfc7VEkjZH0iNcaoK': 'franchise',   // BalanceIQ Franchise
   'price_1T9C8cGcfc7VEkjZxGdIU7tt': 'franchise',   // BalanceIQ Franchise Location
+  'price_1T9uJzGcfc7VEkjZ9yoyzz5g': 'pro',          // BalanceIQ Network Pro ($19/mo franchisee upgrade)
 };
 
 async function setOrgPlan(orgId: string, plan: string, extra: Record<string, string> = {}) {

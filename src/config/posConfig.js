@@ -38,6 +38,14 @@ export const POS_CONFIG = {
     redirectUri: 'balanceiq://oauth/shopify',
     apiVersion: '2024-01',
   },
+  maitred: {
+    name: 'Maitre D\'',
+    // API key + server URL — no OAuth. User provides their on-premises server URL.
+    // Full API docs: https://docs.maitredpos.com
+    authType: 'apikey',
+    apiKeyOnly: true, // No OAuth flow
+    requiresServerUrl: true,
+  },
 };
 
 export const POS_COMING_SOON = [
@@ -45,4 +53,5 @@ export const POS_COMING_SOON = [
   { id: 'lightspeed',  name: 'Lightspeed' },
   { id: 'auphan',      name: 'Auphan' },
   { id: 'touchbistro', name: 'TouchBistro' },
+  { id: 'cluster',     name: 'Cluster' },
 ];

@@ -58,4 +58,7 @@ contextBridge.exposeInMainWorld('api', {
     onFileDetected: (cb) => ipcRenderer.on('delivery:file-detected', (_e, data) => cb(data)),
     offFileDetected:(cb) => ipcRenderer.removeListener('delivery:file-detected', cb),
   },
+  subscription: {
+    onPlanRefresh: (cb) => ipcRenderer.on('subscription:planRefresh', () => cb()),
+  },
 });

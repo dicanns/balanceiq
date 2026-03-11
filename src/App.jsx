@@ -237,7 +237,7 @@ function ReconLine({label,value,negative,bold,accent,borderTop}){
 }
 
 // ── CASH BLOCK ──
-function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,roster}){
+function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,roster,posAdvancedConfig}){
   const T=useL();
   const t=useT();
   const posOk=cash.posVentes!=null;const posT=(cash.posVentes||0)+(cash.posTPS||0)+(cash.posTVQ||0)+(cash.posLivraisons||0);
@@ -264,6 +264,47 @@ function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,ro
             <F label={T.dailyQST} value={cash.posTVQ} onChange={v=>onChange({...cash,posTVQ:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+3} warn={cash.posTVQ!=null&&cash.posTVQ<0?T.warnNegativeAmount:null}/>
             <F label={T.dailyDeliveries} value={cash.posLivraisons} onChange={v=>onChange({...cash,posLivraisons:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+4} warn={cash.posLivraisons!=null&&cash.posLivraisons<0?T.warnNegativeAmount:null}/>
             <div style={{marginTop:4,paddingTop:4,borderTop:`1px solid rgba(${t.posRgb},0.15)`}}><RR label={T.dailyTotalPOS} value={posOk?posT:null} accent={t.posColor} bold/></div>
+            {posAdvancedConfig?.enabled&&(()=>{
+              const adv=posAdvancedConfig.fields||{};
+              const f=v=>typeof v==='number'?`$${v.toFixed(2)}`:'—';
+              const rows=[];
+              if(adv.discounts&&(cash.posGrossSales||cash.posDiscounts)){
+                rows.push(<div key="disc" style={{fontSize:10,color:t.textSub,marginTop:5,paddingTop:5,borderTop:`1px solid rgba(${t.posRgb},0.1)`}}>
+                  {cash.posGrossSales>0&&<div>{T.posAdvGross||'Brut POS'}: <b style={{color:t.text}}>{f(cash.posGrossSales)}</b></div>}
+                  {cash.posDiscounts>0&&<div style={{color:"#f97316"}}>{T.posAdvDisc||'Rabais'}: <b>-{f(cash.posDiscounts)}</b></div>}
+                  {cash.posRefunds>0&&<div style={{color:"#ef4444"}}>{T.posAdvRefunds||'Remboursements'}: <b>-{f(cash.posRefunds)}</b></div>}
+                </div>);
+              }
+              if(adv.nonTaxable&&cash.posNonTaxable>0)rows.push(<div key="nt" style={{fontSize:10,color:t.textSub,marginTop:4}}>{T.posAdvNTLabel||'Non taxable'}: <b style={{color:t.text}}>{f(cash.posNonTaxable)}</b></div>);
+              if(adv.tips&&cash.posTips>0)rows.push(<div key="tips" style={{fontSize:10,color:t.textSub,marginTop:4}}>{T.posAdvTipsLabel||'Pourboires'}: <b style={{color:"#a78bfa"}}>{f(cash.posTips)}</b></div>);
+              if(adv.transactionCount&&cash.posTransactionCount>0)rows.push(<div key="tx" style={{fontSize:10,color:t.textSub,marginTop:4}}>{T.posAdvTxLabel||'Transactions'}: <b style={{color:t.text}}>{cash.posTransactionCount}</b>{cash.posVentes>0&&<span style={{color:t.textDim,marginLeft:6}}>{T.posAdvAvg||'Moy.'}: <b style={{color:t.text}}>{f(cash.posVentes/cash.posTransactionCount)}</b></span>}</div>);
+              if(adv.payments&&cash.posPayments)rows.push(<div key="pmts" style={{marginTop:5,paddingTop:5,borderTop:`1px solid rgba(${t.posRgb},0.1)`}}>
+                <div style={{fontSize:9,fontWeight:600,color:t.textMuted,marginBottom:3}}>{T.posAdvPmtTitle||'Modes de paiement'}</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:3}}>
+                  {[["Visa",cash.posPayments.visa],["MC",cash.posPayments.mastercard],["Débit",cash.posPayments.debit],["Amex",cash.posPayments.amex],["Cash",cash.posPayments.cash],["Autre",cash.posPayments.other]].map(([lbl,val])=>(
+                    <div key={lbl} style={{background:t.section,borderRadius:4,padding:"3px 5px",textAlign:"center"}}>
+                      <div style={{fontSize:8,color:t.textDim}}>{lbl}</div>
+                      <div style={{fontSize:10,fontWeight:700,color:val>0?t.text:t.textDim}}>{f(val||0)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>);
+              if(adv.hourlySales&&cash.posHourlySales?.length>0){
+                const maxS=Math.max(...cash.posHourlySales.map(h=>h.sales),1);
+                rows.push(<details key="hourly" style={{marginTop:5}}>
+                  <summary style={{fontSize:9,fontWeight:600,color:t.textMuted,cursor:"pointer",userSelect:"none"}}>{T.posAdvHourlyTitle||'Ventes par heure'}</summary>
+                  <div style={{display:"flex",alignItems:"flex-end",gap:2,height:40,marginTop:5}}>
+                    {cash.posHourlySales.map(h=>(
+                      <div key={h.hour} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
+                        <div style={{width:"100%",background:"rgba(249,115,22,0.6)",borderRadius:"2px 2px 0 0",height:`${Math.round((h.sales/maxS)*36)+2}px`,minHeight:2}}/>
+                        <div style={{fontSize:7,color:t.textDim}}>{h.hour}h</div>
+                      </div>
+                    ))}
+                  </div>
+                </details>);
+              }
+              return rows.length>0?<div style={{marginTop:2}}>{rows}</div>:null;
+            })()}
           </div>
         </div>
         <div>
@@ -826,13 +867,19 @@ function InvoiceOCRModal({section,suppliers,expenseItems,updPL,plData,ocrMapping
     if(!img)return;
     setStep('scanning');
     try{
-      const {supabase}=await import('./services/supabase.js');
+      const {supabase,SUPABASE_URL,SUPABASE_ANON_KEY}=await import('./services/supabase.js');
       const {getCloudOrgId}=await import('./services/cloudSync.js');
       const ownApiKey=apiConfig?.anthropicApiKey||null;
-      const {data,error:fnErr}=await supabase.functions.invoke('ocr-invoice',{
-        body:{imageBase64:img.base64,imageType:img.mimeType,orgId:getCloudOrgId(),ownApiKey},
+      const {data:sd}=await supabase.auth.getSession();
+      const authToken=sd?.session?.access_token||SUPABASE_ANON_KEY;
+      const ocrRes=await fetch(`${SUPABASE_URL}/functions/v1/ocr-invoice`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json','apikey':SUPABASE_ANON_KEY,'Authorization':`Bearer ${authToken}`},
+        body:JSON.stringify({imageBase64:img.base64,imageType:img.mimeType,orgId:getCloudOrgId(),ownApiKey}),
       });
-      if(fnErr){throw new Error(fnErr.message||'Erreur réseau');}
+      if(!ocrRes.ok){throw new Error(`Erreur réseau (${ocrRes.status})`);}
+      const data=await ocrRes.json();
+      const fnErr=null;
       if(data?.error==='no_auth'){setError(T.ocrNotLoggedIn);setStep('select');return;}
       if(data?.error==='limit_reached'){setError(T.ocrLimitReached);setStep('select');return;}
       if(data?.error==='upgrade_required'){setError(T.ocrUpgradeRequired);setStep('select');return;}
@@ -977,7 +1024,7 @@ function InvoiceOCRModal({section,suppliers,expenseItems,updPL,plData,ocrMapping
 }
 
 // ── P&L MONTHLY ──
-function MonthlyPL({computeDay,suppliers,liveData,platforms,expenseItems,glAccounts,apiConfig,ocrMappings,setOcrMappings,payrollConfig}){
+function MonthlyPL({computeDay,suppliers,liveData,platforms,expenseItems,glAccounts,apiConfig,ocrMappings,setOcrMappings,payrollConfig,lang}){
   const t=useT();
   const T=useL();
   const [month,setMonth]=useState(()=>{const n=new Date();return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`});
@@ -1007,7 +1054,7 @@ function MonthlyPL({computeDay,suppliers,liveData,platforms,expenseItems,glAccou
 
   const buildHTML=()=>{
     let h=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>P&L — ${MONTHS_FR[m-1]} ${y}</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font:13px/1.6 Arial,sans-serif;padding:30px;color:#222}h1{font-size:20px;color:#ea580c;margin-bottom:4px}h3{font-size:13px;color:#555;margin:16px 0 6px;text-transform:uppercase;letter-spacing:0.5px}table{border-collapse:collapse;width:100%;margin-bottom:8px}th,td{border:1px solid #ddd;padding:6px 10px;text-align:right;font-size:12px}th{background:#f7f7f7;font-weight:600}td:first-child,th:first-child{text-align:left}.g{color:#16a34a;font-weight:700}.r{color:#dc2626;font-weight:700}.sub{font-size:11px;color:#888}@media print{body{padding:15px}}</style></head><body>`;
-    h+=`<h1>BalanceIQ — P&L Mensuel</h1><p class="sub">${MONTHS_FR[m-1]} ${y} · Généré le ${new Date().toLocaleDateString("fr-CA")}</p>`;
+    h+=`<h1>BalanceIQ — P&L Mensuel</h1><p class="sub">${MONTHS_FR[m-1]} ${y} · Généré le ${new Date().toLocaleDateString("fr-CA")}</p><p style="font-size:10px;color:#999;margin-top:6px;padding:6px 10px;background:#f9f9f9;border-left:3px solid #ddd;border-radius:2px">Estimations opérationnelles à usage interne · Operational estimates for internal use — Toujours valider avec votre comptable / Always verify with your accountant</p>`;
     h+=`<h3>Revenus</h3><table><tr><td><b>Vente nette</b></td><td><b>${fmt(revenue)}</b></td></tr></table>`;
     const billRows=(key,name)=>{const bills=plData[`${key}_bills`]||[];const tot=billsSum(key);if(!tot&&!bills.length)return`<tr><td>${name}</td><td>—</td></tr>`;if(!bills.length)return`<tr><td>${name}</td><td>${fmt(tot)}</td></tr>`;let r=`<tr><td colspan="2" style="font-weight:600;padding-top:6px">${name}</td></tr>`;bills.forEach(b=>{r+=`<tr><td style="padding-left:16px;font-size:11px;color:#555">${b.date||""}${b.note?` — ${b.note}`:""} <em style="color:#888">(HT)</em></td><td>${fmt(b.amount)}</td></tr>`});r+=`<tr><td style="padding-left:16px;font-style:italic;font-size:11px">Sous-total</td><td style="font-weight:700">${fmt(tot)}</td></tr>`;return r;};
     h+=`<h3>Coût des marchandises (Food & Paper — avant taxes)</h3><table>${billRows('pettyCashFP','Petite caisse F&P')}`;
@@ -1113,6 +1160,10 @@ function MonthlyPL({computeDay,suppliers,liveData,platforms,expenseItems,glAccou
     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
       <input type="month" value={month} onChange={e=>setMonth(e.target.value)} style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,padding:"5px 8px",fontSize:12,fontFamily:"'DM Mono',monospace"}}/>
       <span style={{fontSize:14,fontWeight:700,textTransform:"capitalize",color:t.text}}>{T.months[m-1]} {y}</span>
+    </div>
+    <div style={{fontSize:10,color:t.textDim,padding:"5px 10px",borderRadius:5,background:t.section,border:`1px solid ${t.cardBorder}`,display:"flex",alignItems:"center",gap:5}}>
+      <span style={{opacity:0.6}}>ℹ</span>
+      <span>{lang==="en"?"Operational estimates for internal use — always verify with your accountant for official financial statements.":"Estimations opérationnelles à usage interne — toujours valider avec votre comptable pour les états financiers officiels."}</span>
     </div>
     <div style={{display:"flex",gap:5,flexWrap:"wrap"}}><MC label={T.plRevenue} value={fmt(revenue)} accent="#22c55e"/><MC label="F&P" value={fmt(fpT)} sub={`${fpP.toFixed(1)}%`} accent={fpP>35?"#ef4444":"#f97316"}/><MC label={T.plLabour} value={fmt(labC)} sub={`${labP.toFixed(1)}%`} accent={labP>35?"#ef4444":"#38bdf8"}/><MC label="Profit" value={fmt(np)} sub={`${npP.toFixed(1)}%`} accent={np>=0?"#22c55e":"#ef4444"}/></div>
     <Sec title={T.plRevenue} color="34,197,94">
@@ -4708,12 +4759,18 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
       contextData={cashiers:cashierVariances.slice(0,10).map(c=>({name:c.name,n:c.n,cumul:parseFloat(c.cumul.toFixed(2)),shortCount:c.shortCount,overCount:c.overCount,lossAlert:c.lossAlert}))};
     }
     try{
-      const {supabase}=await import('./services/supabase.js');
+      const {supabase,SUPABASE_URL,SUPABASE_ANON_KEY}=await import('./services/supabase.js');
       const ownApiKey=apiConfig?.anthropicApiKey||null;
-      const {data,error}=await supabase.functions.invoke('ai-intelligence',{
-        body:{queryType,contextData,orgId:getCloudOrgId(),ownApiKey,lang},
+      // Get auth token explicitly — bypass supabase.functions.invoke auth injection
+      const {data:sd}=await supabase.auth.getSession();
+      const authToken=sd?.session?.access_token||SUPABASE_ANON_KEY;
+      const res=await fetch(`${SUPABASE_URL}/functions/v1/ai-intelligence`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json','apikey':SUPABASE_ANON_KEY,'Authorization':`Bearer ${authToken}`},
+        body:JSON.stringify({queryType,contextData,orgId:getCloudOrgId(),ownApiKey,lang}),
       });
-      if(error)throw new Error(error.message);
+      if(!res.ok)throw new Error(`Erreur serveur (${res.status})`);
+      const data=await res.json();
       if(data?.error==='limit_reached'){setAiError(T.aiLimitReached(data.usageCount,data.usageLimit));}
       else if(data?.error==='upgrade_required'){setAiError(T.aiUpgradeRequired);}
       else if(data?.error==='no_auth'){setAiError(T.aiNoAuth);}
@@ -4916,11 +4973,77 @@ function UpgradePrompt({onClose}){
 }
 
 // ── LOCATIONS CONFIG ──
-function LocationsConfig({locations,saveLocations,facClients}){
+function LocationsConfig({locations,saveLocations,facClients,orgId,cloudUser,whiteLabelConfig}){
   const t=useT();
   const T=useL();
   const [editing,setEditing]=useState(null);
   const [form,setForm]=useState({});
+  // invite state: { [locationId]: { code, expiresAt, status } }
+  const [invites,setInvites]=useState({});
+  const [inviteModal,setInviteModal]=useState(null); // locationId or null
+  const [inviteLoading,setInviteLoading]=useState(null); // locationId or null
+  const [inviteError,setInviteError]=useState(null);
+  const [copied,setCopied]=useState(false);
+
+  // Load existing invitations from Supabase
+  const loadInvitations=async()=>{
+    if(!orgId||!cloudUser)return;
+    try{
+      const {supabase}=await import('./services/supabase.js');
+      const {data,error}=await supabase
+        .from('franchise_invitations')
+        .select('location_id,invite_code,expires_at,status')
+        .eq('franchisor_org_id',orgId)
+        .order('created_at',{ascending:false});
+      if(error){console.error('load invitations error:',error.message);return;}
+      if(data){
+        // Keep most recent invite per location
+        const map={};
+        for(const row of data){
+          if(!map[row.location_id])map[row.location_id]={code:row.invite_code,expiresAt:row.expires_at,status:row.status};
+        }
+        setInvites(map);
+      }
+    }catch(e){console.error('load invitations',e);}
+  };
+
+  useEffect(()=>{loadInvitations();},[orgId,cloudUser]);
+
+  const createInvite=async(loc)=>{
+    if(!cloudUser)return;
+    setInviteLoading(loc.id);setInviteError(null);
+    try{
+      const {supabase}=await import('./services/supabase.js');
+      const {getCloudOrgId}=await import('./services/cloudSync.js');
+      const {data,error}=await supabase.functions.invoke('create-invitation',{
+        body:{franchisorOrgId:orgId||getCloudOrgId(),locationId:loc.id,locationName:loc.nom},
+      });
+      if(error||data?.error)throw new Error(data?.message||error?.message||'Error');
+      setInvites(p=>({...p,[loc.id]:{code:data.inviteCode,expiresAt:data.expiresAt,status:'pending'}}));
+      setInviteModal(loc.id);
+    }catch(e){setInviteError(e.message);}
+    setInviteLoading(null);
+  };
+
+  const revokeInvite=async(loc)=>{
+    if(!window.confirm(T.inviteRevokeConfirm))return;
+    setInviteLoading(loc.id);setInviteError(null);
+    try{
+      const {supabase}=await import('./services/supabase.js');
+      const {getCloudOrgId}=await import('./services/cloudSync.js');
+      await supabase.from('franchise_invitations')
+        .update({status:'expired'})
+        .eq('franchisor_org_id',orgId||getCloudOrgId())
+        .eq('location_id',loc.id)
+        .eq('status','pending');
+      setInvites(p=>({...p,[loc.id]:{...p[loc.id],status:'expired'}}));
+      setInviteModal(null);
+    }catch(e){setInviteError(e.message);}
+    setInviteLoading(null);
+  };
+
+  const copyCode=(code)=>{navigator.clipboard.writeText(code);setCopied(true);setTimeout(()=>setCopied(false),2000);};
+
   const newLoc=()=>{setForm({nom:"",adresse:"",ville:"",responsable:"",email:"",telephone:"",clientId:"",statut:"active",royaltyOverride:false,royaltyRate:null,adRate:null,payFrequency:"biweekly"});setEditing("new")};
   const editLoc=(loc)=>{setForm({...loc});setEditing(loc.id)};
   const saveLoc=()=>{
@@ -4934,31 +5057,105 @@ function LocationsConfig({locations,saveLocations,facClients}){
   };
   const deactivate=(id)=>saveLocations(locations.map(l=>l.id===id?{...l,statut:l.statut==="inactive"?"active":"inactive"}:l));
   const inp={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:12,padding:"5px 8px",outline:"none",width:"100%"};
+
+  // Invite modal for a location
+  const renderInviteModal=(loc)=>{
+    const inv=invites[loc.id];
+    if(!inv||inviteModal!==loc.id)return null;
+    const isLinked=inv.status==='accepted';
+    const isPending=inv.status==='pending';
+    const expiry=inv.expiresAt?new Date(inv.expiresAt).toLocaleDateString():null;
+
+    const sendByEmail=()=>{
+      const to=loc.email||'';
+      const brandName=whiteLabelConfig?.enabled&&whiteLabelConfig?.franchiseName?whiteLabelConfig.franchiseName:'BalanceIQ';
+      const subject=encodeURIComponent(`${brandName} — Invitation to join ${loc.nom}`);
+      const body=encodeURIComponent(
+`You've been invited to join the ${brandName} franchise network for ${loc.nom}.
+
+Your invitation code: ${inv.code}
+
+How to activate:
+1. Open BalanceIQ on your computer
+2. Go to Config → Application
+3. Enter the code above in the "Join a Franchise Network" section
+
+This code expires on ${expiry||'—'}.
+
+Need help? Contact your franchisor.`
+      );
+      const mailto=`mailto:${to}?subject=${subject}&body=${body}`;
+      if(window.api?.shell?.openExternal){
+        window.api.shell.openExternal(mailto);
+      }else{
+        window.open(mailto);
+      }
+    };
+
+    return(
+      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:9000,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setInviteModal(null)}>
+        <div style={{background:t.card,border:`1px solid rgba(167,139,250,0.3)`,borderRadius:12,padding:24,minWidth:340,maxWidth:420}} onClick={e=>e.stopPropagation()}>
+          <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:8}}>{T.inviteTitle(loc.nom)}</div>
+          {isLinked?(
+            <div style={{fontSize:12,color:"#4ade80",marginBottom:12}}>{T.inviteLinkedInfo}</div>
+          ):(
+            <>
+              <div style={{fontSize:11,color:t.textSub,marginBottom:14}}>{T.inviteDesc}</div>
+              {isPending&&inv.code&&(
+                <>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                    <div style={{fontFamily:"monospace",fontSize:22,fontWeight:800,letterSpacing:4,color:"#c4b5fd",background:"rgba(167,139,250,0.08)",border:"1px solid rgba(167,139,250,0.2)",borderRadius:8,padding:"8px 16px",flex:1,textAlign:"center"}}>{inv.code}</div>
+                    <button onClick={()=>copyCode(inv.code)} style={{padding:"8px 12px",borderRadius:7,border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.1)",color:"#c4b5fd",cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
+                      {copied?T.inviteCopied:T.inviteCopy}
+                    </button>
+                  </div>
+                  {expiry&&<div style={{fontSize:10,color:t.textMuted,marginBottom:12}}>{T.inviteExpiry(expiry)} — {T.inviteExpiryNote}</div>}
+                  <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:4}}>
+                    <button onClick={sendByEmail} style={{padding:"6px 14px",borderRadius:7,border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.1)",color:"#c4b5fd",cursor:"pointer",fontSize:11,fontWeight:600}}>✉️ {T.inviteSendEmail}</button>
+                    <button onClick={()=>revokeInvite(loc)} disabled={!!inviteLoading} style={{padding:"6px 12px",borderRadius:6,border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.08)",color:"#fca5a5",cursor:"pointer",fontSize:10.5,fontWeight:600}}>{T.inviteRevoke}</button>
+                  </div>
+                  {!loc.email&&<div style={{fontSize:9.5,color:t.textMuted,marginTop:4}}>{T.inviteNoEmail}</div>}
+                </>
+              )}
+            </>
+          )}
+          {inviteError&&<div style={{fontSize:10.5,color:"#fca5a5",marginTop:8}}>{inviteError}</div>}
+          <div style={{marginTop:16,textAlign:"right"}}>
+            <button onClick={()=>{setInviteModal(null);setInviteError(null);}} style={{padding:"5px 14px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textSub,cursor:"pointer",fontSize:11}}>{T.cancel}</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return(
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <span style={{fontSize:13,fontWeight:700,color:t.text}}>📍 {T.frcLocationMgmt}</span>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:13,fontWeight:700,color:t.text}}>📍 {T.frcLocationMgmt}</span>
+          {cloudUser&&<button onClick={loadInvitations} title="Refresh invitation statuses" style={{padding:"2px 7px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textMuted,cursor:"pointer",fontSize:11}}>↺</button>}
+        </div>
         <button onClick={newLoc} style={{padding:"5px 13px",borderRadius:7,border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.1)",color:"#c4b5fd",cursor:"pointer",fontWeight:600,fontSize:11}}>{T.frcNewLocation}</button>
       </div>
       {editing&&(
         <div style={{background:t.card,border:`1px solid rgba(167,139,250,0.2)`,borderRadius:9,padding:14}}>
-          <div style={{fontSize:12,fontWeight:700,color:t.text,marginBottom:10}}>{editing==="new"?"Nouvelle succursale":"Modifier la succursale"}</div>
+          <div style={{fontSize:12,fontWeight:700,color:t.text,marginBottom:10}}>{editing==="new"?T.locNewTitle:T.locEditTitle}</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-            {[["Nom*","nom"],["Adresse","adresse"],["Ville","ville"],["Responsable","responsable"],["Courriel","email"],["Téléphone","telephone"]].map(([label,field])=>(
+            {[[T.locNom,"nom"],[T.locAdresse,"adresse"],[T.locVille,"ville"],[T.locResponsable,"responsable"],[T.locCourriel,"email"],[T.locTelephone,"telephone"]].map(([label,field])=>(
               <div key={field}>
                 <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{label}</div>
                 <input value={form[field]||""} onChange={e=>setForm(p=>({...p,[field]:e.target.value}))} style={inp}/>
               </div>
             ))}
             <div>
-              <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Client lié (facturation)</div>
+              <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.locClientLie}</div>
               <select value={form.clientId||""} onChange={e=>setForm(p=>({...p,clientId:e.target.value||null}))} style={{...inp,height:28}}>
-                <option value="">— Aucun —</option>
+                <option value="">{T.locNone}</option>
                 {facClients.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}
               </select>
             </div>
             <div>
-              <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Statut</div>
+              <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.locStatut}</div>
               <select value={form.statut||"active"} onChange={e=>setForm(p=>({...p,statut:e.target.value}))} style={{...inp,height:28}}>
                 <option value="active">{T.cfgActive}</option>
                 <option value="inactive">{T.recurringInactive}</option>
@@ -4977,16 +5174,16 @@ function LocationsConfig({locations,saveLocations,facClients}){
           <div style={{marginTop:8}}>
             <label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:t.textSub,cursor:"pointer"}}>
               <input type="checkbox" checked={!!form.royaltyOverride} onChange={e=>setForm(p=>({...p,royaltyOverride:e.target.checked}))}/>
-              Taux de redevance personnalisé pour cette succursale
+              {T.locRoyaltyOverride}
             </label>
             {form.royaltyOverride&&(
               <div style={{display:"flex",gap:8,marginTop:6}}>
                 <div style={{flex:1}}>
-                  <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Taux redevance (%)</div>
+                  <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.locRoyaltyPct}</div>
                   <input type="number" value={form.royaltyRate??""} onChange={e=>setForm(p=>({...p,royaltyRate:parseFloat(e.target.value)||null}))} style={{...inp,width:80}} placeholder="6"/>
                 </div>
                 <div style={{flex:1}}>
-                  <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Contribution pub. (%)</div>
+                  <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.locAdPct}</div>
                   <input type="number" value={form.adRate??""} onChange={e=>setForm(p=>({...p,adRate:parseFloat(e.target.value)||null}))} style={{...inp,width:80}} placeholder="2"/>
                 </div>
               </div>
@@ -4999,20 +5196,45 @@ function LocationsConfig({locations,saveLocations,facClients}){
         </div>
       )}
       {locations.length===0&&!editing&&<div style={{fontSize:12,color:t.textMuted,padding:"16px 0",textAlign:"center"}}>{T.frcNoLocations}</div>}
-      {locations.map(loc=>(
-        <div key={loc.id} style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",opacity:loc.statut==="inactive"?0.5:1}}>
-          <div>
-            <div style={{fontSize:12,fontWeight:700,color:t.text}}>{loc.nom}</div>
-            <div style={{fontSize:10.5,color:t.textMuted,marginTop:2}}>{[loc.ville,loc.responsable,loc.email].filter(Boolean).join(" · ")}</div>
-            {loc.payFrequency&&<div style={{fontSize:9.5,color:t.textDim,marginTop:1}}>💼 {T[loc.payFrequency==='weekly'?'payrollWeekly':loc.payFrequency==='biweekly'?'payrollBiweekly':loc.payFrequency==='semimonthly'?'payrollSemimonth':'payrollMonthly']}</div>}
+      {!cloudUser&&locations.length>0&&(
+        <div style={{fontSize:11,color:"#fbbf24",background:"rgba(251,191,36,0.07)",border:"1px solid rgba(251,191,36,0.2)",borderRadius:6,padding:"6px 10px"}}>{T.inviteLoginRequired}</div>
+      )}
+      {locations.map(loc=>{
+        const inv=invites[loc.id];
+        const isLinked=inv?.status==='accepted';
+        const isPending=inv?.status==='pending';
+        return(
+          <div key={loc.id} style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:"10px 14px",opacity:loc.statut==="inactive"?0.5:1}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:12,fontWeight:700,color:t.text,display:"flex",alignItems:"center",gap:7}}>
+                  {loc.nom}
+                  {isLinked&&<span style={{fontSize:9.5,padding:"1px 6px",borderRadius:5,background:"rgba(34,197,94,0.12)",color:"#4ade80",fontWeight:600}}>{T.inviteLinked}</span>}
+                  {isPending&&<span style={{fontSize:9.5,padding:"1px 6px",borderRadius:5,background:"rgba(251,191,36,0.12)",color:"#fbbf24",fontWeight:600}}>{T.invitePending}</span>}
+                </div>
+                <div style={{fontSize:10.5,color:t.textMuted,marginTop:2}}>{[loc.ville,loc.responsable,loc.email].filter(Boolean).join(" · ")}</div>
+                {loc.payFrequency&&<div style={{fontSize:9.5,color:t.textDim,marginTop:1}}>💼 {T[loc.payFrequency==='weekly'?'payrollWeekly':loc.payFrequency==='biweekly'?'payrollBiweekly':loc.payFrequency==='semimonthly'?'payrollSemimonth':'payrollMonthly']}</div>}
+              </div>
+              <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                <span style={{fontSize:9.5,padding:"2px 7px",borderRadius:6,background:loc.statut==="active"?"rgba(34,197,94,0.1)":"rgba(239,68,68,0.1)",color:loc.statut==="active"?"#4ade80":"#fca5a5",fontWeight:600}}>{loc.statut==="active"?T.cfgActive:T.recurringInactive}</span>
+                {cloudUser&&(
+                  isPending?(
+                    <button onClick={()=>setInviteModal(loc.id)} style={{padding:"3px 10px",borderRadius:5,border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.08)",color:"#c4b5fd",cursor:"pointer",fontSize:10.5}}>{T.inviteShowCode}</button>
+                  ):(
+                    !isLinked&&(
+                      <button onClick={()=>createInvite(loc)} disabled={inviteLoading===loc.id} style={{padding:"3px 10px",borderRadius:5,border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.08)",color:"#c4b5fd",cursor:"pointer",fontSize:10.5,opacity:inviteLoading===loc.id?0.5:1}}>{inviteLoading===loc.id?"…":T.inviteBtn}</button>
+                    )
+                  )
+                )}
+                <button onClick={()=>editLoc(loc)} style={{padding:"3px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textSub,cursor:"pointer",fontSize:10.5}}>{T.edit}</button>
+                <button onClick={()=>deactivate(loc.id)} style={{padding:"3px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textMuted,cursor:"pointer",fontSize:10.5}}>{loc.statut==="active"?T.locDeactivate:T.locReactivate}</button>
+              </div>
+            </div>
+            {inviteError&&inviteLoading===null&&!inviteModal&&<div style={{fontSize:10.5,color:"#fca5a5",marginTop:6,paddingTop:6,borderTop:`1px solid ${t.cardBorder}`}}>{inviteError}</div>}
+            {renderInviteModal(loc)}
           </div>
-          <div style={{display:"flex",gap:6,alignItems:"center"}}>
-            <span style={{fontSize:9.5,padding:"2px 7px",borderRadius:6,background:loc.statut==="active"?"rgba(34,197,94,0.1)":"rgba(239,68,68,0.1)",color:loc.statut==="active"?"#4ade80":"#fca5a5",fontWeight:600}}>{loc.statut==="active"?T.cfgActive:T.recurringInactive}</span>
-            <button onClick={()=>editLoc(loc)} style={{padding:"3px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textSub,cursor:"pointer",fontSize:10.5}}>{T.edit}</button>
-            <button onClick={()=>deactivate(loc.id)} style={{padding:"3px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textMuted,cursor:"pointer",fontSize:10.5}}>{loc.statut==="active"?"Désactiver":"Réactiver"}</button>
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -5235,11 +5457,15 @@ function MarqueBlancheConfig({whiteLabelConfig,saveWhiteLabel}){
 }
 
 // ── RÉSEAU TAB ──
-function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfig,facCategories,facProduits,saveFacFactures,docNums,saveDocNums,companyInfo,apiConfig,perfTargets,payrollConfig}){
+function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfig,facCategories,facProduits,saveFacFactures,docNums,saveDocNums,companyInfo,apiConfig,perfTargets,payrollConfig,cloudUser}){
   const t=useT();
   const T=useL();
   const [monthlyData,setMonthlyData]=useState({});
   const [loading,setLoading]=useState(true);
+  const [cloudSyncMap,setCloudSyncMap]=useState({}); // {localLocId: true} — which locations have cloud data
+  const [netAiResponse,setNetAiResponse]=useState(null);
+  const [netAiLoading,setNetAiLoading]=useState(false);
+  const [netAiError,setNetAiError]=useState(null);
   const [scoreTab,setScoreTab]=useState("performance");
   const [reconMonth,setReconMonth]=useState(()=>{const n=new Date();return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`});
   const [genPeriod,setGenPeriod]=useState(reconMonth);
@@ -5256,23 +5482,67 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
       const ym=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
       const yesterday=new Date(now);yesterday.setDate(yesterday.getDate()-1);
       const yd=`${yesterday.getFullYear()}-${String(yesterday.getMonth()+1).padStart(2,'0')}-${String(yesterday.getDate()).padStart(2,'0')}`;
+
+      // ── Fetch cloud data for linked locations ──
+      const cloudByLocId={}; // {localLocId: {data, lastSynced}}
+      const syncMap={};
+      if(cloudUser){
+        try{
+          const {supabase}=await import('./services/supabase.js');
+          const {getCloudOrgId}=await import('./services/cloudSync.js');
+          const franchisorOrgId=getCloudOrgId();
+          if(franchisorOrgId){
+            // Get child orgs (linked franchisees)
+            const {data:childOrgs}=await supabase
+              .from('organizations')
+              .select('id,linked_location_id')
+              .eq('parent_org_id',franchisorOrgId);
+            if(childOrgs?.length){
+              for(const child of childOrgs){
+                if(!child.linked_location_id)continue;
+                // Fetch their daily data from synced_data
+                const {data:rows}=await supabase
+                  .from('synced_data')
+                  .select('value,updated_at')
+                  .eq('org_id',child.id)
+                  .eq('key','dicann-v7')
+                  .single();
+                if(rows?.value){
+                  cloudByLocId[child.linked_location_id]={data:rows.value,lastSynced:rows.updated_at};
+                  syncMap[child.linked_location_id]=true;
+                }
+              }
+            }
+          }
+        }catch(e){console.warn('ReseauTab cloud fetch failed',e);}
+      }
+      setCloudSyncMap(syncMap);
+
+      // ── Parse data per location ──
+      const calcNet=(cashes=[])=>cashes.reduce((s,c)=>{
+        if(c.float!=null&&c.deposits!=null&&c.finalCash!=null)return s+(c.interac||0)+(c.livraisons||0)+(c.deposits||0)+(c.finalCash||0)-(c.float||0);
+        return s;
+      },0);
+
       const result={};
       for(const loc of locations){
         try{
-          const r=await window.api.storage.get(`dicann-v7-loc-${loc.id}`);
-          const data=r?.value?JSON.parse(r.value):{};
+          let data={};
+          let lastSynced=null;
+          let isCloud=false;
+          if(cloudByLocId[loc.id]){
+            data=cloudByLocId[loc.id].data;
+            lastSynced=cloudByLocId[loc.id].lastSynced;
+            isCloud=true;
+          }else{
+            const r=await window.api.storage.get(`dicann-v7-loc-${loc.id}`);
+            data=r?.value?JSON.parse(r.value):{};
+          }
           // Monthly sales
-          const monthlySales=Object.entries(data).filter(([k])=>k.startsWith(ym)).reduce((sum,[,v])=>{
-            const cashes=v.cashes||[];
-            const net=cashes.reduce((s,c)=>{
-              if(c.float!=null&&c.deposits!=null&&c.finalCash!=null)return s+(c.interac||0)+(c.livraisons||0)+(c.deposits||0)+(c.finalCash||0)-(c.float||0);
-              return s;
-            },0);return sum+net;
-          },0);
+          const monthlySales=Object.entries(data).filter(([k])=>k.startsWith(ym)).reduce((sum,[,v])=>sum+calcNet(v.cashes),0);
           // Yesterday's sales
           const ydData=data[yd];
-          let ydSales=0;
-          if(ydData){const cashes=ydData.cashes||[];ydSales=cashes.reduce((s,c)=>{if(c.float!=null&&c.deposits!=null&&c.finalCash!=null)return s+(c.interac||0)+(c.livraisons||0)+(c.deposits||0)+(c.finalCash||0)-(c.float||0);return s;},0);}
+          const ydSales=ydData?calcNet(ydData.cashes||[]):0;
           // Today balanced?
           const todayKey=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
           const todayData=data[todayKey];
@@ -5291,27 +5561,21 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
           // Average $/dozen
           const allDays=Object.values(data);
           const dzDays=allDays.filter(v=>v&&(v.hamUsed||0)+(v.hotUsed||0)>0);
-          const avgDz=dzDays.length?dzDays.reduce((s,v)=>{
-            const cashes=v.cashes||[];const net=cashes.reduce((ss,c)=>{if(c.float!=null&&c.deposits!=null&&c.finalCash!=null)return ss+(c.interac||0)+(c.livraisons||0)+(c.deposits||0)+(c.finalCash||0)-(c.float||0);return ss;},0);
-            return s+(net/((v.hamUsed||0)+(v.hotUsed||0)));
-          },0)/dzDays.length:0;
+          const avgDz=dzDays.length?dzDays.reduce((s,v)=>s+(calcNet(v.cashes||[])/((v.hamUsed||0)+(v.hotUsed||0))),0)/dzDays.length:0;
           // Labour %
           const labDays=allDays.filter(v=>v&&v.labourCost&&v.labourCost>0);
-          const avgLabourPct=labDays.length?labDays.reduce((s,v)=>{
-            const cashes=v.cashes||[];const net=cashes.reduce((ss,c)=>{if(c.float!=null&&c.deposits!=null&&c.finalCash!=null)return ss+(c.interac||0)+(c.livraisons||0)+(c.deposits||0)+(c.finalCash||0)-(c.float||0);return ss;},0);
-            return s+(net>0?v.labourCost/net*100:0);
-          },0)/labDays.length:0;
+          const avgLabourPct=labDays.length?labDays.reduce((s,v)=>{const net=calcNet(v.cashes||[]);return s+(net>0?v.labourCost/net*100:0);},0)/labDays.length:0;
           // Last filled date
           const filledDates=Object.keys(data).filter(k=>/^\d{4}-\d{2}-\d{2}$/.test(k)&&Object.keys(data[k]||{}).length>0).sort();
           const lastFilled=filledDates[filledDates.length-1]||null;
           const daysSinceFilled=lastFilled?Math.floor((now-new Date(lastFilled))/(86400000)):999;
-          result[loc.id]={monthlySales,ydSales,todayStatus,avgDz,avgLabourPct,lastFilled,daysSinceFilled};
-        }catch(e){result[loc.id]={monthlySales:0,ydSales:0,todayStatus:"none",avgDz:0,avgLabourPct:0,lastFilled:null,daysSinceFilled:999};}
+          result[loc.id]={monthlySales,ydSales,todayStatus,avgDz,avgLabourPct,lastFilled,daysSinceFilled,lastSynced,isCloud};
+        }catch(e){result[loc.id]={monthlySales:0,ydSales:0,todayStatus:"none",avgDz:0,avgLabourPct:0,lastFilled:null,daysSinceFilled:999,lastSynced:null,isCloud:false};}
       }
       setMonthlyData(result);
       setLoading(false);
     })();
-  },[locations]);
+  },[locations,cloudUser]);
 
   useEffect(()=>{
     (async()=>{
@@ -5452,6 +5716,40 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
     setGenPreview(null);
   };
 
+  const runNetworkAi=async()=>{
+    if(!cloudUser||netAiLoading)return;
+    setNetAiLoading(true);setNetAiError(null);setNetAiResponse(null);
+    try{
+      const {supabase}=await import('./services/supabase.js');
+      const {getCloudOrgId}=await import('./services/cloudSync.js');
+      const networkTotal=Object.values(monthlyData).reduce((s,d)=>s+(d?.monthlySales||0),0);
+      const contextData={
+        totalLocations:activeLocs.length,
+        networkTotal:networkTotal.toFixed(0),
+        locations:activeLocs.map(loc=>{
+          const d=monthlyData[loc.id]||{};
+          return{name:loc.nom,monthlySales:Math.round(d.monthlySales||0),labourPct:d.avgLabourPct||0,avgDz:d.avgDz||0,daysSinceFilled:d.daysSinceFilled||999,isCloud:!!d.isCloud};
+        }),
+      };
+      const lang=T===EN?'en':'fr';
+      const ownApiKey=apiConfig?.anthropicApiKey||null;
+      const {SUPABASE_URL,SUPABASE_ANON_KEY}=await import('./services/supabase.js');
+      // Get auth token explicitly
+      const {data:sd}=await supabase.auth.getSession();
+      const authToken=sd?.session?.access_token||SUPABASE_ANON_KEY;
+      const res=await fetch(`${SUPABASE_URL}/functions/v1/ai-intelligence`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json','apikey':SUPABASE_ANON_KEY,'Authorization':`Bearer ${authToken}`},
+        body:JSON.stringify({queryType:'network_summary',contextData,orgId:getCloudOrgId(),ownApiKey,lang}),
+      });
+      if(!res.ok)throw new Error(`Erreur serveur (${res.status})`);
+      const data=await res.json();
+      if(data?.error){setNetAiError(data.message||T.aiGenericError);}
+      else{setNetAiResponse(data.text);}
+    }catch(e){setNetAiError(e.message);}
+    setNetAiLoading(false);
+  };
+
   if(!canUse('royaltyAutoCalc')&&!canUse('multiLocationReconciliation')){
     return(<div style={{padding:24,textAlign:"center",color:"#8b8fa3",fontSize:13}}>{T.reseauLocked}</div>);
   }
@@ -5493,7 +5791,7 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
               <thead>
                 <tr style={{background:t.section}}>
-                  {[T.colStore,T.colMonthlySales,T.colYdSales,T.colAvgDz,T.colLabourPct,T.colStatus].map(h=>(
+                  {[T.colStore,T.colMonthlySales,T.colYdSales,T.colAvgDz,T.colLabourPct,T.colStatus,T.colLastSync||"Sync"].map(h=>(
                     <th key={h} style={{padding:"7px 12px",textAlign:"left",fontWeight:600,color:t.textSub,fontSize:10.5,textTransform:"uppercase",letterSpacing:0.5}}>{h}</th>
                   ))}
                 </tr>
@@ -5503,18 +5801,31 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
                   const d=monthlyData[loc.id]||{};
                   const labColor=d.avgLabourPct>35?"#ef4444":d.avgLabourPct>28?"#fbbf24":"#22c55e";
                   const statusEl=d.todayStatus==="balanced"?<span style={{color:"#22c55e",fontWeight:700}}>✓</span>:d.todayStatus==="error"?<span style={{color:"#ef4444",fontWeight:700}}>✗</span>:d.todayStatus==="partial"?<span style={{color:"#f97316"}}>⏳</span>:<span style={{color:t.textDim}}>—</span>;
+                  // Sync status
+                  let syncEl;
+                  if(d.isCloud&&d.lastSynced){
+                    const syncedAgo=Math.floor((Date.now()-new Date(d.lastSynced))/(3600000));
+                    const stale=syncedAgo>=48;
+                    const syncLabel=syncedAgo<1?"< 1h":syncedAgo<24?`${syncedAgo}h`:`${Math.floor(syncedAgo/24)}d`;
+                    syncEl=<span style={{fontSize:9.5,color:stale?"#fca5a5":"#4ade80",fontWeight:600}}>{stale?"⚠ ":""}{syncLabel}</span>;
+                  }else if(d.isCloud){
+                    syncEl=<span style={{fontSize:9.5,color:t.textMuted}}>—</span>;
+                  }else{
+                    syncEl=<span style={{fontSize:9.5,color:t.textDim,fontStyle:"italic"}}>local</span>;
+                  }
                   return(
                     <tr key={loc.id} style={{borderTop:`1px solid ${t.divider}`}}>
-                      <td style={{padding:"8px 12px",fontWeight:600,color:t.text}}>{loc.nom}</td>
+                      <td style={{padding:"8px 12px",fontWeight:600,color:t.text}}>{loc.nom}{d.isCloud&&<span style={{marginLeft:5,fontSize:8.5,color:"#a78bfa",fontWeight:700,background:"rgba(167,139,250,0.1)",padding:"1px 5px",borderRadius:4}}>☁</span>}</td>
                       <td style={{padding:"8px 12px",fontFamily:"'DM Mono',monospace",color:"#a78bfa"}}>{fmtFull(d.monthlySales||0)}</td>
                       <td style={{padding:"8px 12px",fontFamily:"'DM Mono',monospace",color:t.textSub}}>{fmtFull(d.ydSales||0)}</td>
                       <td style={{padding:"8px 12px",fontFamily:"'DM Mono',monospace",color:t.textSub}}>{d.avgDz>0?fmtFull(d.avgDz):"—"}</td>
                       <td style={{padding:"8px 12px",fontFamily:"'DM Mono',monospace",color:labColor}}>{d.avgLabourPct>0?`${d.avgLabourPct.toFixed(1)}%`:"—"}</td>
                       <td style={{padding:"8px 12px"}}>{statusEl}</td>
+                      <td style={{padding:"8px 12px"}}>{syncEl}</td>
                     </tr>
                   );
                 })}
-                {activeLocs.length===0&&<tr><td colSpan={6} style={{padding:20,textAlign:"center",color:t.textMuted,fontSize:12}}>{T.noActiveStores}</td></tr>}
+                {activeLocs.length===0&&<tr><td colSpan={7} style={{padding:20,textAlign:"center",color:t.textMuted,fontSize:12}}>{T.noActiveStores}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -5531,6 +5842,25 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* AI Network Insights */}
+        {canUse('aiAnalysis')&&cloudUser&&activeLocs.length>0&&(
+          <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:netAiResponse?10:0}}>
+              <div>
+                <span style={{fontSize:13,fontWeight:700,color:t.text}}>🤖 {T.aiTitle}</span>
+                <span style={{fontSize:10,color:"#a78bfa",marginLeft:8,fontWeight:600}}>Network</span>
+              </div>
+              <button onClick={runNetworkAi} disabled={netAiLoading||loading}
+                style={{padding:"5px 14px",borderRadius:7,border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.1)",color:"#c4b5fd",cursor:"pointer",fontSize:11,fontWeight:600,opacity:netAiLoading||loading?0.5:1}}>
+                {netAiLoading?"…":"✨ Analyze Network"}
+              </button>
+            </div>
+            {netAiResponse&&<div style={{fontSize:12,color:t.text,lineHeight:1.6,marginTop:8,padding:"10px 12px",background:t.section,borderRadius:7,border:`1px solid ${t.dividerMid}`}}>{netAiResponse}</div>}
+            {netAiError&&<div style={{fontSize:11,color:"#fca5a5",marginTop:8}}>{netAiError}</div>}
+            {!netAiResponse&&!netAiError&&!netAiLoading&&<div style={{fontSize:10.5,color:t.textMuted,marginTop:6}}>{T.aiDisclaimer}</div>}
           </div>
         )}
 
@@ -6458,9 +6788,10 @@ function POSIntegrationSection({posCredentials,setPosCredentials,posAdvancedConf
   const [disconnecting,setDisconnecting]=useState({});
 
   const POS_LIST=[
-    {id:'square',  name:'Square',      desc:T.posSquareDesc,  logo:'◼'},
-    {id:'clover',  name:'Clover',      desc:T.posCloverDesc,  logo:'🍀'},
-    {id:'shopify', name:'Shopify POS', desc:T.posShopifyDesc, logo:'🛍'},
+    {id:'square',  name:'Square',       desc:T.posSquareDesc,  logo:'◼'},
+    {id:'clover',  name:'Clover',       desc:T.posCloverDesc,  logo:'🍀'},
+    {id:'shopify', name:'Shopify POS',  desc:T.posShopifyDesc, logo:'🛍'},
+    {id:'maitred', name:"Maitre D'",    desc:T.posMaitredDesc, logo:'🍽', apiKeyOnly:true, requiresServerUrl:true},
   ];
 
   const doOAuth=async(posType)=>{
@@ -6583,36 +6914,57 @@ function POSIntegrationSection({posCredentials,setPosCredentials,posAdvancedConf
                   </div>
                 ):(
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                    {pos.id==='shopify'&&(
-                      <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                        <div style={{background:"rgba(56,189,248,0.06)",border:"1px solid rgba(56,189,248,0.15)",borderRadius:6,padding:"8px 10px"}}>
-                          <div style={{fontSize:10,fontWeight:700,color:"#38bdf8",marginBottom:4}}>{T.posShopifyHowToTitle}</div>
-                          <ol style={{fontSize:10,color:t.textMuted,paddingLeft:14,margin:0,lineHeight:1.7}}>
-                            {T.posShopifyHowToSteps.map((s,i)=><li key={i}>{s}</li>)}
-                          </ol>
+                    {/* Maitre D' — API key + server URL, no OAuth */}
+                    {pos.apiKeyOnly?(
+                      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                        <div style={{background:"rgba(249,115,22,0.05)",border:"1px solid rgba(249,115,22,0.15)",borderRadius:6,padding:"8px 10px",fontSize:10,color:t.textMuted}}>{T.posMaitredHelp}</div>
+                        <div>
+                          <div style={{fontSize:10,fontWeight:600,color:t.textMuted,marginBottom:3}}>{T.posMaitredServerUrl}</div>
+                          <input value={shopDomain[pos.id]||""} onChange={e=>setShopDomain(d=>({...d,[pos.id]:e.target.value}))} placeholder={T.posMaitredServerPH} style={{width:"100%",padding:"4px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.text,fontSize:11,boxSizing:"border-box"}}/>
                         </div>
                         <div>
-                          <div style={{fontSize:11,fontWeight:600,color:t.text,marginBottom:3}}>{T.posShopDomain}</div>
-                          <input value={shopDomain[pos.id]||""} onChange={e=>setShopDomain(d=>({...d,[pos.id]:e.target.value}))} placeholder={T.posShopDomainPH} style={{width:"100%",padding:"5px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.text,fontSize:11,boxSizing:"border-box"}}/>
+                          <div style={{fontSize:10,fontWeight:600,color:t.textMuted,marginBottom:3}}>{T.posMaitredApiKey}</div>
+                          <div style={{display:"flex",gap:6}}>
+                            <input value={manualToken[pos.id]||""} onChange={e=>setManualToken(m=>({...m,[pos.id]:e.target.value}))} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style={{flex:1,padding:"4px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.text,fontSize:11,fontFamily:"'DM Mono',monospace"}}/>
+                            <button onClick={()=>doSaveManual(pos.id)} disabled={!manualToken[pos.id]?.trim()||!shopDomain[pos.id]?.trim()} style={{padding:"4px 12px",borderRadius:5,border:"none",background:(manualToken[pos.id]?.trim()&&shopDomain[pos.id]?.trim())?"rgba(249,115,22,0.15)":"rgba(255,255,255,0.03)",color:(manualToken[pos.id]?.trim()&&shopDomain[pos.id]?.trim())?"#f97316":t.textDim,cursor:(manualToken[pos.id]?.trim()&&shopDomain[pos.id]?.trim())?"pointer":"default",fontWeight:600,fontSize:11,whiteSpace:"nowrap"}}>{T.posManualSave}</button>
+                          </div>
+                          {!shopDomain[pos.id]?.trim()&&manualToken[pos.id]?.trim()&&<div style={{fontSize:10,color:"#f97316",marginTop:3}}>{T.posMaitredServerUrl} requis</div>}
                         </div>
                       </div>
+                    ):(
+                      <>
+                        {pos.id==='shopify'&&(
+                          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                            <div style={{background:"rgba(56,189,248,0.06)",border:"1px solid rgba(56,189,248,0.15)",borderRadius:6,padding:"8px 10px"}}>
+                              <div style={{fontSize:10,fontWeight:700,color:"#38bdf8",marginBottom:4}}>{T.posShopifyHowToTitle}</div>
+                              <ol style={{fontSize:10,color:t.textMuted,paddingLeft:14,margin:0,lineHeight:1.7}}>
+                                {T.posShopifyHowToSteps.map((s,i)=><li key={i}>{s}</li>)}
+                              </ol>
+                            </div>
+                            <div>
+                              <div style={{fontSize:11,fontWeight:600,color:t.text,marginBottom:3}}>{T.posShopDomain}</div>
+                              <input value={shopDomain[pos.id]||""} onChange={e=>setShopDomain(d=>({...d,[pos.id]:e.target.value}))} placeholder={T.posShopDomainPH} style={{width:"100%",padding:"5px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.text,fontSize:11,boxSizing:"border-box"}}/>
+                            </div>
+                          </div>
+                        )}
+                        {pos.id!=='shopify'&&(<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                          <button onClick={()=>doOAuth(pos.id)} disabled={oauth==='waiting'} style={{padding:"5px 14px",borderRadius:5,border:"none",background:oauth==='waiting'?"rgba(255,255,255,0.05)":"linear-gradient(135deg,#f97316,#ea580c)",color:oauth==='waiting'?"rgba(255,255,255,0.3)":"#fff",cursor:oauth==='waiting'?"default":"pointer",fontWeight:700,fontSize:11}}>
+                            {oauth==='waiting'?T.posConnecting:T.posConnect}
+                          </button>
+                          {oauth==='waiting'&&<span style={{fontSize:10,color:t.textMuted}}>{T.posOAuthWaiting}</span>}
+                          {oauth==='success'&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>✓ {T.posOAuthSuccess}</span>}
+                          {oauth&&oauth.startsWith('error')&&<span style={{fontSize:11,color:"#ef4444",fontWeight:600}}>✗ {oauth.includes(':')?oauth.slice(6):T.posOAuthError}</span>}
+                        </div>)}
+                        <div style={{borderTop:`1px dashed ${t.cardBorder}`,paddingTop:8}}>
+                          <div style={{fontSize:10,fontWeight:600,color:t.textMuted,marginBottom:4}}>{pos.id==='shopify'?T.posShopifyTokenLabel:T.posManualToken}</div>
+                          <div style={{display:"flex",gap:6}}>
+                            <input value={manualToken[pos.id]||""} onChange={e=>setManualToken(m=>({...m,[pos.id]:e.target.value}))} placeholder={pos.id==='shopify'?"shpat_xxxxxxxxxxxxxxxxxxxxxxxx":T.posManualTokenPH} style={{flex:1,padding:"4px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.text,fontSize:11,fontFamily:"'DM Mono',monospace"}}/>
+                            <button onClick={()=>doSaveManual(pos.id)} disabled={!manualToken[pos.id]?.trim()||(pos.id==='shopify'&&!shopDomain[pos.id]?.trim())} style={{padding:"4px 12px",borderRadius:5,border:"none",background:(manualToken[pos.id]?.trim()&&(pos.id!=='shopify'||shopDomain[pos.id]?.trim()))?"rgba(249,115,22,0.15)":"rgba(255,255,255,0.03)",color:(manualToken[pos.id]?.trim()&&(pos.id!=='shopify'||shopDomain[pos.id]?.trim()))?"#f97316":t.textDim,cursor:(manualToken[pos.id]?.trim()&&(pos.id!=='shopify'||shopDomain[pos.id]?.trim()))?"pointer":"default",fontWeight:600,fontSize:11,whiteSpace:"nowrap"}}>{T.posManualSave}</button>
+                          </div>
+                          {pos.id==='shopify'&&!shopDomain[pos.id]?.trim()&&manualToken[pos.id]?.trim()&&<div style={{fontSize:10,color:"#f97316",marginTop:3}}>{T.posShopifyDomainFirst}</div>}
+                        </div>
+                      </>
                     )}
-                    {pos.id!=='shopify'&&(<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-                      <button onClick={()=>doOAuth(pos.id)} disabled={oauth==='waiting'} style={{padding:"5px 14px",borderRadius:5,border:"none",background:oauth==='waiting'?"rgba(255,255,255,0.05)":"linear-gradient(135deg,#f97316,#ea580c)",color:oauth==='waiting'?"rgba(255,255,255,0.3)":"#fff",cursor:oauth==='waiting'?"default":"pointer",fontWeight:700,fontSize:11}}>
-                        {oauth==='waiting'?T.posConnecting:T.posConnect}
-                      </button>
-                      {oauth==='waiting'&&<span style={{fontSize:10,color:t.textMuted}}>{T.posOAuthWaiting}</span>}
-                      {oauth==='success'&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>✓ {T.posOAuthSuccess}</span>}
-                      {oauth&&oauth.startsWith('error')&&<span style={{fontSize:11,color:"#ef4444",fontWeight:600}}>✗ {oauth.includes(':')?oauth.slice(6):T.posOAuthError}</span>}
-                    </div>)}
-                    <div style={{borderTop:`1px dashed ${t.cardBorder}`,paddingTop:8}}>
-                      <div style={{fontSize:10,fontWeight:600,color:t.textMuted,marginBottom:4}}>{pos.id==='shopify'?T.posShopifyTokenLabel:T.posManualToken}</div>
-                      <div style={{display:"flex",gap:6}}>
-                        <input value={manualToken[pos.id]||""} onChange={e=>setManualToken(m=>({...m,[pos.id]:e.target.value}))} placeholder={pos.id==='shopify'?"shpat_xxxxxxxxxxxxxxxxxxxxxxxx":T.posManualTokenPH} style={{flex:1,padding:"4px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.text,fontSize:11,fontFamily:"'DM Mono',monospace"}}/>
-                        <button onClick={()=>doSaveManual(pos.id)} disabled={!manualToken[pos.id]?.trim()||(pos.id==='shopify'&&!shopDomain[pos.id]?.trim())} style={{padding:"4px 12px",borderRadius:5,border:"none",background:(manualToken[pos.id]?.trim()&&(pos.id!=='shopify'||shopDomain[pos.id]?.trim()))?"rgba(249,115,22,0.15)":"rgba(255,255,255,0.03)",color:(manualToken[pos.id]?.trim()&&(pos.id!=='shopify'||shopDomain[pos.id]?.trim()))?"#f97316":t.textDim,cursor:(manualToken[pos.id]?.trim()&&(pos.id!=='shopify'||shopDomain[pos.id]?.trim()))?"pointer":"default",fontWeight:600,fontSize:11,whiteSpace:"nowrap"}}>{T.posManualSave}</button>
-                      </div>
-                      {pos.id==='shopify'&&!shopDomain[pos.id]?.trim()&&manualToken[pos.id]?.trim()&&<div style={{fontSize:10,color:"#f97316",marginTop:3}}>{T.posShopifyDomainFirst}</div>}
-                    </div>
                   </div>
                 )}
               </div>
@@ -6676,27 +7028,111 @@ function POSIntegrationSection({posCredentials,setPosCredentials,posAdvancedConf
 const SUPABASE_FUNCTIONS_URL = 'https://etiwnesxjypdwhxqnqqq.supabase.co/functions/v1';
 const PRICE_IDS = {
   pro:               'price_1T9C86Gcfc7VEkjZJM9r5FeW',
+  networkPro:        'price_1T9uJzGcfc7VEkjZ9yoyzz5g',
   franchise:         'price_1T9C8MGcfc7VEkjZH0iNcaoK',
   franchiseLocation: 'price_1T9C8cGcfc7VEkjZxGdIU7tt',
 };
 
-function SubscriptionSection({cloudUser,activePlan,orgId,t,T}){
+// ── JOIN NETWORK CARD (franchisee side) ──
+function JoinNetworkCard({cloudUser,franchiseeOrgId,t,T}){
+  const [code,setCode]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [result,setResult]=useState(null); // {franchisorName, locationName} on success
+  const [error,setError]=useState(null);
+
+  const handleJoin=async()=>{
+    if(!code.trim()||code.trim().length<4)return;
+    setLoading(true);setError(null);
+    try{
+      const {supabase}=await import('./services/supabase.js');
+      const {getCloudOrgId}=await import('./services/cloudSync.js');
+      const orgId=franchiseeOrgId||getCloudOrgId();
+      if(!orgId){setError("Organization not found. Please sign in.");setLoading(false);return;}
+      const {data,error:fnErr}=await supabase.functions.invoke('accept-invitation',{
+        body:{inviteCode:code.trim().toUpperCase(),franchiseeOrgId:orgId},
+      });
+      if(fnErr||data?.error){
+        const msg=data?.message||fnErr?.message||T.joinNetworkError;
+        setError(msg);
+      }else{
+        setResult({franchisorName:data.franchisorName,locationName:data.locationName});
+      }
+    }catch(e){setError(e.message);}
+    setLoading(false);
+  };
+
+  if(!cloudUser)return null;
+
+  return(
+    <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:14}}>
+      <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:6}}>🔗 {T.joinNetworkTitle}</div>
+      {result?(
+        <div style={{fontSize:12,color:"#4ade80",fontWeight:600}}>{T.joinNetworkLinked(result.franchisorName,result.locationName)}</div>
+      ):(
+        <>
+          <div style={{fontSize:11,color:t.textSub,marginBottom:10}}>{T.joinNetworkDesc}</div>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <input
+              value={code}
+              onChange={e=>setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,8))}
+              placeholder={T.joinNetworkInput}
+              style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:13,padding:"6px 10px",outline:"none",flex:1,fontFamily:"'DM Mono',monospace",letterSpacing:3,textTransform:"uppercase"}}
+              maxLength={8}
+              onKeyDown={e=>e.key==='Enter'&&handleJoin()}
+            />
+            <button onClick={handleJoin} disabled={loading||code.trim().length<4}
+              style={{padding:"6px 14px",borderRadius:7,border:"1px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.1)",color:"#fb923c",cursor:"pointer",fontWeight:600,fontSize:11,opacity:loading||code.trim().length<4?0.5:1,whiteSpace:"nowrap"}}>
+              {loading?T.joinNetworkBusy:T.joinNetworkBtn}
+            </button>
+          </div>
+          {error&&<div style={{fontSize:10.5,color:"#fca5a5",marginTop:7}}>{error}</div>}
+        </>
+      )}
+    </div>
+  );
+}
+
+function SubscriptionSection({cloudUser,activePlan,orgId,onPlanRefreshed,t,T}){
   const [loading,setLoading]=useState(false);
   const [msg,setMsg]=useState(null);
+  const [paymentFailed,setPaymentFailed]=useState(false);
+
+  // Check payment_failed flag on mount when user is logged in
+  useEffect(()=>{
+    if(!orgId)return;
+    (async()=>{
+      try{
+        const {supabase}=await import('./services/supabase.js');
+        const {data}=await supabase.from('organizations').select('payment_failed').eq('id',orgId).single();
+        if(data?.payment_failed)setPaymentFailed(true);
+      }catch(_){}
+    })();
+  },[orgId]);
+
+  const callEdgeFunction=async(fnName,body)=>{
+    const {supabase,SUPABASE_URL,SUPABASE_ANON_KEY}=await import('./services/supabase.js');
+    const {data:sd}=await supabase.auth.getSession();
+    const token=sd?.session?.access_token||SUPABASE_ANON_KEY;
+    const res=await fetch(`${SUPABASE_URL}/functions/v1/${fnName}`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':SUPABASE_ANON_KEY,'Authorization':`Bearer ${token}`},
+      body:JSON.stringify(body),
+    });
+    const data=await res.json();
+    if(!res.ok)throw new Error(data?.error||T.subError);
+    return data;
+  };
 
   const openCheckout=async(priceId)=>{
     if(!cloudUser){setMsg({ok:false,text:"Connectez-vous d'abord à votre compte cloud."});return;}
     setLoading(true);setMsg(null);
     try{
-      const {supabase}=await import('./services/supabase.js');
-      const {data,error}=await supabase.functions.invoke('create-checkout',{
-        body:{priceId,orgId,successUrl:'balanceiq://subscription-success',cancelUrl:'balanceiq://subscription-cancel'},
-      });
-      if(error||!data?.url){setMsg({ok:false,text:data?.error||T.subError});setLoading(false);return;}
+      const data=await callEdgeFunction('create-checkout',{priceId,orgId,successUrl:'balanceiq://subscription-success',cancelUrl:'balanceiq://subscription-cancel'});
+      if(!data?.url){setMsg({ok:false,text:T.subError});setLoading(false);return;}
       window.api?.shell?.openExternal(data.url);
       setMsg({ok:true,text:T.subOpening});
     }catch(e){
-      setMsg({ok:false,text:T.subError});
+      setMsg({ok:false,text:e.message||T.subError});
     }
     setLoading(false);
   };
@@ -6705,33 +7141,38 @@ function SubscriptionSection({cloudUser,activePlan,orgId,t,T}){
     if(!cloudUser){return;}
     setLoading(true);setMsg(null);
     try{
-      const {supabase}=await import('./services/supabase.js');
-      const {data,error}=await supabase.functions.invoke('create-portal',{
-        body:{orgId,returnUrl:'balanceiq://portal-return'},
-      });
-      if(error||!data?.url){setMsg({ok:false,text:data?.error||T.subError});setLoading(false);return;}
+      const data=await callEdgeFunction('create-portal',{orgId,returnUrl:'balanceiq://portal-return'});
+      if(!data?.url){setMsg({ok:false,text:T.subError});setLoading(false);return;}
       window.api?.shell?.openExternal(data.url);
-    }catch(e){setMsg({ok:false,text:T.subError});}
+    }catch(e){setMsg({ok:false,text:e.message||T.subError});}
     setLoading(false);
   };
 
+  const isNetwork=activePlan==='network';
   const isPro=activePlan==='pro';
   const isFranchise=activePlan==='franchise';
   const isPaid=isPro||isFranchise;
+  const planColor=isPaid?'#22c55e':isNetwork?'#38bdf8':'#f97316';
+  const planBg=isPaid?'rgba(34,197,94,0.1)':isNetwork?'rgba(56,189,248,0.1)':'rgba(249,115,22,0.08)';
+  const planLabel=isFranchise?T.subFranchise:isPro?T.subPro:isNetwork?T.subNetwork:T.subFree;
 
   return(<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>
     <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:8}}>{T.subTitle}</div>
 
+    {/* Payment failed warning */}
+    {paymentFailed&&<div style={{fontSize:11,color:'#ef4444',background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.2)',borderRadius:6,padding:'7px 10px',marginBottom:10}}>
+      ⚠ {T.subPaymentFailed||'Paiement échoué — veuillez mettre à jour votre mode de paiement pour maintenir votre accès.'}&nbsp;
+      <button onClick={openPortal} style={{background:'none',border:'none',color:'#ef4444',cursor:'pointer',fontWeight:700,fontSize:11,textDecoration:'underline',padding:0}}>{T.subManage||'Gérer'}</button>
+    </div>}
+
     {/* Current plan badge */}
     <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
       <span style={{fontSize:11,color:t.textMuted}}>{T.subCurrentPlan} :</span>
-      <span style={{fontSize:12,fontWeight:700,color:isPaid?'#22c55e':'#f97316',background:isPaid?'rgba(34,197,94,0.1)':'rgba(249,115,22,0.08)',borderRadius:6,padding:'2px 10px'}}>
-        {isFranchise?T.subFranchise:isPro?T.subPro:T.subFree}
-      </span>
+      <span style={{fontSize:12,fontWeight:700,color:planColor,background:planBg,borderRadius:6,padding:'2px 10px'}}>{planLabel}</span>
     </div>
 
     {/* Free tier — show upgrade CTAs */}
-    {!isPaid&&(<>
+    {!isPaid&&!isNetwork&&(<>
       <div style={{fontSize:11,color:t.textMuted,marginBottom:10,lineHeight:1.5}}>{T.subProFeatures}</div>
       <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:6}}>
         <button
@@ -6748,6 +7189,18 @@ function SubscriptionSection({cloudUser,activePlan,orgId,t,T}){
         </button>
       </div>
       {!cloudUser&&<div style={{fontSize:10,color:'#f59e0b',marginBottom:4}}>⚠ {T.cfgCloudFreeNote}</div>}
+      <div style={{fontSize:10,color:t.textMuted}}>{T.subCancelNote}</div>
+    </>)}
+
+    {/* Network tier — cloud sync included, offer Pro upgrade */}
+    {isNetwork&&(<>
+      <div style={{fontSize:11,color:t.textMuted,marginBottom:10,lineHeight:1.5}}>{T.subNetworkFeatures}</div>
+      <button
+        onClick={()=>openCheckout(PRICE_IDS.networkPro)}
+        disabled={loading||!cloudUser||PRICE_IDS.networkPro.includes('PLACEHOLDER')}
+        style={{padding:'6px 16px',borderRadius:7,border:'none',background:loading||PRICE_IDS.networkPro.includes('PLACEHOLDER')?'rgba(255,255,255,0.05)':'linear-gradient(135deg,#38bdf8,#0ea5e9)',color:loading||PRICE_IDS.networkPro.includes('PLACEHOLDER')?t.textDim:'#fff',cursor:'pointer',fontWeight:700,fontSize:12,marginBottom:6}}>
+        {loading?T.subLoading:T.subUpgradeNetwork}
+      </button>
       <div style={{fontSize:10,color:t.textMuted}}>{T.subCancelNote}</div>
     </>)}
 
@@ -7075,6 +7528,28 @@ export default function App(){
         if(cloud?.session){setCloudUser({email:cloud.session.user.email,plan:cloud.plan});}
       }catch(_){}
     },1000);
+    // Subscription plan refresh — triggered when Stripe redirects back after checkout/portal
+    if(window.api?.subscription){
+      window.api.subscription.onPlanRefresh(async()=>{
+        try{
+          const newPlan=await refreshPlan();
+          if(newPlan){setPlan(newPlan);setActivePlan(newPlan);}
+        }catch(_){}
+      });
+    }
+    // Install ping — anonymous, works for all users (free + paid)
+    setTimeout(async()=>{
+      try{
+        const deviceId=await window.api.audit.deviceId();
+        const {supabase}=await import('./services/supabase.js');
+        await supabase.from('installs').upsert({
+          device_id:deviceId,
+          platform:navigator.platform||'unknown',
+          version:appVersion,
+          last_seen_at:new Date().toISOString(),
+        },{onConflict:'device_id'});
+      }catch(_){}
+    },2000);
   })()},[]);
 
   useEffect(()=>{
@@ -7497,7 +7972,7 @@ export default function App(){
         <div style={{maxWidth:1120,margin:"0 auto",padding:"10px 15px 30px"}}>
 
           {/* RÉSEAU TAB */}
-          {activeTab==="reseau"&&<ReseauTab locations={locations} facFactures={facFactures} facCreditNotes={facCreditNotes} facClients={facClients} royaltyConfig={royaltyConfig} facCategories={facCategories} facProduits={facProduits} saveFacFactures={saveFacFactures} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} apiConfig={apiConfig} perfTargets={perfTargets} payrollConfig={payrollConfig}/>}
+          {activeTab==="reseau"&&<ReseauTab locations={locations} facFactures={facFactures} facCreditNotes={facCreditNotes} facClients={facClients} royaltyConfig={royaltyConfig} facCategories={facCategories} facProduits={facProduits} saveFacFactures={saveFacFactures} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} apiConfig={apiConfig} perfTargets={perfTargets} payrollConfig={payrollConfig} cloudUser={cloudUser}/>}
 
           {/* DAILY TAB */}
           {activeTab==="daily"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -7551,7 +8026,7 @@ export default function App(){
                 </div>
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {cashes.map((c,i)=>(<CashBlock key={`${selectedDate}-${i}-${cashes.length}`} cash={c} index={i} onChange={c=>updCash(selectedDate,i,c)} onRemove={()=>rmCash(selectedDate,i)} canRemove={cashes.length>1} collapsed={!!collapseMap[`${selectedDate}-${i}`]} onToggle={()=>togC(i)} roster={roster}/>))}
+                {cashes.map((c,i)=>(<CashBlock key={`${selectedDate}-${i}-${cashes.length}`} cash={c} index={i} onChange={c=>updCash(selectedDate,i,c)} onRemove={()=>rmCash(selectedDate,i)} canRemove={cashes.length>1} collapsed={!!collapseMap[`${selectedDate}-${i}`]} onToggle={()=>togC(i)} roster={roster} posAdvancedConfig={posAdvancedConfig}/>))}
               </div>
             </div>
 
@@ -7811,7 +8286,7 @@ export default function App(){
             </div>
           </div>)}
 
-          {activeTab==="monthly"&&<MonthlyPL computeDay={computeDay} suppliers={suppliers} liveData={liveData} platforms={platforms} expenseItems={expenseItems} glAccounts={glAccounts} apiConfig={apiConfig} ocrMappings={ocrMappings} setOcrMappings={setOcrMappings} payrollConfig={payrollConfig}/>}
+          {activeTab==="monthly"&&<MonthlyPL computeDay={computeDay} suppliers={suppliers} liveData={liveData} platforms={platforms} expenseItems={expenseItems} glAccounts={glAccounts} apiConfig={apiConfig} ocrMappings={ocrMappings} setOcrMappings={setOcrMappings} payrollConfig={payrollConfig} lang={lang}/>}
           {activeTab==="encaisse"&&<EncaisseTab liveData={liveData} encaisseData={encaisseData} persistEncaisse={persistEncaisse} encaisseConfig={encaisseConfig} saveEncaisseConfig={saveEncaisseConfig}/>}
           {activeTab==="facturation"&&<FacturationTab categories={facCategories} saveCategories={saveFacCategories} produits={facProduits} saveProduits={saveFacProduits} clients={facClients} saveClients={saveFacClients} soumissions={facSoumissions} saveSoumissions={saveFacSoumissions} commandes={facCommandes} saveCommandes={saveFacCommandes} factures={facFactures} saveFactures={saveFacFactures} creditNotes={facCreditNotes} saveCreditNotes={saveFacCreditNotes} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData} persistEncaisse={persistEncaisse} showUpgradePrompt={showUpgradePrompt} apiConfig={apiConfig} recurrents={facRecurrents} saveRecurrents={saveFacRecurrents} invoiceTemplate={effectiveTemplate} rawInvoiceTemplate={invoiceTemplate} saveInvoiceTemplate={saveInvoiceTemplate} canUse={canUse} glAccounts={glAccounts} saveGlAccounts={saveGlAccounts}/>}
           {activeTab==="intelligence"&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR} platforms={platforms} encaisseData={encaisseData} encaisseConfig={encaisseConfig} apiConfig={apiConfig}/>}
@@ -8180,8 +8655,18 @@ export default function App(){
               {import.meta.env.DEV
                 ?<>
                   <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                    {["free","pro","franchise"].map(p=>(
-                      <button key={p} onClick={()=>{setPlan(p);setActivePlan(p);const nc={...apiConfig,plan:p};setApiConfig(nc);saveApiCfg(nc);}} style={{padding:"5px 16px",borderRadius:20,border:activePlan===p?"none":`1px solid ${t.cardBorder}`,background:activePlan===p?"linear-gradient(135deg,#f97316,#ea580c)":t.section,color:activePlan===p?"#fff":t.textSub,cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'DM Mono',monospace",textTransform:"uppercase"}}>
+                    {["free","network","pro","franchise"].map(p=>(
+                      <button key={p} onClick={async()=>{
+                        setPlan(p);setActivePlan(p);
+                        const nc={...apiConfig,plan:p};setApiConfig(nc);saveApiCfg(nc);
+                        // Also update Supabase org record so edge functions see correct plan
+                        try{
+                          const {supabase}=await import('./services/supabase.js');
+                          const {getCloudOrgId}=await import('./services/cloudSync.js');
+                          const oid=getCloudOrgId();
+                          if(oid)await supabase.from('organizations').update({plan:p}).eq('id',oid);
+                        }catch(e){console.warn('plan sync to supabase failed',e);}
+                      }} style={{padding:"5px 16px",borderRadius:20,border:activePlan===p?"none":`1px solid ${t.cardBorder}`,background:activePlan===p?"linear-gradient(135deg,#f97316,#ea580c)":t.section,color:activePlan===p?"#fff":t.textSub,cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'DM Mono',monospace",textTransform:"uppercase"}}>
                         {p}
                       </button>
                     ))}
@@ -8199,12 +8684,17 @@ export default function App(){
             {/* ── CLOUD ACCOUNT ── */}
             <CloudAccountSection cloudUser={cloudUser} syncStatus={syncStatus} onSignIn={handleCloudSignIn} onSignUp={handleCloudSignUp} onSignOut={handleCloudSignOut} t={t} T={T}/>
             {/* ── SUBSCRIPTION ── */}
-            <SubscriptionSection cloudUser={cloudUser} activePlan={activePlan} orgId={getCloudOrgId()} t={t} T={T}/>
+            <SubscriptionSection cloudUser={cloudUser} activePlan={activePlan} orgId={getCloudOrgId()} onPlanRefreshed={p=>{setPlan(p);setActivePlan(p);}} t={t} T={T}/>
+            {/* ── JOIN FRANCHISE NETWORK (restaurant/franchisee mode only) ── */}
+            {appMode!=="franchiseur"&&<JoinNetworkCard cloudUser={cloudUser} franchiseeOrgId={getCloudOrgId()} t={t} T={T}/>}
             {/* ── INVENTORY CONFIG ── */}
             <InvConfigSection invConfig={invConfig} saveInvConfig={saveInvConfig} t={t} T={T}/>
             <PinLockConfig lockConfig={lockConfig} saveLockConfig={saveLockConfig}/>
             <div style={{textAlign:"center",padding:"8px 0 2px"}}>
               <span style={{fontSize:10.5,color:t.textSub,fontFamily:"'DM Mono',monospace"}}>BalanceIQ v{appVersion}</span>
+              <div style={{fontSize:9.5,color:t.textDim,marginTop:4,lineHeight:1.4}}>
+                {lang==="en"?"Operational management tool · Always verify with your accountant":"Outil de gestion opérationnelle · Toujours valider avec votre comptable"}
+              </div>
             </div>
             </div>)}
 
@@ -8215,7 +8705,7 @@ export default function App(){
 
             {/* 📍 SUCCURSALES — franchiseur only */}
             {configSubTab==="succursales"&&appMode==="franchiseur"&&(
-              <LocationsConfig locations={locations} saveLocations={saveLocations} facClients={facClients}/>
+              <LocationsConfig locations={locations} saveLocations={saveLocations} facClients={facClients} orgId={getCloudOrgId()} cloudUser={cloudUser} whiteLabelConfig={whiteLabelConfig}/>
             )}
 
             {/* 💰 REDEVANCES — franchiseur only */}
