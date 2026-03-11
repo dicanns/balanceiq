@@ -4583,9 +4583,15 @@ function CashierVarianceCard({cashierVariances,T,t}){
   );
 }
 
-function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProfiles,getLR,platforms,encaisseData,encaisseConfig}){
+function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProfiles,getLR,platforms,encaisseData,encaisseConfig,apiConfig}){
   const T=useL();
   const t=useT();
+  const [aiResponse,setAiResponse]=useState(null);
+  const [aiLoading,setAiLoading]=useState(false);
+  const [aiError,setAiError]=useState(null);
+  const [aiQueryType,setAiQueryType]=useState(null);
+  const [aiUsage,setAiUsage]=useState(null);
+  const [aiLimit,setAiLimit]=useState(50);
   const d=new Date(selectedDate+"T12:00:00");
   const dowProfiles=useMemo(()=>{
     const profiles=Array(7).fill(null).map(()=>({sales:[],ham:[],hot:[]}));
@@ -4683,6 +4689,39 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
     const factors=[];if(wCat!=="inconnu"&&wCat!=="autre")factors.push(wCat);if(tRaw.tempC!=null)factors.push(`${tRaw.tempC}°C`);if(tHol)factors.push(tHol);
     return{day:DAYS_FR[tDow],hamQty:Math.round(hamBase+hamAdj)+3,hotQty:Math.round(hotBase+hotAdj)+2,salesEst:Math.round(salesBase+salesAdj),factors,n:tProfile.n,hasContext:wCat!=="inconnu"||tRaw.tempC!=null||!!tHol};
   },[d,dowProfiles,getLR]);
+
+  const runAiQuery=async(queryType)=>{
+    setAiLoading(true);setAiQueryType(queryType);setAiError(null);setAiResponse(null);
+    let contextData={};
+    const lang=T===EN?'en':'fr';
+    if(queryType==='pl_summary'){
+      const month=dk(new Date()).slice(0,7);
+      let revenue=0,labourTotal=0,days=0;
+      Object.entries(liveData).filter(([k])=>k.startsWith(month)).forEach(([k])=>{const cd=computeDay(k);if(cd.venteNet>0){revenue+=cd.venteNet;labourTotal+=cd.labourCost||0;days++;}});
+      const labourPct=revenue>0?(labourTotal/revenue*100).toFixed(1):'—';
+      contextData={month,daysWithData:days,revenue:Math.round(revenue),labourPct};
+    } else if(queryType==='anomalies'){
+      contextData={anomalies:anomalies.map(a=>({date:a.date,day:a.day,venteNet:Math.round(a.venteNet),avg:Math.round(a.avg),pct:Math.round(a.pct)}))};
+    } else if(queryType==='ordering'&&multiFactorPred){
+      contextData={day:multiFactorPred.day,hamQty:multiFactorPred.hamQty,hotQty:multiFactorPred.hotQty,salesEst:multiFactorPred.salesEst,factors:multiFactorPred.factors,n:multiFactorPred.n};
+    } else if(queryType==='cashiers'){
+      contextData={cashiers:cashierVariances.slice(0,10).map(c=>({name:c.name,n:c.n,cumul:parseFloat(c.cumul.toFixed(2)),shortCount:c.shortCount,overCount:c.overCount,lossAlert:c.lossAlert}))};
+    }
+    try{
+      const {supabase}=await import('./services/supabase.js');
+      const ownApiKey=apiConfig?.anthropicApiKey||null;
+      const {data,error}=await supabase.functions.invoke('ai-intelligence',{
+        body:{queryType,contextData,orgId:getCloudOrgId(),ownApiKey,lang},
+      });
+      if(error)throw new Error(error.message);
+      if(data?.error==='limit_reached'){setAiError(T.aiLimitReached(data.usageCount,data.usageLimit));}
+      else if(data?.error==='upgrade_required'){setAiError(T.aiUpgradeRequired);}
+      else if(data?.error==='no_auth'){setAiError(T.aiNoAuth);}
+      else if(data?.error){setAiError(data.message||T.aiGenericError);}
+      else{setAiResponse(data.text);setAiUsage(data.usageCount);setAiLimit(data.usageLimit||50);}
+    }catch(e){setAiError(e.message);}
+    finally{setAiLoading(false);}
+  };
 
   return(<div style={{display:"flex",flexDirection:"column",gap:10}}>
     <ICard>
@@ -4819,6 +4858,36 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
           </div>)}
         </div>);
       })()}
+    </ICard>
+    {/* AI Analysis Card */}
+    <ICard>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+        <span style={{fontSize:13,fontWeight:700,color:t.text}}>🤖 {T.aiTitle}</span>
+        {canUse('aiAnalysis')&&aiUsage!=null&&<span style={{fontSize:10,color:t.textMuted}}>{T.aiQueriesMonth(aiUsage,aiLimit)}</span>}
+        {canUse('aiAnalysis')&&aiUsage==null&&<span style={{fontSize:10,color:t.textMuted,padding:"2px 8px",borderRadius:4,background:"rgba(249,115,22,0.1)",color:"#f97316",fontWeight:700}}>Pro</span>}
+      </div>
+      {!canUse('aiAnalysis')?(
+        <div style={{padding:"10px 0",textAlign:"center",color:"#8b8fa3",fontSize:12}}>🔒 {T.aiLocked}</div>
+      ):(
+        <>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+            {[
+              {type:'pl_summary',label:T.aiPLSummary,disabled:false},
+              {type:'anomalies',label:T.aiAnomalies,disabled:anomalies.length===0},
+              {type:'ordering',label:T.aiOrdering,disabled:!multiFactorPred},
+              {type:'cashiers',label:T.aiCashiers,disabled:cashierVariances.length===0},
+            ].map(q=>(
+              <button key={q.type} onClick={()=>runAiQuery(q.type)} disabled={aiLoading||q.disabled} style={{padding:"5px 11px",borderRadius:7,border:`1px solid ${aiQueryType===q.type?"rgba(249,115,22,0.5)":"rgba(249,115,22,0.2)"}`,background:aiQueryType===q.type?"rgba(249,115,22,0.12)":"rgba(249,115,22,0.05)",color:q.disabled?t.textDim:"#f97316",cursor:q.disabled||aiLoading?"default":"pointer",fontSize:11,fontWeight:600,opacity:q.disabled?0.4:1,transition:"all 0.15s"}}>{q.label}</button>
+            ))}
+          </div>
+          {aiLoading&&<div style={{fontSize:12,color:t.textMuted,padding:"10px 0",textAlign:"center"}}>{T.loading}</div>}
+          {aiError&&!aiLoading&&<div style={{fontSize:11,color:"#ef4444",padding:"6px 8px",background:"rgba(239,68,68,0.06)",borderRadius:5,marginBottom:4}}>{aiError}</div>}
+          {aiResponse&&!aiLoading&&(
+            <div style={{fontSize:12,color:t.text,lineHeight:1.75,padding:"10px 12px",background:t.section,borderRadius:6,whiteSpace:"pre-wrap",border:`1px solid ${t.cardBorder}`}}>{aiResponse}</div>
+          )}
+          <div style={{fontSize:9,color:t.textDim,marginTop:6}}>{T.aiDisclaimer}</div>
+        </>
+      )}
     </ICard>
   </div>);
 }
@@ -7745,7 +7814,7 @@ export default function App(){
           {activeTab==="monthly"&&<MonthlyPL computeDay={computeDay} suppliers={suppliers} liveData={liveData} platforms={platforms} expenseItems={expenseItems} glAccounts={glAccounts} apiConfig={apiConfig} ocrMappings={ocrMappings} setOcrMappings={setOcrMappings} payrollConfig={payrollConfig}/>}
           {activeTab==="encaisse"&&<EncaisseTab liveData={liveData} encaisseData={encaisseData} persistEncaisse={persistEncaisse} encaisseConfig={encaisseConfig} saveEncaisseConfig={saveEncaisseConfig}/>}
           {activeTab==="facturation"&&<FacturationTab categories={facCategories} saveCategories={saveFacCategories} produits={facProduits} saveProduits={saveFacProduits} clients={facClients} saveClients={saveFacClients} soumissions={facSoumissions} saveSoumissions={saveFacSoumissions} commandes={facCommandes} saveCommandes={saveFacCommandes} factures={facFactures} saveFactures={saveFacFactures} creditNotes={facCreditNotes} saveCreditNotes={saveFacCreditNotes} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData} persistEncaisse={persistEncaisse} showUpgradePrompt={showUpgradePrompt} apiConfig={apiConfig} recurrents={facRecurrents} saveRecurrents={saveFacRecurrents} invoiceTemplate={effectiveTemplate} rawInvoiceTemplate={invoiceTemplate} saveInvoiceTemplate={saveInvoiceTemplate} canUse={canUse} glAccounts={glAccounts} saveGlAccounts={saveGlAccounts}/>}
-          {activeTab==="intelligence"&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR} platforms={platforms} encaisseData={encaisseData} encaisseConfig={encaisseConfig}/>}
+          {activeTab==="intelligence"&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR} platforms={platforms} encaisseData={encaisseData} encaisseConfig={encaisseConfig} apiConfig={apiConfig}/>}
 
           {/* SETTINGS TAB */}
           {activeTab==="settings"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
