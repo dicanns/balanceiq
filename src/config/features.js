@@ -33,6 +33,7 @@ export const PLAN_FEATURES = {
     cloudBackup: false,
     posIntegration: false,
     ocrScanning: false,
+    aiAnalysis: false,
     // Franchise features (hidden in restaurant mode)
     royaltyAutoCalc: false,
     autoGenerateRoyaltyInvoices: false,
@@ -63,6 +64,7 @@ export const PLAN_FEATURES = {
     cloudBackup: true,
     posIntegration: true,
     ocrScanning: true,
+    aiAnalysis: true,
     royaltyAutoCalc: false,
     autoGenerateRoyaltyInvoices: false,
     multiLocationReconciliation: false,
@@ -92,6 +94,7 @@ export const PLAN_FEATURES = {
     cloudBackup: true,
     posIntegration: true,
     ocrScanning: true,
+    aiAnalysis: true,
     royaltyAutoCalc: true,
     autoGenerateRoyaltyInvoices: true,
     multiLocationReconciliation: true,
