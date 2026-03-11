@@ -58,6 +58,21 @@ export const FR = {
   perfNetHint:       "Ex: 0 → alerte si profit net < 0%",
   perfRevHint:       "0 = pas de seuil de revenu",
 
+  // ── AI INTELLIGENCE ──
+  aiTitle:            "Analyse IA",
+  aiQueriesMonth:     (used, limit) => `${used}/${limit} requêtes ce mois`,
+  aiLocked:           "L'analyse IA est disponible avec le plan Pro. Passez à Pro pour débloquer.",
+  aiPLSummary:        "📊 Résumé P&L",
+  aiAnomalies:        "⚠️ Anomalies",
+  aiOrdering:         "💰 Commandes",
+  aiCashiers:         "👤 Caissières",
+  aiLimitReached:     (used, limit) => `Limite atteinte : ${used}/${limit} requêtes ce mois. Réessayez le mois prochain.`,
+  aiUpgradeRequired:  "L'analyse IA nécessite un plan Pro.",
+  aiNoAuth:           "Connexion requise. Connectez-vous dans Config → Application.",
+  aiGenericError:     "Erreur lors de l'analyse. Réessayez.",
+  aiDisclaimer:       "Généré par IA — à titre indicatif seulement. Vérifiez avec votre comptable.",
+  aiNoData:           "Aucune donnée disponible pour cette analyse.",
+
   // ── RÉSEAU TAB ──
   reseauRedevances:   "💰 Redevances",
   reseauRecon:        "🔄 Réconciliation",
@@ -1236,6 +1251,21 @@ export const EN = {
   perfLabHint:       "e.g. 35 → alert if labour > 35%",
   perfNetHint:       "e.g. 0 → alert if net profit < 0%",
   perfRevHint:       "0 = no revenue threshold",
+
+  // ── AI INTELLIGENCE ──
+  aiTitle:            "AI Analysis",
+  aiQueriesMonth:     (used, limit) => `${used}/${limit} queries this month`,
+  aiLocked:           "AI analysis is available on the Pro plan. Upgrade to Pro to unlock.",
+  aiPLSummary:        "📊 P&L Summary",
+  aiAnomalies:        "⚠️ Anomalies",
+  aiOrdering:         "💰 Ordering",
+  aiCashiers:         "👤 Cashiers",
+  aiLimitReached:     (used, limit) => `Limit reached: ${used}/${limit} queries this month. Try again next month.`,
+  aiUpgradeRequired:  "AI analysis requires a Pro plan.",
+  aiNoAuth:           "Sign-in required. Log in via Settings → Application.",
+  aiGenericError:     "Analysis error. Please try again.",
+  aiDisclaimer:       "AI-generated — for reference only. Verify with your accountant.",
+  aiNoData:           "No data available for this analysis.",
 
   // ── RÉSEAU TAB ──
   reseauRedevances:   "💰 Royalties",
