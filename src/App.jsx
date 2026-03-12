@@ -1416,7 +1416,7 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
       <div style={{padding:"5px 0",borderBottom:`1px solid ${t.divider}`}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <span style={{fontSize:11,color:t.textSub}}>{T.encSalesCash} <span style={{fontSize:9,color:t.textDim}}>{T.encAutoFromReg}</span></span>
-          <span style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:600,color:dr.hasCaisseData?t.posColor:t.textDim}}>{dr.hasCaisseData?fmt(dr.cashVentes):"⏳ Remplir les caisses d'abord"}</span>
+          <span style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:600,color:dr.hasCaisseData?t.posColor:t.textDim}}>{dr.hasCaisseData?fmt(dr.cashVentes):T.encFillRegisters}</span>
         </div>
       </div>
       {enc.autreEntrees.map(e=>(<div key={e.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 0",borderBottom:`1px solid ${t.divider}`}}>
