@@ -1151,6 +1151,8 @@ export const FR = {
   locAdPct:         "Contribution pub. (%)",
   locDeactivate:    "Désactiver",
   locReactivate:    "Réactiver",
+  locDelete:        "Supprimer",
+  locDeleteConfirm: (nom) => `Supprimer "${nom}" ? Cette action est irréversible.`,
 
   // ── FRANCHISE — INVITATIONS ──
   inviteBtn:           "📨 Inviter",
@@ -2396,6 +2398,8 @@ export const EN = {
   locAdPct:         "Ad Contribution (%)",
   locDeactivate:    "Deactivate",
   locReactivate:    "Reactivate",
+  locDelete:        "Delete",
+  locDeleteConfirm: (nom) => `Delete "${nom}"? This cannot be undone.`,
 
   // ── FRANCHISE — INVITATIONS ──
   inviteBtn:           "📨 Invite",

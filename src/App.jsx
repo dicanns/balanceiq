@@ -5056,6 +5056,7 @@ function LocationsConfig({locations,saveLocations,facClients,orgId,cloudUser,whi
     setEditing(null);setForm({});
   };
   const deactivate=(id)=>saveLocations(locations.map(l=>l.id===id?{...l,statut:l.statut==="inactive"?"active":"inactive"}:l));
+  const deleteLoc=(loc)=>{if(window.confirm(T.locDeleteConfirm(loc.nom)))saveLocations(locations.filter(l=>l.id!==loc.id));}
   const inp={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:12,padding:"5px 8px",outline:"none",width:"100%"};
 
   // Invite modal for a location
@@ -5228,6 +5229,7 @@ Need help? Contact your franchisor.`
                 )}
                 <button onClick={()=>editLoc(loc)} style={{padding:"3px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textSub,cursor:"pointer",fontSize:10.5}}>{T.edit}</button>
                 <button onClick={()=>deactivate(loc.id)} style={{padding:"3px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textMuted,cursor:"pointer",fontSize:10.5}}>{loc.statut==="active"?T.locDeactivate:T.locReactivate}</button>
+                <button onClick={()=>deleteLoc(loc)} style={{padding:"3px 10px",borderRadius:5,border:"1px solid rgba(239,68,68,0.3)",background:"none",color:"#fca5a5",cursor:"pointer",fontSize:10.5}}>{T.locDelete}</button>
               </div>
             </div>
             {inviteError&&inviteLoading===null&&!inviteModal&&<div style={{fontSize:10.5,color:"#fca5a5",marginTop:6,paddingTop:6,borderTop:`1px solid ${t.cardBorder}`}}>{inviteError}</div>}
