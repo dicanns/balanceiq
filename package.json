@@ -13,6 +13,7 @@
     "rebuild": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
+    "@sentry/electron": "^7.10.0",
     "@supabase/supabase-js": "^2.99.0",
     "better-sqlite3": "^12.6.2",
     "cheerio": "^1.2.0",
