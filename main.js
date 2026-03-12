@@ -3,6 +3,12 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { autoUpdater } = require('electron-updater');
+const Sentry = require('@sentry/electron/main');
+
+Sentry.init({
+  dsn: 'https://e2c8c35467e699c99b0cbf2e87dd25c3@o4511028896071680.ingest.us.sentry.io/4511028913438720',
+  environment: app.isPackaged ? 'production' : 'development',
+});
 const { storageGet, storageSet, storageGetAll, auditInsert, auditQuery, getDeviceId, snapshotSave, snapshotGetByDate, snapshotGetLatest, snapshotListDates } = require('./src/db/database.js');
 
 const BACKUP_DIR = () => path.join(app.getPath('documents'), 'BalanceIQ Backups');
