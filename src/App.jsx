@@ -1,4 +1,8 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo, useContext, createContext } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo, useContext, createContext, lazy, Suspense } from "react";
+
+const DocumentsTabLazy = lazy(() => import('./components/DocumentsTab.jsx'));
+const YearEndPackageLazy = lazy(() => import('./components/YearEndPackage.jsx'));
+const PrevisionsTabLazy = lazy(() => import('./components/PrevisionsTab.jsx'));
 import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./config/features.js";
 import * as XLSX from "xlsx";
@@ -4950,22 +4954,182 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
 }
 
 // ── UPGRADE PROMPT MODAL ──
-function UpgradePrompt({onClose}){
+// ── FRANCHISE ALERT SYSTEM ──
+const DEFAULT_ALERT_CONFIG={
+  enabled:true,
+  alerts:{
+    salesBelow:  {enabled:false,threshold:500},
+    labourAbove: {enabled:false,threshold:35},
+    dzBelow:     {enabled:false,threshold:10},
+    cashError:   {enabled:true, threshold:0},
+    noSync:      {enabled:true, threshold:24},
+    notFilled:   {enabled:true, threshold:2},
+  }
+};
+
+const ALERT_DEFS=[
+  {id:'salesBelow',  unit:'$', labelKey:'alertSalesBelowLabel'},
+  {id:'labourAbove', unit:'%', labelKey:'alertLabourAboveLabel'},
+  {id:'dzBelow',     unit:'$', labelKey:'alertDzBelowLabel'},
+  {id:'cashError',   unit:null,labelKey:'alertCashErrorLabel'},
+  {id:'noSync',      unit:'h', labelKey:'alertNoSyncLabel'},
+  {id:'notFilled',   unit:'j', labelKey:'alertNotFilledLabel'},
+];
+
+// Session-level deduplication — never fire same alert twice per day per location
+const _firedAlerts=new Set();
+
+function checkAndFireAlerts(monthlyData,locations,alertConfig){
+  if(!alertConfig?.enabled)return;
+  const cfg=alertConfig.alerts||{};
+  const today=new Date().toISOString().slice(0,10);
+  for(const loc of locations){
+    if(loc.statut==='inactive')continue;
+    const d=monthlyData[loc.id];
+    if(!d)continue;
+    const fire=(alertId,body)=>{
+      const key=`${loc.id}-${alertId}-${today}`;
+      if(_firedAlerts.has(key))return;
+      _firedAlerts.add(key);
+      try{new Notification('BalanceIQ — '+loc.nom,{body,silent:false});}catch(e){}
+    };
+    if(cfg.salesBelow?.enabled&&d.ydSales>0&&d.ydSales<cfg.salesBelow.threshold)
+      fire('salesBelow',`Ventes hier: $${Math.round(d.ydSales)} (seuil: $${cfg.salesBelow.threshold})`);
+    if(cfg.labourAbove?.enabled&&d.avgLabourPct>cfg.labourAbove.threshold)
+      fire('labourAbove',`Main d'œuvre: ${d.avgLabourPct.toFixed(1)}% (seuil: ${cfg.labourAbove.threshold}%)`);
+    if(cfg.dzBelow?.enabled&&d.avgDz>0&&d.avgDz<cfg.dzBelow.threshold)
+      fire('dzBelow',`$/douzaine: $${d.avgDz.toFixed(2)} (seuil: $${cfg.dzBelow.threshold})`);
+    if(cfg.cashError?.enabled&&d.todayStatus==='error')
+      fire('cashError','Caisse non balancée aujourd\'hui');
+    if(cfg.noSync?.enabled&&d.isCloud&&d.lastSynced){
+      const hoursAgo=(new Date()-new Date(d.lastSynced))/3600000;
+      if(hoursAgo>cfg.noSync.threshold)
+        fire('noSync',`Non synchronisée depuis ${Math.round(hoursAgo)}h (seuil: ${cfg.noSync.threshold}h)`);
+    }
+    if(cfg.notFilled?.enabled&&d.daysSinceFilled>cfg.notFilled.threshold)
+      fire('notFilled',`Non remplie depuis ${d.daysSinceFilled} jour(s) (seuil: ${cfg.notFilled.threshold}j)`);
+  }
+}
+
+function AlertsConfigCard({alertConfig,saveAlertConfig}){
   const t=useT();
+  const T=useL();
+  const cfg=alertConfig||DEFAULT_ALERT_CONFIG;
+  const updateAlert=(id,key,val)=>saveAlertConfig({...cfg,alerts:{...cfg.alerts,[id]:{...cfg.alerts[id],[key]:val}}});
+  return(
+    <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:10,padding:20,marginTop:12}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
+        <span style={{fontSize:13,fontWeight:700,color:t.text}}>{T.alertsTitle}</span>
+        <label style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',fontSize:12,color:t.textSub}}>
+          <input type="checkbox" checked={!!cfg.enabled} onChange={e=>saveAlertConfig({...cfg,enabled:e.target.checked})}/>
+          {T.alertEnabled}
+        </label>
+      </div>
+      <p style={{fontSize:11,color:t.textMuted,margin:'0 0 12px',lineHeight:1.5}}>{T.alertsDesc}</p>
+      {cfg.enabled&&(
+        <div style={{display:'flex',flexDirection:'column',gap:7}}>
+          {ALERT_DEFS.map(def=>{
+            const a=cfg.alerts[def.id]||{enabled:false,threshold:0};
+            return(
+              <div key={def.id} style={{display:'flex',alignItems:'center',gap:10,padding:'6px 10px',background:t.section,borderRadius:7,border:`1px solid ${t.sectionBorder}`}}>
+                <input type="checkbox" checked={!!a.enabled} onChange={e=>updateAlert(def.id,'enabled',e.target.checked)} style={{cursor:'pointer'}}/>
+                <span style={{flex:1,fontSize:12,color:a.enabled?t.text:t.textMuted}}>{T[def.labelKey]||def.id}</span>
+                {def.unit!==null&&(
+                  <>
+                    <input type="number" value={a.threshold} min={0} onChange={e=>updateAlert(def.id,'threshold',Number(e.target.value))} disabled={!a.enabled}
+                      style={{width:62,padding:'3px 6px',borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.bg,color:t.text,fontSize:12,fontFamily:"'DM Mono',monospace",textAlign:'center',opacity:a.enabled?1:0.4}}/>
+                    <span style={{fontSize:11,color:t.textMuted,minWidth:14}}>{def.unit}</span>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const FRANCHISE_ONLY_FEATURES=['royaltyAutoCalc','autoGenerateRoyaltyInvoices','multiLocationReconciliation','franchiseeScorecards','consolidatedAging','whiteLabel'];
+
+const TOUR_STEPS=[
+  {tab:null,        titleKey:'tourStep1Title', descKey:'tourStep1Desc'},
+  {tab:'daily',     titleKey:'tourStep2Title', descKey:'tourStep2Desc'},
+  {tab:'livraisons',titleKey:'tourStep3Title', descKey:'tourStep3Desc'},
+  {tab:'pl',        titleKey:'tourStep4Title', descKey:'tourStep4Desc'},
+  {tab:'intelligence',titleKey:'tourStep5Title',descKey:'tourStep5Desc'},
+  {tab:'encaisse',  titleKey:'tourStep6Title', descKey:'tourStep6Desc'},
+  {tab:'facturation',titleKey:'tourStep7Title',descKey:'tourStep7Desc'},
+  {tab:'config',    titleKey:'tourStep8Title', descKey:'tourStep8Desc'},
+  {tab:null,        titleKey:'tourStep9Title', descKey:'tourStep9Desc'},
+];
+
+function TourOverlay({step,onNext,onPrev,onFinish,setActiveTab}){
+  const t=useT();const T=useL();
+  const total=TOUR_STEPS.length;
+  const cur=TOUR_STEPS[step];
+  const isFirst=step===0;const isLast=step===total-1;
+  useEffect(()=>{if(cur.tab)setActiveTab(cur.tab);},[step]);
+  const accent='#f97316';
+  return(
+    <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:9000}}>
+      {/* dim overlay */}
+      <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.35)",pointerEvents:"auto"}} onClick={onFinish}/>
+      {/* card */}
+      <div style={{position:"absolute",bottom:28,left:"50%",transform:"translateX(-50%)",width:"min(460px,90vw)",background:t.name==="dark"?"#1a1d27":t.bg,border:`1px solid ${accent}55`,borderRadius:14,padding:"20px 24px",boxShadow:"0 8px 40px rgba(0,0,0,0.45)",pointerEvents:"auto",zIndex:9001}}>
+        {/* step indicator */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+          <div style={{display:"flex",gap:4}}>
+            {TOUR_STEPS.map((_,i)=>(
+              <div key={i} style={{width:i===step?20:7,height:7,borderRadius:4,background:i===step?accent:t.cardBorder,transition:"width 0.2s"}}/>
+            ))}
+          </div>
+          <span style={{fontSize:10,color:t.textMuted,fontFamily:"'DM Mono',monospace"}}>{typeof T.tourStep==='function'?T.tourStep(step+1,total):`${step+1}/${total}`}</span>
+        </div>
+        {/* content */}
+        <div style={{fontSize:15,fontWeight:700,color:t.text,marginBottom:6}}>{T[cur.titleKey]}</div>
+        <div style={{fontSize:13,color:t.textSub,lineHeight:1.55,marginBottom:18}}>{T[cur.descKey]}</div>
+        {/* buttons */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+          <button onClick={onFinish} style={{background:"none",border:"none",color:t.textMuted,fontSize:11,cursor:"pointer",padding:"4px 0"}}>{T.tourSkip}</button>
+          <div style={{display:"flex",gap:8}}>
+            {!isFirst&&<button onClick={onPrev} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:7,color:t.text,fontSize:12,padding:"6px 14px",cursor:"pointer",fontWeight:600}}>{T.tourPrev}</button>}
+            {isLast
+              ?<button onClick={onFinish} style={{background:`linear-gradient(135deg,#f97316,#ea580c)`,border:"none",borderRadius:7,color:"#fff",fontSize:12,padding:"6px 16px",cursor:"pointer",fontWeight:700}}>{T.tourFinish}</button>
+              :<button onClick={onNext}  style={{background:`linear-gradient(135deg,#f97316,#ea580c)`,border:"none",borderRadius:7,color:"#fff",fontSize:12,padding:"6px 16px",cursor:"pointer",fontWeight:700}}>{T.tourNext}</button>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UpgradePrompt({onClose,onSubscribe,isFranchise}){
+  const t=useT();
+  const T=useL();
+  const tier=isFranchise?'Franchise':'Pro';
+  const grad=isFranchise?'linear-gradient(135deg,#a855f7,#7c3aed)':'linear-gradient(135deg,#f97316,#ea580c)';
+  const accent=isFranchise?'#a855f7':'#f97316';
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:24}}>
-      <div style={{background:t.name==="dark"?"#16181f":t.bg,border:`1px solid ${t.cardBorder}`,borderRadius:12,padding:24,maxWidth:380,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
+      <div style={{background:t.name==="dark"?"#16181f":t.bg,border:`1px solid ${t.cardBorder}`,borderRadius:12,padding:24,maxWidth:400,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
-          <div style={{width:34,height:30,borderRadius:6,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:"#fff"}}>PRO</div>
-          <span style={{fontSize:14,fontWeight:700,color:t.text}}>BalanceIQ Pro</span>
+          <div style={{width:38,height:32,borderRadius:6,background:grad,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,color:"#fff",letterSpacing:0.5}}>{isFranchise?"FRAN":"PRO"}</div>
+          <span style={{fontSize:14,fontWeight:700,color:t.text}}>BalanceIQ {tier}</span>
         </div>
-        <p style={{fontSize:13,color:t.textSub,lineHeight:1.6,margin:"0 0 18px"}}>
-          Cette fonctionnalité est disponible avec <strong style={{color:"#f97316"}}>BalanceIQ Pro</strong>.<br/>
-          Accès illimité à toutes les fonctionnalités avancées — synchronisation cloud, envoi d'emails direct, rapports Excel, et plus.
+        <p style={{fontSize:13,color:t.textSub,lineHeight:1.6,margin:"0 0 6px"}}>
+          {isFranchise?T.upgradeModalFranchiseBody:T.upgradeModalProBody}
         </p>
-        <div style={{display:"flex",gap:8}}>
-          <button onClick={()=>window.open("https://balanceiq.ca","_blank")} style={{flex:1,padding:"8px 14px",borderRadius:7,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>En savoir plus</button>
-          <button onClick={onClose} style={{flex:1,padding:"8px 14px",borderRadius:7,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>Fermer</button>
+        <p style={{fontSize:11,color:t.textMuted,margin:"0 0 18px"}}>{T.upgradeGoToSub}</p>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          <button onClick={onSubscribe} style={{padding:"10px 14px",borderRadius:7,border:"none",background:grad,color:"#fff",cursor:"pointer",fontWeight:700,fontSize:13,fontFamily:"'Outfit',sans-serif",boxShadow:`0 2px 14px ${accent}44`}}>
+            {T.upgradeSubscribeBtn(tier)}
+          </button>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>window.open("https://balanceiq.ca","_blank")} style={{flex:1,padding:"8px 12px",borderRadius:7,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>balanceiq.ca</button>
+            <button onClick={onClose} style={{flex:1,padding:"8px 12px",borderRadius:7,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>{T.upgradeDismiss}</button>
+          </div>
         </div>
       </div>
     </div>
@@ -5459,7 +5623,7 @@ function MarqueBlancheConfig({whiteLabelConfig,saveWhiteLabel}){
 }
 
 // ── RÉSEAU TAB ──
-function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfig,facCategories,facProduits,saveFacFactures,docNums,saveDocNums,companyInfo,apiConfig,perfTargets,payrollConfig,cloudUser}){
+function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfig,facCategories,facProduits,saveFacFactures,docNums,saveDocNums,companyInfo,apiConfig,perfTargets,payrollConfig,cloudUser,alertConfig,orgId,onUnreadDocsChange}){
   const t=useT();
   const T=useL();
   const [monthlyData,setMonthlyData]=useState({});
@@ -5576,8 +5740,10 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
       }
       setMonthlyData(result);
       setLoading(false);
+      // Fire OS notifications for any breached thresholds
+      checkAndFireAlerts(result,locations,alertConfig);
     })();
-  },[locations,cloudUser]);
+  },[locations,cloudUser,alertConfig]);
 
   useEffect(()=>{
     (async()=>{
@@ -5760,7 +5926,7 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       {/* Sub-tabs */}
       <div style={{display:"flex",gap:2,borderBottom:`1px solid ${t.dividerMid}`,paddingBottom:1}}>
-        {[{id:"performance",label:"📊 Performance"},{id:"scorecards",label:"🏆 Scorecards"},{id:"redevances",label:T.reseauRedevances},{id:"reconciliation",label:T.reseauRecon},{id:"audit",label:T.reseauAudit}].map(st=>(
+        {[{id:"performance",label:"📊 Performance"},{id:"scorecards",label:"🏆 Scorecards"},{id:"redevances",label:T.reseauRedevances},{id:"reconciliation",label:T.reseauRecon},{id:"audit",label:T.reseauAudit},{id:"documents",label:T.reseauDocs}].map(st=>(
           <button key={st.id} onClick={()=>setScoreTab(st.id)} style={{background:"none",border:"none",color:scoreTab===st.id?"#a78bfa":t.textMuted,fontSize:11,fontWeight:scoreTab===st.id?700:500,padding:"5px 11px",cursor:"pointer",borderBottom:scoreTab===st.id?"2px solid #a78bfa":"2px solid transparent",whiteSpace:"nowrap"}}>
             {st.label}
           </button>
@@ -6111,6 +6277,11 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
       {/* Audit réseau sub-tab */}
       {scoreTab==="audit"&&(
         <AuditReseauPanel locations={locations}/>
+      )}
+      {scoreTab==="documents"&&(
+        <React.Suspense fallback={<div style={{padding:16,fontSize:12,opacity:0.5}}>Chargement...</div>}>
+          <DocumentsTabLazy isFranchisor={true} orgId={orgId} cloudUser={cloudUser} T={T} t={t} onUnreadCountChange={onUnreadDocsChange}/>
+        </React.Suspense>
       )}
     </div>
   );
@@ -7393,6 +7564,7 @@ export default function App(){
   const [empRoster,setEmpRoster]=useState([]);
   const [suppliers,setSuppliers]=useState(DEFAULT_SUPPLIERS);
   const [apiConfig,setApiConfig]=useState({auphanKey:"",weatherKey:"",gasKey:""});
+  const [previsionsEnabled,setPrevisionsEnabled]=useState(false);
   const [activePlan,setActivePlan]=useState("free");
   const [restoreMsg,setRestoreMsg]=useState('');
   const [backupInfo,setBackupInfo]=useState(null);
@@ -7451,6 +7623,7 @@ export default function App(){
   const [activeLocationId,setActiveLocationId]=useState("all");
   const [royaltyConfig,setRoyaltyConfig]=useState({type:'percent',structure:'fixed',rate:6,adRate:2,frequency:'monthly',categoryId:null,produitId:null,tranches:[{from:0,to:50000,rate:6},{from:50000,to:null,rate:5}]});
   const [perfTargets,setPerfTargets]=useState({fpMax:35,labMax:35,netMinPct:0,revMin:0});
+  const [alertConfig,setAlertConfig]=useState(DEFAULT_ALERT_CONFIG);
   const DEFAULT_PAYROLL_CONTRIBUTIONS=[
     {id:'qpp_emp',label:'QPP employeur',rate:5.40,type:'employer'},
     {id:'ei_emp',label:'AE employeur',rate:2.32,type:'employer'},
@@ -7464,7 +7637,10 @@ export default function App(){
   const [payrollConfig,setPayrollConfig]=useState({contributions:DEFAULT_PAYROLL_CONTRIBUTIONS});
   const [whiteLabelConfig,setWhiteLabelConfig]=useState({enabled:false,franchiseName:"",accentColor:"#f97316",footer:""});
   const [locationDataCache,setLocationDataCache]=useState({});
-  const [upgradePromptOpen,setUpgradePromptOpen]=useState(false);
+  const [upgradePromptFeature,setUpgradePromptFeature]=useState(null);
+  const [tourActive,setTourActive]=useState(false);
+  const [tourStep,setTourStep]=useState(0);
+  const [unreadDocsCount,setUnreadDocsCount]=useState(0);
   const [pdfPreview,setPdfPreview]=useState(null);
   useEffect(()=>{const h=e=>setPdfPreview(e.detail.html);window.addEventListener('biq:pdf-preview',h);return()=>window.removeEventListener('biq:pdf-preview',h);},[]);
   const [companyInfo,setCompanyInfo]=useState(DEFAULT_COMPANY_INFO);
@@ -7490,6 +7666,7 @@ export default function App(){
     try{const rEI=await window.api.storage.get("dicann-pl-expense-items");if(rEI?.value)setExpenseItems(JSON.parse(rEI.value))}catch(e){}
     try{const rGL=await window.api.storage.get("dicann-gl-accounts");if(rGL?.value)setGlAccounts(prev=>({...DEFAULT_GL_ACCOUNTS,...JSON.parse(rGL.value)}))}catch(e){}
     try{const r4=await window.api.storage.get("dicann-api-config");if(r4?.value){const cfg=JSON.parse(r4.value);setApiConfig(cfg);if(cfg.plan&&import.meta.env.DEV){setPlan(cfg.plan);setActivePlan(cfg.plan);}}}catch(e){}
+    try{const rPrev=await window.api.storage.get("balanceiq-previsions-enabled");if(rPrev?.value==="1")setPrevisionsEnabled(true);}catch(e){}
     try{const r5=await window.api.storage.get("balanceiq-theme");if(r5?.value==='light'||r5?.value==='dark')setThemeName(r5.value)}catch(e){}
     try{const r6=await window.api.storage.get("dicann-platforms");if(r6?.value)setPlatforms(JSON.parse(r6.value))}catch(e){}
     try{const r7=await window.api.storage.get("dicann-encaisse");if(r7?.value)setEncaisseData(JSON.parse(r7.value))}catch(e){}
@@ -7498,10 +7675,12 @@ export default function App(){
     try{const rL=await window.api.storage.get("balanceiq-locations");if(rL?.value)setLocations(JSON.parse(rL.value))}catch(e){}
     try{const rR=await window.api.storage.get("balanceiq-royalty-config");if(rR?.value)setRoyaltyConfig(prev=>({...prev,...JSON.parse(rR.value)}))}catch(e){}
     try{const rPT=await window.api.storage.get("balanceiq-perf-targets");if(rPT?.value)setPerfTargets(prev=>({...prev,...JSON.parse(rPT.value)}))}catch(e){}
+    try{const rAL=await window.api.storage.get("balanceiq-alert-config");if(rAL?.value)setAlertConfig(prev=>({...DEFAULT_ALERT_CONFIG,...JSON.parse(rAL.value),alerts:{...DEFAULT_ALERT_CONFIG.alerts,...JSON.parse(rAL.value).alerts}}))}catch(e){}
     try{const rPC=await window.api.storage.get("balanceiq-payroll-config");if(rPC?.value)setPayrollConfig(prev=>({...prev,...JSON.parse(rPC.value)}))}catch(e){}
     try{const rWL=await window.api.storage.get("balanceiq-whitelabel");if(rWL?.value)setWhiteLabelConfig(prev=>({...prev,...JSON.parse(rWL.value)}))}catch(e){}
     try{const rLock=await window.api.storage.get("balanceiq-lock");if(rLock?.value){const lc=JSON.parse(rLock.value);setLockConfig(lc);if(lc.enabled&&lc.pin)setAppLocked(true);}}catch(e){}
     try{const rLang=await window.api.storage.get("balanceiq-lang");if(rLang?.value==="en"||rLang?.value==="fr")setLang(rLang.value);}catch(e){}
+    try{const rTour=await window.api.storage.get("balanceiq-tour-complete");if(!rTour?.value)setTourActive(true);}catch(e){setTourActive(true);}
     try{const r10=await window.api.storage.get("dicann-company-info");if(r10?.value)setCompanyInfo(prev=>({...DEFAULT_COMPANY_INFO,...JSON.parse(r10.value)}))}catch(e){}
     try{const rTpl=await window.api.storage.get("dicann-invoice-template");if(rTpl?.value)setInvoiceTemplate(prev=>({...DEFAULT_INVOICE_TEMPLATE,...JSON.parse(rTpl.value)}))}catch(e){}
     try{const r11=await window.api.storage.get("dicann-fac-categories");if(r11?.value)setFacCategories(JSON.parse(r11.value))}catch(e){}
@@ -7625,6 +7804,7 @@ export default function App(){
   const saveLocations=useCallback(list=>{setLocations(list);window.api.storage.set("balanceiq-locations",JSON.stringify(list)).catch(()=>{})},[]);
   const saveRoyaltyConfig=useCallback(cfg=>{setRoyaltyConfig(cfg);window.api.storage.set("balanceiq-royalty-config",JSON.stringify(cfg)).catch(()=>{})},[]);
   const savePerfTargets=useCallback(tgt=>{setPerfTargets(tgt);window.api.storage.set("balanceiq-perf-targets",JSON.stringify(tgt)).catch(()=>{})},[]);
+  const saveAlertConfig=useCallback(cfg=>{setAlertConfig(cfg);window.api.storage.set("balanceiq-alert-config",JSON.stringify(cfg)).catch(()=>{})},[]);
   const savePayrollConfig=useCallback(cfg=>{setPayrollConfig(cfg);window.api.storage.set("balanceiq-payroll-config",JSON.stringify(cfg)).catch(()=>{})},[]);
   const saveWhiteLabel=useCallback(cfg=>{setWhiteLabelConfig(cfg);window.api.storage.set("balanceiq-whitelabel",JSON.stringify(cfg)).catch(()=>{})},[]);
   const saveLockConfig=useCallback(cfg=>{setLockConfig(cfg);window.api.storage.set("balanceiq-lock",JSON.stringify(cfg)).catch(()=>{})},[]);
@@ -7632,7 +7812,7 @@ export default function App(){
   const handleCloudSignIn=useCallback(async(creds)=>{const res=await cloudSignIn(creds);setCloudUser({email:res.session.user.email,plan:res.plan});if(res.plan!=='free'){setPlan(res.plan);setActivePlan(res.plan);}},[]);
   const handleCloudSignUp=useCallback(async(creds)=>{await cloudSignUp(creds);/* trigger creates org/user server-side; user must confirm email then sign in */},[]);
   const handleCloudSignOut=useCallback(async()=>{await cloudSignOut();setCloudUser(null);setSyncStatus(null);},[]);
-  const showUpgradePrompt=useCallback(featureName=>{if(shouldShowUpgradePrompt(featureName))setUpgradePromptOpen(true)},[]);
+  const showUpgradePrompt=useCallback(featureName=>{if(shouldShowUpgradePrompt(featureName))setUpgradePromptFeature(featureName)},[]);
   const saveCompanyInfo=useCallback(info=>{setCompanyInfo(info);const v=JSON.stringify(info);window.api.storage.set("dicann-company-info",v).catch(()=>{});schedulePush("dicann-company-info",v);},[]);
   const saveInvoiceTemplate=useCallback(tpl=>{setInvoiceTemplate(tpl);const v=JSON.stringify(tpl);window.api.storage.set("dicann-invoice-template",v).catch(()=>{});schedulePush("dicann-invoice-template",v);},[]);
   // Merge white-label settings into invoiceTemplate for PDF builders
@@ -7885,6 +8065,7 @@ export default function App(){
     {id:"monthly",label:T.tabPL},
     {id:"encaisse",label:T.tabCash},
     {id:"intelligence",label:T.tabIntelligence},
+    ...(previsionsEnabled?[{id:"previsions",label:T.tabPrevisions}]:[]),
     {id:"settings",label:T.tabConfig}
   ];
 
@@ -7897,7 +8078,18 @@ export default function App(){
   return(
     <LangCtx.Provider value={T}>
     <ThemeCtx.Provider value={theme}>
-      {upgradePromptOpen&&<UpgradePrompt onClose={()=>setUpgradePromptOpen(false)}/>}
+      {upgradePromptFeature&&<UpgradePrompt
+        onClose={()=>setUpgradePromptFeature(null)}
+        onSubscribe={()=>{setUpgradePromptFeature(null);setActiveTab("config");setConfigSubTab("application");}}
+        isFranchise={FRANCHISE_ONLY_FEATURES.includes(upgradePromptFeature)}
+      />}
+      {tourActive&&<TourOverlay
+        step={tourStep}
+        onNext={()=>setTourStep(s=>Math.min(s+1,TOUR_STEPS.length-1))}
+        onPrev={()=>setTourStep(s=>Math.max(s-1,0))}
+        onFinish={()=>{setTourActive(false);window.api.storage.set("balanceiq-tour-complete","1").catch(()=>{});}}
+        setActiveTab={setActiveTab}
+      />}
       {pdfPreview&&<PDFPreviewModal html={pdfPreview} onClose={()=>setPdfPreview(null)}/>}
       <div style={{minHeight:"100vh",background:t.bg,fontFamily:"'Outfit','Helvetica Neue',sans-serif",color:t.text,transition:"background 0.2s,color 0.2s"}}>
 
@@ -7928,6 +8120,7 @@ export default function App(){
               {lockConfig.enabled&&lockConfig.pin&&(
                 <button onClick={()=>setAppLocked(true)} title="Verrouiller l'application" style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textMuted,fontSize:11,padding:"3px 8px",cursor:"pointer",fontWeight:600}}>🔒</button>
               )}
+              <button onClick={()=>{setTourStep(0);setTourActive(true);}} title="Tour guidé" style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textMuted,fontSize:11,padding:"3px 8px",cursor:"pointer",fontWeight:700,lineHeight:1}}>?</button>
               <button onClick={toggleTheme} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 8px",cursor:"pointer",fontWeight:600,fontFamily:"'DM Mono',monospace"}}>
                 {themeName==='dark'?`☀ ${T.light}`:`☾ ${T.dark}`}
               </button>
@@ -7974,7 +8167,7 @@ export default function App(){
         <div style={{maxWidth:1120,margin:"0 auto",padding:"10px 15px 30px"}}>
 
           {/* RÉSEAU TAB */}
-          {activeTab==="reseau"&&<ReseauTab locations={locations} facFactures={facFactures} facCreditNotes={facCreditNotes} facClients={facClients} royaltyConfig={royaltyConfig} facCategories={facCategories} facProduits={facProduits} saveFacFactures={saveFacFactures} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} apiConfig={apiConfig} perfTargets={perfTargets} payrollConfig={payrollConfig} cloudUser={cloudUser}/>}
+          {activeTab==="reseau"&&<ReseauTab locations={locations} facFactures={facFactures} facCreditNotes={facCreditNotes} facClients={facClients} royaltyConfig={royaltyConfig} facCategories={facCategories} facProduits={facProduits} saveFacFactures={saveFacFactures} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} apiConfig={apiConfig} perfTargets={perfTargets} payrollConfig={payrollConfig} cloudUser={cloudUser} alertConfig={alertConfig} orgId={getCloudOrgId()} onUnreadDocsChange={setUnreadDocsCount}/>}
 
           {/* DAILY TAB */}
           {activeTab==="daily"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -8292,6 +8485,11 @@ export default function App(){
           {activeTab==="encaisse"&&<EncaisseTab liveData={liveData} encaisseData={encaisseData} persistEncaisse={persistEncaisse} encaisseConfig={encaisseConfig} saveEncaisseConfig={saveEncaisseConfig}/>}
           {activeTab==="facturation"&&<FacturationTab categories={facCategories} saveCategories={saveFacCategories} produits={facProduits} saveProduits={saveFacProduits} clients={facClients} saveClients={saveFacClients} soumissions={facSoumissions} saveSoumissions={saveFacSoumissions} commandes={facCommandes} saveCommandes={saveFacCommandes} factures={facFactures} saveFactures={saveFacFactures} creditNotes={facCreditNotes} saveCreditNotes={saveFacCreditNotes} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData} persistEncaisse={persistEncaisse} showUpgradePrompt={showUpgradePrompt} apiConfig={apiConfig} recurrents={facRecurrents} saveRecurrents={saveFacRecurrents} invoiceTemplate={effectiveTemplate} rawInvoiceTemplate={invoiceTemplate} saveInvoiceTemplate={saveInvoiceTemplate} canUse={canUse} glAccounts={glAccounts} saveGlAccounts={saveGlAccounts}/>}
           {activeTab==="intelligence"&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR} platforms={platforms} encaisseData={encaisseData} encaisseConfig={encaisseConfig} apiConfig={apiConfig}/>}
+          {activeTab==="previsions"&&previsionsEnabled&&(
+            <Suspense fallback={<div style={{padding:16,fontSize:12,opacity:0.5}}>Chargement...</div>}>
+              <PrevisionsTabLazy apiConfig={apiConfig} showUpgradePrompt={showUpgradePrompt} canUse={canUse} T={T} t={t} lang={lang}/>
+            </Suspense>
+          )}
 
           {/* SETTINGS TAB */}
           {activeTab==="settings"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -8614,6 +8812,11 @@ export default function App(){
             <CfgCard id="auditLog" title={T.cfgAuditLog} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               <AuditSection/>
             </CfgCard>
+            <CfgCard id="yearEnd" title={<span style={{display:"flex",alignItems:"center",gap:6}}>{T.yearEndTitle}{!canUse('yearEndPackage')&&<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.12)",border:"1px solid rgba(249,115,22,0.25)",borderRadius:8,padding:"1px 6px"}}>Pro</span>}</span>} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
+              <Suspense fallback={<div style={{padding:8,fontSize:11,opacity:0.5}}>Chargement...</div>}>
+                <YearEndPackageLazy liveData={liveData} suppliers={suppliers} facFactures={facFactures} companyInfo={companyInfo} canUse={canUse} lang={lang} T={T}/>
+              </Suspense>
+            </CfgCard>
             </div>)}
 
             {/* 🎨 APPARENCE */}
@@ -8689,6 +8892,22 @@ export default function App(){
             <SubscriptionSection cloudUser={cloudUser} activePlan={activePlan} orgId={getCloudOrgId()} onPlanRefreshed={p=>{setPlan(p);setActivePlan(p);}} t={t} T={T}/>
             {/* ── JOIN FRANCHISE NETWORK (restaurant/franchisee mode only) ── */}
             {appMode!=="franchiseur"&&<JoinNetworkCard cloudUser={cloudUser} franchiseeOrgId={getCloudOrgId()} t={t} T={T}/>}
+            {/* ── FRANCHISE DOCUMENTS (franchisee linked to a network) ── */}
+            {appMode!=="franchiseur"&&cloudUser&&(
+              <CfgCard id="networkDocs" title={<span style={{display:"flex",alignItems:"center",gap:6}}>{T.docNetworkCard}{unreadDocsCount>0&&<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.15)",border:"1px solid rgba(249,115,22,0.3)",borderRadius:8,padding:"1px 6px"}}>{unreadDocsCount}</span>}</span>} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
+                <Suspense fallback={<div style={{padding:8,fontSize:11,opacity:0.5}}>Chargement...</div>}>
+                  <DocumentsTabLazy isFranchisor={false} orgId={getCloudOrgId()} cloudUser={cloudUser} T={T} t={t} onUnreadCountChange={setUnreadDocsCount}/>
+                </Suspense>
+              </CfgCard>
+            )}
+            {/* ── PRÉVISIONS MODULE TOGGLE ── */}
+            <CfgCard id="previsions" title={T.prevTitle} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{T.prevDesc}</div>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <button onClick={async()=>{const v=!previsionsEnabled;setPrevisionsEnabled(v);await window.api.storage.set("balanceiq-previsions-enabled",v?"1":"0");if(v&&activeTab!=="previsions"){}}} style={{padding:"5px 18px",borderRadius:20,border:`1px solid ${previsionsEnabled?"#f97316":t.cardBorder}`,background:previsionsEnabled?"rgba(249,115,22,0.15)":t.section,color:previsionsEnabled?"#f97316":t.textSub,cursor:"pointer",fontWeight:700,fontSize:12,transition:"all 0.15s"}}>{previsionsEnabled?T.prevToggleOn:T.prevToggleOff}</button>
+                {previsionsEnabled&&<span style={{fontSize:11,color:"#22c55e"}}>✓ {lang==="en"?"Tab active in main navigation":"Onglet actif dans la navigation principale"}</span>}
+              </div>
+            </CfgCard>
             {/* ── INVENTORY CONFIG ── */}
             <InvConfigSection invConfig={invConfig} saveInvConfig={saveInvConfig} t={t} T={T}/>
             <PinLockConfig lockConfig={lockConfig} saveLockConfig={saveLockConfig}/>
@@ -8712,7 +8931,10 @@ export default function App(){
 
             {/* 💰 REDEVANCES — franchiseur only */}
             {configSubTab==="redevances"&&appMode==="franchiseur"&&(
-              <RedevancesConfig royaltyConfig={royaltyConfig} saveRoyaltyConfig={saveRoyaltyConfig} facCategories={facCategories} facProduits={facProduits} perfTargets={perfTargets} savePerfTargets={savePerfTargets}/>
+              <>
+                <RedevancesConfig royaltyConfig={royaltyConfig} saveRoyaltyConfig={saveRoyaltyConfig} facCategories={facCategories} facProduits={facProduits} perfTargets={perfTargets} savePerfTargets={savePerfTargets}/>
+                <AlertsConfigCard alertConfig={alertConfig} saveAlertConfig={saveAlertConfig}/>
+              </>
             )}
 
             {/* 🏷️ MARQUE BLANCHE — franchiseur only */}

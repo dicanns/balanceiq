@@ -61,4 +61,28 @@ contextBridge.exposeInMainWorld('api', {
   subscription: {
     onPlanRefresh: (cb) => ipcRenderer.on('subscription:planRefresh', () => cb()),
   },
+  docs: {
+    download: (opts) => ipcRenderer.invoke('docs:download', opts),
+  },
+  forecast: {
+    products: {
+      getAll:   ()    => ipcRenderer.invoke('forecast:products:getAll'),
+      upsert:   (p)   => ipcRenderer.invoke('forecast:products:upsert', p),
+    },
+    sales: {
+      getForDate:    (date)           => ipcRenderer.invoke('forecast:sales:getForDate', date),
+      getForProduct: (id, limit)      => ipcRenderer.invoke('forecast:sales:getForProduct', id, limit),
+      getRange:      (from, to)       => ipcRenderer.invoke('forecast:sales:getRange', from, to),
+      upsert:        (record)         => ipcRenderer.invoke('forecast:sales:upsert', record),
+      deleteForDate: (date)           => ipcRenderer.invoke('forecast:sales:deleteForDate', date),
+    },
+    weather: {
+      getRange: (from, to) => ipcRenderer.invoke('forecast:weather:getRange', from, to),
+      upsert:   (record)   => ipcRenderer.invoke('forecast:weather:upsert', record),
+    },
+    csvMappings: {
+      getAll: ()        => ipcRenderer.invoke('forecast:csvMappings:getAll'),
+      save:   (mapping) => ipcRenderer.invoke('forecast:csvMappings:save', mapping),
+    },
+  },
 });
