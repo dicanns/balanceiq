@@ -17,6 +17,9 @@ const {
   forecastSalesGetForDate, forecastSalesGetForProduct, forecastSalesGetRange, forecastSalesUpsert, forecastSalesDeleteForDate,
   forecastWeatherGetRange, forecastWeatherUpsert,
   forecastCsvMappingsGetAll, forecastCsvMappingSave,
+  learnedPatternsGetAll, learnedPatternUpsert,
+  predAccuracyGetAll, predAccuracyGetForProduct, predAccuracyUpsert,
+  insightsGetAll, insightsGetUnreadCount, insightUpsert, insightMarkRead, insightMarkAllRead,
 } = require('./src/db/database.js');
 
 const BACKUP_DIR = () => path.join(app.getPath('documents'), 'BalanceIQ Backups');
@@ -922,6 +925,22 @@ ipcMain.handle('forecast:weather:upsert', (_e, record) => forecastWeatherUpsert(
 
 ipcMain.handle('forecast:csvMappings:getAll', () => forecastCsvMappingsGetAll());
 ipcMain.handle('forecast:csvMappings:save', (_e, mapping) => forecastCsvMappingSave(mapping));
+
+// Learned Patterns
+ipcMain.handle('forecast:patterns:getAll', () => learnedPatternsGetAll());
+ipcMain.handle('forecast:patterns:upsert', (_e, p) => learnedPatternUpsert(p));
+
+// Prediction Accuracy
+ipcMain.handle('forecast:accuracy:getAll', () => predAccuracyGetAll());
+ipcMain.handle('forecast:accuracy:getForProduct', (_e, id) => predAccuracyGetForProduct(id));
+ipcMain.handle('forecast:accuracy:upsert', (_e, r) => predAccuracyUpsert(r));
+
+// Insights
+ipcMain.handle('forecast:insights:getAll', () => insightsGetAll());
+ipcMain.handle('forecast:insights:getUnreadCount', () => insightsGetUnreadCount());
+ipcMain.handle('forecast:insights:upsert', (_e, ins) => insightUpsert(ins));
+ipcMain.handle('forecast:insights:markRead', (_e, id) => insightMarkRead(id));
+ipcMain.handle('forecast:insights:markAllRead', () => insightMarkAllRead());
 
 // Register balanceiq:// as protocol handler for OAuth callbacks
 app.setAsDefaultProtocolClient('balanceiq');
