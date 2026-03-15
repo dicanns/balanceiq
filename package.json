@@ -4,13 +4,14 @@
   "description": "L'intelligence derrière vos chiffres.",
   "main": "main.js",
   "scripts": {
+    "prestart": "npx @electron/rebuild -f -w better-sqlite3",
     "start": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "vite": "vite",
     "electron": "electron .",
     "build": "vite build && electron-builder --mac && electron-builder --win",
     "build:mac": "vite build && electron-builder --mac",
     "build:win": "electron-builder --win",
-    "rebuild": "electron-rebuild -f -w better-sqlite3"
+    "rebuild": "npx @electron/rebuild -f -w better-sqlite3"
   },
   "dependencies": {
     "@sentry/electron": "^7.10.0",
