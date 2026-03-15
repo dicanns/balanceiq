@@ -5053,15 +5053,16 @@ function AlertsConfigCard({alertConfig,saveAlertConfig}){
 const FRANCHISE_ONLY_FEATURES=['royaltyAutoCalc','autoGenerateRoyaltyInvoices','multiLocationReconciliation','franchiseeScorecards','consolidatedAging','whiteLabel'];
 
 const TOUR_STEPS=[
-  {tab:null,        titleKey:'tourStep1Title', descKey:'tourStep1Desc'},
-  {tab:'daily',     titleKey:'tourStep2Title', descKey:'tourStep2Desc'},
-  {tab:'livraisons',titleKey:'tourStep3Title', descKey:'tourStep3Desc'},
-  {tab:'pl',        titleKey:'tourStep4Title', descKey:'tourStep4Desc'},
-  {tab:'intelligence',titleKey:'tourStep5Title',descKey:'tourStep5Desc'},
-  {tab:'encaisse',  titleKey:'tourStep6Title', descKey:'tourStep6Desc'},
-  {tab:'facturation',titleKey:'tourStep7Title',descKey:'tourStep7Desc'},
-  {tab:'config',    titleKey:'tourStep8Title', descKey:'tourStep8Desc'},
-  {tab:null,        titleKey:'tourStep9Title', descKey:'tourStep9Desc'},
+  {tab:null,         titleKey:'tourStep1Title',  descKey:'tourStep1Desc'},
+  {tab:'daily',      titleKey:'tourStep2Title',  descKey:'tourStep2Desc'},
+  {tab:'livraisons', titleKey:'tourStep3Title',  descKey:'tourStep3Desc'},
+  {tab:'pl',         titleKey:'tourStep4Title',  descKey:'tourStep4Desc'},
+  {tab:'intelligence',titleKey:'tourStep5Title', descKey:'tourStep5Desc'},
+  {tab:'encaisse',   titleKey:'tourStep6Title',  descKey:'tourStep6Desc'},
+  {tab:'facturation',titleKey:'tourStep7Title',  descKey:'tourStep7Desc'},
+  {tab:'config',     titleKey:'tourStep8Title',  descKey:'tourStep8Desc'},
+  {tab:'config',     titleKey:'tourStep9Title',  descKey:'tourStep9Desc'},
+  {tab:null,         titleKey:'tourStep10Title', descKey:'tourStep10Desc'},
 ];
 
 function TourOverlay({step,onNext,onPrev,onFinish,setActiveTab}){

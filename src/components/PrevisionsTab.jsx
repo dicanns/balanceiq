@@ -337,6 +337,90 @@ function CellDetailPopover({ product, dateStr, result, weatherMap, T, t, lang, o
   );
 }
 
+// ── AI Analysis Button ────────────────────────────────────────────────────────
+
+function AIAnalysisButton({ canUse, allSales, products, weatherMap, weekDates, predictions, T, t, lang, context, product }) {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+
+  const locked = !canUse('aiAnalysis');
+
+  if (locked) {
+    return (
+      <button onClick={()=>{}} title={T.prevAILocked}
+        style={{padding:'5px 12px',borderRadius:6,border:'1px solid rgba(249,115,22,0.25)',background:'rgba(249,115,22,0.05)',color:'rgba(249,115,22,0.5)',cursor:'not-allowed',fontSize:11,fontWeight:600}}>
+        ✨ {lang==='en'?'AI Analysis (Pro)':'Analyse IA (Pro)'}
+      </button>
+    );
+  }
+
+  const buildPrompt = () => {
+    if (context === 'item' && product) {
+      const sales = allSales.filter(s=>s.product_id===product.id).slice(0,60);
+      return `You are analyzing sales data for a production business. Product: "${product.name}" (weather_sensitivity: ${product.weather_sensitivity}, shelf_life: ${product.shelf_life_days} days, base_quantity: ${product.base_quantity}).
+
+Sales history (last ${sales.length} entries, newest first):
+${sales.map(s=>`${s.date}: sold=${s.quantity_sold}${s.quantity_made?`, made=${s.quantity_made}`:''}${s.stockout?', STOCKOUT':''}${weatherMap[s.date]?`, ${Math.round(weatherMap[s.date].temp_max||0)}°C`:''}` ).join('\n')}
+
+Provide a concise analysis in ${lang==='en'?'English':'French'}: identify patterns, overproduction or stockout risks, and 2-3 specific recommendations for production quantities by day of week.`;
+    }
+    // Weekly overview
+    const summary = products.map(p => {
+      const sales = allSales.filter(s=>s.product_id===p.id).slice(0,30);
+      const avgSold = sales.length ? Math.round(sales.reduce((a,s)=>a+s.quantity_sold,0)/sales.length) : 0;
+      const stockouts = sales.filter(s=>s.stockout).length;
+      const withMade = sales.filter(s=>s.quantity_made>0);
+      const wasteRate = withMade.length ? Math.round(withMade.reduce((a,s)=>a+(s.quantity_made-s.quantity_sold)/s.quantity_made,0)/withMade.length*100) : null;
+      const weekPred = weekDates.reduce((a,d)=>a+(predictions?.[p.id]?.[d]?.prediction||0),0);
+      return `- ${p.name}: avg sold/day=${avgSold}, stockouts=${stockouts}/${sales.length}, waste=${wasteRate!=null?wasteRate+'%':'unknown'}, weekly forecast=${weekPred}`;
+    }).join('\n');
+    return `You are a production planning advisor for a food business. Here is the weekly forecast summary in ${lang==='en'?'English':'French'}:
+
+${summary}
+
+Upcoming weather: ${weekDates.map(d=>{const w=weatherMap[d];return w?`${d.slice(5)}: ${Math.round(w.temp_max||0)}°C`:null;}).filter(Boolean).join(', ')||'unknown'}
+
+Provide a concise weekly production analysis in ${lang==='en'?'English':'French'}: top 3 waste risks, stockout alerts, and 3 specific suggestions to optimize production this week.`;
+  };
+
+  const analyze = async () => {
+    setLoading(true);
+    setResult(null);
+    try {
+      const { supabase } = await import('../services/supabase.js');
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+      const resp = await fetch('https://etiwnesxjypdwhxqnqqq.supabase.co/functions/v1/ai-analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ prompt: buildPrompt(), module: 'previsions' }),
+      });
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error);
+      setResult(data.text || data.content || JSON.stringify(data));
+    } catch (e) {
+      setResult(`⚠️ ${T.prevAIError}: ${e.message}`);
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{display:'inline-flex',flexDirection:'column',gap:6,alignItems:'flex-start'}}>
+      <button onClick={analyze} disabled={loading}
+        style={{padding:'5px 12px',borderRadius:6,border:'none',background:'linear-gradient(135deg,#a78bfa,#7c3aed)',color:'#fff',cursor:loading?'wait':'pointer',fontSize:11,fontWeight:600,opacity:loading?0.7:1}}>
+        {loading ? T.prevAIAnalyzing : T.prevAIAnalyze}
+      </button>
+      {result && (
+        <div style={{maxWidth:500,padding:'10px 12px',background:'rgba(167,139,250,0.08)',border:'1px solid rgba(167,139,250,0.25)',borderRadius:8,fontSize:11,lineHeight:1.6,whiteSpace:'pre-wrap',marginTop:4}}>
+          <div style={{fontSize:10,fontWeight:700,color:'#a78bfa',marginBottom:4}}>{T.prevAITitle}</div>
+          {result}
+          <button onClick={()=>setResult(null)} style={{display:'block',marginTop:6,fontSize:10,color:'rgba(167,139,250,0.6)',background:'none',border:'none',cursor:'pointer',padding:0}}>✕ {lang==='en'?'Close':'Fermer'}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Products Sub-view ─────────────────────────────────────────────────────────
 
 function ProductsView({ products, onSaveProduct, T, t }) {
@@ -769,9 +853,54 @@ function AlertsView({ products, allSales, T, lang }) {
   );
 }
 
+// ── Weather Correlation Section ───────────────────────────────────────────────
+
+function WeatherCorrelationSection({ product, last30, weatherMap, onUpdateSensitivity, T, t, lang }) {
+  const [dismissed, setDismissed] = useState(false);
+
+  // Group last30 by whether weather was warm (>15°C) or cold (<10°C)
+  const warmDays = last30.filter(s => (weatherMap[s.date]?.temp_max ?? 12) > 15);
+  const coldDays = last30.filter(s => (weatherMap[s.date]?.temp_max ?? 12) < 10);
+  const neutralDays = last30.filter(s => { const t = weatherMap[s.date]?.temp_max ?? 12; return t >= 10 && t <= 15; });
+
+  const avg = arr => arr.length ? arr.reduce((a,s)=>a+s.quantity_sold,0)/arr.length : null;
+  const warmAvg = avg(warmDays);
+  const coldAvg = avg(coldDays);
+  const neutralAvg = avg(neutralDays) || avg(last30) || 0;
+
+  if (!neutralAvg || (warmDays.length < 3 && coldDays.length < 3)) return null;
+
+  // Compute observed sensitivity: +2 if warm avg >25% above neutral, +1 if 10-25%, etc.
+  let observedSens = 0;
+  if (warmAvg && warmAvg > neutralAvg * 1.25) observedSens = 2;
+  else if (warmAvg && warmAvg > neutralAvg * 1.10) observedSens = 1;
+  else if (coldAvg && coldAvg > neutralAvg * 1.25) observedSens = -2;
+  else if (coldAvg && coldAvg > neutralAvg * 1.10) observedSens = -1;
+
+  const warmPct = warmAvg ? `${warmAvg > neutralAvg ? '+' : ''}${Math.round((warmAvg/neutralAvg-1)*100)}%` : null;
+  const coldPct = coldAvg ? `${coldAvg > neutralAvg ? '+' : ''}${Math.round((coldAvg/neutralAvg-1)*100)}%` : null;
+
+  return (
+    <div style={{marginBottom:16,padding:'10px 12px',background:'rgba(96,165,250,0.06)',border:'1px solid rgba(96,165,250,0.2)',borderRadius:8}}>
+      <div style={{fontSize:11,fontWeight:600,marginBottom:6,color:'#60a5fa'}}>{T.prevItemWeatherCorr}</div>
+      <div style={{fontSize:11,opacity:0.8,marginBottom:4,display:'flex',gap:16,flexWrap:'wrap'}}>
+        {warmAvg && warmDays.length >= 3 && <span>☀️ &gt;15°C: <strong style={{color:warmAvg>neutralAvg?'#22c55e':'#ef4444'}}>{warmPct} vs neutre</strong> ({warmDays.length}j)</span>}
+        {coldAvg && coldDays.length >= 3 && <span>❄️ &lt;10°C: <strong style={{color:coldAvg>neutralAvg?'#22c55e':'#ef4444'}}>{coldPct} vs neutre</strong> ({coldDays.length}j)</span>}
+      </div>
+      {!dismissed && observedSens !== 0 && observedSens !== product.weather_sensitivity && (
+        <div style={{fontSize:11,color:'#f59e0b',marginTop:6,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+          <span>💡 {T.prevItemUpdateSens}<strong>{observedSens > 0 ? `+${observedSens}` : observedSens}</strong>{T.prevItemUpdateSens2}</span>
+          <button onClick={()=>{ onUpdateSensitivity(product, observedSens); setDismissed(true); }} style={{padding:'2px 10px',borderRadius:10,border:'none',background:'#f59e0b',color:'#fff',cursor:'pointer',fontSize:10,fontWeight:700}}>{T.prevItemYes}</button>
+          <button onClick={()=>setDismissed(true)} style={{padding:'2px 10px',borderRadius:10,border:'1px solid rgba(245,158,11,0.4)',background:'transparent',color:'#f59e0b',cursor:'pointer',fontSize:10}}>{T.prevItemNo}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Item Detail View ──────────────────────────────────────────────────────────
 
-function ItemDetailView({ product, allSales, weatherMap, onBack, onUpdateSensitivity, T, t, lang }) {
+function ItemDetailView({ product, allSales, weatherMap, onBack, onUpdateSensitivity, canUse, T, t, lang }) {
   const productSales = allSales.filter(s=>s.product_id===product.id).sort((a,b)=>b.date.localeCompare(a.date));
   const last30 = productSales.filter(s => {
     const cutoff = toDateStr(new Date(Date.now() - 30*86400000));
@@ -825,8 +954,13 @@ function ItemDetailView({ product, allSales, weatherMap, onBack, onUpdateSensiti
     <div>
       <button onClick={onBack} style={{background:'none',border:'none',color:'#f97316',cursor:'pointer',fontSize:12,fontWeight:600,padding:0,marginBottom:14}}>{T.prevItemBack}</button>
 
-      <div style={{fontSize:14,fontWeight:700,marginBottom:4}}>{product.name}</div>
-      <div style={{fontSize:11,opacity:0.5,marginBottom:14}}>{T.prevItemProfile}</div>
+      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:10,marginBottom:14,flexWrap:'wrap'}}>
+        <div>
+          <div style={{fontSize:14,fontWeight:700,marginBottom:2}}>{product.name}</div>
+          <div style={{fontSize:11,opacity:0.5}}>{T.prevItemProfile}</div>
+        </div>
+        <AIAnalysisButton canUse={canUse} allSales={allSales} products={[product]} weatherMap={weatherMap} weekDates={[]} predictions={null} T={T} t={t} lang={lang} context="item" product={product}/>
+      </div>
 
       {last30.length === 0 ? (
         <div style={{textAlign:'center',padding:'20px 0',fontSize:12,opacity:0.5}}>{T.prevItemNoData}</div>
@@ -898,6 +1032,9 @@ function ItemDetailView({ product, allSales, weatherMap, onBack, onUpdateSensiti
               </div>
             </div>
           )}
+
+          {/* Weather correlation */}
+          <WeatherCorrelationSection product={product} last30={last30} weatherMap={weatherMap} onUpdateSensitivity={onUpdateSensitivity} T={T} t={t} lang={lang}/>
         </>
       )}
     </div>
@@ -1231,7 +1368,7 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
           weatherMap={weatherMap}
           onBack={()=>setSelectedProduct(null)}
           onUpdateSensitivity={(prod,sens)=>saveProduct({...prod,weather_sensitivity:sens})}
-          T={T} t={t} lang={lang}
+          canUse={canUse} T={T} t={t} lang={lang}
         />
       )}
 
@@ -1251,6 +1388,7 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
             <span style={{fontSize:13,fontWeight:700,flex:1}}>{T.prevWeekOf(formatDateShort(currentWeekMonday, lang))} → {formatDateShort(addDays(currentWeekMonday,6), lang)}</span>
             <button onClick={()=>setCurrentWeekMonday(m=>addDays(m,7))} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,padding:'5px 10px',cursor:'pointer',fontSize:13}}>→</button>
             <button onClick={()=>setCurrentWeekMonday(getMondayOf(toDateStr(new Date())))} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:'#f97316',padding:'5px 10px',cursor:'pointer',fontSize:11,fontWeight:600}}>{T.prevToday}</button>
+            <AIAnalysisButton canUse={canUse} allSales={allSales} products={activeProducts} weatherMap={weatherMap} weekDates={weekDates} predictions={predictions} T={T} t={t} lang={lang} context="weekly"/>
           </div>
 
           {/* Weather bar */}
