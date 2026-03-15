@@ -187,12 +187,12 @@ async function fetchWeatherForecast(lat, lng) {
 
 // ── Product Form Modal ────────────────────────────────────────────────────────
 
-function ProductFormModal({ product, existingCategories, onSave, onClose, T, t }) {
+function ProductFormModal({ product, existingCategories, onSave, onClose, T, t, lang }) {
   const [form, setForm] = useState({
     id: product?.id || uuid(),
     name: product?.name || '',
     category: product?.category || '',
-    base_quantity: product?.base_quantity ?? 0,
+    base_quantity: String(product?.base_quantity ?? 0),
     shelf_life_days: product?.shelf_life_days ?? 1,
     weather_sensitivity: product?.weather_sensitivity ?? 0,
     active: product?.active ?? 1,
@@ -209,21 +209,41 @@ function ProductFormModal({ product, existingCategories, onSave, onClose, T, t }
     { value: 2, label: T.prevWSPlus2 },
   ];
 
-  const inp = { background:t.inputBg, border:`1px solid ${t.inputBorder}`, borderRadius:5, color:t.text, fontSize:12, padding:'5px 8px', outline:'none', width:'100%', boxSizing:'border-box', fontFamily:"'Outfit',sans-serif" };
+  const freqPresets = lang === 'en'
+    ? [{v:1,label:'Every day',sub:'daily'},{v:2,label:'Every 2 days',sub:'~3-4×/wk'},{v:3,label:'Every 3 days',sub:'~2-3×/wk'},{v:7,label:'Weekly',sub:'1×/wk'}]
+    : [{v:1,label:'Quotidien',sub:'chaque jour'},{v:2,label:'Tous les 2j',sub:'~3-4×/sem'},{v:3,label:'Tous les 3j',sub:'~2-3×/sem'},{v:7,label:'Hebdomadaire',sub:'1×/sem'}];
+
+  const freqHint = form.shelf_life_days <= 1
+    ? (lang==='en' ? 'Appears in each daily production card' : 'Apparaît dans chaque carte journalière')
+    : (lang==='en' ? `Batched — make once every ${form.shelf_life_days} days` : `En lot — produire une fois tous les ${form.shelf_life_days} jours`);
+
+  const isPreset = freqPresets.some(p => p.v === form.shelf_life_days);
+
+  const inp = { background:t.inputBg, border:`1px solid ${t.inputBorder}`, borderRadius:6, color:t.text, fontSize:13, padding:'8px 10px', outline:'none', width:'100%', boxSizing:'border-box', fontFamily:"'Outfit',sans-serif" };
+  const lbl = { fontSize:12, fontWeight:600, color:t.textSub, display:'block', marginBottom:4 };
+
+  const handleSave = () => {
+    if (!form.name.trim()) return;
+    onSave({
+      ...form,
+      base_quantity: parseInt(form.base_quantity) >= 0 ? parseInt(form.base_quantity) : 0,
+      shelf_life_days: Math.max(1, form.shelf_life_days || 1),
+    });
+  };
 
   return (
-    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}>
-      <div style={{background:t.cardBg,border:`1px solid ${t.cardBorder}`,borderRadius:12,padding:24,width:420,maxWidth:'95vw',maxHeight:'90vh',overflowY:'auto'}}>
-        <div style={{fontSize:14,fontWeight:700,color:t.text,marginBottom:16}}>{product ? T.prevProdEdit : T.prevProdNew}</div>
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}>
+      <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:14,padding:28,width:460,maxWidth:'95vw',maxHeight:'90vh',overflowY:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.25)'}}>
+        <div style={{fontSize:15,fontWeight:700,color:t.text,marginBottom:20}}>{product ? T.prevProdEdit : T.prevProdNew}</div>
 
-        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+        <div style={{display:'flex',flexDirection:'column',gap:16}}>
           <div>
-            <label style={{fontSize:11,color:t.textMuted,display:'block',marginBottom:3}}>{T.prevProdName} *</label>
+            <label style={lbl}>{T.prevProdName} *</label>
             <input style={inp} value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} autoFocus/>
           </div>
 
           <div>
-            <label style={{fontSize:11,color:t.textMuted,display:'block',marginBottom:3}}>{T.prevProdCategory}</label>
+            <label style={lbl}>{T.prevProdCategory}</label>
             {catMode
               ? <div style={{display:'flex',gap:6}}>
                   <input style={{...inp,flex:1}} value={newCat} onChange={e=>setNewCat(e.target.value)} placeholder={T.prevProdNewCategory} autoFocus/>
@@ -240,33 +260,59 @@ function ProductFormModal({ product, existingCategories, onSave, onClose, T, t }
             }
           </div>
 
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-            <div>
-              <label style={{fontSize:11,color:t.textMuted,display:'block',marginBottom:3}}>{T.prevProdBaseQty}</label>
-              <input type="number" min="0" style={inp} value={form.base_quantity} onChange={e=>setForm(f=>({...f,base_quantity:parseInt(e.target.value)||0}))}/>
-            </div>
-            <div>
-              <label style={{fontSize:11,color:t.textMuted,display:'block',marginBottom:3}}>{T.prevProdShelfLife}</label>
-              <input type="number" min="1" max="30" style={inp} value={form.shelf_life_days} onChange={e=>setForm(f=>({...f,shelf_life_days:parseInt(e.target.value)||1}))}/>
-            </div>
+          <div>
+            <label style={lbl}>{T.prevProdBaseQty}</label>
+            <input
+              type="number" min="0" style={{...inp, width:'50%'}}
+              value={form.base_quantity}
+              onChange={e => setForm(f => ({...f, base_quantity: e.target.value}))}
+              onBlur={e => { const v = parseInt(e.target.value); setForm(f => ({...f, base_quantity: String(isNaN(v)||v<0?0:v)})); }}
+            />
           </div>
 
           <div>
-            <label style={{fontSize:11,color:t.textMuted,display:'block',marginBottom:3}}>{T.prevProdWeatherSens}</label>
+            <label style={lbl}>{lang==='en' ? 'Production frequency' : 'Fréquence de production'}</label>
+            <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}}>
+              {freqPresets.map(({v,label,sub}) => {
+                const active = form.shelf_life_days === v;
+                return (
+                  <button key={v} type="button" onClick={()=>setForm(f=>({...f,shelf_life_days:v}))}
+                    style={{padding:'7px 12px',borderRadius:8,border:`1px solid ${active?'#f97316':t.cardBorder}`,background:active?'rgba(249,115,22,0.15)':t.section,color:active?'#f97316':t.textSub,cursor:'pointer',textAlign:'center',lineHeight:1.3}}>
+                    <div style={{fontSize:12,fontWeight:600}}>{label}</div>
+                    <div style={{fontSize:10,opacity:0.65}}>{sub}</div>
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <span style={{fontSize:11,color:t.textSub,whiteSpace:'nowrap'}}>{lang==='en'?'Custom: every':'Autre: tous les'}</span>
+              <input
+                type="number" min="1" max="30"
+                style={{...inp, width:64, padding:'5px 8px', fontSize:12}}
+                value={form.shelf_life_days}
+                onChange={e => { const v = parseInt(e.target.value); if (!isNaN(v) && v >= 1) setForm(f=>({...f,shelf_life_days:v})); }}
+              />
+              <span style={{fontSize:11,color:t.textSub}}>{lang==='en'?'day(s)':'jour(s)'}</span>
+            </div>
+            <div style={{fontSize:10,opacity:0.55,marginTop:6,color:form.shelf_life_days<=1?'#22c55e':'#f97316'}}>{freqHint}</div>
+          </div>
+
+          <div>
+            <label style={lbl}>{T.prevProdWeatherSens}</label>
             <select style={inp} value={form.weather_sensitivity} onChange={e=>setForm(f=>({...f,weather_sensitivity:parseInt(e.target.value)}))}>
               {ws.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
 
           <div>
-            <label style={{fontSize:11,color:t.textMuted,display:'block',marginBottom:3}}>{T.prevProdNotes}</label>
-            <textarea style={{...inp,minHeight:54,resize:'vertical'}} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))}/>
+            <label style={lbl}>{T.prevProdNotes}</label>
+            <textarea style={{...inp,minHeight:64,resize:'vertical'}} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))}/>
           </div>
         </div>
 
-        <div style={{display:'flex',justifyContent:'flex-end',gap:8,marginTop:18}}>
-          <button onClick={onClose} style={{padding:'7px 16px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:'pointer',fontSize:12}}>{T.prevImportCancel}</button>
-          <button onClick={()=>{ if(!form.name.trim()) return; onSave(form); }} style={{padding:'7px 16px',borderRadius:6,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:12,fontWeight:600}}>{T.prevProdSave}</button>
+        <div style={{display:'flex',justifyContent:'flex-end',gap:8,marginTop:22}}>
+          <button onClick={onClose} style={{padding:'8px 18px',borderRadius:7,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:'pointer',fontSize:13}}>{T.prevImportCancel}</button>
+          <button onClick={handleSave} style={{padding:'8px 18px',borderRadius:7,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:13,fontWeight:600}}>{T.prevProdSave}</button>
         </div>
       </div>
     </div>
@@ -285,7 +331,7 @@ function WeatherOverrideModal({ date, existing, onSave, onClose, T, t, lang }) {
 
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1100,display:'flex',alignItems:'center',justifyContent:'center'}}>
-      <div style={{background:t.cardBg,border:`1px solid ${t.cardBorder}`,borderRadius:12,padding:20,width:280}}>
+      <div style={{background:t.optionBg,border:`1px solid ${t.cardBorder}`,borderRadius:12,padding:20,width:280}}>
         <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:12}}>{T.prevWeatherOverride} — {formatDateShort(date, lang)}</div>
         <div style={{marginBottom:10}}>
           <label style={{fontSize:11,color:t.textMuted,display:'block',marginBottom:3}}>{T.prevWeatherTemp}</label>
@@ -317,113 +363,208 @@ function CellDetailPopover({ product, dateStr, result, weatherMap, T, t, lang, o
   const pct = v => `${v>0?'+':''}${Math.round(v*100)}%`;
 
   return (
-    <div style={{position:'fixed',inset:0,zIndex:1200,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={onClose}>
-      <div style={{background:t.cardBg,border:`1px solid ${t.cardBorder}`,borderRadius:10,padding:16,width:260,boxShadow:'0 8px 32px rgba(0,0,0,0.3)'}} onClick={e=>e.stopPropagation()}>
-        <div style={{fontSize:12,fontWeight:700,color:t.text,marginBottom:8}}>{T.prevCellDetail}{product.name}</div>
-        <div style={{fontSize:10.5,color:t.textMuted,marginBottom:2}}>{formatDateFull(dateStr, lang)}</div>
-        <div style={{fontSize:18,fontWeight:800,color:'#f97316',marginBottom:8}}>{result.prediction}</div>
-        <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:10}}>
-          <span style={{fontSize:10,fontWeight:700,color:confColors[result.confidence],background:`${confColors[result.confidence]}20`,border:`1px solid ${confColors[result.confidence]}40`,borderRadius:8,padding:'1px 7px'}}>{confLabels[result.confidence]}</span>
-          <span style={{fontSize:10,color:t.textMuted}}>{T.prevDataPoints(result.dataPoints)}</span>
+    <div style={{position:'fixed',inset:0,zIndex:1200,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(0,0,0,0.35)'}} onClick={onClose}>
+      <div style={{background:t.optionBg,border:`1px solid ${t.cardBorder}`,borderRadius:12,padding:20,width:280,boxShadow:'0 12px 40px rgba(0,0,0,0.4)'}} onClick={e=>e.stopPropagation()}>
+        <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:4}}>{T.prevCellDetail}{product.name}</div>
+        <div style={{fontSize:11,color:t.textMuted,marginBottom:12}}>{formatDateFull(dateStr, lang)}</div>
+        <div style={{fontSize:28,fontWeight:800,color:'#f97316',marginBottom:10,lineHeight:1}}>{result.prediction}</div>
+        <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:12}}>
+          <span style={{fontSize:10,fontWeight:700,color:confColors[result.confidence],background:`${confColors[result.confidence]}22`,border:`1px solid ${confColors[result.confidence]}44`,borderRadius:8,padding:'2px 8px'}}>{confLabels[result.confidence]}</span>
+          <span style={{fontSize:11,color:t.textMuted}}>{T.prevDataPoints(result.dataPoints)}</span>
         </div>
-        <div style={{fontSize:11,color:t.textSub,lineHeight:1.7}}>
-          <div>{T.prevWeightedAvg}: <strong style={{color:t.text}}>{result.baseAvg}</strong></div>
-          {result.weatherFactor !== 0 && <div>{T.prevWeatherAdj}: <strong style={{color:result.weatherFactor>0?'#22c55e':'#ef4444'}}>{pct(result.weatherFactor)}</strong>{w&&` (${conditionToIcon(weatherCodeToCondition(w.weather_code))} ${Math.round(w.temp_max||0)}°C)`}</div>}
-          {result.trendFactor !== 0 && <div>{T.prevTrendAdj}: <strong style={{color:result.trendFactor>0?'#22c55e':'#ef4444'}}>{pct(result.trendFactor)}</strong></div>}
+        <div style={{borderTop:`1px solid ${t.cardBorder}`,paddingTop:10,fontSize:12,color:t.textSub,lineHeight:2}}>
+          <div style={{display:'flex',justifyContent:'space-between'}}>
+            <span style={{opacity:0.7}}>{T.prevWeightedAvg}</span>
+            <strong style={{color:t.text}}>{result.baseAvg}</strong>
+          </div>
+          {result.weatherFactor !== 0 && (
+            <div style={{display:'flex',justifyContent:'space-between'}}>
+              <span style={{opacity:0.7}}>{T.prevWeatherAdj}{w?` (${conditionToIcon(weatherCodeToCondition(w.weather_code))} ${Math.round(w.temp_max||0)}°C)`:''}</span>
+              <strong style={{color:result.weatherFactor>0?'#22c55e':'#ef4444'}}>{pct(result.weatherFactor)}</strong>
+            </div>
+          )}
+          {result.trendFactor !== 0 && (
+            <div style={{display:'flex',justifyContent:'space-between'}}>
+              <span style={{opacity:0.7}}>{T.prevTrendAdj}</span>
+              <strong style={{color:result.trendFactor>0?'#22c55e':'#ef4444'}}>{pct(result.trendFactor)}</strong>
+            </div>
+          )}
         </div>
-        <button onClick={onClose} style={{marginTop:10,padding:'4px 12px',borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:'pointer',fontSize:10,width:'100%'}}>✕</button>
+        <button onClick={onClose} style={{marginTop:14,padding:'6px 0',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:'pointer',fontSize:11,width:'100%'}}>✕ {lang==='en'?'Close':'Fermer'}</button>
       </div>
     </div>
   );
 }
 
-// ── AI Analysis Button ────────────────────────────────────────────────────────
+// ── AI Analysis View (dedicated sub-tab) ─────────────────────────────────────
 
-function AIAnalysisButton({ canUse, allSales, products, weatherMap, weekDates, predictions, T, t, lang, context, product }) {
+function AIAnalysisView({ canUse, allSales, products, weatherMap, weekDates, predictions, showUpgradePrompt, apiConfig, T, t, lang }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  const [analysisType, setAnalysisType] = useState('weekly'); // weekly | item
+  const [selectedProductId, setSelectedProductId] = useState('');
 
   const locked = !canUse('aiAnalysis');
 
-  if (locked) {
-    return (
-      <button onClick={()=>{}} title={T.prevAILocked}
-        style={{padding:'5px 12px',borderRadius:6,border:'1px solid rgba(249,115,22,0.25)',background:'rgba(249,115,22,0.05)',color:'rgba(249,115,22,0.5)',cursor:'not-allowed',fontSize:11,fontWeight:600}}>
-        ✨ {lang==='en'?'AI Analysis (Pro)':'Analyse IA (Pro)'}
-      </button>
-    );
-  }
-
-  const buildPrompt = () => {
-    if (context === 'item' && product) {
-      const sales = allSales.filter(s=>s.product_id===product.id).slice(0,60);
-      return `You are analyzing sales data for a production business. Product: "${product.name}" (weather_sensitivity: ${product.weather_sensitivity}, shelf_life: ${product.shelf_life_days} days, base_quantity: ${product.base_quantity}).
-
-Sales history (last ${sales.length} entries, newest first):
-${sales.map(s=>`${s.date}: sold=${s.quantity_sold}${s.quantity_made?`, made=${s.quantity_made}`:''}${s.stockout?', STOCKOUT':''}${weatherMap[s.date]?`, ${Math.round(weatherMap[s.date].temp_max||0)}°C`:''}` ).join('\n')}
-
-Provide a concise analysis in ${lang==='en'?'English':'French'}: identify patterns, overproduction or stockout risks, and 2-3 specific recommendations for production quantities by day of week.`;
+  const buildContext = () => {
+    if (analysisType === 'item') {
+      const product = products.find(p=>p.id===selectedProductId);
+      if (!product) return null;
+      const sales = allSales.filter(s=>s.product_id===product.id)
+        .sort((a,b)=>b.date.localeCompare(a.date)).slice(0,60);
+      const last30 = sales.slice(0,30);
+      const avgSold = last30.length ? Math.round(last30.reduce((a,s)=>a+s.quantity_sold,0)/last30.length) : 0;
+      const withMade = last30.filter(s=>s.quantity_made>0);
+      const waste = withMade.length ? Math.round(withMade.reduce((a,s)=>a+(s.quantity_made-s.quantity_sold)/s.quantity_made,0)/withMade.length*100) : null;
+      const stockoutDays = last30.filter(s=>s.stockout).length;
+      const cutoff2w = sales[0] ? new Date(new Date(sales[0].date).getTime()-14*86400000).toISOString().slice(0,10) : '';
+      const r2w = last30.filter(s=>s.date>=cutoff2w);
+      const p2w = last30.filter(s=>s.date<cutoff2w);
+      const trend = r2w.length && p2w.length
+        ? Math.round(((r2w.reduce((a,s)=>a+s.quantity_sold,0)/r2w.length)-(p2w.reduce((a,s)=>a+s.quantity_sold,0)/p2w.length))/(p2w.reduce((a,s)=>a+s.quantity_sold,0)/p2w.length)*100)
+        : null;
+      return {
+        queryType: 'previsions_item',
+        contextData: {
+          name: product.name, category: product.category, shelfLife: product.shelf_life_days,
+          sensitivity: product.weather_sensitivity, baseQty: product.base_quantity,
+          avgSold, waste, stockoutDays, trend,
+          sales: sales.map(s=>({ date:s.date, sold:s.quantity_sold, made:s.quantity_made, stockout:s.stockout?1:0, waste:s.quantity_made>0?Math.round((s.quantity_made-s.quantity_sold)/s.quantity_made*100):null, temp:weatherMap[s.date]?Math.round(weatherMap[s.date].temp_max||0):null })),
+        },
+      };
     }
-    // Weekly overview
-    const summary = products.map(p => {
+    // Weekly
+    const prods = products.filter(p=>p.active).map(p => {
       const sales = allSales.filter(s=>s.product_id===p.id).slice(0,30);
       const avgSold = sales.length ? Math.round(sales.reduce((a,s)=>a+s.quantity_sold,0)/sales.length) : 0;
       const stockouts = sales.filter(s=>s.stockout).length;
       const withMade = sales.filter(s=>s.quantity_made>0);
-      const wasteRate = withMade.length ? Math.round(withMade.reduce((a,s)=>a+(s.quantity_made-s.quantity_sold)/s.quantity_made,0)/withMade.length*100) : null;
-      const weekPred = weekDates.reduce((a,d)=>a+(predictions?.[p.id]?.[d]?.prediction||0),0);
-      return `- ${p.name}: avg sold/day=${avgSold}, stockouts=${stockouts}/${sales.length}, waste=${wasteRate!=null?wasteRate+'%':'unknown'}, weekly forecast=${weekPred}`;
-    }).join('\n');
-    return `You are a production planning advisor for a food business. Here is the weekly forecast summary in ${lang==='en'?'English':'French'}:
-
-${summary}
-
-Upcoming weather: ${weekDates.map(d=>{const w=weatherMap[d];return w?`${d.slice(5)}: ${Math.round(w.temp_max||0)}°C`:null;}).filter(Boolean).join(', ')||'unknown'}
-
-Provide a concise weekly production analysis in ${lang==='en'?'English':'French'}: top 3 waste risks, stockout alerts, and 3 specific suggestions to optimize production this week.`;
+      const waste = withMade.length ? Math.round(withMade.reduce((a,s)=>a+(s.quantity_made-s.quantity_sold)/s.quantity_made,0)/withMade.length*100) : null;
+      const weekForecast = weekDates.reduce((a,d)=>a+(predictions?.[p.id]?.[d]?.prediction||0),0);
+      return { name:p.name, category:p.category, avgSold, stockouts, waste, weekForecast, sensitivity:p.weather_sensitivity };
+    });
+    const weather = weekDates.map(d=>{ const w=weatherMap[d]; return w?`${d.slice(5)}: ${Math.round(w.temp_max||0)}°C`:null; }).filter(Boolean).join(', ')||'unknown';
+    return { queryType:'previsions_weekly', contextData:{ products:prods, weather } };
   };
 
   const analyze = async () => {
     setLoading(true);
     setResult(null);
     try {
+      const ctx = buildContext();
+      if (!ctx) { setResult(lang==='en'?'Select a product first.':'Sélectionnez un produit d\'abord.'); setLoading(false); return; }
       const { supabase } = await import('../services/supabase.js');
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Not authenticated');
-      const resp = await fetch('https://etiwnesxjypdwhxqnqqq.supabase.co/functions/v1/ai-analysis', {
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error(lang==='en'?'Sign in required — go to Config → Application':'Connexion requise — allez dans Config → Application');
+      // Always refresh the token before calling the edge function to avoid Invalid JWT errors
+      try {
+        const { data: refreshed } = await supabase.auth.refreshSession();
+        if (refreshed?.session) session = refreshed.session;
+      } catch {}
+      const orgId = apiConfig?.supabaseOrgId || null;
+      const resp = await fetch('https://etiwnesxjypdwhxqnqqq.supabase.co/functions/v1/ai-intelligence', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-        body: JSON.stringify({ prompt: buildPrompt(), module: 'previsions' }),
+        body: JSON.stringify({ ...ctx, orgId, lang, ownApiKey: apiConfig?.anthropicApiKey || null }),
       });
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(`HTTP ${resp.status}: ${errText.slice(0,120)}`);
+      }
       const data = await resp.json();
-      if (data.error) throw new Error(data.error);
-      setResult(data.text || data.content || JSON.stringify(data));
+      console.log('[AI Intelligence] response:', data);
+      if (data.error === 'upgrade_required') throw new Error(lang==='en'?'Pro plan required — upgrade in Config → Application':'Plan Pro requis — mettez à niveau dans Config → Application');
+      if (data.error === 'limit_reached') throw new Error(lang==='en'?`Monthly AI limit reached (${data.usageCount}/${data.usageLimit})`:`Limite IA mensuelle atteinte (${data.usageCount}/${data.usageLimit})`);
+      if (data.error === 'no_auth') throw new Error(lang==='en'?'Sign in required — go to Config → Application':'Connexion requise — allez dans Config → Application');
+      if (data.error === 'no_org') throw new Error(lang==='en'?'Cloud account not linked — go to Config → Application':'Compte cloud non lié — allez dans Config → Application');
+      if (data.error === 'no_key') throw new Error(lang==='en'?'ANTHROPIC_API_KEY not configured on server':'ANTHROPIC_API_KEY non configuré sur le serveur');
+      if (data.error) throw new Error(data.message || data.error);
+      if (!data.text) {
+        console.warn('[AI Intelligence] empty text, full response:', JSON.stringify(data));
+        throw new Error(lang==='en'?'Claude returned an empty response. Open DevTools Console for details.':'Réponse vide de Claude. Voir la console pour les détails.');
+      }
+      setResult({ text: data.text, usageCount: data.usageCount, usageLimit: data.usageLimit });
     } catch (e) {
-      setResult(`⚠️ ${T.prevAIError}: ${e.message}`);
+      setResult({ error: e.message });
     }
     setLoading(false);
   };
 
+  const inp = { background:t.inputBg, border:`1px solid ${t.inputBorder}`, borderRadius:5, color:t.text, fontSize:12, padding:'6px 8px', outline:'none' };
+
+  if (locked) {
+    return (
+      <div style={{padding:'32px 24px',textAlign:'center'}}>
+        <div style={{fontSize:32,marginBottom:12}}>✨</div>
+        <div style={{fontSize:16,fontWeight:700,marginBottom:8}}>{lang==='en'?'AI Analysis — Pro Feature':'Analyse IA — Fonctionnalité Pro'}</div>
+        <div style={{fontSize:13,opacity:0.6,marginBottom:6,maxWidth:380,margin:'0 auto 16px'}}>
+          {lang==='en'
+            ? 'Get Claude AI to analyze your production patterns, identify waste risks, stockout alerts, and give specific weekly recommendations.'
+            : 'Faites analyser vos données de production par Claude AI — gaspillage, ruptures de stock, recommandations hebdomadaires spécifiques.'}
+        </div>
+        <div style={{fontSize:11,opacity:0.5,marginBottom:20}}>{lang==='en'?'Pro: 50 queries/month · Franchise: 200 queries/month · On-demand only':'Pro: 50 requêtes/mois · Franchise: 200 requêtes/mois · À la demande seulement'}</div>
+        <button onClick={()=>showUpgradePrompt&&showUpgradePrompt('aiAnalysis')}
+          style={{padding:'10px 24px',borderRadius:8,border:'none',background:'linear-gradient(135deg,#a78bfa,#7c3aed)',color:'#fff',cursor:'pointer',fontSize:13,fontWeight:700}}>
+          {lang==='en'?'Upgrade to Pro':'Passer au Pro'} ↑
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div style={{display:'inline-flex',flexDirection:'column',gap:6,alignItems:'flex-start'}}>
-      <button onClick={analyze} disabled={loading}
-        style={{padding:'5px 12px',borderRadius:6,border:'none',background:'linear-gradient(135deg,#a78bfa,#7c3aed)',color:'#fff',cursor:loading?'wait':'pointer',fontSize:11,fontWeight:600,opacity:loading?0.7:1}}>
-        {loading ? T.prevAIAnalyzing : T.prevAIAnalyze}
+    <div>
+      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:16,flexWrap:'wrap'}}>
+        <div style={{fontSize:11,fontWeight:700,color:'#a78bfa',textTransform:'uppercase',letterSpacing:1}}>{lang==='en'?'AI Analysis':'Analyse IA'}</div>
+        <span style={{fontSize:9,padding:'2px 6px',borderRadius:4,background:'rgba(167,139,250,0.15)',color:'#a78bfa',fontWeight:700}}>PRO</span>
+        {result?.usageCount != null && <span style={{fontSize:10,opacity:0.5,marginLeft:'auto'}}>{result.usageCount}/{result.usageLimit} {lang==='en'?'queries/mo':'requêtes/mois'}</span>}
+      </div>
+
+      <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap',alignItems:'center'}}>
+        {[['weekly', lang==='en'?'Weekly overview':'Vue hebdomadaire'], ['item', lang==='en'?'Product deep dive':'Analyse produit']].map(([v,l])=>(
+          <button key={v} onClick={()=>{setAnalysisType(v);setResult(null);}}
+            style={{padding:'5px 14px',borderRadius:12,border:`1px solid ${analysisType===v?'#a78bfa':t.cardBorder}`,background:analysisType===v?'rgba(167,139,250,0.12)':t.section,color:analysisType===v?'#a78bfa':'inherit',cursor:'pointer',fontSize:11,fontWeight:600}}>
+            {l}
+          </button>
+        ))}
+        {analysisType === 'item' && (
+          <select style={{...inp,fontSize:11}} value={selectedProductId} onChange={e=>setSelectedProductId(e.target.value)}>
+            <option value="">{lang==='en'?'— Select product —':'— Choisir un produit —'}</option>
+            {products.filter(p=>p.active).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        )}
+      </div>
+
+      <button onClick={analyze} disabled={loading || (analysisType==='item'&&!selectedProductId)}
+        style={{padding:'9px 22px',borderRadius:8,border:'none',background:'linear-gradient(135deg,#a78bfa,#7c3aed)',color:'#fff',cursor:(loading||(analysisType==='item'&&!selectedProductId))?'not-allowed':'pointer',fontSize:13,fontWeight:700,opacity:(loading||(analysisType==='item'&&!selectedProductId))?0.6:1,marginBottom:16}}>
+        {loading ? (lang==='en'?'Analyzing…':'Analyse en cours…') : (lang==='en'?'✨ Analyze with Claude AI':'✨ Analyser avec Claude AI')}
       </button>
-      {result && (
-        <div style={{maxWidth:500,padding:'10px 12px',background:'rgba(167,139,250,0.08)',border:'1px solid rgba(167,139,250,0.25)',borderRadius:8,fontSize:11,lineHeight:1.6,whiteSpace:'pre-wrap',marginTop:4}}>
-          <div style={{fontSize:10,fontWeight:700,color:'#a78bfa',marginBottom:4}}>{T.prevAITitle}</div>
-          {result}
-          <button onClick={()=>setResult(null)} style={{display:'block',marginTop:6,fontSize:10,color:'rgba(167,139,250,0.6)',background:'none',border:'none',cursor:'pointer',padding:0}}>✕ {lang==='en'?'Close':'Fermer'}</button>
+
+      {result?.error && (
+        <div style={{padding:'12px 16px',background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.2)',borderRadius:8,fontSize:12,color:'#fca5a5',marginBottom:12}}>
+          ⚠️ {result.error}
         </div>
       )}
+
+      {result?.text && (
+        <div style={{padding:'18px 20px',background:'rgba(167,139,250,0.06)',border:'1px solid rgba(167,139,250,0.2)',borderRadius:10,fontSize:13,lineHeight:1.75,whiteSpace:'pre-wrap',color:t.text}}>
+          <div style={{fontSize:11,fontWeight:700,color:'#a78bfa',marginBottom:12,display:'flex',alignItems:'center',gap:6}}>
+            ✨ {analysisType==='weekly'?(lang==='en'?'Weekly Production Analysis':'Analyse hebdomadaire de production'):(lang==='en'?`Product Analysis — ${products.find(p=>p.id===selectedProductId)?.name||''}`:` Analyse produit — ${products.find(p=>p.id===selectedProductId)?.name||''}`)}
+            <span style={{fontSize:9,padding:'1px 5px',borderRadius:3,background:'rgba(167,139,250,0.2)',color:'#c084fc'}}>Claude AI</span>
+          </div>
+          {result.text}
+        </div>
+      )}
+
+      <div style={{marginTop:20,fontSize:10,opacity:0.4,textAlign:'center'}}>
+        {lang==='en'?'Pro: 50 queries/month · Franchise: 200 queries/month · On-demand only — no surprise API costs':'Pro: 50 requêtes/mois · Franchise: 200 requêtes/mois · À la demande — aucun coût surprise'}
+      </div>
     </div>
   );
 }
 
 // ── Products Sub-view ─────────────────────────────────────────────────────────
 
-function ProductsView({ products, onSaveProduct, T, t }) {
+function ProductsView({ products, onSaveProduct, T, t, lang }) {
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -477,7 +618,7 @@ function ProductsView({ products, onSaveProduct, T, t }) {
           existingCategories={categories}
           onSave={p=>{ onSaveProduct(p); setShowForm(false); setEditing(null); }}
           onClose={()=>{setShowForm(false);setEditing(null);}}
-          T={T} t={t}
+          T={T} t={t} lang={lang}
         />
       )}
     </div>
@@ -594,7 +735,7 @@ function ManualEntryView({ products, selectedDate, setSelectedDate, salesByDate,
 
 // ── CSV Import View ───────────────────────────────────────────────────────────
 
-function CSVImportView({ products, onImported, savedFormats, onSaveFormat, T, t, lang }) {
+function CSVImportView({ products, onImported, savedFormats, onSaveFormat, T, t, lang, canUse, apiConfig, showUpgradePrompt }) {
   const [step, setStep] = useState('upload'); // upload | map | unknown | preview | done
   const [rows, setRows] = useState([]);
   const [columns, setColumns] = useState([]);
@@ -693,9 +834,36 @@ function CSVImportView({ products, onImported, savedFormats, onSaveFormat, T, t,
 
   const colOpts = ['', ...columns];
 
+  // Determine connected POS name (if any)
+  const posIntegrations = apiConfig?.posIntegrations || {};
+  const connectedPos = Object.entries(posIntegrations).find(([,cfg]) => cfg?.connected && cfg?.accessToken);
+  const connectedPosName = connectedPos ? connectedPos[0] : null;
+
   return (
     <div>
       <div style={{fontSize:13,fontWeight:700,marginBottom:12}}>{T.prevImportTitle}</div>
+
+      {/* POS Import section */}
+      <div style={{marginBottom:14,padding:'10px 12px',background:t.section,borderRadius:7,border:`1px solid ${t.cardBorder}`}}>
+        <div style={{fontSize:11,fontWeight:700,marginBottom:6,opacity:0.8}}>📡 POS</div>
+        {!canUse('posIntegration') ? (
+          <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+            <span style={{fontSize:11,opacity:0.6}}>{T.prevPOSProRequired}</span>
+            <button onClick={()=>showUpgradePrompt&&showUpgradePrompt('posIntegration')}
+              style={{padding:'3px 10px',borderRadius:12,border:'1px solid #f97316',color:'#f97316',background:'rgba(249,115,22,0.1)',cursor:'pointer',fontSize:10,fontWeight:600,whiteSpace:'nowrap'}}>Pro ↑</button>
+          </div>
+        ) : connectedPosName ? (
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <span style={{fontSize:11,opacity:0.7}}>{connectedPosName}</span>
+            <button style={{padding:'5px 14px',borderRadius:6,border:'1px solid #3b82f6',background:'rgba(59,130,246,0.1)',color:'#3b82f6',cursor:'not-allowed',fontSize:11,fontWeight:600,opacity:0.7}}>
+              {T.prevPOSImportBtn(connectedPosName)}
+            </button>
+            <span style={{fontSize:10,opacity:0.5,fontStyle:'italic'}}>(item-level import — coming soon)</span>
+          </div>
+        ) : (
+          <span style={{fontSize:11,opacity:0.5,fontStyle:'italic'}}>{T.prevPOSNoConn}</span>
+        )}
+      </div>
 
       {step === 'upload' && (
         <div>
@@ -900,7 +1068,7 @@ function WeatherCorrelationSection({ product, last30, weatherMap, onUpdateSensit
 
 // ── Item Detail View ──────────────────────────────────────────────────────────
 
-function ItemDetailView({ product, allSales, weatherMap, onBack, onUpdateSensitivity, canUse, T, t, lang }) {
+function ItemDetailView({ product, allSales, weatherMap, onBack, onBackToAI, onUpdateSensitivity, canUse, T, t, lang }) {
   const productSales = allSales.filter(s=>s.product_id===product.id).sort((a,b)=>b.date.localeCompare(a.date));
   const last30 = productSales.filter(s => {
     const cutoff = toDateStr(new Date(Date.now() - 30*86400000));
@@ -914,7 +1082,6 @@ function ItemDetailView({ product, allSales, weatherMap, onBack, onUpdateSensiti
   const wasteRate = (avgMade > 0 && avgSold >= 0) ? Math.max(0,(avgMade-avgSold)/avgMade) : 0;
   const stockoutDays = last30.filter(s=>s.stockout).length;
 
-  // Trend: last 2 weeks vs previous 2 weeks (any DOW)
   const cutoff2w = toDateStr(new Date(Date.now() - 14*86400000));
   const cutoff4w = toDateStr(new Date(Date.now() - 28*86400000));
   const r2w = last30.filter(s=>s.date>=cutoff2w);
@@ -923,17 +1090,17 @@ function ItemDetailView({ product, allSales, weatherMap, onBack, onUpdateSensiti
     ? ((r2w.reduce((a,s)=>a+s.quantity_sold,0)/r2w.length) - (p2w.reduce((a,s)=>a+s.quantity_sold,0)/p2w.length)) / (p2w.reduce((a,s)=>a+s.quantity_sold,0)/p2w.length) * 100
     : 0;
 
-  // Day-of-week bars
+  const dayNames = lang==='en'
+    ? ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+    : ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+
   const dowAvg = Array(7).fill(null).map((_,dow) => {
     const s = last30.filter(x=>new Date(x.date+'T12:00:00').getDay()===dow);
     return s.length ? s.reduce((a,x)=>a+x.quantity_sold,0)/s.length : null;
   });
   const maxDow = Math.max(...dowAvg.filter(v=>v!=null), 1);
-  const dayNames = lang==='en'
-    ? ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
-    : ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+  const maxDowIdx = dowAvg.findIndex(v => v === maxDow);
 
-  // Forecast accuracy (last 30 days with data)
   const accuracyByDow = Array(7).fill(null).map((_,dow) => {
     const past = productSales.filter(s => {
       const d = new Date(s.date+'T12:00:00');
@@ -950,91 +1117,163 @@ function ItemDetailView({ product, allSales, weatherMap, onBack, onUpdateSensiti
     return { dow, name:dayNames[dow], acc: Math.round(accs.reduce((a,v)=>a+v,0)/accs.length*100) };
   }).filter(Boolean);
 
+  // Overview stats
+  const stockoutsByDow = {};
+  last30.filter(s=>s.stockout).forEach(s => {
+    const dow = new Date(s.date+'T12:00:00').getDay();
+    stockoutsByDow[dow] = (stockoutsByDow[dow]||0) + 1;
+  });
+  const topStockoutDow = Object.entries(stockoutsByDow).sort((a,b)=>b[1]-a[1])[0];
+  const stockoutLabel = topStockoutDow
+    ? `${stockoutDays} (${getDayFullName(parseInt(topStockoutDow[0]),lang)})`
+    : String(stockoutDays);
+
+  const weekCount = Math.round(productSales.length / 7);
+  const confText = weekCount < 2
+    ? (lang==='en'?'Base (< 2 weeks)':'Base (< 2 sem.)')
+    : weekCount < 4 ? `${lang==='en'?'Low':'Faible'} (${weekCount} ${lang==='en'?'wks':'sem'})`
+    : weekCount < 8 ? `${lang==='en'?'Medium':'Moyen'} (${weekCount} ${lang==='en'?'wks':'sem'})`
+    : `${lang==='en'?'High':'Élevé'} (${weekCount} ${lang==='en'?'wks':'sem'})`;
+  const confColor = weekCount >= 8 ? '#22c55e' : weekCount >= 4 ? '#f59e0b' : '#6b7280';
+
+  const sensitivityLabels = {'-2':lang==='en'?'Strong cold seller':'Fort vendeur froid','-1':lang==='en'?'Slight cold seller':'Léger froid','0':lang==='en'?'Neutral':'Neutre','1':lang==='en'?'Slight warm seller':'Léger chaud','2':lang==='en'?'Strong warm seller':'Fort vendeur chaud'};
+  const sensDisplay = `${product.weather_sensitivity>0?'+':''}${product.weather_sensitivity} (${sensitivityLabels[String(product.weather_sensitivity)]||'—'})`;
+
+  // DOW insight
+  const weekdayAvgs = dowAvg.filter((v,i) => v!=null && i>=1 && i<=5);
+  const weekdayMean = weekdayAvgs.length ? weekdayAvgs.reduce((a,b)=>a+b,0)/weekdayAvgs.length : 0;
+  const peakMultiplier = (weekdayMean > 0 && maxDowIdx !== -1) ? (maxDow/weekdayMean).toFixed(1) : null;
+  const peakStockouts = last30.filter(s=>new Date(s.date+'T12:00:00').getDay()===maxDowIdx&&s.stockout).length;
+  const peakTotal = last30.filter(s=>new Date(s.date+'T12:00:00').getDay()===maxDowIdx).length;
+
   return (
     <div>
-      <button onClick={onBack} style={{background:'none',border:'none',color:'#f97316',cursor:'pointer',fontSize:12,fontWeight:600,padding:0,marginBottom:14}}>{T.prevItemBack}</button>
-
-      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:10,marginBottom:14,flexWrap:'wrap'}}>
-        <div>
-          <div style={{fontSize:14,fontWeight:700,marginBottom:2}}>{product.name}</div>
-          <div style={{fontSize:11,opacity:0.5}}>{T.prevItemProfile}</div>
-        </div>
-        <AIAnalysisButton canUse={canUse} allSales={allSales} products={[product]} weatherMap={weatherMap} weekDates={[]} predictions={null} T={T} t={t} lang={lang} context="item" product={product}/>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,marginBottom:14,flexWrap:'wrap'}}>
+        <button onClick={onBack} style={{background:'none',border:'none',color:'#f97316',cursor:'pointer',fontSize:12,fontWeight:600,padding:0}}>{T.prevItemBack}</button>
+        <button onClick={onBackToAI}
+          style={{padding:'5px 12px',borderRadius:6,border:'1px solid rgba(167,139,250,0.3)',background:'rgba(167,139,250,0.08)',color:'#a78bfa',cursor:'pointer',fontSize:11,fontWeight:600}}>
+          ✨ {lang==='en'?'Analyze with AI':'Analyser avec IA'}{!canUse('aiAnalysis')&&<span style={{marginLeft:4,fontSize:8,verticalAlign:'middle',padding:'1px 4px',borderRadius:3,background:'rgba(167,139,250,0.2)'}}>PRO</span>}
+        </button>
       </div>
+
+      <div style={{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:2,marginBottom:4}}>{T.prevItemProfile}</div>
+      <div style={{fontSize:16,fontWeight:700,marginBottom:2}}>{product.name}</div>
+      {product.category && <div style={{fontSize:11,opacity:0.5,marginBottom:14}}>{product.category}</div>}
 
       {last30.length === 0 ? (
         <div style={{textAlign:'center',padding:'20px 0',fontSize:12,opacity:0.5}}>{T.prevItemNoData}</div>
       ) : (
         <>
-          {/* Stats cards */}
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))',gap:8,marginBottom:16}}>
-            {[
-              [T.prevItemAvgSold, Math.round(avgSold)],
-              [T.prevItemAvgMade, avgMade > 0 ? Math.round(avgMade) : '—'],
-              [T.prevItemWaste, avgMade > 0 ? `${Math.round(wasteRate*100)}%` : '—'],
-              [T.prevItemStockoutDays, stockoutDays],
-              [T.prevItemTrend, `${trendPct>0?'+':''}${Math.round(trendPct)}%`],
-            ].map(([label,val])=>(
-              <div key={label} style={{padding:'10px 12px',background:'rgba(249,115,22,0.07)',border:'1px solid rgba(249,115,22,0.15)',borderRadius:8}}>
-                <div style={{fontSize:10,opacity:0.6,marginBottom:3}}>{label}</div>
-                <div style={{fontSize:16,fontWeight:800,color:'#f97316'}}>{val}</div>
+          {/* Two-column: Overview + DOW Pattern */}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
+            {/* Overview card */}
+            <div style={{padding:'16px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:10}}>
+              <div style={{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:1,marginBottom:12}}>
+                📊 {lang==='en'?'Overview':'Vue d\'ensemble'}
               </div>
-            ))}
-          </div>
-
-          {/* DOW bar chart */}
-          <div style={{marginBottom:16}}>
-            <div style={{fontSize:11,fontWeight:600,marginBottom:6,opacity:0.7}}>{lang==='en'?'Average by day of week':'Moyenne par jour de la semaine'}</div>
-            <div style={{display:'flex',gap:4,alignItems:'flex-end',height:60}}>
-              {dowAvg.map((val,i)=>(
-                <div key={i} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
-                  <div style={{width:'100%',background:val!=null?'#f97316':'transparent',borderRadius:'3px 3px 0 0',height:val!=null?`${Math.round((val/maxDow)*48)}px`:'0px',minHeight:val!=null?2:0,transition:'height 0.3s'}}/>
-                  <div style={{fontSize:9,opacity:0.6}}>{dayNames[i]}</div>
-                  {val!=null&&<div style={{fontSize:9,opacity:0.8}}>{Math.round(val)}</div>}
+              {[
+                [lang==='en'?'Average sold / day':'Moy. vendu / jour', Math.round(avgSold), null],
+                [lang==='en'?'Average produced / day':'Moy. produit / jour', avgMade > 0 ? Math.round(avgMade) : '—', null],
+                [lang==='en'?'Waste rate':'Taux gaspillage', avgMade > 0 ? `${Math.round(wasteRate*100)}%` : '—', avgMade>0?(wasteRate>0.15?'#ef4444':wasteRate>0.08?'#f59e0b':'#22c55e'):null],
+                [lang==='en'?'Stockout days':'Jours rupture', stockoutLabel, stockoutDays>0?'#ef4444':null],
+                [lang==='en'?'Trend':'Tendance', `${trendPct>0?'↑ +':trendPct<0?'↓ ':'→ '}${Math.round(Math.abs(trendPct))}% ${lang==='en'?'this mo.':'ce mois'}`, trendPct>5?'#22c55e':trendPct<-5?'#ef4444':null],
+                [lang==='en'?'Weather sensitivity':'Sensibilité météo', sensDisplay, null],
+                [lang==='en'?'Shelf life':'Durée de vie', `${product.shelf_life_days} ${lang==='en'?'day':'jour'}${product.shelf_life_days>1?'s':''}`, null],
+                [lang==='en'?'Forecast confidence':'Fiabilité prévision', confText, confColor],
+              ].map(([label,val,color])=>(
+                <div key={label} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',padding:'5px 0',borderBottom:`1px solid ${t.cardBorder}`,fontSize:11,gap:8}}>
+                  <span style={{opacity:0.6,flexShrink:0}}>{label}</span>
+                  <strong style={{color:color||t.text,textAlign:'right',fontSize:12}}>{val}</strong>
                 </div>
               ))}
             </div>
+
+            {/* DOW Pattern card */}
+            <div style={{padding:'16px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:10,display:'flex',flexDirection:'column',gap:10}}>
+              <div style={{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:1}}>
+                📅 {lang==='en'?'Day-of-Week Pattern':'Profil par jour'}
+              </div>
+              <div>
+                {dowAvg.map((val,i) => {
+                  if (val === null) return null;
+                  const isPeak = i === maxDowIdx;
+                  const pct = maxDow > 0 ? (val / maxDow) * 100 : 0;
+                  return (
+                    <div key={i} style={{display:'flex',alignItems:'center',gap:6,marginBottom:5,fontSize:11}}>
+                      <span style={{width:26,opacity:0.6,fontSize:10,flexShrink:0}}>{dayNames[i]}</span>
+                      <div style={{flex:1,background:t.cardBorder,borderRadius:3,height:12,overflow:'hidden'}}>
+                        <div style={{width:`${pct}%`,height:'100%',background:isPeak?'#f97316':'rgba(249,115,22,0.35)',borderRadius:3}}/>
+                      </div>
+                      <span style={{width:30,textAlign:'right',fontWeight:isPeak?700:400,color:isPeak?'#f97316':'inherit',flexShrink:0,fontSize:isPeak?12:11}}>{Math.round(val)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              {maxDowIdx !== -1 && peakMultiplier && parseFloat(peakMultiplier) > 1.2 && (
+                <div style={{fontSize:11,opacity:0.75,lineHeight:1.5}}>
+                  {lang==='en'
+                    ? `${dayNames[maxDowIdx]} demand is ${peakMultiplier}× the weekday avg.`
+                    : `La demande du ${dayNames[maxDowIdx]} est ${peakMultiplier}× la moy. semaine.`}
+                  {peakStockouts >= 2 && <span style={{color:'#ef4444',marginLeft:4}}>🔴 {lang==='en'?`Out of stock ${peakStockouts}/${peakTotal} times.`:`Rupture ${peakStockouts}/${peakTotal} fois.`}</span>}
+                </div>
+              )}
+              {accuracyByDow.length > 0 && (
+                <div>
+                  <div style={{fontSize:10,opacity:0.55,marginBottom:4}}>{T.prevItemAccTitle}</div>
+                  <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                    {accuracyByDow.map(a=>(
+                      <span key={a.dow} style={{padding:'2px 7px',borderRadius:6,background:'rgba(34,197,94,0.08)',border:'1px solid rgba(34,197,94,0.2)',fontSize:10}}>
+                        {a.name}: <strong style={{color:'#22c55e'}}>{a.acc}%</strong>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <WeatherCorrelationSection product={product} last30={last30} weatherMap={weatherMap} onUpdateSensitivity={onUpdateSensitivity} T={T} t={t} lang={lang}/>
+            </div>
           </div>
 
-          {/* History table */}
-          <div style={{marginBottom:16}}>
-            <div style={{fontSize:11,fontWeight:600,marginBottom:6,opacity:0.7}}>{T.prevItemHistory}</div>
+          {/* Recent History */}
+          <div style={{padding:'16px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:10}}>
+            <div style={{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:1,marginBottom:12}}>
+              🗒️ {T.prevItemHistory}
+            </div>
             <div style={{overflowX:'auto'}}>
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
-                <thead><tr style={{borderBottom:`1px solid ${t.cardBorder}`}}>
-                  {[T.prevColDate,T.prevColMade,T.prevColSold,T.prevColRemaining,T.prevColStockout].map(h=><th key={h} style={{padding:'4px 6px',textAlign:'left',opacity:0.6,fontWeight:600,fontSize:10}}>{h}</th>)}
-                </tr></thead>
+                <thead>
+                  <tr style={{borderBottom:`1px solid ${t.cardBorder}`}}>
+                    {[T.prevColDate,T.prevColMade,T.prevColSold,T.prevColRemaining,T.prevColStockout,lang==='en'?'Weather':'Météo',lang==='en'?'Waste':'Gaspillage'].map(h=>(
+                      <th key={h} style={{padding:'5px 8px',textAlign:'left',opacity:0.55,fontWeight:700,fontSize:10,textTransform:'uppercase',letterSpacing:0.5}}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
                 <tbody>
-                  {last14.map((s,i)=>(
-                    <tr key={i} style={{borderBottom:`1px solid ${t.cardBorder}`}}>
-                      <td style={{padding:'4px 6px'}}>{formatDateShort(s.date,lang)}</td>
-                      <td style={{padding:'4px 6px'}}>{s.quantity_made??'—'}</td>
-                      <td style={{padding:'4px 6px',fontWeight:600}}>{s.quantity_sold}</td>
-                      <td style={{padding:'4px 6px'}}>{s.quantity_remaining??'—'}</td>
-                      <td style={{padding:'4px 6px'}}>{s.stockout?'⚠️':'—'}</td>
-                    </tr>
-                  ))}
+                  {last14.map((s,i)=>{
+                    const wDay = weatherMap[s.date];
+                    const weatherCell = wDay ? `${conditionToIcon(weatherCodeToCondition(wDay.weather_code))} ${Math.round(wDay.temp_max||0)}°` : '—';
+                    let wasteCell = '—';
+                    let wasteColor = 'inherit';
+                    if (s.quantity_made > 0) {
+                      const wastePct = Math.round((s.quantity_made - s.quantity_sold) / s.quantity_made * 100);
+                      wasteCell = `${wastePct}%`;
+                      wasteColor = wastePct > 15 ? '#ef4444' : wastePct > 8 ? '#f59e0b' : '#22c55e';
+                    }
+                    return (
+                      <tr key={i} style={{borderBottom:`1px solid ${t.cardBorder}`}}>
+                        <td style={{padding:'5px 8px'}}>{formatDateShort(s.date,lang)}</td>
+                        <td style={{padding:'5px 8px'}}>{s.quantity_made??'—'}</td>
+                        <td style={{padding:'5px 8px',fontWeight:600}}>{s.quantity_sold}</td>
+                        <td style={{padding:'5px 8px'}}>{s.quantity_remaining??'—'}</td>
+                        <td style={{padding:'5px 8px'}}>{s.stockout?<span style={{color:'#ef4444',fontWeight:700}}>🔴 {lang==='en'?'Yes':'Oui'}</span>:'—'}</td>
+                        <td style={{padding:'5px 8px'}}>{weatherCell}</td>
+                        <td style={{padding:'5px 8px',fontWeight:600,color:wasteColor}}>{wasteCell}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
-
-          {/* Accuracy */}
-          {accuracyByDow.length > 0 && (
-            <div style={{marginBottom:16}}>
-              <div style={{fontSize:11,fontWeight:600,marginBottom:6,opacity:0.7}}>{T.prevItemAccTitle}</div>
-              <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
-                {accuracyByDow.map(a=>(
-                  <div key={a.dow} style={{padding:'6px 10px',borderRadius:7,background:'rgba(34,197,94,0.08)',border:'1px solid rgba(34,197,94,0.2)',fontSize:11}}>
-                    <span style={{opacity:0.6}}>{a.name}: </span><strong style={{color:'#22c55e'}}>{a.acc}%</strong>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Weather correlation */}
-          <WeatherCorrelationSection product={product} last30={last30} weatherMap={weatherMap} onUpdateSensitivity={onUpdateSensitivity} T={T} t={t} lang={lang}/>
         </>
       )}
     </div>
@@ -1048,45 +1287,117 @@ function ProductionListView({ products, allSales, weatherMap, T, t, lang }) {
   const [customStart, setCustomStart] = useState(toDateStr(new Date()));
   const [customEnd, setCustomEnd] = useState(addDays(toDateStr(new Date()), 2));
   const [stockOverrides, setStockOverrides] = useState({});
+  const [stockInitialized, setStockInitialized] = useState(false);
   const [generated, setGenerated] = useState(null);
 
-  const today = toDateStr(new Date());
-  const startDate = range === 'custom' ? customStart : addDays(today, 1);
-  const endDate = range === '7' ? addDays(today, 7) : range === '3' ? addDays(today, 3) : customEnd;
+  // Auto-populate On Hand from most recent quantity_remaining in sales data
+  useEffect(() => {
+    if (stockInitialized || allSales.length === 0 || products.length === 0) return;
+    const defaults = {};
+    products.filter(p=>p.active).forEach(p => {
+      const recent = allSales
+        .filter(s => s.product_id === p.id && s.quantity_remaining != null)
+        .sort((a,b) => b.date.localeCompare(a.date))[0];
+      if (recent?.quantity_remaining != null) {
+        defaults[p.id] = String(recent.quantity_remaining);
+      }
+    });
+    if (Object.keys(defaults).length > 0) {
+      setStockOverrides(defaults);
+      setStockInitialized(true);
+    }
+  }, [allSales, products]);
 
-  const getDates = () => {
+  const today = toDateStr(new Date());
+  const getStartDate = (r=range) => r === 'custom' ? customStart : addDays(today, 1);
+  const getEndDate   = (r=range) => r === '7' ? addDays(today, 7) : r === '3' ? addDays(today, 3) : customEnd;
+  const startDate = getStartDate();
+  const endDate   = getEndDate();
+
+  const getDates = (r=range) => {
+    const s = getStartDate(r), e = getEndDate(r);
     const dates = [];
-    let d = startDate;
-    while (d <= endDate) { dates.push(d); d = addDays(d, 1); }
+    let d = s;
+    while (d <= e) { dates.push(d); d = addDays(d, 1); }
     return dates;
   };
 
-  const generate = () => {
-    const dates = getDates();
+  const generate = (rangeOverride) => {
+    const r = rangeOverride || range;
+    const dates = getDates(r);
     const activeProducts = products.filter(p=>p.active);
     const list = [];
-
-    // Group by shelf life
+    const weatherAnnotations = [];
+    const adjustments = [];
     const batchMap = {};
+
     activeProducts.forEach(p => {
       if (p.shelf_life_days <= 1) {
-        // Daily
+        // Daily products
+        const dailyPreds = [];
         dates.forEach(date => {
           const r = computePrediction(p.id, date, allSales, weatherMap, p);
           const onHand = parseInt(stockOverrides[p.id] || 0);
           const toMake = Math.max(0, r.prediction - (date === dates[0] ? onHand : 0));
-          list.push({ product: p, date, forecast: r.prediction, onHand: date===dates[0]?onHand:0, toMake, type:'daily' });
+          list.push({ product: p, date, forecast: r.prediction, onHand: date===dates[0]?onHand:0, toMake, type:'daily', weatherFactor: r.weatherFactor });
+          dailyPreds.push(r.prediction);
+
+          // Collect per-date weather annotations for weather-sensitive products
+          if (r.weatherFactor !== 0 && p.weather_sensitivity !== 0) {
+            const w = weatherMap[date];
+            if (w) {
+              const icon = conditionToIcon(weatherCodeToCondition(w.weather_code));
+              const pctStr = (r.weatherFactor >= 0 ? '+' : '') + Math.round(r.weatherFactor * 100) + '%';
+              weatherAnnotations.push({ date, product: p, factor: r.weatherFactor, icon, temp: Math.round(w.temp_max ?? 0), pctStr });
+            }
+          }
         });
+
+        // Smart adjustments: base_quantity (per-day baseline) vs avg predicted
+        if (p.base_quantity > 0 && dailyPreds.length > 0) {
+          const avgPred = Math.round(dailyPreds.reduce((a,b)=>a+b,0) / dailyPreds.length);
+          const diff = avgPred - p.base_quantity;
+          const diffPct = p.base_quantity > 0 ? diff / p.base_quantity : 0;
+          let reason = T.prevListAdjOnTrack;
+          if (diffPct < -0.10) reason = T.prevListAdjOverprod; // model predicts less than baseline → overproduction if keeping base
+          else if (diffPct > 0.10) reason = T.prevListAdjStockout; // model predicts more → stockout risk if keeping base
+          adjustments.push({ product: p, baseQty: p.base_quantity, avgPredicted: avgPred, diff, reason, isBatch: false });
+        }
       } else {
-        // Batch
-        const total = dates.reduce((sum, date) => sum + computePrediction(p.id, date, allSales, weatherMap, p).prediction, 0);
+        // Batch products
+        let totalPred = 0;
+        dates.forEach(date => {
+          const r = computePrediction(p.id, date, allSales, weatherMap, p);
+          totalPred += r.prediction;
+          if (r.weatherFactor !== 0 && p.weather_sensitivity !== 0) {
+            const w = weatherMap[date];
+            if (w) {
+              const icon = conditionToIcon(weatherCodeToCondition(w.weather_code));
+              const pctStr = (r.weatherFactor >= 0 ? '+' : '') + Math.round(r.weatherFactor * 100) + '%';
+              weatherAnnotations.push({ date, product: p, factor: r.weatherFactor, icon, temp: Math.round(w.temp_max ?? 0), pctStr });
+            }
+          }
+        });
+        const total = Math.round(totalPred);
         const onHand = parseInt(stockOverrides[p.id] || 0);
         const toMake = Math.max(0, total - onHand);
         if (!batchMap[p.id]) batchMap[p.id] = { product:p, total, onHand, toMake, type:'batch', dates };
+
+        // Smart adjustments for batch: base_quantity × days vs total predicted
+        const baseTotal = p.base_quantity * dates.length;
+        if (baseTotal > 0) {
+          const diff = total - baseTotal;
+          const diffPct = Math.abs(diff) / baseTotal;
+          let reason = T.prevListAdjOnTrack;
+          if (diff < -baseTotal * 0.10) reason = T.prevListAdjOverprod;
+          else if (diff > baseTotal * 0.10) reason = T.prevListAdjStockout;
+          adjustments.push({ product: p, baseQty: baseTotal, avgPredicted: total, diff: Math.round(diff), reason, isBatch: true });
+        }
       }
     });
+
     const batchItems = Object.values(batchMap);
-    setGenerated({ list, batchItems, dates });
+    setGenerated({ list, batchItems, dates, weatherAnnotations, adjustments });
   };
 
   const buildHTML = () => {
@@ -1099,7 +1410,29 @@ function ProductionListView({ products, allSales, weatherMap, T, t, lang }) {
     generated.batchItems.forEach(item => {
       rows += `<tr><td>${item.product.name}</td><td>${T.prevListBatch}${item.product.shelf_life_days}${T.prevListDays}</td><td>${item.total}</td><td>${item.onHand}</td><td><strong>${item.toMake}</strong></td></tr>`;
     });
-    return `<html><head><meta charset="utf-8"><title>${title}</title><style>body{font-family:'Outfit',sans-serif;margin:32px;color:#111}h1{font-size:18px;margin-bottom:4px}p{font-size:12px;color:#666;margin-bottom:20px}table{width:100%;border-collapse:collapse;font-size:13px}th{background:#f3f4f6;padding:8px 10px;text-align:left;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.5px}td{padding:8px 10px;border-bottom:1px solid #e5e7eb}strong{color:#f97316;font-size:15px}@media print{body{margin:16px}}</style></head><body><h1>${title}</h1><table><thead><tr><th>${T.prevColProduct}</th><th>${T.prevColDate}</th><th>${T.prevListForecast}</th><th>${T.prevListOnHand}</th><th>${T.prevListToMake}</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
+
+    let weatherSection = '';
+    if (generated.weatherAnnotations.length > 0) {
+      weatherSection = `<h2 style="font-size:13px;margin-top:28px;margin-bottom:8px">${T.prevListWeatherAnno}</h2><ul style="font-size:12px;padding-left:18px;margin:0">`;
+      generated.weatherAnnotations.forEach(a => {
+        weatherSection += `<li>${a.icon} ${formatDateShort(a.date,lang)} ${a.temp}°C — ${a.product.name} <strong>${a.pctStr}</strong> vs base</li>`;
+      });
+      weatherSection += '</ul>';
+    }
+
+    let adjSection = '';
+    if (generated.adjustments.length > 0) {
+      adjSection = `<h2 style="font-size:13px;margin-top:28px;margin-bottom:8px">${T.prevListAdjTitle}</h2><table><thead><tr><th>${T.prevColProduct}</th><th>${T.prevListAdjCurrent}</th><th>${T.prevListAdjSuggested}</th><th>${T.prevListAdjDiff}</th><th>${T.prevListAdjReason}</th></tr></thead><tbody>`;
+      generated.adjustments.forEach(a => {
+        const diffStr = (a.diff >= 0 ? '+' : '') + a.diff;
+        adjSection += `<tr><td>${a.product.name}${a.isBatch?' (batch)':''}</td><td>${a.baseQty}</td><td>${a.avgPredicted}</td><td>${diffStr}</td><td>${a.reason}</td></tr>`;
+      });
+      const savings = generated.adjustments.filter(a=>a.diff<0).reduce((sum,a)=>sum+Math.abs(a.diff),0);
+      adjSection += `</tbody></table>`;
+      if (savings > 0) adjSection += `<p style="font-size:11px;color:#f97316;margin-top:8px">💡 ${T.prevListSavingsTotal(savings, T.prevColProduct)}</p>`;
+    }
+
+    return `<html><head><meta charset="utf-8"><title>${title}</title><style>body{font-family:'Outfit',sans-serif;margin:32px;color:#111}h1{font-size:18px;margin-bottom:4px}h2{color:#374151}p{font-size:12px;color:#666;margin-bottom:20px}table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px}th{background:#f3f4f6;padding:8px 10px;text-align:left;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.5px}td{padding:8px 10px;border-bottom:1px solid #e5e7eb}strong{color:#f97316;font-size:15px}@media print{body{margin:16px}}</style></head><body><h1>${title}</h1><table><thead><tr><th>${T.prevColProduct}</th><th>${T.prevColDate}</th><th>${T.prevListForecast}</th><th>${T.prevListOnHand}</th><th>${T.prevListToMake}</th></tr></thead><tbody>${rows}</tbody></table>${weatherSection}${adjSection}</body></html>`;
   };
 
   const inp = { background:t.inputBg, border:`1px solid ${t.inputBorder}`, borderRadius:5, color:'inherit', fontSize:12, padding:'5px 8px', outline:'none', fontFamily:"'Outfit',sans-serif" };
@@ -1111,7 +1444,7 @@ function ProductionListView({ products, allSales, weatherMap, T, t, lang }) {
       <div style={{display:'flex',gap:8,marginBottom:10,flexWrap:'wrap',alignItems:'center'}}>
         <span style={{fontSize:11,opacity:0.6}}>{T.prevListRange}:</span>
         {[['3',T.prevListDays3],['7',T.prevListDays7],['custom',T.prevListCustom]].map(([v,l])=>(
-          <button key={v} onClick={()=>setRange(v)} style={{padding:'4px 12px',borderRadius:12,border:`1px solid ${range===v?'#f97316':t.cardBorder}`,background:range===v?'rgba(249,115,22,0.15)':t.section,color:range===v?'#f97316':'inherit',cursor:'pointer',fontSize:11}}>{l}</button>
+          <button key={v} onClick={()=>{ setRange(v); if(v!=='custom') generate(v); else setGenerated(null); }} style={{padding:'4px 12px',borderRadius:12,border:`1px solid ${range===v?'#f97316':t.cardBorder}`,background:range===v?'rgba(249,115,22,0.15)':t.section,color:range===v?'#f97316':'inherit',cursor:'pointer',fontSize:11}}>{l}</button>
         ))}
         {range==='custom'&&<><input type="date" value={customStart} onChange={e=>setCustomStart(e.target.value)} style={inp}/><span style={{opacity:0.4}}>→</span><input type="date" value={customEnd} onChange={e=>setCustomEnd(e.target.value)} style={inp}/></>}
       </div>
@@ -1119,7 +1452,10 @@ function ProductionListView({ products, allSales, weatherMap, T, t, lang }) {
       {/* Stock on hand */}
       {products.filter(p=>p.active).length > 0 && (
         <div style={{marginBottom:12,padding:'10px 12px',background:t.section,borderRadius:7,border:`1px solid ${t.cardBorder}`}}>
-          <div style={{fontSize:11,fontWeight:600,marginBottom:6,opacity:0.7}}>{T.prevListCurrentStock}</div>
+          <div style={{display:'flex',alignItems:'baseline',gap:8,marginBottom:6}}>
+            <div style={{fontSize:11,fontWeight:600,opacity:0.7}}>{T.prevListCurrentStock}</div>
+            <div style={{fontSize:10,opacity:0.45}}>{lang==='en'?'auto-filled from last entry · edit to override':'rempli depuis la dernière saisie · modifiable'}</div>
+          </div>
           <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
             {products.filter(p=>p.active).map(p=>(
               <div key={p.id} style={{display:'flex',alignItems:'center',gap:5}}>
@@ -1136,35 +1472,110 @@ function ProductionListView({ products, allSales, weatherMap, T, t, lang }) {
 
       {generated && (
         <div>
-          <div style={{overflowX:'auto',marginBottom:12}}>
-            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-              <thead><tr style={{background:t.section}}>
-                {[T.prevColProduct,T.prevColDate,T.prevListForecast,T.prevListOnHand,T.prevListToMake].map(h=>(
-                  <th key={h} style={{padding:'7px 10px',textAlign:'left',fontWeight:700,fontSize:11,opacity:0.7,borderBottom:`2px solid ${t.cardBorder}`}}>{h}</th>
-                ))}
-              </tr></thead>
-              <tbody>
-                {generated.list.map((item,i)=>(
-                  <tr key={i} style={{borderBottom:`1px solid ${t.cardBorder}`}}>
-                    <td style={{padding:'6px 10px',fontWeight:600}}>{item.product.name}</td>
-                    <td style={{padding:'6px 10px',opacity:0.7}}>{formatDateShort(item.date,lang)}</td>
-                    <td style={{padding:'6px 10px'}}>{item.forecast}</td>
-                    <td style={{padding:'6px 10px'}}>{item.onHand||0}</td>
-                    <td style={{padding:'6px 10px',fontWeight:800,color:'#f97316',fontSize:13}}>{item.toMake}</td>
-                  </tr>
-                ))}
-                {generated.batchItems.map((item,i)=>(
-                  <tr key={`b${i}`} style={{borderBottom:`1px solid ${t.cardBorder}`,background:'rgba(249,115,22,0.03)'}}>
-                    <td style={{padding:'6px 10px',fontWeight:600}}>{item.product.name}</td>
-                    <td style={{padding:'6px 10px',fontSize:10,opacity:0.6}}>{T.prevListBatch}{item.product.shelf_life_days}{T.prevListDays}</td>
-                    <td style={{padding:'6px 10px'}}>{item.total}</td>
-                    <td style={{padding:'6px 10px'}}>{item.onHand}</td>
-                    <td style={{padding:'6px 10px',fontWeight:800,color:'#f97316',fontSize:13}}>{item.toMake}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {/* Daily items rendered as per-day cards */}
+          {generated.dates.map(date => {
+            const dayItems = generated.list.filter(item => item.date === date);
+            if (dayItems.length === 0) return null;
+            const w = weatherMap[date];
+            const weatherNote = w ? ` — ${conditionToIcon(weatherCodeToCondition(w.weather_code))} ${Math.round(w.temp_max||0)}°/${Math.round(w.temp_min||0)}°` : '';
+            const hasWeatherAdj = dayItems.some(item => item.weatherFactor !== 0);
+            return (
+              <div key={date} style={{marginBottom:10,padding:'14px 16px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:10}}>
+                <div style={{fontSize:13,fontWeight:700,marginBottom:10}}>
+                  🗓️ {formatDateShort(date,lang)}{weatherNote}
+                </div>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                  <thead><tr style={{opacity:0.6}}>
+                    {[T.prevColProduct,T.prevListForecast,T.prevListOnHand,T.prevListToMake].map(h=>(
+                      <th key={h} style={{padding:'4px 8px',textAlign:'left',fontWeight:600,fontSize:10,borderBottom:`1px solid ${t.cardBorder}`}}>{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {dayItems.map((item,i)=>(
+                      <tr key={i} style={{borderBottom:`1px solid ${t.cardBorder}`}}>
+                        <td style={{padding:'5px 8px',fontWeight:600}}>
+                          {item.product.name}
+                          {item.weatherFactor !== 0 && (
+                            <span style={{marginLeft:7,fontSize:9,padding:'1px 5px',borderRadius:8,background:item.weatherFactor>0?'rgba(34,197,94,0.1)':'rgba(239,68,68,0.1)',color:item.weatherFactor>0?'#22c55e':'#ef4444',fontWeight:700,display:'inline-block'}}>
+                              {item.weatherFactor>=0?'+':''}{Math.round(item.weatherFactor*100)}%
+                            </span>
+                          )}
+                        </td>
+                        <td style={{padding:'5px 8px'}}>{item.forecast}</td>
+                        <td style={{padding:'5px 8px'}}>{item.onHand||0}</td>
+                        <td style={{padding:'5px 8px',fontWeight:800,color:'#f97316',fontSize:13}}>{item.toMake}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
+
+          {/* Batch items card */}
+          {generated.batchItems.length > 0 && (
+            <div style={{marginBottom:10,padding:'14px 16px',background:t.section,border:`1px solid rgba(249,115,22,0.15)`,borderRadius:10}}>
+              <div style={{fontSize:13,fontWeight:700,marginBottom:3}}>📦 {lang==='en'?'Batch items':'Produits en lot'} — {generated.dates.length} {lang==='en'?'days':'jours'}</div>
+              <div style={{fontSize:11,opacity:0.5,marginBottom:10}}>{lang==='en'?'These products have shelf life > 1 day — make once for the full period, not daily':'Ces produits ont une durée de vie > 1 jour — à produire en lot pour toute la période'}</div>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                <thead><tr style={{opacity:0.6}}>
+                  {[T.prevColProduct, generated.dates.length+' '+(lang==='en'?'day':'j')+' total', T.prevListOnHand, T.prevListToMake].map(h=>(
+                    <th key={h} style={{padding:'4px 8px',textAlign:'left',fontWeight:600,fontSize:10,borderBottom:`1px solid ${t.cardBorder}`}}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {generated.batchItems.map((item,i)=>(
+                    <tr key={i} style={{borderBottom:`1px solid ${t.cardBorder}`}}>
+                      <td style={{padding:'5px 8px',fontWeight:600}}>{item.product.name}<span style={{fontSize:10,opacity:0.5,marginLeft:4}}>({lang==='en'?'shelf life':'durée de vie'}: {item.product.shelf_life_days}{lang==='en'?' day':' j'}{item.product.shelf_life_days>1?'s':''})</span></td>
+                      <td style={{padding:'5px 8px'}}>{item.total}</td>
+                      <td style={{padding:'5px 8px'}}>{item.onHand}</td>
+                      <td style={{padding:'5px 8px',fontWeight:800,color:'#f97316',fontSize:13}}>{item.toMake}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+
+          {/* Smart adjustments table */}
+          {generated.adjustments.length > 0 ? (
+            <div style={{marginBottom:12,padding:'10px 12px',background:t.section,borderRadius:7,border:`1px solid ${t.cardBorder}`}}>
+              <div style={{fontSize:11,fontWeight:700,marginBottom:8,opacity:0.8}}>{T.prevListAdjTitle}</div>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+                <thead><tr style={{opacity:0.6}}>
+                  {[T.prevColProduct,T.prevListAdjCurrent,T.prevListAdjSuggested,T.prevListAdjDiff,T.prevListAdjReason].map(h=>(
+                    <th key={h} style={{padding:'4px 8px',textAlign:'left',fontWeight:600,borderBottom:`1px solid ${t.cardBorder}`}}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {generated.adjustments.map((a,i)=>(
+                    <tr key={i} style={{borderBottom:`1px solid ${t.cardBorder}`}}>
+                      <td style={{padding:'5px 8px',fontWeight:600}}>{a.product.name}{a.isBatch?` (×${generated.dates.length}d)`:''}</td>
+                      <td style={{padding:'5px 8px',fontFamily:"'DM Mono',monospace"}}>{a.baseQty}</td>
+                      <td style={{padding:'5px 8px',fontFamily:"'DM Mono',monospace"}}>{a.avgPredicted}</td>
+                      <td style={{padding:'5px 8px',fontWeight:700,color:a.diff<0?'#22c55e':a.diff>0?'#f59e0b':'inherit',fontFamily:"'DM Mono',monospace"}}>
+                        {a.diff>=0?'+':''}{a.diff}
+                      </td>
+                      <td style={{padding:'5px 8px',fontSize:10,opacity:0.8}}>{a.reason}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {(() => {
+                const savings = generated.adjustments.filter(a=>a.diff<0).reduce((sum,a)=>sum+Math.abs(a.diff),0);
+                return savings > 0 ? (
+                  <div style={{marginTop:8,fontSize:11,color:'#22c55e'}}>
+                    💡 {T.prevListSavingsTotal(savings, lang==='en'?'units':'unités')}
+                  </div>
+                ) : null;
+              })()}
+            </div>
+          ) : products.filter(p=>p.active&&p.base_quantity>0).length===0 ? (
+            <div style={{marginBottom:12,fontSize:11,opacity:0.5,fontStyle:'italic'}}>{T.prevListNoAdj}</div>
+          ) : null}
+
+          {/* Print/Export buttons */}
           <div style={{display:'flex',gap:8}}>
             <button onClick={()=>window.dispatchEvent(new CustomEvent('biq:pdf-preview',{detail:buildHTML()}))}
               style={{padding:'7px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:12}}>{T.prevListPrint}</button>
@@ -1299,6 +1710,71 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
     }
   };
 
+  // ── Sample data seeding (demo only) ──────────────────────────────────────────
+  const seedSampleData = async () => {
+    // 5 products typical of a QSR / burger restaurant
+    const sampleProds = [
+      { id: uuid(), name: lang==='en'?'Hamburger Buns':'Pains à hamburger',   category: lang==='en'?'Bread':'Pain',      base_quantity:80,  shelf_life_days:1, weather_sensitivity: 0, active:1, notes:'' },
+      { id: uuid(), name: lang==='en'?'Hot Dog Buns':'Pains à hot-dog',        category: lang==='en'?'Bread':'Pain',      base_quantity:30,  shelf_life_days:1, weather_sensitivity: 0, active:1, notes:'' },
+      { id: uuid(), name: lang==='en'?'Milkshake':'Milkshake',                 category: lang==='en'?'Drinks':'Boissons', base_quantity:25,  shelf_life_days:1, weather_sensitivity: 2, active:1, notes:'' },
+      { id: uuid(), name: lang==='en'?'Beef Patties':'Galettes de bœuf',       category: lang==='en'?'Meats':'Viandes',   base_quantity:90,  shelf_life_days:2, weather_sensitivity: 1, active:1, notes:'' },
+      { id: uuid(), name: lang==='en'?'Poutine Sauce':'Sauce poutine',         category: lang==='en'?'Sauces':'Sauces',   base_quantity:15,  shelf_life_days:3, weather_sensitivity:-1, active:1, notes:'' },
+    ];
+    for (const p of sampleProds) await window.api.forecast.products.upsert(p);
+
+    // 14 days of sales: March 1–14, 2026
+    // Week 1 (Mar 1–7) slightly lower; Week 2 (Mar 8–14) slightly higher — shows upward trend
+    // [hamburger, hotdog, milkshake, patty, sauce] — [made, sold, stockout]
+    const salesW1 = {
+      sun: [[75,64,0],[28,19,0],[22,13,0],[85,70,0],[15,11,0]],
+      mon: [[78,51,0],[28,13,0],[18,10,0],[88,57,0],[14, 7,0]],
+      tue: [[78,65,0],[28,19,0],[18,12,0],[88,73,0],[14, 9,0]],
+      wed: [[78,67,0],[28,21,0],[18,14,0],[88,75,0],[14,11,0]],
+      thu: [[78,71,0],[28,23,0],[18,16,0],[88,79,0],[14,12,0]],
+      fri: [[82,78,0],[28,25,0],[20,18,0],[88,81,0],[14,13,0]],
+      sat: [[78,75,1],[33,27,0],[24,17,0],[88,81,0],[19,16,0]],
+    };
+    const salesW2 = {
+      sun: [[75,68,0],[30,22,0],[25,16,0],[90,76,0],[15,12,0]],
+      mon: [[80,56,0],[30,16,0],[20,13,0],[90,61,0],[15, 9,0]],
+      tue: [[80,71,0],[30,23,0],[20,15,0],[90,79,0],[15,11,0]],
+      wed: [[80,73,0],[30,25,0],[20,17,0],[90,81,0],[15,13,0]],
+      thu: [[80,76,0],[30,27,0],[20,19,0],[90,83,0],[15,14,0]],
+      fri: [[85,83,0],[32,29,0],[22,21,0],[92,86,0],[15,15,0]],
+      sat: [[80,80,1],[35,31,0],[26,21,0],[92,86,0],[20,19,0]],
+    };
+    // March 1=Sun, 7=Sat, 8=Sun, 14=Sat
+    const allDays = [
+      { date:'2026-03-01', m:salesW1, dow:'sun' },
+      { date:'2026-03-02', m:salesW1, dow:'mon' },
+      { date:'2026-03-03', m:salesW1, dow:'tue' },
+      { date:'2026-03-04', m:salesW1, dow:'wed' },
+      { date:'2026-03-05', m:salesW1, dow:'thu' },
+      { date:'2026-03-06', m:salesW1, dow:'fri' },
+      { date:'2026-03-07', m:salesW1, dow:'sat' },
+      { date:'2026-03-08', m:salesW2, dow:'sun' },
+      { date:'2026-03-09', m:salesW2, dow:'mon' },
+      { date:'2026-03-10', m:salesW2, dow:'tue' },
+      { date:'2026-03-11', m:salesW2, dow:'wed' },
+      { date:'2026-03-12', m:salesW2, dow:'thu' },
+      { date:'2026-03-13', m:salesW2, dow:'fri' },
+      { date:'2026-03-14', m:salesW2, dow:'sat' },
+    ];
+    for (const day of allDays) {
+      const matrix = day.m[day.dow];
+      for (let i = 0; i < sampleProds.length; i++) {
+        const [made, sold, stockout] = matrix[i];
+        await window.api.forecast.sales.upsert({
+          id: uuid(), product_id: sampleProds[i].id, date: day.date,
+          quantity_made: made, quantity_sold: sold, quantity_remaining: made - sold,
+          stockout, source: 'manual',
+        });
+      }
+    }
+    await loadProducts();
+    await loadSales();
+  };
+
   const activeProducts = useMemo(() => products.filter(p=>p.active), [products]);
 
   // Compute predictions for current week
@@ -1341,23 +1817,29 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
   const confDim = { base:0.3, low:0.55, medium:0.75, high:1 };
 
   const subTabs = [
-    { id:'forecast', label: T.prevSubForecast },
-    { id:'import', label: T.prevSubImport },
-    { id:'alerts', label: T.prevSubAlerts },
+    { id:'forecast',   label: T.prevSubForecast },
+    { id:'import',     label: T.prevSubImport },
+    { id:'alerts',     label: T.prevSubAlerts },
     { id:'production', label: T.prevSubProdList },
-    { id:'products', label: T.prevSubProducts },
+    { id:'products',   label: T.prevSubProducts },
+    { id:'ai',         label: T.prevSubAI, isPro: true },
   ];
 
   return (
     <div style={{display:'flex',flexDirection:'column',gap:0}}>
       {/* Sub-nav */}
       <div style={{display:'flex',gap:0,borderBottom:`1px solid ${t.cardBorder}`,marginBottom:16,overflowX:'auto'}}>
-        {subTabs.map(tab=>(
-          <button key={tab.id} onClick={()=>{setSubView(tab.id);setSelectedProduct(null);}}
-            style={{background:'none',border:'none',borderBottom:subView===tab.id?'2px solid #f97316':'2px solid transparent',color:subView===tab.id?'#f97316':t.textMuted,fontSize:12,fontWeight:600,padding:'8px 14px',cursor:'pointer',whiteSpace:'nowrap',transition:'all 0.15s'}}>
-            {tab.label}
-          </button>
-        ))}
+        {subTabs.map(tab=>{
+          const isAI = tab.id === 'ai';
+          const active = subView === tab.id;
+          return (
+            <button key={tab.id} onClick={()=>{setSubView(tab.id);setSelectedProduct(null);}}
+              style={{background:'none',border:'none',borderBottom:active?(isAI?'2px solid #a78bfa':'2px solid #f97316'):'2px solid transparent',color:active?(isAI?'#a78bfa':'#f97316'):t.textMuted,fontSize:12,fontWeight:600,padding:'8px 14px',cursor:'pointer',whiteSpace:'nowrap',transition:'all 0.15s',display:'flex',alignItems:'center',gap:4}}>
+              {tab.label}
+              {isAI && !canUse('aiAnalysis') && <span style={{fontSize:8,padding:'1px 4px',borderRadius:3,background:'rgba(167,139,250,0.15)',color:'#a78bfa',fontWeight:700,lineHeight:1.5}}>PRO</span>}
+            </button>
+          );
+        })}
       </div>
 
       {/* Item detail overlay */}
@@ -1367,6 +1849,7 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
           allSales={allSales}
           weatherMap={weatherMap}
           onBack={()=>setSelectedProduct(null)}
+          onBackToAI={()=>{setSelectedProduct(null);setSubView('ai');}}
           onUpdateSensitivity={(prod,sens)=>saveProduct({...prod,weather_sensitivity:sens})}
           canUse={canUse} T={T} t={t} lang={lang}
         />
@@ -1388,75 +1871,128 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
             <span style={{fontSize:13,fontWeight:700,flex:1}}>{T.prevWeekOf(formatDateShort(currentWeekMonday, lang))} → {formatDateShort(addDays(currentWeekMonday,6), lang)}</span>
             <button onClick={()=>setCurrentWeekMonday(m=>addDays(m,7))} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,padding:'5px 10px',cursor:'pointer',fontSize:13}}>→</button>
             <button onClick={()=>setCurrentWeekMonday(getMondayOf(toDateStr(new Date())))} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:'#f97316',padding:'5px 10px',cursor:'pointer',fontSize:11,fontWeight:600}}>{T.prevToday}</button>
-            <AIAnalysisButton canUse={canUse} allSales={allSales} products={activeProducts} weatherMap={weatherMap} weekDates={weekDates} predictions={predictions} T={T} t={t} lang={lang} context="weekly"/>
+            <button onClick={()=>{setSubView('ai');setSelectedProduct(null);}} style={{padding:'5px 12px',borderRadius:6,border:'1px solid rgba(167,139,250,0.3)',background:'rgba(167,139,250,0.08)',color:'#a78bfa',cursor:'pointer',fontSize:11,fontWeight:600}}>
+              ✨ {lang==='en'?'AI Analysis':'Analyse IA'}{!canUse('aiAnalysis')&&<span style={{marginLeft:4,fontSize:8,verticalAlign:'middle',padding:'1px 4px',borderRadius:3,background:'rgba(167,139,250,0.2)'}}>PRO</span>}
+            </button>
           </div>
 
-          {/* Weather bar */}
-          <div style={{display:'grid',gridTemplateColumns:`auto repeat(7,1fr)`,gap:0,marginBottom:0,border:`1px solid ${t.cardBorder}`,borderRadius:'8px 8px 0 0',overflow:'hidden'}}>
-            <div style={{padding:'6px 8px',background:t.section,fontSize:10,fontWeight:600,opacity:0.5,borderRight:`1px solid ${t.cardBorder}`,display:'flex',alignItems:'center'}}>{T.prevWeatherBar}</div>
-            {weekDates.map(date => {
-              const w = weatherMap[date];
-              const isManual = w?.source === 'manual';
-              const cond = w ? weatherCodeToCondition(w.weather_code) : null;
-              return (
-                <div key={date} style={{padding:'5px 4px',background:t.section,textAlign:'center',borderRight:`1px solid ${t.cardBorder}`,cursor:'pointer',transition:'background 0.1s'}}
-                  title={isManual ? T.prevWeatherManual : T.prevWeatherAuto}
-                  onClick={()=>setWeatherOverrideDate(date)}>
-                  <div style={{fontSize:13}}>{w ? conditionToIcon(cond) : '—'}</div>
-                  <div style={{fontSize:10,fontWeight:600}}>{w ? `${Math.round(w.temp_max||0)}°` : '—'}</div>
-                  <div style={{fontSize:9,opacity:0.5}}>{isManual?'✏️':'auto'}</div>
-                </div>
-              );
-            })}
-          </div>
+          {/* Inline alert summary */}
+          {(() => {
+            if (activeProducts.length === 0) return null;
+            const topAlerts = computeAlerts(activeProducts, allSales, T, lang);
+            const badges = [
+              ...topAlerts.stockout.map(a => ({ color:'#fca5a5', bg:'rgba(239,68,68,0.08)', border:'rgba(239,68,68,0.2)', text:`🔴 ${a.product.name} — ${a.dowName}` })),
+              ...topAlerts.overproduction.map(a => ({ color:'#fde68a', bg:'rgba(234,179,8,0.08)', border:'rgba(234,179,8,0.2)', text:`🟡 ${a.product.name} — ${a.dowName} ${a.wastePct}%` })),
+              ...topAlerts.optimized.slice(0,2).map(a => ({ color:'#86efac', bg:'rgba(34,197,94,0.08)', border:'rgba(34,197,94,0.2)', text:`🟢 ${a.product.name}` })),
+            ].slice(0,4);
+            if (!badges.length) return null;
+            return (
+              <div style={{display:'flex',gap:6,marginBottom:8,flexWrap:'wrap'}}>
+                {badges.map((b,i)=>(
+                  <span key={i} style={{padding:'5px 10px',borderRadius:7,fontSize:11,background:b.bg,border:`1px solid ${b.border}`,color:b.color}}>{b.text}</span>
+                ))}
+              </div>
+            );
+          })()}
 
-          {/* Forecast table */}
-          {activeProducts.length === 0 ? (
-            <div style={{textAlign:'center',padding:'30px 0',fontSize:12,opacity:0.5,border:`1px solid ${t.cardBorder}`,borderTop:'none',borderRadius:'0 0 8px 8px'}}>{T.prevNoProducts}</div>
-          ) : (
-            <div style={{overflowX:'auto',border:`1px solid ${t.cardBorder}`,borderTop:'none',borderRadius:'0 0 8px 8px'}}>
-              <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-                <thead>
-                  <tr style={{borderBottom:`2px solid ${t.cardBorder}`,background:t.section}}>
-                    <th style={{textAlign:'left',padding:'7px 10px',fontSize:11,fontWeight:700,minWidth:100}}>{T.prevColProduct}</th>
-                    {weekDates.map(d=>(
-                      <th key={d} style={{textAlign:'center',padding:'7px 5px',fontSize:10,fontWeight:600,minWidth:44}}>
-                        <div>{getDayName(d,lang)}</div>
-                        <div style={{fontWeight:400,opacity:0.5,fontSize:9}}>{d.slice(8)}</div>
-                      </th>
-                    ))}
-                    <th style={{textAlign:'center',padding:'7px 5px',fontSize:11,fontWeight:700,minWidth:50}}>{T.prevColTotal}</th>
-                    <th style={{textAlign:'center',padding:'7px 5px',fontSize:11,fontWeight:700,minWidth:40}}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {activeProducts.map(p => {
-                    const weekTotal = weekDates.reduce((s,d) => s + (predictions[p.id]?.[d]?.prediction||0), 0);
-                    // Alert for this product
-                    const pAlerts = computeAlerts([p], allSales, T, lang);
-                    const alertIcon = pAlerts.stockout.length ? '🔴' : pAlerts.overproduction.length ? '🟡' : pAlerts.optimized.length ? '🟢' : '';
+          {/* Forecast table — weather row is first row in thead so columns align perfectly */}
+          <div style={{overflowX:'auto',border:`1px solid ${t.cardBorder}`,borderRadius:8}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+              <thead>
+                {/* Weather row */}
+                <tr style={{background:t.section,borderBottom:`1px solid ${t.cardBorder}`}}>
+                  <th style={{textAlign:'left',padding:'6px 8px',fontSize:10,fontWeight:600,opacity:0.5,minWidth:100}}>{T.prevWeatherBar}</th>
+                  {weekDates.map(date => {
+                    const w = weatherMap[date];
+                    const isManual = w?.source === 'manual';
+                    const cond = w ? weatherCodeToCondition(w.weather_code) : null;
                     return (
-                      <tr key={p.id} style={{borderBottom:`1px solid ${t.cardBorder}`,cursor:'pointer'}} onClick={()=>setSelectedProduct(p)}>
-                        <td style={{padding:'6px 10px',fontWeight:600,whiteSpace:'nowrap'}}>{p.name}</td>
-                        {weekDates.map(date => {
-                          const r = predictions[p.id]?.[date];
-                          if (!r) return <td key={date} style={{textAlign:'center',padding:'6px 4px'}}>—</td>;
-                          return (
-                            <td key={date} style={{textAlign:'center',padding:'6px 4px',opacity:confDim[r.confidence]}}
-                              onClick={e=>{e.stopPropagation();setCellDetail({product:p,date,result:r});}}>
-                              <span style={{fontWeight:r.confidence==='high'?700:400,cursor:'pointer',borderBottom:r.confidence!=='high'?'1px dotted currentColor':'none'}}>{r.prediction}</span>
-                            </td>
-                          );
-                        })}
-                        <td style={{textAlign:'center',padding:'6px 5px',fontWeight:800,color:'#f97316'}}>{weekTotal}</td>
-                        <td style={{textAlign:'center',padding:'6px 5px',fontSize:14}}>{alertIcon}</td>
-                      </tr>
+                      <th key={date} style={{textAlign:'center',padding:'5px 4px',cursor:'pointer',minWidth:44,fontWeight:'normal'}}
+                        title={isManual ? T.prevWeatherManual : T.prevWeatherAuto}
+                        onClick={()=>setWeatherOverrideDate(date)}>
+                        <div style={{fontSize:14}}>{w ? conditionToIcon(cond) : '—'}</div>
+                        <div style={{fontSize:10,fontWeight:600,lineHeight:1.3}}>{w ? <><span style={{color:'#f97316'}}>{Math.round(w.temp_max||0)}°</span><span style={{opacity:0.45,fontSize:9}}>{' / '}{Math.round(w.temp_min||0)}°</span></> : ''}</div>
+                        <div style={{fontSize:9,opacity:0.45}}>{isManual?'✏️':'auto'}</div>
+                      </th>
                     );
                   })}
+                  <th style={{minWidth:50}}></th>
+                  <th style={{minWidth:40}}></th>
+                </tr>
+                {/* Day headers row */}
+                <tr style={{borderBottom:`2px solid ${t.cardBorder}`,background:t.section}}>
+                  <th style={{textAlign:'left',padding:'7px 10px',fontSize:11,fontWeight:700,minWidth:100}}>{T.prevColProduct}</th>
+                  {weekDates.map(d=>(
+                    <th key={d} style={{textAlign:'center',padding:'7px 5px',fontSize:10,fontWeight:600,minWidth:44}}>
+                      <div>{getDayName(d,lang)}</div>
+                      <div style={{fontWeight:400,opacity:0.5,fontSize:9}}>{d.slice(8)}</div>
+                    </th>
+                  ))}
+                  <th style={{textAlign:'center',padding:'7px 5px',fontSize:11,fontWeight:700,minWidth:50}}>{T.prevColTotal}</th>
+                  <th style={{textAlign:'center',padding:'7px 5px',fontSize:11,fontWeight:700,minWidth:40}}></th>
+                </tr>
+              </thead>
+              {activeProducts.length === 0 ? (
+                <tbody>
+                  <tr>
+                    <td colSpan={10} style={{textAlign:'center',padding:'30px 20px'}}>
+                      <div style={{fontSize:12,opacity:0.5,marginBottom:10}}>{T.prevNoProducts}</div>
+                      <button onClick={seedSampleData} style={{padding:'6px 16px',borderRadius:6,border:'1px solid rgba(249,115,22,0.4)',background:'rgba(249,115,22,0.08)',color:'#f97316',cursor:'pointer',fontSize:11,fontWeight:600}}>
+                        {lang==='en'?'Load demo data':'Charger données démo'}
+                      </button>
+                    </td>
+                  </tr>
                 </tbody>
-              </table>
-            </div>
-          )}
+              ) : (
+                (() => {
+                  // Group by category for table display
+                  const catGroups = {};
+                  activeProducts.forEach(p => {
+                    const cat = (p.category && p.category.trim()) || T.prevOther;
+                    if (!catGroups[cat]) catGroups[cat] = [];
+                    catGroups[cat].push(p);
+                  });
+                  const catKeys = Object.keys(catGroups).sort();
+                  const showCatRows = catKeys.length > 1;
+                  return (
+                    <tbody>
+                      {catKeys.map(cat => (
+                        <React.Fragment key={cat}>
+                          {showCatRows && (
+                            <tr style={{background:'rgba(249,115,22,0.04)'}}>
+                              <td colSpan={10} style={{padding:'10px 10px 4px',fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:'1px',borderBottom:`1px solid ${t.cardBorder}`}}>{cat}</td>
+                            </tr>
+                          )}
+                          {catGroups[cat].map(p => {
+                            const weekTotal = weekDates.reduce((s,d) => s + (predictions[p.id]?.[d]?.prediction||0), 0);
+                            const pAlerts = computeAlerts([p], allSales, T, lang);
+                            const alertIcon = pAlerts.stockout.length ? '🔴' : pAlerts.overproduction.length ? '🟡' : pAlerts.optimized.length ? '🟢' : '';
+                            return (
+                              <tr key={p.id} style={{borderBottom:`1px solid ${t.cardBorder}`,cursor:'pointer'}} onClick={()=>setSelectedProduct(p)}>
+                                <td style={{padding:'6px 10px',fontWeight:600,whiteSpace:'nowrap'}}>{p.name}</td>
+                                {weekDates.map(date => {
+                                  const r = predictions[p.id]?.[date];
+                                  if (!r) return <td key={date} style={{textAlign:'center',padding:'6px 4px'}}>—</td>;
+                                  return (
+                                    <td key={date} style={{textAlign:'center',padding:'6px 4px',opacity:confDim[r.confidence]}}
+                                      onClick={e=>{e.stopPropagation();setCellDetail({product:p,date,result:r});}}>
+                                      <span style={{fontWeight:r.confidence==='high'?700:400,cursor:'pointer',borderBottom:r.confidence!=='high'?'1px dotted currentColor':'none'}}>{r.prediction}</span>
+                                    </td>
+                                  );
+                                })}
+                                <td style={{textAlign:'center',padding:'6px 5px',fontWeight:800,color:'#f97316'}}>{weekTotal}</td>
+                                <td style={{textAlign:'center',padding:'6px 5px',fontSize:14}}>{alertIcon}</td>
+                              </tr>
+                            );
+                          })}
+                        </React.Fragment>
+                      ))}
+                    </tbody>
+                  );
+                })()
+              )}
+            </table>
+          </div>
 
           {/* Last week actuals */}
           {activeProducts.length > 0 && allSales.length > 0 && (
@@ -1504,6 +2040,7 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
               savedFormats={savedFormats}
               onSaveFormat={async (m) => { await window.api.forecast.csvMappings.save(m); await loadFormats(); }}
               T={T} t={t} lang={lang}
+              canUse={canUse} apiConfig={apiConfig} showUpgradePrompt={showUpgradePrompt}
             />
           </div>
           <div style={{padding:'16px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:8}}>
@@ -1531,7 +2068,16 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
 
       {/* PRODUCTS VIEW */}
       {subView==='products' && (
-        <ProductsView products={products} onSaveProduct={saveProduct} T={T} t={t}/>
+        <ProductsView products={products} onSaveProduct={saveProduct} T={T} t={t} lang={lang}/>
+      )}
+
+      {/* AI ANALYSIS VIEW */}
+      {subView==='ai' && (
+        <AIAnalysisView
+          canUse={canUse} allSales={allSales} products={activeProducts} weatherMap={weatherMap}
+          weekDates={weekDates} predictions={predictions} showUpgradePrompt={showUpgradePrompt}
+          apiConfig={apiConfig} T={T} t={t} lang={lang}
+        />
       )}
 
       {/* Modals */}

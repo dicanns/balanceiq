@@ -73,6 +73,40 @@ ${(ctx.locations as Array<{name:string,monthlySales:number,labourPct:number,avgD
   .map(l => `- ${l.name}: $${l.monthlySales}/mo, labour ${l.labourPct>0?l.labourPct.toFixed(1)+'%':'n/a'}, $/dz ${l.avgDz>0?'$'+l.avgDz.toFixed(2):'n/a'}${l.daysSinceFilled>=3?' [WARNING: '+l.daysSinceFilled+' days no data]':''}${l.isCloud?' [cloud sync]':' [local only]'}`)
   .join('\n')}`;
 
+    case 'previsions_weekly': {
+      // deno-lint-ignore no-explicit-any
+      const lines = (ctx.products as Array<any>).map((p: any) =>
+        `- ${p.name} (${p.category||'—'}): avg sold/day=${p.avgSold}, stockouts=${p.stockouts}, waste=${p.waste!=null?p.waste+'%':'?'}, week forecast=${p.weekForecast}, sensitivity=${p.sensitivity}`
+      ).join('\n');
+      const weather = ctx.weather || 'unknown';
+      return `${fr
+        ? `Tu es un conseiller en production pour un commerce alimentaire. Analyse ces prévisions de production pour la semaine et donne une analyse concise de 4-5 phrases en français: identifie les risques de rupture de stock et de surproduction, l'impact de la météo, et donne 3 recommandations concrètes pour optimiser la production cette semaine. Sois direct et actionnable.`
+        : `You are a production planning advisor for a food business. Analyze these weekly production forecasts and give a concise 4-5 sentence analysis in English: identify stockout and overproduction risks, weather impact, and give 3 concrete recommendations to optimize production this week. Be direct and actionable.`
+      }
+
+Products:
+${lines}
+
+Weather this week: ${weather}`;
+    }
+
+    case 'previsions_item': {
+      // deno-lint-ignore no-explicit-any
+      const salesLines = (ctx.sales as Array<any>).map((s: any) =>
+        `${s.date}: sold=${s.sold}${s.made?`, made=${s.made}`:''}${s.stockout?', STOCKOUT':''}${s.temp?`, ${s.temp}°C`:''}${s.waste!=null?`, waste=${s.waste}%`:''}`
+      ).join('\n');
+      return `${fr
+        ? `Tu es un conseiller en production pour un commerce alimentaire. Analyse le profil de ce produit et donne une analyse de 4-5 phrases en français: patterns de vente, risques, et 3 recommandations spécifiques sur les quantités à produire par jour de la semaine. Sois précis et actionnable.`
+        : `You are a production planning advisor for a food business. Analyze this product profile and give a 4-5 sentence analysis in English: sales patterns, risks, and 3 specific recommendations on production quantities by day of week. Be precise and actionable.`
+      }
+
+Product: "${ctx.name}" | Category: ${ctx.category||'—'} | Shelf life: ${ctx.shelfLife}d | Weather sensitivity: ${ctx.sensitivity} | Base qty: ${ctx.baseQty}
+Avg sold/day: ${ctx.avgSold} | Waste rate: ${ctx.waste!=null?ctx.waste+'%':'?'} | Stockout days: ${ctx.stockoutDays} | Trend: ${ctx.trend!=null?(ctx.trend>0?'+':'')+ctx.trend+'%':'?'}
+
+Sales history (newest first):
+${salesLines}`;
+    }
+
     default:
       return '';
   }
