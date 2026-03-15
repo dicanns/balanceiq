@@ -44,6 +44,52 @@ function getDb() {
       );
 
       CREATE INDEX IF NOT EXISTS idx_snap_date ON daily_snapshots(date);
+
+      CREATE TABLE IF NOT EXISTS forecast_products (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        category TEXT DEFAULT '',
+        base_quantity INTEGER DEFAULT 0,
+        shelf_life_days INTEGER DEFAULT 1,
+        weather_sensitivity INTEGER DEFAULT 0,
+        active INTEGER DEFAULT 1,
+        notes TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now','localtime'))
+      );
+
+      CREATE TABLE IF NOT EXISTS forecast_daily_sales (
+        id TEXT PRIMARY KEY,
+        product_id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        quantity_made INTEGER,
+        quantity_sold INTEGER NOT NULL,
+        quantity_remaining INTEGER,
+        stockout INTEGER DEFAULT 0,
+        source TEXT DEFAULT 'manual',
+        entered_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (product_id) REFERENCES forecast_products(id),
+        UNIQUE(product_id, date)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_fcast_sales_date ON forecast_daily_sales(date);
+      CREATE INDEX IF NOT EXISTS idx_fcast_sales_prod ON forecast_daily_sales(product_id);
+
+      CREATE TABLE IF NOT EXISTS forecast_csv_mappings (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        mapping TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now','localtime'))
+      );
+
+      CREATE TABLE IF NOT EXISTS forecast_weather (
+        date TEXT PRIMARY KEY,
+        temp_max REAL,
+        temp_min REAL,
+        precipitation REAL,
+        weather_code INTEGER,
+        source TEXT DEFAULT 'auto',
+        fetched_at TEXT DEFAULT (datetime('now','localtime'))
+      );
     `);
   }
   return db;
@@ -144,4 +190,82 @@ function snapshotListDates() {
   return getDb().prepare('SELECT date, COUNT(*) as count, MAX(snapshot_timestamp) as latest FROM daily_snapshots GROUP BY date ORDER BY date DESC').all();
 }
 
-module.exports = { storageGet, storageSet, storageGetAll, auditInsert, auditQuery, getDeviceId, snapshotSave, snapshotGetByDate, snapshotGetLatest, snapshotListDates };
+// ── FORECAST: Products ──
+function forecastProductsGetAll() {
+  return getDb().prepare('SELECT * FROM forecast_products ORDER BY category, name').all();
+}
+function forecastProductUpsert(p) {
+  getDb().prepare(`
+    INSERT INTO forecast_products (id, name, category, base_quantity, shelf_life_days, weather_sensitivity, active, notes)
+    VALUES (@id, @name, @category, @base_quantity, @shelf_life_days, @weather_sensitivity, @active, @notes)
+    ON CONFLICT(id) DO UPDATE SET
+      name=excluded.name, category=excluded.category, base_quantity=excluded.base_quantity,
+      shelf_life_days=excluded.shelf_life_days, weather_sensitivity=excluded.weather_sensitivity,
+      active=excluded.active, notes=excluded.notes
+  `).run(p);
+  return true;
+}
+
+// ── FORECAST: Daily Sales ──
+function forecastSalesGetForDate(date) {
+  return getDb().prepare('SELECT * FROM forecast_daily_sales WHERE date = ?').all(date);
+}
+function forecastSalesGetForProduct(productId, limit = 90) {
+  return getDb().prepare('SELECT * FROM forecast_daily_sales WHERE product_id = ? ORDER BY date DESC LIMIT ?').all(productId, limit);
+}
+function forecastSalesGetRange(dateFrom, dateTo) {
+  return getDb().prepare('SELECT * FROM forecast_daily_sales WHERE date >= ? AND date <= ? ORDER BY date').all(dateFrom, dateTo);
+}
+function forecastSalesUpsert(record) {
+  getDb().prepare(`
+    INSERT INTO forecast_daily_sales (id, product_id, date, quantity_made, quantity_sold, quantity_remaining, stockout, source)
+    VALUES (@id, @product_id, @date, @quantity_made, @quantity_sold, @quantity_remaining, @stockout, @source)
+    ON CONFLICT(product_id, date) DO UPDATE SET
+      quantity_made=excluded.quantity_made, quantity_sold=excluded.quantity_sold,
+      quantity_remaining=excluded.quantity_remaining, stockout=excluded.stockout,
+      source=excluded.source, entered_at=datetime('now','localtime')
+  `).run(record);
+  return true;
+}
+function forecastSalesDeleteForDate(date) {
+  getDb().prepare('DELETE FROM forecast_daily_sales WHERE date = ?').run(date);
+  return true;
+}
+
+// ── FORECAST: Weather ──
+function forecastWeatherGetRange(dateFrom, dateTo) {
+  return getDb().prepare('SELECT * FROM forecast_weather WHERE date >= ? AND date <= ?').all(dateFrom, dateTo);
+}
+function forecastWeatherUpsert(record) {
+  getDb().prepare(`
+    INSERT INTO forecast_weather (date, temp_max, temp_min, precipitation, weather_code, source, fetched_at)
+    VALUES (@date, @temp_max, @temp_min, @precipitation, @weather_code, @source, datetime('now','localtime'))
+    ON CONFLICT(date) DO UPDATE SET
+      temp_max=excluded.temp_max, temp_min=excluded.temp_min,
+      precipitation=excluded.precipitation, weather_code=excluded.weather_code,
+      source=excluded.source, fetched_at=datetime('now','localtime')
+  `).run(record);
+  return true;
+}
+
+// ── FORECAST: CSV Mappings ──
+function forecastCsvMappingsGetAll() {
+  return getDb().prepare('SELECT * FROM forecast_csv_mappings ORDER BY created_at DESC').all();
+}
+function forecastCsvMappingSave(mapping) {
+  getDb().prepare(`
+    INSERT INTO forecast_csv_mappings (id, name, mapping) VALUES (@id, @name, @mapping)
+    ON CONFLICT(id) DO UPDATE SET name=excluded.name, mapping=excluded.mapping
+  `).run(mapping);
+  return true;
+}
+
+module.exports = {
+  storageGet, storageSet, storageGetAll,
+  auditInsert, auditQuery, getDeviceId,
+  snapshotSave, snapshotGetByDate, snapshotGetLatest, snapshotListDates,
+  forecastProductsGetAll, forecastProductUpsert,
+  forecastSalesGetForDate, forecastSalesGetForProduct, forecastSalesGetRange, forecastSalesUpsert, forecastSalesDeleteForDate,
+  forecastWeatherGetRange, forecastWeatherUpsert,
+  forecastCsvMappingsGetAll, forecastCsvMappingSave,
+};

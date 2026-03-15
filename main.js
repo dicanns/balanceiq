@@ -9,7 +9,15 @@ Sentry.init({
   dsn: 'https://SENTRY_DSN_REMOVED',
   environment: app.isPackaged ? 'production' : 'development',
 });
-const { storageGet, storageSet, storageGetAll, auditInsert, auditQuery, getDeviceId, snapshotSave, snapshotGetByDate, snapshotGetLatest, snapshotListDates } = require('./src/db/database.js');
+const {
+  storageGet, storageSet, storageGetAll,
+  auditInsert, auditQuery, getDeviceId,
+  snapshotSave, snapshotGetByDate, snapshotGetLatest, snapshotListDates,
+  forecastProductsGetAll, forecastProductUpsert,
+  forecastSalesGetForDate, forecastSalesGetForProduct, forecastSalesGetRange, forecastSalesUpsert, forecastSalesDeleteForDate,
+  forecastWeatherGetRange, forecastWeatherUpsert,
+  forecastCsvMappingsGetAll, forecastCsvMappingSave,
+} = require('./src/db/database.js');
 
 const BACKUP_DIR = () => path.join(app.getPath('documents'), 'BalanceIQ Backups');
 const BACKUP_KEEP_DAYS = 30;
@@ -875,6 +883,45 @@ ipcMain.handle('delivery:openPortal', (_event, platform) => {
   if (url) shell.openExternal(url);
   return { ok: !!url };
 });
+
+ipcMain.handle('docs:download', async (_event, { url, filename }) => {
+  try {
+    const downloadsDir = app.getPath('downloads');
+    const destPath = path.join(downloadsDir, filename);
+    const response = await new Promise((resolve, reject) => {
+      const req = net.request({ method: 'GET', url });
+      const chunks = [];
+      req.on('response', res => {
+        res.on('data', c => chunks.push(c));
+        res.on('end', () => resolve(Buffer.concat(chunks)));
+        res.on('error', reject);
+      });
+      req.on('error', reject);
+      req.end();
+    });
+    fs.writeFileSync(destPath, response);
+    shell.openPath(destPath);
+    return { ok: true, path: destPath };
+  } catch(e) {
+    return { error: e.message };
+  }
+});
+
+// ── FORECAST IPC ──
+ipcMain.handle('forecast:products:getAll', () => forecastProductsGetAll());
+ipcMain.handle('forecast:products:upsert', (_e, p) => forecastProductUpsert(p));
+
+ipcMain.handle('forecast:sales:getForDate', (_e, date) => forecastSalesGetForDate(date));
+ipcMain.handle('forecast:sales:getForProduct', (_e, productId, limit) => forecastSalesGetForProduct(productId, limit));
+ipcMain.handle('forecast:sales:getRange', (_e, from, to) => forecastSalesGetRange(from, to));
+ipcMain.handle('forecast:sales:upsert', (_e, record) => forecastSalesUpsert(record));
+ipcMain.handle('forecast:sales:deleteForDate', (_e, date) => forecastSalesDeleteForDate(date));
+
+ipcMain.handle('forecast:weather:getRange', (_e, from, to) => forecastWeatherGetRange(from, to));
+ipcMain.handle('forecast:weather:upsert', (_e, record) => forecastWeatherUpsert(record));
+
+ipcMain.handle('forecast:csvMappings:getAll', () => forecastCsvMappingsGetAll());
+ipcMain.handle('forecast:csvMappings:save', (_e, mapping) => forecastCsvMappingSave(mapping));
 
 // Register balanceiq:// as protocol handler for OAuth callbacks
 app.setAsDefaultProtocolClient('balanceiq');
