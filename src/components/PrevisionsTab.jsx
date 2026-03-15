@@ -527,6 +527,7 @@ function AIAnalysisView({ canUse, allSales, products, weatherMap, weekDates, pre
       const ctx = buildContext();
       if (!ctx) { setResult(lang==='en'?'Select a product first.':'Sélectionnez un produit d\'abord.'); setLoading(false); return; }
       const { supabase } = await import('../services/supabase.js');
+      const { getCloudOrgId } = await import('../services/cloudSync.js');
       let { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error(lang==='en'?'Sign in required — go to Config → Application':'Connexion requise — allez dans Config → Application');
       // Always refresh the token before calling the edge function to avoid Invalid JWT errors
@@ -534,7 +535,7 @@ function AIAnalysisView({ canUse, allSales, products, weatherMap, weekDates, pre
         const { data: refreshed } = await supabase.auth.refreshSession();
         if (refreshed?.session) session = refreshed.session;
       } catch {}
-      const orgId = apiConfig?.supabaseOrgId || null;
+      const orgId = getCloudOrgId() || null;
       const resp = await fetch('https://etiwnesxjypdwhxqnqqq.supabase.co/functions/v1/ai-intelligence', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
