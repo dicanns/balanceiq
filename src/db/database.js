@@ -91,6 +91,51 @@ function getDb() {
         fetched_at TEXT DEFAULT (datetime('now','localtime'))
       );
     `);
+
+    // ── Column migrations (safe — columns may already exist) ─────────────────
+    try { db.prepare("ALTER TABLE forecast_products ADD COLUMN unit_cost REAL").run(); } catch(e) {}
+    try { db.prepare("ALTER TABLE forecast_products ADD COLUMN sell_price REAL").run(); } catch(e) {}
+
+    // ── Learning Engine Tables ──────────────────────────────────────────────
+
+    db.prepare(`CREATE TABLE IF NOT EXISTS learned_patterns (
+      id TEXT PRIMARY KEY,
+      pattern_type TEXT NOT NULL,
+      entity TEXT NOT NULL,
+      key TEXT NOT NULL,
+      value TEXT NOT NULL,
+      confidence REAL DEFAULT 0,
+      sample_size INTEGER DEFAULT 0,
+      last_updated TEXT DEFAULT (datetime('now','localtime')),
+      UNIQUE(pattern_type, entity, key)
+    )`).run();
+
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_patterns_type ON learned_patterns(pattern_type)`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_patterns_entity ON learned_patterns(entity)`).run();
+
+    db.prepare(`CREATE TABLE IF NOT EXISTS prediction_accuracy (
+      id TEXT PRIMARY KEY,
+      product_id TEXT NOT NULL,
+      date TEXT NOT NULL,
+      predicted INTEGER,
+      actual INTEGER,
+      error_pct REAL,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      UNIQUE(product_id, date)
+    )`).run();
+
+    db.prepare(`CREATE TABLE IF NOT EXISTS learning_insights (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      entity TEXT,
+      message_fr TEXT NOT NULL,
+      message_en TEXT NOT NULL,
+      severity TEXT DEFAULT 'info',
+      read INTEGER DEFAULT 0,
+      financial_impact REAL,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    )`).run();
+    // TODO: add rush_hour pattern when POS hourly data is available
   }
   return db;
 }
@@ -196,13 +241,14 @@ function forecastProductsGetAll() {
 }
 function forecastProductUpsert(p) {
   getDb().prepare(`
-    INSERT INTO forecast_products (id, name, category, base_quantity, shelf_life_days, weather_sensitivity, active, notes)
-    VALUES (@id, @name, @category, @base_quantity, @shelf_life_days, @weather_sensitivity, @active, @notes)
+    INSERT INTO forecast_products (id, name, category, base_quantity, shelf_life_days, weather_sensitivity, active, notes, unit_cost, sell_price)
+    VALUES (@id, @name, @category, @base_quantity, @shelf_life_days, @weather_sensitivity, @active, @notes, @unit_cost, @sell_price)
     ON CONFLICT(id) DO UPDATE SET
       name=excluded.name, category=excluded.category, base_quantity=excluded.base_quantity,
       shelf_life_days=excluded.shelf_life_days, weather_sensitivity=excluded.weather_sensitivity,
-      active=excluded.active, notes=excluded.notes
-  `).run(p);
+      active=excluded.active, notes=excluded.notes,
+      unit_cost=excluded.unit_cost, sell_price=excluded.sell_price
+  `).run({ unit_cost: null, sell_price: null, ...p });
   return true;
 }
 
@@ -260,6 +306,57 @@ function forecastCsvMappingSave(mapping) {
   return true;
 }
 
+// ── Learned Patterns ──
+function learnedPatternsGetAll() {
+  return getDb().prepare("SELECT * FROM learned_patterns").all();
+}
+function learnedPatternUpsert(p) {
+  getDb().prepare(`INSERT INTO learned_patterns (id,pattern_type,entity,key,value,confidence,sample_size,last_updated)
+    VALUES (@id,@pattern_type,@entity,@key,@value,@confidence,@sample_size,datetime('now','localtime'))
+    ON CONFLICT(pattern_type,entity,key) DO UPDATE SET
+      value=excluded.value, confidence=excluded.confidence,
+      sample_size=excluded.sample_size, last_updated=excluded.last_updated`).run(p);
+  return true;
+}
+
+// ── Prediction Accuracy ──
+function predAccuracyGetAll() {
+  return getDb().prepare("SELECT * FROM prediction_accuracy ORDER BY date DESC").all();
+}
+function predAccuracyGetForProduct(productId) {
+  return getDb().prepare("SELECT * FROM prediction_accuracy WHERE product_id=? ORDER BY date DESC LIMIT 60").all(productId);
+}
+function predAccuracyUpsert(r) {
+  getDb().prepare(`INSERT INTO prediction_accuracy (id,product_id,date,predicted,actual,error_pct)
+    VALUES (@id,@product_id,@date,@predicted,@actual,@error_pct)
+    ON CONFLICT(product_id,date) DO UPDATE SET
+      predicted=COALESCE(excluded.predicted,predicted),
+      actual=COALESCE(excluded.actual,actual),
+      error_pct=excluded.error_pct`).run(r);
+  return true;
+}
+
+// ── Learning Insights ──
+function insightsGetAll() {
+  return getDb().prepare("SELECT * FROM learning_insights ORDER BY read ASC, CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 WHEN 'suggestion' THEN 2 ELSE 3 END ASC, financial_impact DESC NULLS LAST, created_at DESC").all();
+}
+function insightsGetUnreadCount() {
+  return getDb().prepare("SELECT COUNT(*) as count FROM learning_insights WHERE read=0").get().count;
+}
+function insightUpsert(ins) {
+  getDb().prepare(`INSERT OR IGNORE INTO learning_insights (id,type,entity,message_fr,message_en,severity,read,financial_impact)
+    VALUES (@id,@type,@entity,@message_fr,@message_en,@severity,0,@financial_impact)`).run(ins);
+  return true;
+}
+function insightMarkRead(id) {
+  getDb().prepare("UPDATE learning_insights SET read=1 WHERE id=?").run(id);
+  return true;
+}
+function insightMarkAllRead() {
+  getDb().prepare("UPDATE learning_insights SET read=1").run();
+  return true;
+}
+
 module.exports = {
   storageGet, storageSet, storageGetAll,
   auditInsert, auditQuery, getDeviceId,
@@ -268,4 +365,7 @@ module.exports = {
   forecastSalesGetForDate, forecastSalesGetForProduct, forecastSalesGetRange, forecastSalesUpsert, forecastSalesDeleteForDate,
   forecastWeatherGetRange, forecastWeatherUpsert,
   forecastCsvMappingsGetAll, forecastCsvMappingSave,
+  learnedPatternsGetAll, learnedPatternUpsert,
+  predAccuracyGetAll, predAccuracyGetForProduct, predAccuracyUpsert,
+  insightsGetAll, insightsGetUnreadCount, insightUpsert, insightMarkRead, insightMarkAllRead,
 };

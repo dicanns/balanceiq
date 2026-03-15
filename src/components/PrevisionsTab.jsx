@@ -70,53 +70,92 @@ function conditionToIcon(cond) { return WEATHER_ICONS[cond] || '☁️'; }
 
 // ── Prediction Engine ─────────────────────────────────────────────────────────
 
-function computePrediction(productId, dateStr, allSales, weatherMap, product) {
+function computePrediction(productId, dateStr, allSales, weatherMap, product, learnedPatterns = []) {
   const targetDow = new Date(dateStr + 'T12:00:00').getDay();
-  const sameDowSales = allSales
-    .filter(s => s.product_id === productId && new Date(s.date + 'T12:00:00').getDay() === targetDow)
-    .sort((a,b) => b.date.localeCompare(a.date));
+  const dayName = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'][targetDow];
 
-  if (sameDowSales.length === 0) {
-    return { prediction: product.base_quantity || 0, confidence: 'base', dataPoints: 0, baseAvg: product.base_quantity || 0, weatherFactor: 0, trendFactor: 0 };
+  const getLP = (type, entity, key) => {
+    const p = learnedPatterns.find(lp=>lp.pattern_type===type&&lp.entity===entity&&lp.key===key);
+    if (!p) return null;
+    try { return { ...JSON.parse(p.value), confidence:p.confidence, sample_size:p.sample_size }; }
+    catch { return null; }
+  };
+
+  // 1. BASE — use learned DOW pattern if confidence >= 0.4, else weighted avg
+  let baseAvg = product.base_quantity || 0;
+  let dataPoints = 0;
+  let confidence = 'base';
+  const dowP = getLP('day_of_week', productId, dayName);
+  if (dowP && dowP.confidence >= 0.4) {
+    baseAvg = dowP.weighted_avg || dowP.avg || baseAvg;
+    dataPoints = dowP.sample_count || 0;
+    confidence = dowP.confidence>=0.9?'high':dowP.confidence>=0.7?'medium':dowP.confidence>=0.4?'low':'base';
+  } else {
+    const sameDow = allSales
+      .filter(s=>s.product_id===productId&&new Date(s.date+'T12:00:00').getDay()===targetDow)
+      .sort((a,b)=>b.date.localeCompare(a.date));
+    if (sameDow.length > 0) {
+      const now = new Date(dateStr+'T12:00:00');
+      let wSum=0,wTotal=0;
+      sameDow.forEach(s=>{
+        const wk=Math.round((now-new Date(s.date+'T12:00:00'))/(7*86400000));
+        const w=wk<=1?4:wk<=2?3:wk<=3?2:1;
+        const qty=s.stockout?Math.round(s.quantity_sold*1.12):s.quantity_sold;
+        wSum+=qty*w;wTotal+=w;
+      });
+      baseAvg=wTotal>0?wSum/wTotal:baseAvg;
+      dataPoints=sameDow.length;
+      confidence=dataPoints<2?'base':dataPoints<4?'low':dataPoints<8?'medium':'high';
+    }
   }
 
-  const now = new Date(dateStr + 'T12:00:00');
-  let weightedSum = 0, totalWeight = 0;
-  sameDowSales.forEach(s => {
-    const weeksAgo = Math.round((now - new Date(s.date + 'T12:00:00')) / (7 * 86400000));
-    const w = weeksAgo === 0 ? 4 : weeksAgo === 1 ? 4 : weeksAgo === 2 ? 3 : weeksAgo === 3 ? 2 : 1;
-    const qty = s.stockout ? Math.round(s.quantity_sold * 1.12) : s.quantity_sold;
-    weightedSum += qty * w;
-    totalWeight += w;
-  });
-  const baseAvg = totalWeight > 0 ? weightedSum / totalWeight : product.base_quantity || 0;
-
-  // Weather adjustment
+  // 2. WEATHER
   let weatherFactor = 0;
   const w = weatherMap[dateStr];
-  if (w && product.weather_sensitivity !== 0) {
+  if (w) {
     const temp = w.temp_max ?? 10;
-    const sens = product.weather_sensitivity;
-    if (temp < 5) weatherFactor = sens * -0.15;
-    else if (temp > 25) weatherFactor = sens * 0.20;
-    else if (temp > 15) weatherFactor = sens * 0.10;
-    const cond = weatherCodeToCondition(w.weather_code);
-    if (cond === 'rain') weatherFactor -= 0.05;
-    if (cond === 'snow') weatherFactor -= 0.10;
+    const sens = product.weather_sensitivity || 0;
+    const tempRange = temp<5?'below_5':temp<15?'5_15':temp<25?'15_25':'above_25';
+    const learnedCorr = getLP('weather_correlation', productId, tempRange);
+    if (learnedCorr && learnedCorr.confidence >= 0.5) {
+      weatherFactor = learnedCorr.pct_change_vs_baseline || 0;
+    } else if (sens !== 0) {
+      if(temp<5)weatherFactor=sens*-0.15;
+      else if(temp>=15&&temp<25)weatherFactor=sens*0.10;
+      else if(temp>=25)weatherFactor=sens*0.20;
+    }
+    const code=w.weather_code||0;
+    const condKey=(code===0||code===1)?'sunny':(code<=3)?'cloudy':((code>=51&&code<=67)||(code>=80&&code<=82))?'rainy':(code>=71&&code<=77)?'snowy':null;
+    if (condKey) {
+      const learnedCond = getLP('weather_condition', productId, condKey);
+      if (learnedCond && learnedCond.confidence >= 0.5) {
+        weatherFactor = (weatherFactor + (learnedCond.pct_change||0)) / 2;
+      } else {
+        if(condKey==='rainy')weatherFactor-=0.05;
+        if(condKey==='snowy')weatherFactor-=0.10;
+      }
+    }
   }
 
-  // Trend adjustment
+  // 3. TREND
   let trendFactor = 0;
-  if (sameDowSales.length >= 4) {
-    const recent2 = sameDowSales.slice(0,2).reduce((a,s)=>a+s.quantity_sold,0) / 2;
-    const prev2 = sameDowSales.slice(2,4).reduce((a,s)=>a+s.quantity_sold,0) / 2;
-    if (prev2 > 0) trendFactor = Math.max(-0.15, Math.min(0.15, (recent2-prev2)/prev2 * 0.5));
+  const trend = getLP('trend', productId, 'current');
+  if (trend && trend.confidence >= 0.4) trendFactor = (trend.pct_change||0) * 0.5;
+
+  // 4. WASTE — reduce prediction if this day has chronic waste
+  let wasteFactor = 1;
+  const wasteP = getLP('waste_pattern', productId, dayName);
+  if (wasteP && wasteP.avg_waste_pct > 0.15) wasteFactor = 1 - wasteP.avg_waste_pct * 0.5;
+
+  // 5. STOCKOUT — increase if chronic stockouts on this day
+  const stockoutP = getLP('stockout_pattern', productId, dayName);
+  if (stockoutP && stockoutP.stockout_count >= 2 && stockoutP.estimated_unmet_demand > 0) {
+    const rate = stockoutP.total_days_tracked > 0 ? stockoutP.stockout_count/stockoutP.total_days_tracked : 0;
+    if (rate >= 0.3) baseAvg = Math.max(baseAvg, baseAvg + stockoutP.estimated_unmet_demand);
   }
 
-  const n = sameDowSales.length;
-  const confidence = n < 2 ? 'base' : n < 4 ? 'low' : n < 8 ? 'medium' : 'high';
-  const prediction = Math.max(0, Math.round(baseAvg * (1 + weatherFactor + trendFactor)));
-  return { prediction, confidence, dataPoints: n, baseAvg: Math.round(baseAvg), weatherFactor, trendFactor };
+  const prediction = Math.max(0, Math.round(baseAvg * (1+weatherFactor) * (1+trendFactor) * wasteFactor));
+  return { prediction, confidence, dataPoints, baseAvg: Math.round(baseAvg), weatherFactor, trendFactor };
 }
 
 function computeAlerts(products, allSales, T, lang) {
@@ -197,6 +236,8 @@ function ProductFormModal({ product, existingCategories, onSave, onClose, T, t, 
     weather_sensitivity: product?.weather_sensitivity ?? 0,
     active: product?.active ?? 1,
     notes: product?.notes || '',
+    unit_cost: product?.unit_cost != null ? String(product.unit_cost) : '',
+    sell_price: product?.sell_price != null ? String(product.sell_price) : '',
   });
   const [newCat, setNewCat] = useState('');
   const [catMode, setCatMode] = useState(false);
@@ -228,6 +269,8 @@ function ProductFormModal({ product, existingCategories, onSave, onClose, T, t, 
       ...form,
       base_quantity: parseInt(form.base_quantity) >= 0 ? parseInt(form.base_quantity) : 0,
       shelf_life_days: Math.max(1, form.shelf_life_days || 1),
+      unit_cost: form.unit_cost !== '' ? parseFloat(form.unit_cost) : null,
+      sell_price: form.sell_price !== '' ? parseFloat(form.sell_price) : null,
     });
   };
 
@@ -268,6 +311,36 @@ function ProductFormModal({ product, existingCategories, onSave, onClose, T, t, 
               onChange={e => setForm(f => ({...f, base_quantity: e.target.value}))}
               onBlur={e => { const v = parseInt(e.target.value); setForm(f => ({...f, base_quantity: String(isNaN(v)||v<0?0:v)})); }}
             />
+          </div>
+
+          {/* Cost & Price (optional) */}
+          <div>
+            <label style={lbl}>{lang==='en'?'Pricing & Cost (optional)':'Coût & Prix (optionnel)'}</label>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+              <div style={{position:'relative'}}>
+                <span style={{position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',fontSize:12,opacity:0.4}}>$</span>
+                <input type="number" min="0" step="0.01" style={{...inp,paddingLeft:18}}
+                  value={form.unit_cost}
+                  onChange={e=>setForm(f=>({...f,unit_cost:e.target.value}))}
+                  onBlur={e=>{const v=parseFloat(e.target.value);setForm(f=>({...f,unit_cost:isNaN(v)||v<0?'':v.toFixed(2)}));}}
+                  placeholder={lang==='en'?'Cost per unit':'Coût/unité'}/>
+              </div>
+              <div style={{position:'relative'}}>
+                <span style={{position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',fontSize:12,opacity:0.4}}>$</span>
+                <input type="number" min="0" step="0.01" style={{...inp,paddingLeft:18}}
+                  value={form.sell_price}
+                  onChange={e=>setForm(f=>({...f,sell_price:e.target.value}))}
+                  onBlur={e=>{const v=parseFloat(e.target.value);setForm(f=>({...f,sell_price:isNaN(v)||v<0?'':v.toFixed(2)}));}}
+                  placeholder={lang==='en'?'Sell price':'Prix de vente'}/>
+              </div>
+            </div>
+            {(() => {
+              const cost=parseFloat(form.unit_cost),price=parseFloat(form.sell_price);
+              if(isNaN(cost)||isNaN(price)||cost<=0||price<=0)return null;
+              const margin=price-cost,pct=(margin/price)*100;
+              const color=pct>50?'#22c55e':pct>30?'#f97316':'#ef4444';
+              return <div style={{fontSize:11,marginTop:4,color}}>{lang==='en'?'Margin':'Marge'}: ${margin.toFixed(2)} ({pct.toFixed(0)}%)</div>;
+            })()}
           </div>
 
           <div>
@@ -1274,6 +1347,38 @@ function ItemDetailView({ product, allSales, weatherMap, onBack, onBackToAI, onU
               </table>
             </div>
           </div>
+
+          {/* Financial Profile */}
+          {(product.unit_cost != null || product.sell_price != null) && (
+            <div style={{padding:'14px 16px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:10,marginTop:12}}>
+              <div style={{fontSize:12,fontWeight:700,marginBottom:8}}>💰 {lang==='en'?'Profitability':'Rentabilité'} — {product.name}</div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,fontSize:11}}>
+                {product.unit_cost!=null&&<div><span style={{opacity:0.6}}>{lang==='en'?'Unit cost:':'Coût/unité:'}</span> ${product.unit_cost.toFixed(2)}</div>}
+                {product.sell_price!=null&&<div><span style={{opacity:0.6}}>{lang==='en'?'Sell price:':'Prix de vente:'}</span> ${product.sell_price.toFixed(2)}</div>}
+                {product.unit_cost!=null&&product.sell_price!=null&&(()=>{
+                  const m=product.sell_price-product.unit_cost,p=(m/product.sell_price)*100;
+                  const c=p>50?'#22c55e':p>30?'#f97316':'#ef4444';
+                  return <div style={{color:c}}><span style={{opacity:0.6,color:t.textSub}}>{lang==='en'?'Margin:':'Marge:'}</span> ${m.toFixed(2)} ({p.toFixed(0)}%)</div>;
+                })()}
+              </div>
+              {(()=>{
+                const ps=allSales.filter(s=>s.product_id===product.id&&s.quantity_remaining!=null);
+                if(ps.length===0)return null;
+                const avgWaste=ps.reduce((a,s)=>a+(s.quantity_remaining||0),0)/ps.length;
+                const weeklyWasteCost=product.unit_cost!=null?avgWaste*7*product.unit_cost:null;
+                const stockouts=ps.filter(s=>s.stockout);
+                const weeklyLost=product.sell_price!=null&&stockouts.length>0?(stockouts.length/ps.length)*avgWaste*1.25*product.sell_price*7:null;
+                if(!weeklyWasteCost&&!weeklyLost)return null;
+                return (
+                  <div style={{marginTop:8,paddingTop:8,borderTop:`1px solid ${t.cardBorder}`,fontSize:11,display:'flex',flexDirection:'column',gap:3}}>
+                    {weeklyWasteCost!=null&&avgWaste>0&&<div style={{opacity:0.7}}>{lang==='en'?`Avg weekly waste: ~${Math.round(avgWaste)} units = $${(avgWaste*product.unit_cost).toFixed(2)}`:`Gaspillage moy./sem: ~${Math.round(avgWaste)} u = ${(avgWaste*product.unit_cost).toFixed(2)}$`}</div>}
+                    {weeklyLost!=null&&weeklyLost>0&&<div style={{color:'#ef4444',opacity:0.85}}>{lang==='en'?`Est. weekly stockout loss: -$${weeklyLost.toFixed(2)}`:`Ruptures est./sem: -${weeklyLost.toFixed(2)}$`}</div>}
+                    {weeklyWasteCost!=null&&weeklyLost!=null&&<div style={{color:'#22c55e',fontWeight:600}}>{lang==='en'?`If optimized: +$${(weeklyWasteCost*0.6+weeklyLost*0.8).toFixed(2)}/week`:`Si optimisé: +${(weeklyWasteCost*0.6+weeklyLost*0.8).toFixed(2)}$/semaine`}</div>}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
         </>
       )}
     </div>
@@ -1282,7 +1387,7 @@ function ItemDetailView({ product, allSales, weatherMap, onBack, onBackToAI, onU
 
 // ── Production List View ──────────────────────────────────────────────────────
 
-function ProductionListView({ products, allSales, weatherMap, T, t, lang }) {
+function ProductionListView({ products, allSales, weatherMap, learnedPatterns = [], T, t, lang }) {
   const [range, setRange] = useState('3');
   const [customStart, setCustomStart] = useState(toDateStr(new Date()));
   const [customEnd, setCustomEnd] = useState(addDays(toDateStr(new Date()), 2));
@@ -1336,7 +1441,7 @@ function ProductionListView({ products, allSales, weatherMap, T, t, lang }) {
         // Daily products
         const dailyPreds = [];
         dates.forEach(date => {
-          const r = computePrediction(p.id, date, allSales, weatherMap, p);
+          const r = computePrediction(p.id, date, allSales, weatherMap, p, learnedPatterns);
           const onHand = parseInt(stockOverrides[p.id] || 0);
           const toMake = Math.max(0, r.prediction - (date === dates[0] ? onHand : 0));
           list.push({ product: p, date, forecast: r.prediction, onHand: date===dates[0]?onHand:0, toMake, type:'daily', weatherFactor: r.weatherFactor });
@@ -1367,7 +1472,7 @@ function ProductionListView({ products, allSales, weatherMap, T, t, lang }) {
         // Batch products
         let totalPred = 0;
         dates.forEach(date => {
-          const r = computePrediction(p.id, date, allSales, weatherMap, p);
+          const r = computePrediction(p.id, date, allSales, weatherMap, p, learnedPatterns);
           totalPred += r.prediction;
           if (r.weatherFactor !== 0 && p.weather_sensitivity !== 0) {
             const w = weatherMap[date];
@@ -1398,6 +1503,18 @@ function ProductionListView({ products, allSales, weatherMap, T, t, lang }) {
 
     const batchItems = Object.values(batchMap);
     setGenerated({ list, batchItems, dates, weatherAnnotations, adjustments });
+
+    // Snapshot predictions to accuracy table
+    const todayStr = toDateStr(new Date());
+    list.forEach(item => {
+      if (item.date >= todayStr) {
+        window.api.forecast.accuracy.upsert({
+          id: `${item.product.id}_${item.date}`,
+          product_id: item.product.id, date: item.date,
+          predicted: item.forecast, actual: null, error_pct: null,
+        }).catch(()=>{});
+      }
+    });
   };
 
   const buildHTML = () => {
@@ -1484,30 +1601,48 @@ function ProductionListView({ products, allSales, weatherMap, T, t, lang }) {
                 <div style={{fontSize:13,fontWeight:700,marginBottom:10}}>
                   🗓️ {formatDateShort(date,lang)}{weatherNote}
                 </div>
-                <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-                  <thead><tr style={{opacity:0.6}}>
-                    {[T.prevColProduct,T.prevListForecast,T.prevListOnHand,T.prevListToMake].map(h=>(
-                      <th key={h} style={{padding:'4px 8px',textAlign:'left',fontWeight:600,fontSize:10,borderBottom:`1px solid ${t.cardBorder}`}}>{h}</th>
-                    ))}
-                  </tr></thead>
-                  <tbody>
-                    {dayItems.map((item,i)=>(
-                      <tr key={i} style={{borderBottom:`1px solid ${t.cardBorder}`}}>
-                        <td style={{padding:'5px 8px',fontWeight:600}}>
-                          {item.product.name}
-                          {item.weatherFactor !== 0 && (
-                            <span style={{marginLeft:7,fontSize:9,padding:'1px 5px',borderRadius:8,background:item.weatherFactor>0?'rgba(34,197,94,0.1)':'rgba(239,68,68,0.1)',color:item.weatherFactor>0?'#22c55e':'#ef4444',fontWeight:700,display:'inline-block'}}>
-                              {item.weatherFactor>=0?'+':''}{Math.round(item.weatherFactor*100)}%
-                            </span>
-                          )}
-                        </td>
-                        <td style={{padding:'5px 8px'}}>{item.forecast}</td>
-                        <td style={{padding:'5px 8px'}}>{item.onHand||0}</td>
-                        <td style={{padding:'5px 8px',fontWeight:800,color:'#f97316',fontSize:13}}>{item.toMake}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                {(() => {
+                  const hasCost = dayItems.some(item=>item.product.unit_cost!=null);
+                  const headers = [T.prevColProduct,T.prevListForecast,T.prevListOnHand,T.prevListToMake,...(hasCost?[lang==='en'?'Cost':'Coût']:[])]
+                  return (
+                    <>
+                      <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                        <thead><tr style={{opacity:0.6}}>
+                          {headers.map(h=>(
+                            <th key={h} style={{padding:'4px 8px',textAlign:'left',fontWeight:600,fontSize:10,borderBottom:`1px solid ${t.cardBorder}`}}>{h}</th>
+                          ))}
+                        </tr></thead>
+                        <tbody>
+                          {dayItems.map((item,i)=>(
+                            <tr key={i} style={{borderBottom:`1px solid ${t.cardBorder}`}}>
+                              <td style={{padding:'5px 8px',fontWeight:600}}>
+                                {item.product.name}
+                                {item.weatherFactor !== 0 && (
+                                  <span style={{marginLeft:7,fontSize:9,padding:'1px 5px',borderRadius:8,background:item.weatherFactor>0?'rgba(34,197,94,0.1)':'rgba(239,68,68,0.1)',color:item.weatherFactor>0?'#22c55e':'#ef4444',fontWeight:700,display:'inline-block'}}>
+                                    {item.weatherFactor>=0?'+':''}{Math.round(item.weatherFactor*100)}%
+                                  </span>
+                                )}
+                              </td>
+                              <td style={{padding:'5px 8px'}}>{item.forecast}</td>
+                              <td style={{padding:'5px 8px'}}>{item.onHand||0}</td>
+                              <td style={{padding:'5px 8px',fontWeight:800,color:'#f97316',fontSize:13}}>{item.toMake}</td>
+                              {hasCost&&<td style={{padding:'5px 8px',fontSize:11,opacity:0.7}}>{item.product.unit_cost!=null?`$${(item.toMake*item.product.unit_cost).toFixed(2)}`:'—'}</td>}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {(() => {
+                        const totalCost = dayItems.filter(i=>i.product.unit_cost!=null).reduce((a,i)=>a+(i.toMake*(i.product.unit_cost||0)),0);
+                        if (totalCost === 0) return null;
+                        return (
+                          <div style={{marginTop:6,paddingTop:5,borderTop:`1px solid ${t.cardBorder}`,fontSize:11,textAlign:'right',opacity:0.7}}>
+                            {lang==='en'?'Ingredient cost:':'Coût ingrédients:'} <strong>${totalCost.toFixed(2)}</strong>
+                          </div>
+                        );
+                      })()}
+                    </>
+                  );
+                })()}
               </div>
             );
           })}
@@ -1596,7 +1731,7 @@ function ProductionListView({ products, allSales, weatherMap, T, t, lang }) {
 
 // ── Main PrevisionsTab ────────────────────────────────────────────────────────
 
-export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T, t, lang }) {
+export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T, t, lang, onInsightCountChange }) {
   const [products, setProducts] = useState([]);
   const [allSales, setAllSales] = useState([]);
   const [weatherMap, setWeatherMap] = useState({}); // {date: {temp_max, weather_code, source}}
@@ -1610,16 +1745,29 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
   const [salesByDate, setSalesByDate] = useState({});
   const [cellDetail, setCellDetail] = useState(null); // {product, date, result}
   const [weatherOverrideDate, setWeatherOverrideDate] = useState(null);
+  const [learnedPatterns, setLearnedPatterns] = useState([]);
+  const [insights, setInsights] = useState([]);
+  const [insightUnread, setInsightUnread] = useState(0);
+  const [accuracyData, setAccuracyData] = useState([]);
 
   const weekDates = useMemo(() => getWeekDates(currentWeekMonday), [currentWeekMonday]);
   const lastWeekDates = useMemo(() => getWeekDates(addDays(currentWeekMonday, -7)), [currentWeekMonday]);
 
+  // Notify parent of insight count changes
+  useEffect(() => { onInsightCountChange?.(insightUnread); }, [insightUnread]);
+
   // Load everything on mount
   useEffect(() => {
-    loadProducts();
-    loadSales();
-    loadWeather();
-    loadFormats();
+    const init = async () => {
+      await loadProducts();
+      await loadSales();
+      loadWeather();
+      loadFormats();
+      await loadPatterns();
+      await loadInsights();
+      await loadAccuracy();
+    };
+    init();
   }, []);
 
   const loadProducts = async () => {
@@ -1627,7 +1775,7 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
     setProducts(p || []);
   };
 
-  const loadSales = async () => {
+  const loadSales = useCallback(async () => {
     // Load 90 days back
     const from = toDateStr(new Date(Date.now() - 90*86400000));
     const to = toDateStr(new Date(Date.now() + 30*86400000));
@@ -1637,7 +1785,24 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
     const byDate = {};
     (sales||[]).forEach(s => { if (!byDate[s.date]) byDate[s.date]=[]; byDate[s.date].push(s); });
     setSalesByDate(byDate);
-  };
+    return sales || [];
+  }, []);
+
+  const loadPatterns = useCallback(async () => {
+    const data = await window.api.forecast.patterns.getAll().catch(()=>[]);
+    setLearnedPatterns(data || []);
+  }, []);
+
+  const loadInsights = useCallback(async () => {
+    const data = await window.api.forecast.insights.getAll().catch(()=>[]);
+    setInsights(data || []);
+    setInsightUnread((data||[]).filter(i=>!i.read).length);
+  }, []);
+
+  const loadAccuracy = useCallback(async () => {
+    const data = await window.api.forecast.accuracy.getAll().catch(()=>[]);
+    setAccuracyData(data || []);
+  }, []);
 
   const loadWeather = async () => {
     const from = toDateStr(new Date());
@@ -1686,7 +1851,13 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
 
   const saveSales = async (date, records) => {
     for (const rec of records) await window.api.forecast.sales.upsert(rec);
-    await loadSales();
+    const updatedSales = await loadSales();
+    // Trigger learning engine after sales are saved
+    try {
+      const { triggerLearning } = await import('../services/learningEngine.js');
+      triggerLearning({ products, allSales: updatedSales, weatherMap, dailyData: [], lang });
+      setTimeout(() => { loadPatterns(); loadInsights(); loadAccuracy(); }, 11000);
+    } catch(e) { console.error('[LearningEngine] trigger:', e); }
   };
 
   const saveWeatherOverride = async (record) => {
@@ -1783,11 +1954,11 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
     activeProducts.forEach(p => {
       result[p.id] = {};
       weekDates.forEach(date => {
-        result[p.id][date] = computePrediction(p.id, date, allSales, weatherMap, p);
+        result[p.id][date] = computePrediction(p.id, date, allSales, weatherMap, p, learnedPatterns);
       });
     });
     return result;
-  }, [activeProducts, weekDates, allSales, weatherMap]);
+  }, [activeProducts, weekDates, allSales, weatherMap, learnedPatterns]);
 
   // Last week actuals
   const lastWeekActuals = useMemo(() => {
@@ -1801,6 +1972,24 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
     });
     return result;
   }, [activeProducts, lastWeekDates, allSales]);
+
+  // Daily prediction snapshot on load
+  useEffect(() => {
+    if (activeProducts.length === 0 || Object.keys(predictions).length === 0) return;
+    const todayStr = toDateStr(new Date());
+    const lastSnap = localStorage.getItem('biq-last-snapshot-date');
+    if (lastSnap === todayStr) return;
+    activeProducts.forEach(p => {
+      const pred = predictions[p.id]?.[todayStr];
+      if (!pred) return;
+      window.api.forecast.accuracy.upsert({
+        id: `${p.id}_${todayStr}`,
+        product_id: p.id, date: todayStr,
+        predicted: Math.round(pred.prediction), actual: null, error_pct: null,
+      }).catch(()=>{});
+    });
+    localStorage.setItem('biq-last-snapshot-date', todayStr);
+  }, [activeProducts, predictions]);
 
   // Missing data warning
   const missingDates = useMemo(() => {
@@ -1858,6 +2047,81 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
       {/* FORECAST VIEW */}
       {subView==='forecast' && !selectedProduct && (
         <div>
+          {/* ── Financial Dashboard ── */}
+          {(() => {
+            const withCost = activeProducts.filter(p=>p.unit_cost!=null&&p.unit_cost>0);
+            if (withCost.length === 0) return (
+              <div style={{padding:'10px 14px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:8,marginBottom:14,fontSize:11,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}>
+                <span style={{opacity:0.65}}>{lang==='en'?'Add cost & sell price to your products to see financial impact.':'Ajoutez coût et prix de vente à vos produits pour voir l\'impact financier.'}</span>
+                <button onClick={()=>setSubView('products')} style={{padding:'4px 10px',borderRadius:5,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:10,fontWeight:600,whiteSpace:'nowrap'}}>{lang==='en'?'Configure':'Configurer'}</button>
+              </div>
+            );
+            const now = new Date();
+            const mStart = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+            const pmDate = new Date(now.getFullYear(),now.getMonth()-1,1);
+            const pmStart = `${pmDate.getFullYear()}-${String(pmDate.getMonth()+1).padStart(2,'0')}-01`;
+            const pmEnd = `${now.getFullYear()}-${String(now.getMonth()).padStart(2,'0')}-${String(new Date(now.getFullYear(),now.getMonth(),0).getDate()).padStart(2,'0')}`;
+            let mWaste=0,pmWaste=0,mStock=0,pmStock=0;
+            activeProducts.forEach(p=>{
+              allSales.filter(s=>s.product_id===p.id).forEach(s=>{
+                const inM=s.date>=mStart, inPM=s.date>=pmStart&&s.date<=pmEnd;
+                if(p.unit_cost!=null&&s.quantity_remaining!=null){
+                  const wc=s.quantity_remaining*p.unit_cost;
+                  if(inM)mWaste+=wc; if(inPM)pmWaste+=wc;
+                }
+                if(s.stockout&&p.sell_price!=null){
+                  const lr=s.quantity_sold*0.25*p.sell_price;
+                  if(inM)mStock+=lr; if(inPM)pmStock+=lr;
+                }
+              });
+            });
+            const potential=mWaste*0.6+mStock*0.8;
+            const wTrend=pmWaste>0?(mWaste-pmWaste)/pmWaste:null;
+            const sTrend=pmStock>0?(mStock-pmStock)/pmStock:null;
+            return (
+              <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:14}}>
+                {[
+                  {icon:'🗑️',label:lang==='en'?'Monthly Waste':'Gaspillage du mois',val:`$${mWaste.toFixed(0)}`,trend:wTrend,goodDown:true},
+                  {icon:'📉',label:lang==='en'?'Estimated Stockouts':'Ruptures estimées',val:`$${mStock.toFixed(0)}`,trend:sTrend,goodDown:true},
+                  {icon:'💰',label:lang==='en'?'Potential Improvement':'Amélioration potentielle',val:`$${potential.toFixed(0)}/mo`,trend:null,highlight:true},
+                ].map((c,i)=>(
+                  <div key={i} style={{padding:'12px 14px',background:c.highlight?'rgba(249,115,22,0.08)':t.section,border:`1px solid ${c.highlight?'rgba(249,115,22,0.3)':t.cardBorder}`,borderRadius:8}}>
+                    <div style={{fontSize:10,opacity:0.6,marginBottom:3}}>{c.icon} {c.label}</div>
+                    <div style={{fontSize:18,fontWeight:800,color:c.highlight?'#f97316':t.text}}>{c.val}</div>
+                    {c.trend!=null&&<div style={{fontSize:10,marginTop:2,color:((c.goodDown&&c.trend<0)||(!c.goodDown&&c.trend>0))?'#22c55e':'#ef4444'}}>{c.trend>=0?'↑':'↓'}{Math.abs(Math.round(c.trend*100))}% vs {lang==='en'?'last month':'mois dernier'}</div>}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+          {/* ── Insights ── */}
+          {insights.filter(i=>!i.read).length > 0 && (
+            <div style={{marginBottom:14,padding:'12px 14px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:8}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+                <div style={{fontSize:12,fontWeight:700}}>
+                  📊 {insights.filter(i=>!i.read).length} {lang==='en'?'new insights this week':'nouveaux insights cette semaine'}
+                </div>
+                <button onClick={async()=>{await window.api.forecast.insights.markAllRead().catch(()=>{});await loadInsights();}}
+                  style={{fontSize:10,background:'none',border:'none',cursor:'pointer',opacity:0.55,color:t.textSub}}>
+                  {lang==='en'?'Mark all read':'Tout marquer lu'}
+                </button>
+              </div>
+              {insights.filter(i=>!i.read).slice(0,5).map(ins=>(
+                <div key={ins.id} style={{display:'flex',alignItems:'flex-start',gap:8,padding:'7px 0',borderTop:`1px solid ${t.cardBorder}`}}>
+                  <div style={{flex:1,fontSize:11,lineHeight:1.5,color:ins.severity==='critical'?'#ef4444':ins.severity==='warning'?'#f97316':t.text}}>
+                    {lang==='en'?ins.message_en:ins.message_fr}
+                  </div>
+                  {ins.financial_impact!=null&&<div style={{fontSize:10,fontWeight:700,color:'#f97316',whiteSpace:'nowrap'}}>${Math.round(Math.abs(ins.financial_impact))}</div>}
+                  <button onClick={async()=>{await window.api.forecast.insights.markRead(ins.id).catch(()=>{});await loadInsights();}}
+                    style={{fontSize:9,background:'none',border:`1px solid ${t.cardBorder}`,borderRadius:3,padding:'2px 5px',cursor:'pointer',color:t.textSub,whiteSpace:'nowrap'}}>
+                    {lang==='en'?'Dismiss':'Ignorer'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Missing data warning */}
           {missingDates.length > 0 && (
             <div style={{padding:'8px 12px',background:'rgba(245,158,11,0.08)',border:'1px solid rgba(245,158,11,0.25)',borderRadius:7,fontSize:11,color:'#f59e0b',marginBottom:12}}>
@@ -2027,6 +2291,45 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
               </div>
             </div>
           )}
+
+          {/* ── Prediction Accuracy ── */}
+          {(() => {
+            const withBoth = accuracyData.filter(a=>a.predicted!=null&&a.actual!=null);
+            if (withBoth.length < 3) return null;
+            // Group by week number
+            const weekMap = {};
+            withBoth.forEach(a=>{
+              const d = new Date(a.date+'T12:00:00');
+              const yr = d.getFullYear(), wk = Math.ceil((d.getDate()+new Date(yr,d.getMonth(),1).getDay())/7);
+              const key = `${yr}-${d.getMonth()}-${wk}`;
+              if(!weekMap[key])weekMap[key]=[];
+              weekMap[key].push(a.error_pct!=null?1-Math.min(a.error_pct,1):null);
+            });
+            const weeks = Object.entries(weekMap).sort(([a],[b])=>a.localeCompare(b)).slice(-4);
+            if (weeks.length < 2) return null;
+            return (
+              <div style={{padding:'10px 14px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:8,marginTop:14}}>
+                <div style={{fontSize:11,fontWeight:700,marginBottom:6}}>📊 {lang==='en'?'Forecast Accuracy':'Précision des prévisions'}</div>
+                <div style={{display:'flex',gap:16,alignItems:'flex-end'}}>
+                  {weeks.map(([wk,accs],i)=>{
+                    const valid=accs.filter(v=>v!=null&&v>=0);
+                    const avg=valid.length>0?valid.reduce((a,b)=>a+b,0)/valid.length:null;
+                    const pct=avg!=null?Math.round(avg*100):null;
+                    const color=pct==null?t.textSub:pct>=80?'#22c55e':pct>=60?'#f97316':'#ef4444';
+                    return (
+                      <div key={wk} style={{textAlign:'center'}}>
+                        <div style={{fontSize:15,fontWeight:800,color}}>{pct!=null?`${pct}%`:'—'}</div>
+                        <div style={{fontSize:9,opacity:0.5,marginTop:1}}>{lang==='en'?`Week ${i+1}`:`Sem. ${i+1}`}</div>
+                      </div>
+                    );
+                  })}
+                  <div style={{flex:1,fontSize:10,opacity:0.5,paddingBottom:2}}>
+                    {lang==='en'?'Accuracy improves as more sales data is entered.':'La précision s\'améliore avec plus de données de ventes.'}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -2063,7 +2366,7 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
 
       {/* PRODUCTION LIST VIEW */}
       {subView==='production' && (
-        <ProductionListView products={products} allSales={allSales} weatherMap={weatherMap} T={T} t={t} lang={lang}/>
+        <ProductionListView products={products} allSales={allSales} weatherMap={weatherMap} learnedPatterns={learnedPatterns} T={T} t={t} lang={lang}/>
       )}
 
       {/* PRODUCTS VIEW */}

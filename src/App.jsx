@@ -7566,6 +7566,8 @@ export default function App(){
   const [suppliers,setSuppliers]=useState(DEFAULT_SUPPLIERS);
   const [apiConfig,setApiConfig]=useState({auphanKey:"",weatherKey:"",gasKey:""});
   const [previsionsEnabled,setPrevisionsEnabled]=useState(false);
+  const [prevInsightCount,setPrevInsightCount]=useState(0);
+  const [dailyInsight,setDailyInsight]=useState(null);
   const [activePlan,setActivePlan]=useState("free");
   const [restoreMsg,setRestoreMsg]=useState('');
   const [backupInfo,setBackupInfo]=useState(null);
@@ -7791,7 +7793,8 @@ export default function App(){
   // T = active translation object — use T.keyName throughout UI
   const T=lang==="en"?EN:FR;
 
-  const persist=useCallback(data=>{if(saveTimer.current)clearTimeout(saveTimer.current);setSaving(true);saveTimer.current=setTimeout(async()=>{const s=JSON.stringify(data);try{await window.api.storage.set("dicann-v7",s)}catch(e){}setSaving(false);schedulePush("dicann-v7",s);},600)},[]);
+  const persist=useCallback(data=>{if(saveTimer.current)clearTimeout(saveTimer.current);setSaving(true);saveTimer.current=setTimeout(async()=>{const s=JSON.stringify(data);try{await window.api.storage.set("dicann-v7",s)}catch(e){}setSaving(false);schedulePush("dicann-v7",s);// Check for fresh learning insights 11s after save
+    setTimeout(async()=>{try{const allIns=await window.api.forecast.insights.getAll();const now=Date.now();const fresh=allIns.filter(i=>{if(i.read)return false;if(i.severity!=='critical'&&i.severity!=='warning')return false;return(now-new Date(i.created_at).getTime())<60000;});if(fresh.length>0)setDailyInsight(fresh[0]);}catch(e){}},11000);},600)},[]);
   const saveRoster=useCallback(async r=>{const s=JSON.stringify(r);try{await window.api.storage.set("dicann-roster",s)}catch(e){}schedulePush("dicann-roster",s);},[]);
   const saveEmpRoster=useCallback(async r=>{const s=JSON.stringify(r);try{await window.api.storage.set("dicann-emp-roster",s)}catch(e){}schedulePush("dicann-emp-roster",s);},[]);
   const saveSup=useCallback(async s=>{const v=JSON.stringify(s);try{await window.api.storage.set("dicann-suppliers-v2",v)}catch(e){}schedulePush("dicann-suppliers-v2",v);},[]);
@@ -8157,7 +8160,7 @@ export default function App(){
             </div>
           )}
           <div style={{display:"flex",gap:1,marginTop:8,borderBottom:`1px solid ${t.dividerMid}`,overflowX:"auto",alignItems:"center"}}>
-            {tabs.map(tab=>(<button key={tab.id} onClick={()=>setActiveTab(tab.id)} style={{background:"none",border:"none",color:activeTab===tab.id?"#f97316":t.textMuted,fontSize:11.5,fontWeight:600,padding:"5px 9px",cursor:"pointer",borderBottom:activeTab===tab.id?"2px solid #f97316":"2px solid transparent",whiteSpace:"nowrap"}}>{tab.label}</button>))}
+            {tabs.map(tab=>(<button key={tab.id} onClick={()=>setActiveTab(tab.id)} style={{background:"none",border:"none",color:activeTab===tab.id?"#f97316":t.textMuted,fontSize:11.5,fontWeight:600,padding:"5px 9px",cursor:"pointer",borderBottom:activeTab===tab.id?"2px solid #f97316":"2px solid transparent",whiteSpace:"nowrap"}}>{tab.label}{tab.id==="previsions"&&prevInsightCount>0&&(<span style={{marginLeft:5,background:"#ef4444",color:"#fff",borderRadius:10,fontSize:9,fontWeight:700,padding:"1px 5px",verticalAlign:"middle"}}>{prevInsightCount}</span>)}</button>))}
             <div style={{flex:1}}/>
             <div style={{width:1,height:16,background:t.dividerMid,margin:"0 6px",flexShrink:0}}/>
             <button onClick={()=>setActiveTab("facturation")} style={{background:"none",border:"none",color:activeTab==="facturation"?"#f97316":t.textMuted,fontSize:11.5,fontWeight:600,padding:"5px 9px",cursor:"pointer",borderBottom:activeTab==="facturation"?"2px solid #f97316":"2px solid transparent",whiteSpace:"nowrap"}}>{T.tabInvoicing}</button>
@@ -8476,6 +8479,19 @@ export default function App(){
               <textarea value={raw.notes||""} onChange={e=>upd(selectedDate,"notes",e.target.value)} placeholder="Notes..." style={{width:"100%",padding:5,borderRadius:5,border:`1px solid ${t.divider}`,background:t.inputBg,color:t.text,fontSize:11.5,fontFamily:"'Outfit',sans-serif",minHeight:36,resize:"vertical",outline:"none",boxSizing:"border-box"}}/>
             </div>
 
+            {/* Daily insight from learning engine */}
+            {dailyInsight&&(
+              <div style={{marginTop:14,padding:"11px 14px",background:"rgba(249,115,22,0.08)",border:"1px solid rgba(249,115,22,0.25)",borderRadius:8,fontSize:11}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+                  <div style={{flex:1,lineHeight:1.5}}>{lang==="en"?dailyInsight.message_en:dailyInsight.message_fr}</div>
+                  <button onClick={()=>{window.api.forecast.insights.markRead(dailyInsight.id).catch(()=>{});setDailyInsight(null);}}
+                    style={{fontSize:9,background:"none",border:"1px solid rgba(249,115,22,0.3)",borderRadius:3,padding:"2px 7px",cursor:"pointer",color:"#f97316",whiteSpace:"nowrap"}}>
+                    {lang==="en"?"Dismiss":"Ignorer"}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Print */}
             <div style={{display:"flex",justifyContent:"flex-end"}}>
               <button onClick={()=>openPDF(buildDailyHTML())} style={{padding:"8px 16px",borderRadius:7,border:`1px solid rgba(${t.posRgb},0.2)`,background:`rgba(${t.posRgb},0.07)`,color:t.posColor,cursor:"pointer",fontWeight:600,fontSize:12}}>🖨️ {T.printReport}</button>
@@ -8488,7 +8504,7 @@ export default function App(){
           {activeTab==="intelligence"&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR} platforms={platforms} encaisseData={encaisseData} encaisseConfig={encaisseConfig} apiConfig={apiConfig}/>}
           {activeTab==="previsions"&&previsionsEnabled&&(
             <Suspense fallback={<div style={{padding:16,fontSize:12,opacity:0.5}}>Chargement...</div>}>
-              <PrevisionsTabLazy apiConfig={apiConfig} showUpgradePrompt={showUpgradePrompt} canUse={canUse} T={T} t={t} lang={lang}/>
+              <PrevisionsTabLazy apiConfig={apiConfig} showUpgradePrompt={showUpgradePrompt} canUse={canUse} T={T} t={t} lang={lang} onInsightCountChange={setPrevInsightCount}/>
             </Suspense>
           )}
 
