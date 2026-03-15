@@ -84,5 +84,21 @@ contextBridge.exposeInMainWorld('api', {
       getAll: ()        => ipcRenderer.invoke('forecast:csvMappings:getAll'),
       save:   (mapping) => ipcRenderer.invoke('forecast:csvMappings:save', mapping),
     },
+    patterns: {
+      getAll: () => ipcRenderer.invoke('forecast:patterns:getAll'),
+      upsert: (p) => ipcRenderer.invoke('forecast:patterns:upsert', p),
+    },
+    accuracy: {
+      getAll: () => ipcRenderer.invoke('forecast:accuracy:getAll'),
+      getForProduct: (id) => ipcRenderer.invoke('forecast:accuracy:getForProduct', id),
+      upsert: (r) => ipcRenderer.invoke('forecast:accuracy:upsert', r),
+    },
+    insights: {
+      getAll: () => ipcRenderer.invoke('forecast:insights:getAll'),
+      getUnreadCount: () => ipcRenderer.invoke('forecast:insights:getUnreadCount'),
+      upsert: (ins) => ipcRenderer.invoke('forecast:insights:upsert', ins),
+      markRead: (id) => ipcRenderer.invoke('forecast:insights:markRead', id),
+      markAllRead: () => ipcRenderer.invoke('forecast:insights:markAllRead'),
+    },
   },
 });
