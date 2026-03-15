@@ -720,8 +720,10 @@ export const FR = {
   tourStep7Desc:    "Créez soumissions, commandes, factures et notes de crédit. Gérez vos clients, paiements et relevés de compte.",
   tourStep8Title:   "⚙ Configuration",
   tourStep8Desc:    "Paramètres de l'entreprise, intégrations POS, sauvegarde des données, abonnement et préférences générales.",
-  tourStep9Title:   "🎉 Vous êtes prêt!",
-  tourStep9Desc:    "Vous pouvez relancer ce tour à tout moment en cliquant sur le bouton ? en haut à droite. Bonne journée!",
+  tourStep9Title:   "📋 Prévisions de production",
+  tourStep9Desc:    "Activez le module Prévisions dans Config → Application pour prédire la demande de vos produits, générer des listes de production et détecter la surproduction ou les ruptures de stock.",
+  tourStep10Title:  "🎉 Vous êtes prêt!",
+  tourStep10Desc:   "Vous pouvez relancer ce tour à tout moment en cliquant sur le bouton ? en haut à droite. Bonne journée!",
 
   // ── DOCUMENT SHARING ──
   reseauDocs:          "📁 Documents",
@@ -2217,8 +2219,10 @@ export const EN = {
   tourStep7Desc:    "Create quotes, orders, invoices and credit notes. Manage clients, payments and account statements.",
   tourStep8Title:   "⚙ Settings",
   tourStep8Desc:    "Company info, POS integrations, data backup, subscription management and general preferences.",
-  tourStep9Title:   "🎉 You're all set!",
-  tourStep9Desc:    "You can relaunch this tour at any time by clicking the ? button at the top right. Have a great day!",
+  tourStep9Title:   "📋 Production Forecasting",
+  tourStep9Desc:    "Enable the Forecasting module in Settings → Application to predict product demand, generate production lists, and detect overproduction or stockout risks.",
+  tourStep10Title:  "🎉 You're all set!",
+  tourStep10Desc:   "You can relaunch this tour at any time by clicking the ? button at the top right. Have a great day!",
 
   // ── DOCUMENT SHARING ──
   reseauDocs:          "📁 Documents",
