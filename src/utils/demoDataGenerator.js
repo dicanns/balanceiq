@@ -541,6 +541,7 @@ function prevSalesForDate(dateStr, product) {
     quantity_sold: sold,
     quantity_remaining: remaining,
     stockout: (remaining === 0 && sold === made) ? 1 : 0,
+    source: 'demo',
     notes: '',
   };
 }
@@ -638,6 +639,7 @@ export async function loadDemoData(_lang = 'fr') {
           date: d,
           temp_min: r2(tempC - sr(parseInt(d.replace(/-/g,'')) + 5, 2, 6)),
           temp_max: r2(tempC + sr(parseInt(d.replace(/-/g,'')) + 6, 1, 5)),
+          precipitation: (code >= 51 && code <= 82) ? r2(sr(parseInt(d.replace(/-/g,'')) + 7, 1, 8)) : 0,
           weather_code: code,
           description: desc,
           source: 'demo',
