@@ -8894,6 +8894,39 @@ export default function App(){
                     ))}
                   </div>
                   <div style={{fontSize:10,color:t.textMuted,marginTop:6}}>{T.cfgPlanDevOnly}</div>
+                  {/* ── DEMO DATA LOADER (DEV only) ── */}
+                  <div style={{marginTop:14,paddingTop:12,borderTop:`1px solid ${t.cardBorder}`}}>
+                    <div style={{fontSize:11,fontWeight:700,color:t.textSub,marginBottom:8}}>
+                      {lang==='en'?'Demo Data':'Données démo'}
+                    </div>
+                    <button onClick={async()=>{
+                      if(!window.confirm(lang==='en'
+                        ?'This will OVERWRITE all existing data with demo data (Bistro Maple + Italian bakery). Continue?'
+                        :'Cela va ÉCRASER toutes les données existantes avec les données démo (Bistro Maple + boulangerie italienne). Continuer?')) return;
+                      const btn=document.activeElement;
+                      if(btn)btn.disabled=true;
+                      try{
+                        const {loadDemoData}=await import('./utils/demoDataGenerator.js');
+                        const result=await loadDemoData(lang);
+                        if(result.success){
+                          alert(lang==='en'?'✅ Demo data loaded! Reload the app to see the data.':'✅ Données démo chargées! Rechargez l\'app pour voir les données.');
+                          window.location.reload();
+                        } else {
+                          alert('❌ '+(result.message||'Error loading demo data'));
+                        }
+                      }catch(e){
+                        console.error('[DemoData]',e);
+                        alert('❌ '+(e?.message||String(e)));
+                      }finally{
+                        if(btn)btn.disabled=false;
+                      }
+                    }} style={{padding:"7px 18px",borderRadius:8,border:"1.5px dashed #f97316",background:"rgba(249,115,22,0.06)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'DM Sans',sans-serif"}}>
+                      🎭 {lang==='en'?'Load demo data':'Charger données démo'}
+                    </button>
+                    <div style={{fontSize:10,color:t.textMuted,marginTop:5}}>
+                      {lang==='en'?'90 days • 3 months P&L • 8 clients • bakery forecasts':'90 jours • 3 mois P&L • 8 clients • prévisions boulangerie'}
+                    </div>
+                  </div>
                 </>
                 :<>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
