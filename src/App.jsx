@@ -7,7 +7,7 @@ import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./config/features.js";
 import * as XLSX from "xlsx";
 import { logCreate, logUpdate, logVoid, logCorrection, isFinancialField, promptCorrectionReason } from "./services/auditLogger.js";
-import { initCloudSync, signIn as cloudSignIn, signUp as cloudSignUp, signOut as cloudSignOut, schedulePush, onSyncStatus, onPlanChange, refreshPlan, getCloudOrgId } from "./services/cloudSync.js";
+import { initCloudSync, signIn as cloudSignIn, signUp as cloudSignUp, signOut as cloudSignOut, schedulePush, onSyncStatus, onPlanChange, refreshPlan, getCloudOrgId, getCloudParentOrgId } from "./services/cloudSync.js";
 import { POS_CONFIG, POS_COMING_SOON } from "./config/posConfig.js";
 import { FR, EN } from "./i18n/translations.js";
 
@@ -123,7 +123,7 @@ const DEFAULT_INVOICE_TEMPLATE={logoPosition:"gauche",accentColor:"#f97316",foot
 const DEFAULT_DOC_NUMS={prefix:"",soumission:1,commande:1,facture:1,creditNote:1,encaissement:1};
 function fmtDocNum(prefix,code,num){return`${prefix||""}${code}-${String(num).padStart(4,"0")}`;}
 
-const DEFAULT_SUPPLIERS=[{id:"1",name:"Dubord"},{id:"2",name:"Carrousel"},{id:"3",name:"St. Sylvain"},{id:"4",name:"Pepsi"},{id:"5",name:"Pain"},{id:"6",name:"Sauce"},{id:"7",name:"Costco"}];
+const DEFAULT_SUPPLIERS=[]; // Fresh installs start blank — users add their own suppliers
 const DEFAULT_PLATFORMS=[{id:"doordash",name:"DoorDash",emoji:"🔴"},{id:"ubereats",name:"Uber Eats",emoji:"🟢"},{id:"skip",name:"Skip The Dishes",emoji:"🟠"}];
 const DEFAULT_SORTIE_CATS=[{id:"fournisseur_cash",name:"Fournisseur payé cash"},{id:"avance_employe",name:"Avance employé"},{id:"achats_divers",name:"Achats divers"},{id:"reparations",name:"Réparations"},{id:"autre",name:"Autre"}];
 const DEFAULT_CASH_LOCATIONS=[{id:"tills",name:"Tiroirs-caisses"},{id:"petty",name:"Petite caisse"},{id:"office",name:"Bureau / Office"}];
@@ -4658,10 +4658,10 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
       if(cd.hotUsed!=null)profiles[dd].hot.push(cd.hotUsed);
     });
     return profiles.map((p,i)=>{
-      const n=p.sales.length;if(n===0)return{day:DAYS_FR[i],n:0,avgSales:0,avgHam:0,avgHot:0};
-      return{day:DAYS_FR[i],n,avgSales:Math.round(p.sales.reduce((a,b)=>a+b,0)/n),avgHam:n>0?Math.round(p.ham.reduce((a,b)=>a+b,0)/Math.max(p.ham.length,1)):0,avgHot:n>0?Math.round(p.hot.reduce((a,b)=>a+b,0)/Math.max(p.hot.length,1)):0};
+      const n=p.sales.length;if(n===0)return{day:T.days[i],n:0,avgSales:0,avgHam:0,avgHot:0};
+      return{day:T.days[i],n,avgSales:Math.round(p.sales.reduce((a,b)=>a+b,0)/n),avgHam:n>0?Math.round(p.ham.reduce((a,b)=>a+b,0)/Math.max(p.ham.length,1)):0,avgHot:n>0?Math.round(p.hot.reduce((a,b)=>a+b,0)/Math.max(p.hot.length,1)):0};
     });
-  },[liveData,computeDay]);
+  },[liveData,computeDay,T]);
 
   const anomalies=useMemo(()=>{
     const results=[];
@@ -4671,10 +4671,10 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
       const dow=dd.getDay();const profile=dowProfiles[dow];
       if(profile.n<3)continue;
       const pct=((cd.venteNet-profile.avgSales)/profile.avgSales)*100;
-      if(Math.abs(pct)>25)results.push({date:k,venteNet:cd.venteNet,avg:profile.avgSales,pct,day:DAYS_FR[dow]});
+      if(Math.abs(pct)>25)results.push({date:k,venteNet:cd.venteNet,avg:profile.avgSales,pct,day:T.days[dow]});
     }
     return results;
-  },[d,computeDay,dowProfiles]);
+  },[d,computeDay,dowProfiles,T]);
 
   const cashierVariances=useMemo(()=>{
     const cutoff=new Date();cutoff.setDate(cutoff.getDate()-30);
@@ -4717,15 +4717,16 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
   const proj=Math.round(avg+tr);
   const ICard=({children})=>(<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}>{children}</div>);
 
+  const winLabels=[`${T.intelWinStart}→14h`,"14h→17h","17h→19h","19h→20h"];
   const velocityData=useMemo(()=>{
     const dowVP=velocityProfiles[dow];
-    return WIN_LABELS.map((label,i)=>({
+    return winLabels.map((label,i)=>({
       label,
       avgHam:avArr(dowVP[i].ham),
       avgHot:avArr(dowVP[i].hot),
       n:Math.max(dowVP[i].ham.length,dowVP[i].hot.length)
     }));
-  },[velocityProfiles,dow]);
+  },[velocityProfiles,dow,T]);
 
   const multiFactorPred=useMemo(()=>{
     const tomorrow=new Date(d);tomorrow.setDate(d.getDate()+1);
@@ -4742,8 +4743,8 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
     const tHol=getHol(tomorrow);
     if(tHol){salesAdj+=salesBase*0.12;hamAdj+=hamBase*0.12;hotAdj+=hotBase*0.12;}
     const factors=[];if(wCat!=="inconnu"&&wCat!=="autre")factors.push(wCat);if(tRaw.tempC!=null)factors.push(`${tRaw.tempC}°C`);if(tHol)factors.push(tHol);
-    return{day:DAYS_FR[tDow],hamQty:Math.round(hamBase+hamAdj)+3,hotQty:Math.round(hotBase+hotAdj)+2,salesEst:Math.round(salesBase+salesAdj),factors,n:tProfile.n,hasContext:wCat!=="inconnu"||tRaw.tempC!=null||!!tHol};
-  },[d,dowProfiles,getLR]);
+    return{day:T.days[tDow],hamQty:Math.round(hamBase+hamAdj)+3,hotQty:Math.round(hotBase+hotAdj)+2,salesEst:Math.round(salesBase+salesAdj),factors,n:tProfile.n,hasContext:wCat!=="inconnu"||tRaw.tempC!=null||!!tHol};
+  },[d,dowProfiles,getLR,T]);
 
   const runAiQuery=async(queryType)=>{
     setAiLoading(true);setAiQueryType(queryType);setAiError(null);setAiResponse(null);
@@ -4815,7 +4816,7 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
       <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.intelAnomalyTitle(14)}</span>
       {anomalies.length>0?anomalies.map((a,i)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderBottom:`1px solid ${t.divider}`}}>
         <span style={{fontSize:12,textTransform:"capitalize",color:t.text}}>{a.day} {a.date}</span>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}><span style={{fontSize:11,color:t.textMuted}}>Moy: {fmt(a.avg)}</span><span style={{fontSize:11,color:t.textSub}}>→</span><span style={{fontSize:12,fontWeight:600,fontFamily:"'DM Mono',monospace",color:t.text}}>{fmt(a.venteNet)}</span><span style={{fontSize:11,fontWeight:700,color:a.pct>0?"#22c55e":"#ef4444",fontFamily:"'DM Mono',monospace"}}>{a.pct>0?"+":""}{a.pct.toFixed(0)}%</span></div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}><span style={{fontSize:11,color:t.textMuted}}>{T.intelAnomalyAvg} {fmt(a.avg)}</span><span style={{fontSize:11,color:t.textSub}}>→</span><span style={{fontSize:12,fontWeight:600,fontFamily:"'DM Mono',monospace",color:t.text}}>{fmt(a.venteNet)}</span><span style={{fontSize:11,fontWeight:700,color:a.pct>0?"#22c55e":"#ef4444",fontFamily:"'DM Mono',monospace"}}>{a.pct>0?"+":""}{a.pct.toFixed(0)}%</span></div>
       </div>)):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>{T.intelAnomalyEmpty}</div>)}
     </ICard>
     <CashierVarianceCard cashierVariances={cashierVariances} T={T} t={t}/>
@@ -4823,7 +4824,7 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
       <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.intelVelocityTitle(T.days[dow])}</span>
       {velocityData.some(v=>v.n>0)?(<div>
         <div style={{display:"grid",gridTemplateColumns:"1.8fr 0.6fr 1fr 1fr",gap:4,padding:"3px 0",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:3}}>
-          {["Fenêtre","n","Ham moy.","Hot moy."].map((h,i)=>(<span key={i} style={{fontSize:10,color:t.textMuted,fontWeight:600,textAlign:i>0?"right":"left"}}>{h}</span>))}
+          {[T.intelVelocityWindow,"n",T.intelColAvgHam,T.intelColAvgHot].map((h,i)=>(<span key={i} style={{fontSize:10,color:t.textMuted,fontWeight:600,textAlign:i>0?"right":"left"}}>{h}</span>))}
         </div>
         {velocityData.map((v,i)=>(<div key={i} style={{display:"grid",gridTemplateColumns:"1.8fr 0.6fr 1fr 1fr",gap:4,padding:"3px 0",borderBottom:`1px solid ${t.divider}`,alignItems:"center",opacity:v.n===0?0.35:1}}>
           <span style={{fontSize:11,color:t.textSub}}>{v.label}</span>
@@ -4831,7 +4832,7 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
           <span style={{fontSize:12,fontFamily:"'DM Mono',monospace",textAlign:"right",color:t.text}}>{v.avgHam!=null?Math.round(v.avgHam):"—"}</span>
           <span style={{fontSize:12,fontFamily:"'DM Mono',monospace",textAlign:"right",color:t.text}}>{v.avgHot!=null?Math.round(v.avgHot):"—"}</span>
         </div>))}
-        <div style={{fontSize:9,color:t.textDim,marginTop:4}}>Douzaines consommées par fenêtre de temps</div>
+        <div style={{fontSize:9,color:t.textDim,marginTop:4}}>{T.intelVelocityFooter}</div>
       </div>):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>{T.intelVelocityEmpty}</div>)}
     </ICard>
     <ICard>
@@ -4839,16 +4840,16 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
       {multiFactorPred?(<div style={{display:"flex",flexDirection:"column",gap:8}}>
         <div style={{fontSize:12,color:t.textSub,textTransform:"capitalize"}}>{multiFactorPred.day}{multiFactorPred.factors.length>0?" · "+multiFactorPred.factors.join(", "):""}</div>
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          <MC label="Ham" value={`${multiFactorPred.hamQty} dz`} sub="commander" accent="#f97316"/>
-          <MC label="Hot" value={`${multiFactorPred.hotQty} dz`} sub="commander" accent="#f97316"/>
-          {multiFactorPred.salesEst>0&&<MC label="Ventes est." value={fmt(multiFactorPred.salesEst)} sub={`${multiFactorPred.n} ${multiFactorPred.day}s`} accent={t.posColor}/>}
+          <MC label="Ham" value={`${multiFactorPred.hamQty} dz`} sub={T.intelOrderCmd} accent="#f97316"/>
+          <MC label="Hot" value={`${multiFactorPred.hotQty} dz`} sub={T.intelOrderCmd} accent="#f97316"/>
+          {multiFactorPred.salesEst>0&&<MC label={T.intelOrderSalesEst} value={fmt(multiFactorPred.salesEst)} sub={`${multiFactorPred.n} ${multiFactorPred.day}s`} accent={t.posColor}/>}
         </div>
-        <div style={{fontSize:9.5,color:t.textDim}}>{multiFactorPred.hasContext?"Ajusté selon météo, température et jours fériés":"Ajoutez météo de demain dans Facteurs externes pour affiner la prévision"}</div>
+        <div style={{fontSize:9.5,color:t.textDim}}>{multiFactorPred.hasContext?T.intelOrderAdjusted:T.intelOrderAddWeather}</div>
       </div>):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>{T.intelOrderEmpty}</div>)}
     </ICard>
     <ICard>
       <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>📱 {T.intelLivTitle}</span>
-      {(platforms||[]).length===0?(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>Aucune plateforme configurée dans Config</div>):(()=>{
+      {(platforms||[]).length===0?(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>{T.intelLivNoPlatforms}</div>):(()=>{
         const platStats=(platforms||[]).map(p=>{
           const commissions=[];let totalV=0,totalD=0;
           Object.entries(liveData).forEach(([,dd])=>{const pd=(dd.platformLivraisons||{})[p.id]||{};if(pd.ventes!=null&&pd.depot!=null){const cp=pd.ventes>0?((pd.ventes-pd.depot)/pd.ventes*100):0;commissions.push(cp);totalV+=pd.ventes;totalD+=pd.depot;}});
@@ -4864,7 +4865,7 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
         return(<div>
           {hasData?(<div>
             <div style={{display:"grid",gridTemplateColumns:"1.5fr 0.6fr 1fr 1fr",gap:4,padding:"4px 0",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:3}}>
-              {["Plateforme","n","Comm. moy.","Ventes tot."].map((h,i)=>(<span key={i} style={{fontSize:10,color:t.textMuted,fontWeight:600,textAlign:i>0?"right":"left"}}>{h}</span>))}
+              {[T.intelLivPlatform,"n",T.intelLivAvgComm,T.intelLivTotalSales].map((h,i)=>(<span key={i} style={{fontSize:10,color:t.textMuted,fontWeight:600,textAlign:i>0?"right":"left"}}>{h}</span>))}
             </div>
             {platStats.map(p=>p.n>0&&(<div key={p.id} style={{display:"grid",gridTemplateColumns:"1.5fr 0.6fr 1fr 1fr",gap:4,padding:"3px 0",borderBottom:`1px solid ${t.divider}`,alignItems:"center"}}>
               <span style={{fontSize:11,color:t.text}}>{p.emoji} {p.name}</span>
@@ -4874,11 +4875,11 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
             </div>))}
           </div>):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:"4px 0"}}>{T.intelLivEmpty}</div>)}
           {overdue.length>0&&(<div style={{marginTop:8,padding:"7px 10px",borderRadius:6,background:"rgba(239,68,68,0.05)",border:"1px solid rgba(239,68,68,0.15)"}}>
-            <div style={{fontSize:9.5,color:"#dc2626",fontWeight:700,textTransform:"uppercase",letterSpacing:0.7,marginBottom:5}}>⚠️ Dépôts en retard (7+ jours)</div>
+            <div style={{fontSize:9.5,color:"#dc2626",fontWeight:700,textTransform:"uppercase",letterSpacing:0.7,marginBottom:5}}>{T.intelOverdueTitle}</div>
             {overdue.map((o,i)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"2px 0",borderBottom:`1px solid rgba(239,68,68,0.1)`,fontSize:11}}>
               <span style={{color:t.textSub}}>{o.platform.emoji} {o.platform.name} — {o.date}</span>
               <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                <span style={{color:t.textMuted,fontSize:10}}>il y a {o.daysAgo}j</span>
+                <span style={{color:t.textMuted,fontSize:10}}>{T.intelDaysAgo(o.daysAgo)}</span>
                 <span style={{fontFamily:"'DM Mono',monospace",color:"#dc2626",fontWeight:600}}>{fmt(o.ventes)}</span>
               </div>
             </div>))}
@@ -4898,7 +4899,7 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
         for(let day=1;day<=dimPrev;day++){const k=`${pmStr}-${String(day).padStart(2,"0")}`;const enc=encaisseData[k];if(!enc)continue;(enc.sorties||[]).forEach(s=>{const amt=s.montant||0;totalSortPrev+=amt;if(catTotals[s.categorie])catTotals[s.categorie].prevTotal+=amt;});}
         const avgDailySort=daysWithData>0?totalSort/daysWithData:0;
         const anomalyCats=Object.values(catTotals).filter(c=>c.prevTotal>0&&c.total>c.prevTotal*1.4);
-        if(daysWithData===0)return(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>Aucune donnée d'encaisse ce mois</div>);
+        if(daysWithData===0)return(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>{T.intelEncaisseEmpty}</div>);
         return(<div>
           <div style={{fontSize:11,color:t.textSub,marginBottom:8}}>{T.intelEncaisseMonthData(daysWithData)}</div>
           <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:4,padding:"3px 0",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:3}}>
@@ -4912,9 +4913,9 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
             <span style={{fontSize:11.5,fontWeight:700,color:t.text}}>{T.intelTotalSorties}</span>
             <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,fontWeight:700,color:"#ef4444"}}>{fmt(totalSort)}</span>
           </div>
-          {avgDailySort>0&&<div style={{fontSize:10.5,color:t.textSub,marginTop:2}}>Moyenne quotidienne: {fmt(avgDailySort)}</div>}
+          {avgDailySort>0&&<div style={{fontSize:10.5,color:t.textSub,marginTop:2}}>{T.intelAvgDaily(fmt(avgDailySort))}</div>}
           {anomalyCats.length>0&&(<div style={{marginTop:8,padding:"7px 10px",borderRadius:6,background:"rgba(239,68,68,0.05)",border:"1px solid rgba(239,68,68,0.15)"}}>
-            <div style={{fontSize:9.5,color:"#dc2626",fontWeight:700,textTransform:"uppercase",letterSpacing:0.7,marginBottom:4}}>⚠️ Hausses inhabituelles vs mois dernier</div>
+            <div style={{fontSize:9.5,color:"#dc2626",fontWeight:700,textTransform:"uppercase",letterSpacing:0.7,marginBottom:4}}>{T.intelUnusualRises}</div>
             {anomalyCats.map((c,i)=>(<div key={i} style={{fontSize:11,color:t.textSub,padding:"2px 0"}}>{c.name}: {fmt(c.total)} <span style={{color:"#dc2626",fontWeight:600}}>(+{Math.round((c.total/c.prevTotal-1)*100)}% vs M-1)</span></div>))}
           </div>)}
         </div>);
@@ -7201,10 +7202,10 @@ function POSIntegrationSection({posCredentials,setPosCredentials,posAdvancedConf
 // ── SUBSCRIPTION SECTION ──
 const SUPABASE_FUNCTIONS_URL = 'https://etiwnesxjypdwhxqnqqq.supabase.co/functions/v1';
 const PRICE_IDS = {
-  pro:               'price_1T9C86Gcfc7VEkjZJM9r5FeW',
-  networkPro:        'price_1T9uJzGcfc7VEkjZ9yoyzz5g',
-  franchise:         'price_1T9C8MGcfc7VEkjZH0iNcaoK',
-  franchiseLocation: 'price_1T9C8cGcfc7VEkjZxGdIU7tt',
+  pro:               { monthly: 'price_1TCLnfGcfc7VEkjZIMBbNl4n', annual: 'price_1TCLnmGcfc7VEkjZX2wv763a' },
+  networkPro:        { monthly: 'price_1TCLkXGcfc7VEkjZyZIa4Pkr', annual: 'price_1TCLkyGcfc7VEkjZZgwQGotm' },
+  franchise:         { monthly: 'price_1TCLpmGcfc7VEkjZTuaZCNwp', annual: 'price_1TCLq1Gcfc7VEkjZZK3UlWpz' },
+  franchiseLocation: { monthly: 'price_1TCLqxGcfc7VEkjZs19hWTOo', annual: 'price_1TCLrZGcfc7VEkjZF2o6LLXs' },
 };
 
 // ── JOIN NETWORK CARD (franchisee side) ──
@@ -7270,6 +7271,7 @@ function SubscriptionSection({cloudUser,activePlan,orgId,onPlanRefreshed,t,T}){
   const [loading,setLoading]=useState(false);
   const [msg,setMsg]=useState(null);
   const [paymentFailed,setPaymentFailed]=useState(false);
+  const [billing,setBilling]=useState('monthly'); // 'monthly' | 'annual'
 
   // Check payment_failed flag on mount when user is logged in
   useEffect(()=>{
@@ -7326,6 +7328,9 @@ function SubscriptionSection({cloudUser,activePlan,orgId,onPlanRefreshed,t,T}){
   const isPro=activePlan==='pro';
   const isFranchise=activePlan==='franchise';
   const isPaid=isPro||isFranchise;
+  // isInFranchiseNetwork: free user whose org is linked to a franchisor network (has parent_org_id)
+  // They should see the Network Pro upgrade card instead of the regular Pro/Franchise cards
+  const isInFranchiseNetwork=activePlan==='free'&&!!getCloudParentOrgId();
   const planColor=isPaid?'#22c55e':isNetwork?'#38bdf8':'#f97316';
   const planBg=isPaid?'rgba(34,197,94,0.1)':isNetwork?'rgba(56,189,248,0.1)':'rgba(249,115,22,0.08)';
   const planLabel=isFranchise?T.subFranchise:isPro?T.subPro:isNetwork?T.subNetwork:T.subFree;
@@ -7345,37 +7350,80 @@ function SubscriptionSection({cloudUser,activePlan,orgId,onPlanRefreshed,t,T}){
       <span style={{fontSize:12,fontWeight:700,color:planColor,background:planBg,borderRadius:6,padding:'2px 10px'}}>{planLabel}</span>
     </div>
 
-    {/* Free tier — show upgrade CTAs */}
-    {!isPaid&&!isNetwork&&(<>
+    {/* Free tier — show upgrade CTAs (only for standalone users, not franchisees in a network) */}
+    {!isPaid&&!isNetwork&&!isInFranchiseNetwork&&(<>
+      {/* Billing toggle */}
+      <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:10}}>
+        <button onClick={()=>setBilling('monthly')} style={{padding:'4px 12px',borderRadius:6,border:'none',background:billing==='monthly'?'rgba(249,115,22,0.12)':'transparent',color:billing==='monthly'?'#f97316':t.textMuted,cursor:'pointer',fontWeight:600,fontSize:11,fontFamily:'inherit'}}>
+          {T.subBillingMonthly}
+        </button>
+        <button onClick={()=>setBilling('annual')} style={{padding:'4px 12px',borderRadius:6,border:'none',background:billing==='annual'?'rgba(34,197,94,0.1)':'transparent',color:billing==='annual'?'#22c55e':t.textMuted,cursor:'pointer',fontWeight:600,fontSize:11,fontFamily:'inherit'}}>
+          {T.subBillingAnnual} <span style={{fontSize:9,background:'rgba(34,197,94,0.15)',color:'#22c55e',padding:'1px 5px',borderRadius:4,marginLeft:3}}>-15%</span>
+        </button>
+      </div>
       <div style={{fontSize:11,color:t.textMuted,marginBottom:10,lineHeight:1.5}}>{T.subProFeatures}</div>
       <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:6}}>
-        <button
-          onClick={()=>openCheckout(PRICE_IDS.pro)}
-          disabled={loading||!cloudUser}
-          style={{padding:'6px 16px',borderRadius:7,border:'none',background:loading||!cloudUser?'rgba(255,255,255,0.05)':'linear-gradient(135deg,#f97316,#ea580c)',color:loading||!cloudUser?t.textDim:'#fff',cursor:loading||!cloudUser?'default':'pointer',fontWeight:700,fontSize:12}}>
-          {loading?T.subLoading:T.subTrialPro}
-        </button>
-        <button
-          onClick={()=>openCheckout(PRICE_IDS.franchise)}
-          disabled={loading||!cloudUser}
-          style={{padding:'6px 14px',borderRadius:7,border:'1px solid rgba(249,115,22,0.3)',background:'rgba(249,115,22,0.07)',color:loading||!cloudUser?t.textDim:'#f97316',cursor:loading||!cloudUser?'default':'pointer',fontWeight:700,fontSize:12}}>
-          {loading?T.subLoading:T.subTrialFranchise}
-        </button>
+        <div style={{display:'flex',flexDirection:'column',gap:3}}>
+          <button
+            onClick={()=>openCheckout(PRICE_IDS.pro[billing])}
+            disabled={loading||!cloudUser}
+            style={{padding:'6px 16px',borderRadius:7,border:'none',background:loading||!cloudUser?'rgba(255,255,255,0.05)':'linear-gradient(135deg,#f97316,#ea580c)',color:loading||!cloudUser?t.textDim:'#fff',cursor:loading||!cloudUser?'default':'pointer',fontWeight:700,fontSize:12}}>
+            {loading?T.subLoading:T.subTrialPro}
+          </button>
+          <div style={{fontSize:9.5,color:t.textMuted,textAlign:'center'}}>
+            {billing==='monthly'?T.subProPriceMonthly:T.subProPriceAnnual}
+          </div>
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:3}}>
+          <button
+            onClick={()=>openCheckout(PRICE_IDS.franchise[billing])}
+            disabled={loading||!cloudUser}
+            style={{padding:'6px 14px',borderRadius:7,border:'1px solid rgba(249,115,22,0.3)',background:'rgba(249,115,22,0.07)',color:loading||!cloudUser?t.textDim:'#f97316',cursor:loading||!cloudUser?'default':'pointer',fontWeight:700,fontSize:12}}>
+            {loading?T.subLoading:T.subTrialFranchise}
+          </button>
+          <div style={{fontSize:9.5,color:t.textMuted,textAlign:'center'}}>
+            {billing==='monthly'?T.subFranchisePriceMonthly:T.subFranchisePriceAnnual}
+          </div>
+        </div>
       </div>
       {!cloudUser&&<div style={{fontSize:10,color:'#f59e0b',marginBottom:4}}>⚠ {T.cfgCloudFreeNote}</div>}
       <div style={{fontSize:10,color:t.textMuted}}>{T.subCancelNote}</div>
     </>)}
 
-    {/* Network tier — cloud sync included, offer Pro upgrade */}
+    {/* Franchisee in a network (free plan + parent_org_id) — offer Network Pro upgrade */}
+    {isInFranchiseNetwork&&(<>
+      <div style={{fontSize:11,color:'#38bdf8',background:'rgba(56,189,248,0.07)',border:'1px solid rgba(56,189,248,0.2)',borderRadius:6,padding:'7px 10px',marginBottom:10,lineHeight:1.5}}>{T.subNetworkSyncCovered}</div>
+      <div style={{fontSize:11,color:t.textMuted,marginBottom:10,lineHeight:1.5}}>{T.subNetworkFeatures}</div>
+      {/* Billing toggle */}
+      <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}>
+        <button onClick={()=>setBilling('monthly')} style={{padding:'4px 12px',borderRadius:6,border:'none',background:billing==='monthly'?'rgba(56,189,248,0.12)':'transparent',color:billing==='monthly'?'#38bdf8':t.textMuted,cursor:'pointer',fontWeight:600,fontSize:11,fontFamily:'inherit'}}>
+          {T.subBillingMonthly}
+        </button>
+        <button onClick={()=>setBilling('annual')} style={{padding:'4px 12px',borderRadius:6,border:'none',background:billing==='annual'?'rgba(34,197,94,0.1)':'transparent',color:billing==='annual'?'#22c55e':t.textMuted,cursor:'pointer',fontWeight:600,fontSize:11,fontFamily:'inherit'}}>
+          {T.subBillingAnnual} <span style={{fontSize:9,background:'rgba(34,197,94,0.15)',color:'#22c55e',padding:'1px 5px',borderRadius:4,marginLeft:3}}>-15%</span>
+        </button>
+      </div>
+      <div style={{display:'flex',flexDirection:'column',gap:3,marginBottom:6}}>
+        <button
+          onClick={()=>openCheckout(PRICE_IDS.networkPro[billing])}
+          disabled={loading||!cloudUser}
+          style={{padding:'6px 16px',borderRadius:7,border:'none',background:loading?'rgba(255,255,255,0.05)':'linear-gradient(135deg,#38bdf8,#0ea5e9)',color:loading?t.textDim:'#fff',cursor:loading?'default':'pointer',fontWeight:700,fontSize:12}}>
+          {loading?T.subLoading:T.subUpgradeNetwork}
+        </button>
+        <div style={{fontSize:9.5,color:t.textMuted,textAlign:'center'}}>
+          {billing==='monthly'?T.subNetworkPriceMonthly:T.subNetworkPriceAnnual}
+        </div>
+      </div>
+      {!cloudUser&&<div style={{fontSize:10,color:'#f59e0b',marginBottom:4}}>⚠ {T.cfgCloudFreeNote}</div>}
+      <div style={{fontSize:10,color:t.textMuted}}>{T.subCancelNote}</div>
+    </>)}
+
+    {/* Network Pro tier (already subscribed) — show manage */}
     {isNetwork&&(<>
       <div style={{fontSize:11,color:t.textMuted,marginBottom:10,lineHeight:1.5}}>{T.subNetworkFeatures}</div>
-      <button
-        onClick={()=>openCheckout(PRICE_IDS.networkPro)}
-        disabled={loading||!cloudUser||PRICE_IDS.networkPro.includes('PLACEHOLDER')}
-        style={{padding:'6px 16px',borderRadius:7,border:'none',background:loading||PRICE_IDS.networkPro.includes('PLACEHOLDER')?'rgba(255,255,255,0.05)':'linear-gradient(135deg,#38bdf8,#0ea5e9)',color:loading||PRICE_IDS.networkPro.includes('PLACEHOLDER')?t.textDim:'#fff',cursor:'pointer',fontWeight:700,fontSize:12,marginBottom:6}}>
-        {loading?T.subLoading:T.subUpgradeNetwork}
+      <button onClick={openPortal} disabled={loading} style={{padding:'5px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:loading?'default':'pointer',fontWeight:600,fontSize:11}}>
+        {loading?T.subLoading:T.subManage}
       </button>
-      <div style={{fontSize:10,color:t.textMuted}}>{T.subCancelNote}</div>
     </>)}
 
     {/* Pro tier */}
@@ -7577,6 +7625,8 @@ export default function App(){
   const [resendTestStatus,setResendTestStatus]=useState(null);
   const [updateAvailable,setUpdateAvailable]=useState(false);
   const [updating,setUpdating]=useState(false);
+  const [showEarlyAccess,setShowEarlyAccess]=useState(()=>{try{return localStorage.getItem(`balanceiq-early-access-v${appVersion}`)!=='1';}catch{return true;}});
+  const dismissEarlyAccess=useCallback(()=>{try{localStorage.setItem(`balanceiq-early-access-v${appVersion}`,'1');}catch{}setShowEarlyAccess(false);},[]);
   const [themeName,setThemeName]=useState('dark');
   const theme=themeName==='light'?LIGHT:DARK;
 
@@ -7861,10 +7911,11 @@ export default function App(){
   const checkGasPrice=useCallback(async()=>{
     setGasCheckLoading(true);setGasCheckMsg(null);
     try{
-      const result=await window.api.gas.getPrice();
+      const result=await window.api.gas.getPrice({lat:apiConfig.weatherLat,lon:apiConfig.weatherLng});
       if(result?.price){
         upd(selectedDate,"gas",result.price);
-        setGasCheckMsg({ok:true,text:`✓ Prix mis à jour: ${Number(result.price).toFixed(3)} $/L`});
+        const src=result.source?` — ${result.source}`:'';
+        setGasCheckMsg({ok:true,text:`✓ ${Number(result.price).toFixed(3)} $/L${src}`});
       }else{
         setGasCheckMsg({ok:false,text:"Impossible de vérifier — entrer le prix manuellement"});
       }
@@ -8095,6 +8146,32 @@ export default function App(){
         setActiveTab={setActiveTab}
       />}
       {pdfPreview&&<PDFPreviewModal html={pdfPreview} onClose={()=>setPdfPreview(null)}/>}
+      {showEarlyAccess&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={dismissEarlyAccess}>
+          <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:14,padding:"28px 32px",maxWidth:460,width:"100%",boxShadow:"0 24px 64px rgba(0,0,0,0.5)"}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+              <div style={{width:36,height:32,borderRadius:7,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:"#fff",letterSpacing:-0.5,flexShrink:0}}>BIQ</div>
+              <div>
+                <div style={{fontSize:15,fontWeight:700,color:t.text}}>{lang==="en"?"BalanceIQ — Early Access":"BalanceIQ — Accès anticipé"}</div>
+                <div style={{fontSize:10,color:"#22c55e",fontWeight:700,letterSpacing:0.5,marginTop:1}}>v{appVersion}</div>
+              </div>
+            </div>
+            <p style={{fontSize:12.5,lineHeight:1.75,color:t.textSub,margin:"0 0 20px"}}>
+              {lang==="en"
+                ?"Thanks for using BalanceIQ! This software is in active development — new features are added every week. Your data is safe (automatic backup included), but we recommend validating important figures against your source documents during this period."
+                :"Merci d'utiliser BalanceIQ\u00a0! Ce logiciel est en développement actif — de nouvelles fonctionnalités sont ajoutées chaque semaine. Vos données sont en sécurité (sauvegarde automatique incluse), mais nous vous recommandons de valider les chiffres importants avec vos documents sources pendant cette période."}
+            </p>
+            <p style={{fontSize:11.5,color:t.textMuted,margin:"0 0 20px",lineHeight:1.6}}>
+              {lang==="en"
+                ?<>Feedback? Write us at <a href="mailto:info@balanceiq.ca" style={{color:"#f97316",textDecoration:"none"}}>info@balanceiq.ca</a> — every message is read.</>
+                :<>Des commentaires\u00a0? Écrivez-nous à <a href="mailto:info@balanceiq.ca" style={{color:"#f97316",textDecoration:"none"}}>info@balanceiq.ca</a> — chaque message est lu.</>}
+            </p>
+            <button onClick={dismissEarlyAccess} style={{width:"100%",padding:"10px 0",borderRadius:8,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+              {lang==="en"?"Got it":"C'est compris"}
+            </button>
+          </div>
+        </div>
+      )}
       <div style={{minHeight:"100vh",background:t.bg,fontFamily:"'Outfit','Helvetica Neue',sans-serif",color:t.text,transition:"background 0.2s,color 0.2s"}}>
 
         {/* ── HEADER ── */}
@@ -8103,6 +8180,7 @@ export default function App(){
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               <div style={{width:32,height:28,borderRadius:6,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:"#fff",letterSpacing:-0.5}}>BIQ</div>
               <span style={{fontSize:14,fontWeight:700,color:t.text}}>BalanceIQ</span>
+              <span style={{fontSize:9,fontWeight:700,color:"#16a34a",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.25)",borderRadius:8,padding:"2px 7px",letterSpacing:0.5,lineHeight:1}}>BETA</span>
               {appMode==="franchiseur"&&(
                 <select value={activeLocationId} onChange={e=>setActiveLocationId(e.target.value)}
                   style={{marginLeft:12,background:"rgba(139,92,246,0.1)",border:"1px solid rgba(139,92,246,0.25)",borderRadius:6,color:"#c4b5fd",fontSize:11,fontWeight:600,padding:"3px 8px",cursor:"pointer",outline:"none",fontFamily:"'Outfit',sans-serif"}}>
