@@ -13,10 +13,20 @@ const supabase = createClient(
 
 // Maps Stripe price IDs to plan names
 const PRICE_TO_PLAN: Record<string, string> = {
-  'price_1T9C86Gcfc7VEkjZJM9r5FeW': 'pro',        // BalanceIQ Pro ($49/mo standalone)
-  'price_1T9C8MGcfc7VEkjZH0iNcaoK': 'franchise',   // BalanceIQ Franchise
-  'price_1T9C8cGcfc7VEkjZxGdIU7tt': 'franchise',   // BalanceIQ Franchise Location
-  'price_1T9uJzGcfc7VEkjZ9yoyzz5g': 'pro',          // BalanceIQ Network Pro ($19/mo franchisee upgrade)
+  // ── Grandfathered / legacy prices (keep for existing subscribers) ──
+  'price_1T9C86Gcfc7VEkjZJM9r5FeW': 'pro',        // old Pro $49/mo
+  'price_1T9C8MGcfc7VEkjZH0iNcaoK': 'franchise',   // old Franchise $199/mo
+  'price_1T9C8cGcfc7VEkjZxGdIU7tt': 'franchise',   // old Franchise Location $29/mo
+  'price_1T9uJzGcfc7VEkjZ9yoyzz5g': 'network',     // old Network Pro $19/mo
+  // ── Current prices (March 2026) ──
+  'price_1TCLnfGcfc7VEkjZIMBbNl4n': 'pro',         // Pro $14/mo
+  'price_1TCLnmGcfc7VEkjZX2wv763a': 'pro',         // Pro $119/yr
+  'price_1TCLkXGcfc7VEkjZyZIa4Pkr': 'network',     // Network Pro $5/mo
+  'price_1TCLkyGcfc7VEkjZZgwQGotm': 'network',     // Network Pro $49/yr
+  'price_1TCLpmGcfc7VEkjZTuaZCNwp': 'franchise',   // Franchise $49/mo
+  'price_1TCLq1Gcfc7VEkjZZK3UlWpz': 'franchise',   // Franchise $490/yr
+  'price_1TCLqxGcfc7VEkjZs19hWTOo': 'franchise',   // Franchise Location $9/mo
+  'price_1TCLrZGcfc7VEkjZF2o6LLXs': 'franchise',   // Franchise Location $90/yr
 };
 
 async function setOrgPlan(orgId: string, plan: string, extra: Record<string, string> = {}) {
