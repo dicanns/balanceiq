@@ -1,9 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { createClient } from '@supabase/supabase-js';
-
-const SUPABASE_URL = 'https://etiwnesxjypdwhxqnqqq.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV0aXduZXN4anlwZHdoeHFucXFxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDIwMDA0MDYsImV4cCI6MjA1NzU3NjQwNn0.WS02rJFpXFhSsP5mxOtXEJkLaqxKGm-ICbz2MqBIPio';
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from '../services/supabase.js';
 
 const DEFAULT_FOLDERS = ['SOPs', 'Brand Assets', 'Marketing & Promo', 'Logos', 'Approved Content'];
 const EDGE_FN = `${SUPABASE_URL}/functions/v1/franchise-docs`;
@@ -57,14 +53,23 @@ export default function DocumentsTab({ isFranchisor, orgId, cloudUser, T, t, onU
     if (!cloudUser || !orgId) { setLoading(false); return; }
     setLoading(true); setLoadErr(null);
     try {
-      const token = await getToken();
-
-      // Fetch documents
+      // Fetch documents — treat missing table as empty (migration not yet run)
       const { data: docs, error: docsErr } = await supabase
         .from('franchise_documents')
         .select('*')
         .order('uploaded_at', { ascending: false });
-      if (docsErr) throw docsErr;
+
+      if (docsErr) {
+        // 42P01 = relation does not exist; PGRST116 = table not found via PostgREST
+        const isSetup = docsErr.code === '42P01' || docsErr.code === 'PGRST116'
+          || (docsErr.message || '').includes('does not exist');
+        if (isSetup) {
+          setLoadErr('__setup__');
+          setLoading(false);
+          return;
+        }
+        throw docsErr;
+      }
       setDocuments(docs || []);
 
       // Collect folders from docs + defaults
@@ -79,7 +84,7 @@ export default function DocumentsTab({ isFranchisor, orgId, cloudUser, T, t, onU
         .from('franchise_announcements')
         .select('*')
         .order('created_at', { ascending: false });
-      if (annsErr) throw annsErr;
+      if (annsErr && !((annsErr.message || '').includes('does not exist'))) throw annsErr;
       setAnnouncements(anns || []);
 
       // Fetch read receipts for current user
@@ -96,7 +101,8 @@ export default function DocumentsTab({ isFranchisor, orgId, cloudUser, T, t, onU
         onUnreadCountChange?.(0);
       }
     } catch (e) {
-      setLoadErr(T.docLoadErr);
+      console.error('[DocumentsTab] loadData error:', e);
+      setLoadErr(T.docLoadErr + ' ' + (e?.message || e?.code || ''));
     } finally {
       setLoading(false);
     }
@@ -217,8 +223,29 @@ export default function DocumentsTab({ isFranchisor, orgId, cloudUser, T, t, onU
     return <div style={{ padding: 16, fontSize: 12, opacity: 0.5 }}>Chargement...</div>;
   }
 
+  if (loadErr === '__setup__') {
+    return (
+      <div style={{ padding: 20, background: 'rgba(249,115,22,0.06)', border: '1px solid rgba(249,115,22,0.2)', borderRadius: 10, maxWidth: 560 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#f97316', marginBottom: 8 }}>⚙️ Configuration requise — Documents réseau</div>
+        <div style={{ fontSize: 12, lineHeight: 1.7, opacity: 0.85, marginBottom: 12 }}>
+          Les tables Supabase pour le partage de documents n'ont pas encore été créées.<br/>
+          Exécuter la migration suivante dans le <strong>SQL Editor</strong> de votre projet Supabase&nbsp;:
+        </div>
+        <code style={{ display: 'block', fontSize: 10.5, background: 'rgba(0,0,0,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 12, whiteSpace: 'pre', overflowX: 'auto', color: '#c0c3d4' }}>
+          {`supabase/migrations/20260314_franchise_docs.sql`}
+        </code>
+        <div style={{ fontSize: 11, opacity: 0.65, marginBottom: 12 }}>
+          Ensuite, créer un bucket Storage nommé <strong>franchise-docs</strong> (privé, 10 MB max) dans Supabase Storage.
+        </div>
+        <button onClick={loadData} style={{ padding: '5px 14px', borderRadius: 6, border: '1px solid rgba(249,115,22,0.4)', background: 'rgba(249,115,22,0.1)', color: '#f97316', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>
+          {T.docRetryAfterMig || 'Retry after migration'}
+        </button>
+      </div>
+    );
+  }
+
   if (loadErr) {
-    return <div style={{ padding: 16, fontSize: 12, color: '#ef4444' }}>{loadErr} <button onClick={loadData} style={btnGhost}>Réessayer</button></div>;
+    return <div style={{ padding: 16, fontSize: 12, color: '#ef4444' }}>{loadErr} <button onClick={loadData} style={btnGhost}>{T.docRetry || 'Retry'}</button></div>;
   }
 
   return (

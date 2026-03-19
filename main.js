@@ -487,68 +487,229 @@ ipcMain.handle('email:sendResend', async (event, {apiKey, from, to, subject, htm
   });
 });
 
-// IPC handler — gas price scraper (CAA Canada — prix moyen national, source statique)
-// Note: La Régie de l'énergie charge ses prix via JavaScript (non scrappable).
-// CAA Canada publie le prix moyen du jour en HTML statique sur https://www.caa.ca/gas-prices/
-ipcMain.handle('gas:getPrice', async () => {
-  const cheerio = require('cheerio');
+// ── IPC handler — gas price (Régie de l'énergie du Québec, location-aware)
+//
+// Fallback chain:
+//   1. Régie de l'énergie — relevé quotidien PDF (updates daily, uses weather location)
+//   2. Régie de l'énergie — bulletin hebdomadaire PDF (weekly, same region targeting)
+//   3. CAA Canada HTML scraper (original source — kept as last-resort fallback)
+//
+// TODO: Régie de l'énergie announced real-time station-level prices API for
+//       April 2026 launch (regie-energie.qc.ca). Switch to that API once live
+//       — it will give per-city prices without PDF parsing and region guessing.
+//
+// Cache: 24h in-memory, keyed by region so different locations get different prices.
+// Rollback: to restore original CAA-only behaviour, comment out the Régie
+//   blocks below (steps 1 & 2) and the cache check, leaving only step 3.
 
-  return new Promise((resolve) => {
+const _gasPriceCache = {}; // { [regionKey]: { price, source, fetchedAt } }
+
+// Map lat/lon → ordered list of PDF search terms for the Régie region.
+// Terms are tried in order; first match wins in parseRegiePDF().
+// Coordinates use signed decimals (negative = West / South).
+function coordsToRegieSearchTerms(lat, lon) {
+  if (!lat || !lon) return ['Montréal'];
+
+  // Outaouais / Gatineau — west of -75.5°
+  if (lon <= -75.5 && lat >= 45.0 && lat <= 47.0) return ['Outaouais', 'Gatineau'];
+
+  // Abitibi-Témiscamingue — far northwest
+  if (lon <= -76.0 && lat >= 47.0) return ['Abitibi', 'Val-d\'Or', 'Rouyn'];
+
+  // Nord-du-Québec / Côte-Nord — very northern or far northeast
+  if (lat >= 50.0) return ['Côte-Nord', 'Nord-du-Québec', 'Sept-Îles'];
+
+  // Saguenay – Lac-Saint-Jean — lat 47.5–51, lon -69.5 to -76
+  if (lat >= 47.5 && lat <= 51.0 && lon >= -76.0 && lon <= -69.5) return ['Saguenay', 'Chicoutimi', 'Lac-Saint-Jean'];
+
+  // Bas-Saint-Laurent / Gaspésie — eastern Quebec, lon > -70.5
+  if (lat >= 47.0 && lon >= -70.5) return ['Gaspésie', 'Bas-Saint-Laurent', 'Rimouski', 'Matane'];
+
+  // Québec City / Chaudière-Appalaches — lat 46.3–47.5, lon -70.5 to -72.5
+  if (lat >= 46.3 && lat <= 47.5 && lon >= -72.5 && lon <= -70.5) return ['Québec', 'Lévis', 'Sainte-Marie'];
+
+  // Mauricie / Centre-du-Québec — lat 45.8–47, lon -72.5 to -73.8
+  if (lat >= 45.8 && lat <= 47.0 && lon >= -73.8 && lon <= -72.5) return ['Mauricie', 'Trois-Rivières', 'Centre-du-Québec'];
+
+  // Estrie / Sherbrooke — lat 45.0–46.3, lon -71.5 to -72.5
+  if (lat >= 45.0 && lat <= 46.3 && lon >= -72.5 && lon <= -71.5) return ['Estrie', 'Sherbrooke'];
+
+  // Lanaudière / Laurentides — north of Montréal, lat 45.7–47, lon -73.5 to -75
+  if (lat >= 45.7 && lat <= 47.5 && lon >= -75.0 && lon <= -73.5) return ['Laurentides', 'Lanaudière', 'Montréal'];
+
+  // Default: Montréal / Laval / Montérégie
+  return ['Montréal', 'Laval', 'Montérégie'];
+}
+
+// Fetch a URL using Electron net, return Buffer
+function fetchBuffer(url) {
+  return new Promise((resolve, reject) => {
     const req = net.request({
-      url: 'https://www.caa.ca/gas-prices/',
+      url,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'fr-CA,fr;q=0.9,en;q=0.8',
+        'User-Agent': 'Mozilla/5.0 (compatible; BalanceIQ/1.0)',
+        'Accept': 'application/pdf,*/*',
       },
     });
-
     req.on('response', (response) => {
+      if (response.statusCode !== 200) {
+        reject(new Error(`HTTP ${response.statusCode}`));
+        return;
+      }
       const chunks = [];
       response.on('data', (chunk) => chunks.push(chunk));
-      response.on('end', () => {
-        try {
-          const html = Buffer.concat(chunks).toString('utf-8');
-          const $ = cheerio.load(html);
-          let priceCents = null;
-
-          // Primary: today's average price in div.national_single_price — e.g. "150.5/L"
-          const primaryText = $('div.national_single_price').first().text().trim();
-          const primaryMatch = primaryText.match(/(\d{2,3}(?:\.\d{1,2})?)\s*\/L/);
-          if (primaryMatch) {
-            priceCents = parseFloat(primaryMatch[1]);
-          }
-
-          // Fallback: any element with class containing "single_price"
-          if (!priceCents) {
-            $('[class*="single_price"]').each((_, el) => {
-              if (priceCents) return;
-              const m = $(el).text().match(/(\d{2,3}(?:\.\d{1,2})?)\s*\/L/);
-              if (m) priceCents = parseFloat(m[1]);
-            });
-          }
-
-          // Fallback 2: raw HTML — any "NNN.N/L" pattern in reasonable range
-          if (!priceCents) {
-            const m = html.match(/\b(1[2-9]\d(?:\.\d{1,2})?)\s*\/L/);
-            if (m) priceCents = parseFloat(m[1]);
-          }
-
-          if (priceCents && priceCents > 80 && priceCents < 350) {
-            resolve({ price: (priceCents / 100).toFixed(3) });
-          } else {
-            resolve({ error: 'Prix introuvable — vérifier la connexion internet.' });
-          }
-        } catch (err) {
-          resolve({ error: 'Erreur de traitement de la page.' });
-        }
-      });
-      response.on('error', () => resolve({ error: 'Erreur réseau.' }));
+      response.on('end', () => resolve(Buffer.concat(chunks)));
+      response.on('error', reject);
     });
-
-    req.on('error', () => resolve({ error: 'Erreur réseau — vérifier la connexion internet.' }));
+    req.on('error', reject);
     req.end();
   });
+}
+
+// Extract all text from a PDF buffer using pdfjs-dist (Node.js / Electron main process).
+async function extractRegiePDFText(buffer) {
+  const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = false;
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+  let text = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map(s => s.str).join(' ') + '\n';
+  }
+  return text;
+}
+
+// Parse Régie PDF buffer — extract "Essence ordinaire" price (¢/L) for the target region.
+// searchTerms: ordered array of strings to search near (e.g. ['Montréal','Laval']).
+// Returns price in ¢/L (integer or float), or null if parsing failed.
+//
+// PDF row format (per region):  "N.  RegionName  P_mon  P_tue  P_wed  MOYENNE"
+// The second-to-last price in the row = most recent day's price (before the average).
+async function parseRegiePDF(buffer, searchTerms = ['Montréal']) {
+  const rawText = await extractRegiePDFText(buffer);
+
+  // Normalise: collapse whitespace for consistent matching
+  const norm = rawText.replace(/\s+/g, ' ');
+
+  // Price pattern: 3-digit number optionally followed by decimal (¢/L, 100–250 range)
+  const priceReG = /\b(1[0-9]\d(?:[.,]\d{1,2})?)\b/g;
+
+  // Strategy A: find the location-specific term, collect all prices in the next ~300 chars,
+  // take the second-to-last (= today's price; last = MOYENNE).
+  for (const term of searchTerms) {
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(escaped, 'i');
+    const idx = norm.search(re);
+    if (idx === -1) continue;
+    const slice = norm.slice(idx, idx + 120);
+    const prices = [];
+    let m;
+    const localRe = new RegExp(priceReG.source, 'g');
+    while ((m = localRe.exec(slice)) !== null) {
+      const v = parseFloat(m[1].replace(',', '.'));
+      if (v >= 100 && v <= 250) prices.push(v);
+    }
+    if (prices.length >= 2) {
+      // second-to-last = today's actual price; last = weekly average
+      return prices[prices.length - 2];
+    }
+    if (prices.length === 1) return prices[0];
+  }
+
+  // Strategy B: last resort — first plausible price in the whole document
+  const globalRe = /\b(1[0-9]\d(?:[.,]\d{1,2})?)\b/;
+  const globalMatch = norm.match(globalRe);
+  if (globalMatch) {
+    const v = parseFloat(globalMatch[1].replace(',', '.'));
+    if (v >= 100 && v <= 250) return v;
+  }
+
+  return null; // parse failed
+}
+
+ipcMain.handle('gas:getPrice', async (event, opts = {}) => {
+  const { lat, lon } = opts;
+  const searchTerms = coordsToRegieSearchTerms(lat, lon);
+  const regionKey = searchTerms[0]; // cache key per region
+
+  // ── 24h cache check (per region) ────────────────────────────────────────
+  const cached = _gasPriceCache[regionKey];
+  if (cached && (Date.now() - cached.fetchedAt) < 24 * 60 * 60 * 1000) {
+    return { price: cached.price, source: cached.source, cached: true };
+  }
+
+  // ── Step 1: Régie de l'énergie — relevé quotidien ────────────────────────
+  try {
+    const buf = await fetchBuffer(
+      'https://www.regie-energie.qc.ca/storage/app/media/consommateurs/informations-pratiques/prix-petrole/publications/Publications-quotidiennes/releve-quotidien/rqe.pdf'
+    );
+    const cents = await parseRegiePDF(buf, searchTerms);
+    if (cents) {
+      const result = {
+        price: (cents / 100).toFixed(3),
+        source: `Régie de l'énergie du Québec — ${regionKey} (daily report)`,
+        fetchedAt: Date.now(),
+      };
+      _gasPriceCache[regionKey] = result;
+      return { price: result.price, source: result.source };
+    }
+  } catch (_) { /* fall through */ }
+
+  // ── Step 2: Régie de l'énergie — bulletin hebdomadaire ───────────────────
+  try {
+    const buf = await fetchBuffer(
+      'https://www.regie-energie.qc.ca/storage/app/media/consommateurs/informations-pratiques/prix-petrole/publications/Publications-hebdomadaires/Bulletin/bulletin.pdf'
+    );
+    const cents = await parseRegiePDF(buf, searchTerms);
+    if (cents) {
+      const result = {
+        price: (cents / 100).toFixed(3),
+        source: `Régie de l'énergie du Québec — ${regionKey} (weekly bulletin)`,
+        fetchedAt: Date.now(),
+      };
+      _gasPriceCache[regionKey] = result;
+      return { price: result.price, source: result.source };
+    }
+  } catch (_) { /* fall through */ }
+
+  // ── Step 3: CAA Canada fallback (original scraper — unchanged) ───────────
+  try {
+    const cheerio = require('cheerio');
+    const buf = await fetchBuffer('https://www.caa.ca/gas-prices/');
+    const html = buf.toString('utf-8');
+    const $ = cheerio.load(html);
+    let priceCents = null;
+
+    const primaryText = $('div.national_single_price').first().text().trim();
+    const primaryMatch = primaryText.match(/(\d{2,3}(?:\.\d{1,2})?)\s*\/L/);
+    if (primaryMatch) priceCents = parseFloat(primaryMatch[1]);
+
+    if (!priceCents) {
+      $('[class*="single_price"]').each((_, el) => {
+        if (priceCents) return;
+        const m = $(el).text().match(/(\d{2,3}(?:\.\d{1,2})?)\s*\/L/);
+        if (m) priceCents = parseFloat(m[1]);
+      });
+    }
+
+    if (!priceCents) {
+      const m = html.match(/\b(1[2-9]\d(?:\.\d{1,2})?)\s*\/L/);
+      if (m) priceCents = parseFloat(m[1]);
+    }
+
+    if (priceCents && priceCents > 80 && priceCents < 350) {
+      const result = {
+        price: (priceCents / 100).toFixed(3),
+        source: 'CAA Canada (national average — region unknown)',
+        fetchedAt: Date.now(),
+      };
+      _gasPriceCache[regionKey] = result;
+      return { price: result.price, source: result.source };
+    }
+  } catch (_) { /* fall through */ }
+
+  return { error: 'Price unavailable — check internet connection.' };
 });
 
 function createWindow() {

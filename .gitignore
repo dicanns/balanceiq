@@ -4,8 +4,16 @@ release/
 *.db
 .DS_Store
 .claude/
+
+# Internal planning & dev docs — not for public repo
 CLAUDE.md
 ROADMAP.md
 BACKUP_CHECKLIST.md
 ADMIN_GUIDE.md
 HANDOFF.md
+CHANGELOG.md
+CONTRIBUTING.md
+BalanceIQ_*.md
+docs/
+screenshots/
+supabase/.temp/

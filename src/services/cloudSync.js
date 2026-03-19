@@ -13,6 +13,7 @@ let _session = null;       // Supabase auth session
 let _orgId = null;         // organization UUID
 let _locationId = null;    // location UUID
 let _plan = 'free';        // plan from organizations table
+let _parentOrgId = null;   // set when org belongs to a franchisor network
 let _lastSyncAt = null;    // ISO timestamp of last successful pull
 let _offlineQueue = [];    // [{key, value}] queued while offline
 let _syncDebounceTimer = null;
@@ -51,11 +52,12 @@ async function _loadOrgAndPlan() {
 
   const { data: org } = await supabase
     .from('organizations')
-    .select('plan')
+    .select('plan, parent_org_id')
     .eq('id', _orgId)
     .single();
   if (org) {
     _plan = org.plan || 'free';
+    _parentOrgId = org.parent_org_id || null;
     setPlan(_plan);
     _planCallback?.(_plan);
   }
@@ -227,6 +229,7 @@ export async function refreshPlan() {
 export function getCloudSession() { return _session; }
 export function getCloudPlan() { return _plan; }
 export function getCloudOrgId() { return _orgId; }
+export function getCloudParentOrgId() { return _parentOrgId; }
 
 // Legacy export (referenced by auditLogger.js)
 export const CLOUD_SYNC_ENABLED = true;

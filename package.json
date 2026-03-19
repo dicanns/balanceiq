@@ -1,6 +1,6 @@
 {
   "name": "balanceiq",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "description": "L'intelligence derrière vos chiffres.",
   "main": "main.js",
   "scripts": {
@@ -19,6 +19,7 @@
     "better-sqlite3": "^12.6.2",
     "cheerio": "^1.2.0",
     "electron-updater": "^6.8.3",
+    "pdfjs-dist": "^2.16.105",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "xlsx": "^0.18.5"

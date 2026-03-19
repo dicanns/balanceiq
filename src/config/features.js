@@ -78,8 +78,8 @@ export const PLAN_FEATURES = {
     consolidatedAging: false,
     whiteLabel: false,
   },
-  // Franchisee in a franchisor network — cloud sync included, Pro features locked
-  // Set server-side when franchisee accepts a franchise invitation
+  // Franchisee in a franchisor network — cloud sync included + all Pro features
+  // ($5/mo Network Pro, or free sync covered by franchisor at base 'network' level)
   network: {
     clientDatabase: true,
     categoriesProducts: true,
@@ -90,20 +90,20 @@ export const PLAN_FEATURES = {
     pdfPrint: true,
     mailtoEmail: true,
     singleCsvExport: true,
-    cloudBackup: true,        // ← cloud sync included (paid by franchisor)
-    bulkEncaissement: false,
-    autoApplyPayments: false,
-    detailedAging: false,
-    bulkEmailStatements: false,
-    recurringInvoices: false,
-    directEmailSend: false,
-    excelExport: false,
-    depositTracking: false,
-    customTemplates: false,
-    posIntegration: false,
-    ocrScanning: false,
-    aiAnalysis: false,
-    yearEndPackage: false,
+    cloudBackup: true,        // ← cloud sync included (paid by franchisor or Network Pro)
+    bulkEncaissement: true,
+    autoApplyPayments: true,
+    detailedAging: true,
+    bulkEmailStatements: true,
+    recurringInvoices: true,
+    directEmailSend: true,
+    excelExport: true,
+    depositTracking: true,
+    customTemplates: true,
+    posIntegration: true,
+    ocrScanning: true,
+    aiAnalysis: true,
+    yearEndPackage: true,
     franchiseDocs: false,
     royaltyAutoCalc: false,
     autoGenerateRoyaltyInvoices: false,

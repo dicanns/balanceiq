@@ -6,7 +6,7 @@ contextBridge.exposeInMainWorld('api', {
     set: (key, value) => ipcRenderer.invoke('storage:set', key, value),
   },
   gas: {
-    getPrice: () => ipcRenderer.invoke('gas:getPrice'),
+    getPrice: (opts) => ipcRenderer.invoke('gas:getPrice', opts),
   },
   backup: {
     restore: () => ipcRenderer.invoke('backup:restore'),
