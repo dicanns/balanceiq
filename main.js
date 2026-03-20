@@ -1169,7 +1169,8 @@ app.whenReady().then(() => {
           if (!w.isDestroyed()) w.webContents.send(ch, p);
         });
         if (latest && latest !== currentVersion) {
-          const url = release.assets?.find(a => a.name.endsWith('.dmg'))?.browser_download_url
+          const isWin = process.platform === 'win32';
+          const url = release.assets?.find(a => isWin ? a.name.endsWith('.exe') : a.name.endsWith('.dmg'))?.browser_download_url
             || release.html_url;
           notify('update:available', { version: latest, url });
         } else {
