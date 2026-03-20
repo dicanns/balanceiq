@@ -7670,6 +7670,7 @@ export default function App(){
   const [resendTestStatus,setResendTestStatus]=useState(null);
   const [updateAvailable,setUpdateAvailable]=useState(false);
   const [updating,setUpdating]=useState(false);
+  const [updateCheckStatus,setUpdateCheckStatus]=useState(null); // null | 'checking' | 'up-to-date' | 'error'
   const [showEarlyAccess,setShowEarlyAccess]=useState(()=>{try{return localStorage.getItem(`balanceiq-early-access-v${appVersion}`)!=='1';}catch{return true;}});
   const dismissEarlyAccess=useCallback(()=>{try{localStorage.setItem(`balanceiq-early-access-v${appVersion}`,'1');}catch{}setShowEarlyAccess(false);},[]);
   const dismissBanner=useCallback((tabId)=>{setDismissedBanners(prev=>{const next=new Set(prev);next.add(tabId);window.api.storage.set("balanceiq-dismissed-banners",JSON.stringify([...next])).catch(()=>{});return next;});},[]);
@@ -7838,7 +7839,11 @@ export default function App(){
 
   useEffect(()=>{
     if(window.api?.updater){
-      window.api.updater.onAvailable(()=>setUpdateAvailable(true));
+      window.api.updater.onAvailable(()=>{setUpdateAvailable(true);setUpdateCheckStatus(null);});
+      window.api.updater.onStatus(msg=>{
+        if(msg==='up-to-date')setUpdateCheckStatus('up-to-date');
+        else if(msg?.startsWith('error'))setUpdateCheckStatus('error');
+      });
       // Poll at 10s — gives the 5s-delayed check time to complete
       setTimeout(async()=>{
         try{const avail=await window.api.updater.check();if(avail)setUpdateAvailable(true);}catch(e){}
@@ -9106,11 +9111,16 @@ export default function App(){
                 {lang==="en"?"Operational management tool · Always verify with your accountant":"Outil de gestion opérationnelle · Toujours valider avec votre comptable"}
               </div>
               {window.api?.updater&&!updateAvailable&&(
-                <button onClick={async()=>{
-                  try{await window.api.updater.checkNow();}catch(e){}
-                }} style={{marginTop:8,padding:"3px 12px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textMuted,cursor:"pointer",fontSize:10}}>
-                  {lang==="en"?"Check for updates":"Vérifier les mises à jour"}
-                </button>
+                <div style={{marginTop:8,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                  <button onClick={async()=>{
+                    setUpdateCheckStatus('checking');
+                    try{await window.api.updater.checkNow();}catch(e){setUpdateCheckStatus('error');}
+                  }} disabled={updateCheckStatus==='checking'} style={{padding:"3px 12px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:"none",color:updateCheckStatus==='checking'?t.textDim:t.textMuted,cursor:updateCheckStatus==='checking'?"default":"pointer",fontSize:10,opacity:updateCheckStatus==='checking'?0.6:1}}>
+                    {updateCheckStatus==='checking'?(lang==="en"?"Checking...":"Vérification..."):(lang==="en"?"Check for updates":"Vérifier les mises à jour")}
+                  </button>
+                  {updateCheckStatus==='up-to-date'&&<span style={{fontSize:10,color:"#22c55e"}}>✓ {lang==="en"?"You're up to date":"Vous avez la dernière version"}</span>}
+                  {updateCheckStatus==='error'&&<span style={{fontSize:10,color:"#ef4444"}}>{lang==="en"?"Check failed — try again later":"Vérification échouée — réessayez plus tard"}</span>}
+                </div>
               )}
               {updateAvailable&&<div style={{marginTop:8,fontSize:11,color:"#f97316",fontWeight:600}}>{lang==="en"?"Update available — see banner above":"Mise à jour disponible — voir bannière ci-dessus"}</div>}
             </div>
