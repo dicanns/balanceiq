@@ -25,6 +25,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@electron/notarize": "^3.1.1",
     "@electron/rebuild": "^4.0.3",
     "@vitejs/plugin-react": "^4.3.1",
     "concurrently": "^8.2.2",
@@ -49,10 +50,16 @@
       "!node_modules/**/better-sqlite3/build/Release/.deps/**"
     ],
     "extraResources": [],
+    "afterSign": "build/notarize.js",
     "mac": {
       "category": "public.app-category.business",
       "icon": "build/icon.icns",
-      "target": "dmg"
+      "target": "dmg",
+      "identity": "Developer ID Application: Exxdon The Hamburger Company Inc (462N375L9T)",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "dmg": {
       "title": "BalanceIQ ${version}",
