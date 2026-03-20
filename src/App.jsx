@@ -7839,10 +7839,10 @@ export default function App(){
   useEffect(()=>{
     if(window.api?.updater){
       window.api.updater.onAvailable(()=>setUpdateAvailable(true));
-      // Poll once after mount in case the event fired before listener registered
+      // Poll at 10s — gives the 5s-delayed check time to complete
       setTimeout(async()=>{
         try{const avail=await window.api.updater.check();if(avail)setUpdateAvailable(true);}catch(e){}
-      }, 5000);
+      }, 10000);
     }
   },[]);
 
@@ -9105,6 +9105,14 @@ export default function App(){
               <div style={{fontSize:9.5,color:t.textDim,marginTop:4,lineHeight:1.4}}>
                 {lang==="en"?"Operational management tool · Always verify with your accountant":"Outil de gestion opérationnelle · Toujours valider avec votre comptable"}
               </div>
+              {window.api?.updater&&!updateAvailable&&(
+                <button onClick={async()=>{
+                  try{await window.api.updater.checkNow();}catch(e){}
+                }} style={{marginTop:8,padding:"3px 12px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textMuted,cursor:"pointer",fontSize:10}}>
+                  {lang==="en"?"Check for updates":"Vérifier les mises à jour"}
+                </button>
+              )}
+              {updateAvailable&&<div style={{marginTop:8,fontSize:11,color:"#f97316",fontWeight:600}}>{lang==="en"?"Update available — see banner above":"Mise à jour disponible — voir bannière ci-dessus"}</div>}
             </div>
             </div>)}
 
