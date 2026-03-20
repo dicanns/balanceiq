@@ -68,6 +68,18 @@ for cloud sync, POS integration, AI features, and multi-location management.
 Téléchargez / Download the latest .dmg (Mac) or .exe (Windows):
 [Releases](https://github.com/dicanns/balanceiq/releases)
 
+### Installation Notes
+
+**Mac users:** If you see "BalanceIQ is damaged", open Terminal
+and run: `xattr -cr /Applications/BalanceIQ.app` then right-click
+→ Open. This is because the app is not yet code-signed.
+
+**Windows users:** If Windows SmartScreen shows "Windows protected
+your PC", click "More info" then "Run anyway". This is because
+the app is not yet code-signed.
+
+Signed versions for both platforms are coming soon.
+
 ## Contribuer / Contributing
 
 Voir / See [CONTRIBUTING.md](CONTRIBUTING.md)
