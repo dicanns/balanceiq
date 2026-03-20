@@ -1139,45 +1139,55 @@ app.whenReady().then(() => {
   // Auto-backup — runs on every launch, one file per day
   setTimeout(() => { performAutoBackup().catch(() => {}); }, 3000);
 
-  // Auto-updater — only runs in packaged app (not dev)
+  // Auto-updater — GitHub API fetch (works without code signing)
   if (app.isPackaged) {
-    autoUpdater.autoDownload = false;
-    autoUpdater.autoInstallOnAppQuit = true;
+    const https = require('https');
+    const currentVersion = app.getVersion();
 
-    let updateIsAvailable = false;
+    const fetchLatestVersion = () => new Promise((resolve, reject) => {
+      const req = https.get(
+        'https://api.github.com/repos/dicanns/balanceiq/releases/latest',
+        { headers: { 'User-Agent': 'BalanceIQ-Updater' } },
+        (res) => {
+          let body = '';
+          res.on('data', chunk => body += chunk);
+          res.on('end', () => {
+            try { resolve(JSON.parse(body)); }
+            catch (e) { reject(e); }
+          });
+        }
+      );
+      req.on('error', reject);
+      req.setTimeout(10000, () => { req.destroy(); reject(new Error('timeout')); });
+    });
 
-    const notifyRenderers = (channel, payload) => {
-      BrowserWindow.getAllWindows().forEach(w => {
-        if (!w.isDestroyed()) w.webContents.send(channel, payload);
-      });
+    const checkForUpdate = async () => {
+      try {
+        const release = await fetchLatestVersion();
+        const latest = (release.tag_name || '').replace(/^v/, '');
+        const notify = (ch, p) => BrowserWindow.getAllWindows().forEach(w => {
+          if (!w.isDestroyed()) w.webContents.send(ch, p);
+        });
+        if (latest && latest !== currentVersion) {
+          const url = release.assets?.find(a => a.name.endsWith('.dmg'))?.browser_download_url
+            || release.html_url;
+          notify('update:available', { version: latest, url });
+        } else {
+          notify('update:status', 'up-to-date');
+        }
+      } catch (e) {
+        BrowserWindow.getAllWindows().forEach(w => {
+          if (!w.isDestroyed()) w.webContents.send('update:status', 'error: ' + e.message);
+        });
+      }
     };
 
-    autoUpdater.on('update-available', () => {
-      updateIsAvailable = true;
-      notifyRenderers('update:available');
-    });
+    // Check 5s after launch
+    setTimeout(checkForUpdate, 5000);
 
-    autoUpdater.on('update-not-available', () => {
-      notifyRenderers('update:status', 'up-to-date');
-    });
-
-    autoUpdater.on('error', (err) => {
-      notifyRenderers('update:status', 'error: ' + (err?.message || String(err)));
-    });
-
-    autoUpdater.on('update-downloaded', () => {
-      autoUpdater.quitAndInstall(false, true);
-    });
-
-    // Delay check so React has time to mount and register the listener
-    setTimeout(() => {
-      autoUpdater.checkForUpdates().catch(() => {});
-    }, 5000);
-
-    // Allow renderer to poll or trigger a fresh check
-    ipcMain.handle('updater:check', () => updateIsAvailable);
-    ipcMain.handle('updater:checkNow', () => {
-      return autoUpdater.checkForUpdates().catch(err => ({ error: err?.message }));
+    ipcMain.handle('updater:check', () => false); // kept for compat
+    ipcMain.handle('updater:checkNow', async () => {
+      await checkForUpdate();
     });
   }
 });
