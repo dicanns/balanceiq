@@ -1028,7 +1028,7 @@ function InvoiceOCRModal({section,suppliers,expenseItems,updPL,plData,ocrMapping
 }
 
 // ── P&L MONTHLY ──
-function MonthlyPL({computeDay,suppliers,liveData,platforms,expenseItems,glAccounts,apiConfig,ocrMappings,setOcrMappings,payrollConfig,lang}){
+function MonthlyPL({computeDay,suppliers,liveData,platforms,expenseItems,glAccounts,apiConfig,ocrMappings,setOcrMappings,payrollConfig,lang,showSectionTooltips,setActiveTab}){
   const t=useT();
   const T=useL();
   const [month,setMonth]=useState(()=>{const n=new Date();return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`});
@@ -1147,11 +1147,14 @@ function MonthlyPL({computeDay,suppliers,liveData,platforms,expenseItems,glAccou
   };
 
   // P&L section — light theme uses left border instead of tinted bg
-  const Sec=({title,color,children,action})=>{
+  const Sec=({title,color,children,action,tip})=>{
     const isLight=t.name==='light';
     return(<div style={{background:isLight?t.section:`rgba(${color},0.03)`,border:isLight?'none':`1px solid rgba(${color},0.1)`,borderLeft:isLight?`3px solid rgb(${color})`:undefined,borderRadius:8,padding:10,paddingLeft:isLight?13:10}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
-        <div style={{fontSize:10,color:`rgb(${color})`,fontWeight:700,textTransform:"uppercase",letterSpacing:0.7}}>{title}</div>
+        <div style={{display:'flex',alignItems:'center',gap:4}}>
+          <div style={{fontSize:10,color:`rgb(${color})`,fontWeight:700,textTransform:"uppercase",letterSpacing:0.7}}>{title}</div>
+          {tip&&showSectionTooltips&&<SectionTip text={tip}/>}
+        </div>
         {action}
       </div>
       {children}
@@ -1170,7 +1173,7 @@ function MonthlyPL({computeDay,suppliers,liveData,platforms,expenseItems,glAccou
       <span>{lang==="en"?"Operational estimates for internal use — always verify with your accountant for official financial statements.":"Estimations opérationnelles à usage interne — toujours valider avec votre comptable pour les états financiers officiels."}</span>
     </div>
     <div style={{display:"flex",gap:5,flexWrap:"wrap"}}><MC label={T.plRevenue} value={fmt(revenue)} accent="#22c55e"/><MC label="F&P" value={fmt(fpT)} sub={`${fpP.toFixed(1)}%`} accent={fpP>35?"#ef4444":"#f97316"}/><MC label={T.plLabour} value={fmt(labC)} sub={`${labP.toFixed(1)}%`} accent={labP>35?"#ef4444":"#38bdf8"}/><MC label="Profit" value={fmt(np)} sub={`${npP.toFixed(1)}%`} accent={np>=0?"#22c55e":"#ef4444"}/></div>
-    <Sec title={T.plRevenue} color="34,197,94">
+    <Sec title={T.plRevenue} color="34,197,94" tip={T.tipRevenue}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 0"}}>
         <span style={{fontSize:12,color:t.textSub}}>{T.plNetSales} <span style={{fontSize:10,color:t.textMuted}}>({T.plRevenueAuto}: {fmt(autoRev)})</span></span>
         {plData._revenueOverride==null
@@ -1179,16 +1182,20 @@ function MonthlyPL({computeDay,suppliers,liveData,platforms,expenseItems,glAccou
       </div>
     </Sec>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-      <Sec title={T.plCOGS} color="249,115,22" action={
+      <Sec title={T.plCOGS} color="249,115,22" tip={T.tipCOGS} action={
         canUse('ocrScanning')
           ?<button onClick={()=>setShowOCRModal('fp')} style={{fontSize:10,padding:'2px 8px',borderRadius:4,border:'1px solid rgba(249,115,22,0.3)',background:'rgba(249,115,22,0.08)',color:'#f97316',cursor:'pointer',fontWeight:600,whiteSpace:'nowrap'}}>📷 {T.ocrScan}</button>
           :<button title={T.upgradeToPro} style={{fontSize:10,padding:'2px 8px',borderRadius:4,border:'1px solid rgba(107,114,128,0.15)',background:'none',color:'#9ca3af',cursor:'default',whiteSpace:'nowrap'}}>📷 <span style={{fontSize:8,color:'#f97316',fontWeight:700}}>Pro</span></button>
       }>
         <BillEntry label={T.plPettyCashFP} baseKey="pettyCashFP" plData={plData} updPL={updPL} accent="249,115,22"/>
         {suppliers.map(s=>(<BillEntry key={s.id} label={s.name} baseKey={`sup_${s.id}`} plData={plData} updPL={updPL} accent="249,115,22"/>))}
+        {suppliers.length===0&&<div style={{margin:"6px 0",padding:"8px 10px",borderRadius:6,background:"rgba(249,115,22,0.06)",border:"1px dashed rgba(249,115,22,0.25)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}>
+          <span style={{fontSize:11,color:"rgba(249,115,22,0.85)"}}>{T.supplierEmptyHint}</span>
+          {setActiveTab&&<button onClick={()=>setActiveTab("settings")} style={{fontSize:10,padding:"3px 9px",borderRadius:5,border:"1px solid rgba(249,115,22,0.35)",background:"rgba(249,115,22,0.1)",color:"#f97316",cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>{T.supplierEmptyBtn}</button>}
+        </div>}
         <div style={{marginTop:6,paddingTop:6,borderTop:`1px solid rgba(249,115,22,0.15)`}}><RR label={T.plTotalFP} value={fpT} accent="#f97316" bold/>{revenue>0&&<RR label={T.plFPPct} value={`${fpP.toFixed(1)}%`} unit="" accent={fpP>35?"#ef4444":fpP>30?t.warnText:"#22c55e"}/>}</div>
       </Sec>
-      <Sec title={T.plOpExp} color="129,140,248" action={
+      <Sec title={T.plOpExp} color="129,140,248" tip={T.tipOpExp} action={
         canUse('ocrScanning')
           ?<button onClick={()=>setShowOCRModal('exp')} style={{fontSize:10,padding:'2px 8px',borderRadius:4,border:'1px solid rgba(129,140,248,0.3)',background:'rgba(129,140,248,0.08)',color:'#818cf8',cursor:'pointer',fontWeight:600,whiteSpace:'nowrap'}}>📷 {T.ocrScan}</button>
           :<button title={T.upgradeToPro} style={{fontSize:10,padding:'2px 8px',borderRadius:4,border:'1px solid rgba(107,114,128,0.15)',background:'none',color:'#9ca3af',cursor:'default',whiteSpace:'nowrap'}}>📷 <span style={{fontSize:8,color:'#f97316',fontWeight:700}}>Pro</span></button>
@@ -1200,7 +1207,7 @@ function MonthlyPL({computeDay,suppliers,liveData,platforms,expenseItems,glAccou
     </div>
     {/* OCR Modal */}
     {showOCRModal&&<InvoiceOCRModal section={showOCRModal} suppliers={suppliers} expenseItems={expenseItems} updPL={updPL} plData={plData} ocrMappings={ocrMappings||{}} setOcrMappings={setOcrMappings||(()=>{})} month={month} apiConfig={apiConfig} onClose={()=>setShowOCRModal(null)}/>}
-    <Sec title={T.plLabour} color="56,189,248">
+    <Sec title={T.plLabour} color="56,189,248" tip={T.tipLabour}>
       <div style={{fontSize:11,color:t.textMuted,marginBottom:4}}>{T.plLabourAuto}: {fmt(autoLab)}</div>
       <PL label={T.plMonthlyOverride} value={plData.labourOverride} onChange={v=>updPL("labourOverride",v)} prefix="$" warn={plData.labourOverride!=null&&plData.labourOverride<0?T.warnNegativeAmount:null}/>
       <RR label="Total" value={labC} accent="#38bdf8" bold/>{revenue>0&&<RR label={T.plExpPct} value={`${labP.toFixed(1)}%`} unit="" accent={labP>35?"#ef4444":labP>28?t.warnText:"#22c55e"}/>}
@@ -5053,6 +5060,44 @@ function AlertsConfigCard({alertConfig,saveAlertConfig}){
 
 const FRANCHISE_ONLY_FEATURES=['royaltyAutoCalc','autoGenerateRoyaltyInvoices','multiLocationReconciliation','franchiseeScorecards','consolidatedAging','whiteLabel'];
 
+// ── Section tooltip ℹ icon ───────────────────────────────────────────────────
+function SectionTip({text}){
+  const t=useT();
+  const [open,setOpen]=useState(false);
+  const ref=useRef(null);
+  useEffect(()=>{
+    if(!open)return;
+    const h=(e)=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false);};
+    document.addEventListener('mousedown',h);
+    return()=>document.removeEventListener('mousedown',h);
+  },[open]);
+  return(
+    <div ref={ref} style={{position:"relative",display:"inline-flex"}}>
+      <button onClick={e=>{e.stopPropagation();setOpen(o=>!o);}} style={{background:"none",border:"none",cursor:"pointer",color:open?"#f97316":"rgba(255,255,255,0.35)",fontSize:11,padding:"0 2px",lineHeight:1,transition:"color 0.15s"}} title="Info">ℹ</button>
+      {open&&<div style={{position:"absolute",left:0,top:"calc(100% + 4px)",zIndex:200,width:240,background:t.name==="dark"?"#1e2130":"#fff",border:"1px solid rgba(249,115,22,0.3)",borderRadius:8,padding:"10px 12px",boxShadow:"0 4px 20px rgba(0,0,0,0.35)",fontSize:11.5,color:t.textSub,lineHeight:1.55}}>
+        <div style={{position:"absolute",top:-5,left:8,width:8,height:8,background:t.name==="dark"?"#1e2130":"#fff",border:"1px solid rgba(249,115,22,0.3)",borderRight:"none",borderBottom:"none",transform:"rotate(45deg)"}}/>
+        {text}
+      </div>}
+    </div>
+  );
+}
+
+// ── First-visit tab banner ────────────────────────────────────────────────────
+function TabBanner({title,desc,settingsHint,dismissed,onDismiss}){
+  const t=useT();const T=useL();
+  if(dismissed)return null;
+  return(
+    <div style={{background:t.name==="dark"?"rgba(249,115,22,0.06)":"rgba(249,115,22,0.05)",border:"1px solid rgba(249,115,22,0.2)",borderRadius:10,padding:"12px 16px",marginBottom:4,display:"flex",alignItems:"flex-start",gap:12}}>
+      <div style={{flex:1}}>
+        <div style={{fontWeight:700,fontSize:13,color:t.text,marginBottom:4}}>{title}</div>
+        <div style={{fontSize:12,color:t.textSub,lineHeight:1.55,marginBottom:settingsHint?6:0}}>{desc}</div>
+        {settingsHint&&<div style={{fontSize:11,color:"#f97316",opacity:0.85}}>⚙ {settingsHint}</div>}
+      </div>
+      <button onClick={onDismiss} style={{background:"rgba(249,115,22,0.12)",border:"1px solid rgba(249,115,22,0.25)",borderRadius:6,color:"#f97316",fontSize:11,fontWeight:700,padding:"4px 10px",cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>{T.bannerDismiss}</button>
+    </div>
+  );
+}
+
 const TOUR_STEPS=[
   {tab:null,         titleKey:'tourStep1Title',  descKey:'tourStep1Desc'},
   {tab:'daily',      titleKey:'tourStep2Title',  descKey:'tourStep2Desc'},
@@ -7627,6 +7672,7 @@ export default function App(){
   const [updating,setUpdating]=useState(false);
   const [showEarlyAccess,setShowEarlyAccess]=useState(()=>{try{return localStorage.getItem(`balanceiq-early-access-v${appVersion}`)!=='1';}catch{return true;}});
   const dismissEarlyAccess=useCallback(()=>{try{localStorage.setItem(`balanceiq-early-access-v${appVersion}`,'1');}catch{}setShowEarlyAccess(false);},[]);
+  const dismissBanner=useCallback((tabId)=>{setDismissedBanners(prev=>{const next=new Set(prev);next.add(tabId);window.api.storage.set("balanceiq-dismissed-banners",JSON.stringify([...next])).catch(()=>{});return next;});},[]);
   const [themeName,setThemeName]=useState('dark');
   const theme=themeName==='light'?LIGHT:DARK;
 
@@ -7693,6 +7739,8 @@ export default function App(){
   const [upgradePromptFeature,setUpgradePromptFeature]=useState(null);
   const [tourActive,setTourActive]=useState(false);
   const [tourStep,setTourStep]=useState(0);
+  const [showSectionTooltips,setShowSectionTooltips]=useState(true);
+  const [dismissedBanners,setDismissedBanners]=useState(new Set());
   const [unreadDocsCount,setUnreadDocsCount]=useState(0);
   const [pdfPreview,setPdfPreview]=useState(null);
   useEffect(()=>{const h=e=>setPdfPreview(e.detail.html);window.addEventListener('biq:pdf-preview',h);return()=>window.removeEventListener('biq:pdf-preview',h);},[]);
@@ -7734,6 +7782,8 @@ export default function App(){
     try{const rLock=await window.api.storage.get("balanceiq-lock");if(rLock?.value){const lc=JSON.parse(rLock.value);setLockConfig(lc);if(lc.enabled&&lc.pin)setAppLocked(true);}}catch(e){}
     try{const rLang=await window.api.storage.get("balanceiq-lang");if(rLang?.value==="en"||rLang?.value==="fr")setLang(rLang.value);}catch(e){}
     try{const rTour=await window.api.storage.get("balanceiq-tour-complete");if(!rTour?.value)setTourActive(true);}catch(e){setTourActive(true);}
+    try{const rTips=await window.api.storage.get("balanceiq-section-tooltips");if(rTips?.value==="0")setShowSectionTooltips(false);}catch(e){}
+    try{const rBanners=await window.api.storage.get("balanceiq-dismissed-banners");if(rBanners?.value)setDismissedBanners(new Set(JSON.parse(rBanners.value)));}catch(e){}
     try{const r10=await window.api.storage.get("dicann-company-info");if(r10?.value)setCompanyInfo(prev=>({...DEFAULT_COMPANY_INFO,...JSON.parse(r10.value)}))}catch(e){}
     try{const rTpl=await window.api.storage.get("dicann-invoice-template");if(rTpl?.value)setInvoiceTemplate(prev=>({...DEFAULT_INVOICE_TEMPLATE,...JSON.parse(rTpl.value)}))}catch(e){}
     try{const r11=await window.api.storage.get("dicann-fac-categories");if(r11?.value)setFacCategories(JSON.parse(r11.value))}catch(e){}
@@ -8220,6 +8270,13 @@ export default function App(){
 
         {/* ── DATE NAV + TABS ── */}
         <div style={{maxWidth:1120,margin:"0 auto",padding:"8px 15px 0"}}>
+          {/* Tab banners — first visit only */}
+          {activeTab==="daily"&&<TabBanner title={T.bannerDailyTitle} desc={T.bannerDailyDesc} settingsHint={T.bannerDailySettings} dismissed={dismissedBanners.has("daily")} onDismiss={()=>dismissBanner("daily")}/>}
+          {activeTab==="monthly"&&<TabBanner title={T.bannerMonthlyTitle} desc={T.bannerMonthlyDesc} settingsHint={T.bannerMonthlySettings} dismissed={dismissedBanners.has("monthly")} onDismiss={()=>dismissBanner("monthly")}/>}
+          {activeTab==="encaisse"&&<TabBanner title={T.bannerEncaisseTitle} desc={T.bannerEncaisseDesc} settingsHint={T.bannerEncaisseSettings} dismissed={dismissedBanners.has("encaisse")} onDismiss={()=>dismissBanner("encaisse")}/>}
+          {activeTab==="intelligence"&&<TabBanner title={T.bannerIntelTitle} desc={T.bannerIntelDesc} settingsHint={T.bannerIntelSettings} dismissed={dismissedBanners.has("intelligence")} onDismiss={()=>dismissBanner("intelligence")}/>}
+          {activeTab==="facturation"&&<TabBanner title={T.bannerFacTitle} desc={T.bannerFacDesc} settingsHint={T.bannerFacSettings} dismissed={dismissedBanners.has("facturation")} onDismiss={()=>dismissBanner("facturation")}/>}
+          {activeTab==="previsions"&&previsionsEnabled&&<TabBanner title={T.bannerPrevTitle} desc={T.bannerPrevDesc} settingsHint={T.bannerPrevSettings} dismissed={dismissedBanners.has("previsions")} onDismiss={()=>dismissBanner("previsions")}/>}
           {activeTab==="daily"&&(
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -8576,7 +8633,7 @@ export default function App(){
             </div>
           </div>)}
 
-          {activeTab==="monthly"&&<MonthlyPL computeDay={computeDay} suppliers={suppliers} liveData={liveData} platforms={platforms} expenseItems={expenseItems} glAccounts={glAccounts} apiConfig={apiConfig} ocrMappings={ocrMappings} setOcrMappings={setOcrMappings} payrollConfig={payrollConfig} lang={lang}/>}
+          {activeTab==="monthly"&&<MonthlyPL computeDay={computeDay} suppliers={suppliers} liveData={liveData} platforms={platforms} expenseItems={expenseItems} glAccounts={glAccounts} apiConfig={apiConfig} ocrMappings={ocrMappings} setOcrMappings={setOcrMappings} payrollConfig={payrollConfig} lang={lang} showSectionTooltips={showSectionTooltips} setActiveTab={setActiveTab}/>}
           {activeTab==="encaisse"&&<EncaisseTab liveData={liveData} encaisseData={encaisseData} persistEncaisse={persistEncaisse} encaisseConfig={encaisseConfig} saveEncaisseConfig={saveEncaisseConfig}/>}
           {activeTab==="facturation"&&<FacturationTab categories={facCategories} saveCategories={saveFacCategories} produits={facProduits} saveProduits={saveFacProduits} clients={facClients} saveClients={saveFacClients} soumissions={facSoumissions} saveSoumissions={saveFacSoumissions} commandes={facCommandes} saveCommandes={saveFacCommandes} factures={facFactures} saveFactures={saveFacFactures} creditNotes={facCreditNotes} saveCreditNotes={saveFacCreditNotes} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData} persistEncaisse={persistEncaisse} showUpgradePrompt={showUpgradePrompt} apiConfig={apiConfig} recurrents={facRecurrents} saveRecurrents={saveFacRecurrents} invoiceTemplate={effectiveTemplate} rawInvoiceTemplate={invoiceTemplate} saveInvoiceTemplate={saveInvoiceTemplate} canUse={canUse} glAccounts={glAccounts} saveGlAccounts={saveGlAccounts}/>}
           {activeTab==="intelligence"&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR} platforms={platforms} encaisseData={encaisseData} encaisseConfig={encaisseConfig} apiConfig={apiConfig}/>}
@@ -8591,15 +8648,12 @@ export default function App(){
             {/* Config sub-tab bar */}
             {(()=>{
               const CTABS=[
-                {id:"entreprise",label:T.cfgBusiness},
-                {id:"personnel",label:T.cfgStaff},
-                {id:"fournisseurs",label:T.cfgSuppliers},
-                {id:"finances",label:T.cfgFinances},
-                {id:"integrations",label:T.cfgIntegrations},
-                {id:"paie",label:T.cfgPayroll},
-                {id:"donnees",label:T.cfgData},
-                {id:"apparence",label:T.cfgAppearance},
-                {id:"application",label:T.cfgApplication},
+                {id:"entreprise",       label:T.cfgBusiness},
+                {id:"personnel-paie",   label:T.cfgPersonnelPayroll},
+                {id:"pl-fournisseurs",  label:T.cfgPLSuppliers},
+                {id:"integrations",     label:T.cfgIntegrations},
+                {id:"donnees",          label:T.cfgData},
+                {id:"application",      label:T.cfgApplication},
                 ...(appMode==="franchiseur"?[{id:"succursales",label:T.cfgLocations},{id:"redevances",label:T.cfgRoyalties},{id:"marqueblanche",label:T.cfgWhiteLabel}]:[]),
               ];
               return(<div style={{display:"flex",gap:2,borderBottom:`1px solid ${t.dividerMid}`,overflowX:"auto",paddingBottom:1,marginBottom:4,flexShrink:0}}>
@@ -8699,7 +8753,8 @@ export default function App(){
             </div>)}
 
             {/* 👥 PERSONNEL */}
-            {configSubTab==="personnel"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {/* 👥 PERSONNEL & PAIE (combined) */}
+            {configSubTab==="personnel-paie"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
             <CfgCard id="cashiers" title={T.cfgCashiers} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               {roster.map(r=>(<div key={r.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:5,marginBottom:3}}><span style={{fontSize:12,color:t.text}}>{r.name}</span><button onClick={()=>{const n=roster.filter(x=>x.id!==r.id);setRoster(n);saveRoster(n)}} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:4,color:"#ef4444",fontSize:10,padding:"2px 6px",cursor:"pointer"}}>✕</button></div>))}
               <div style={{display:"flex",gap:6,marginTop:4}}>
@@ -8719,10 +8774,11 @@ export default function App(){
                 <button onClick={()=>{if(!newEN.trim())return;const nr=[...empRoster,{id:Date.now().toString(),name:newEN.trim(),wage:newEW?parseFloat(newEW):null}];setEmpRoster(nr);saveEmpRoster(nr);setNewEN("");setNewEW("")}} style={{padding:"5px 14px",borderRadius:5,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>+</button>
               </div>
             </CfgCard>
+            <PayrollConfig payrollConfig={payrollConfig} savePayrollConfig={savePayrollConfig} appMode={appMode}/>
             </div>)}
 
-            {/* 📦 FOURNISSEURS & PRODUITS */}
-            {configSubTab==="fournisseurs"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {/* 📊 P&L & FOURNISSEURS (combined) */}
+            {configSubTab==="pl-fournisseurs"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
             <CfgCard id="suppliers" title={T.cfgSuppliers} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               {suppliers.map(s=>(<div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:5,marginBottom:3}}>
                 {editingSupId===s.id
@@ -8748,6 +8804,16 @@ export default function App(){
               <div style={{display:"flex",gap:6,marginTop:4}}>
                 <input placeholder={T.cfgNewExpenseItem} onKeyDown={e=>{if(e.key==="Enter"&&e.target.value.trim()){const ni=[...expenseItems,{id:Date.now().toString(),label:e.target.value.trim()}];setExpenseItems(ni);saveExpItems(ni);e.target.value=""}}} style={{...inputStyle,flex:1}}/>
               </div>
+            </CfgCard>
+            <CfgCard id="outflowCats" title={T.cfgOutflowCats} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{T.cfgOutflowCatHint}</div>
+              {encaisseConfig.sortieCategories.map(c=>(<div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 6px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:4,marginBottom:3}}>
+                {cfgEditCatId===c.id
+                  ?<input autoFocus value={cfgEditCatName} onChange={e=>setCfgEditCatName(e.target.value)} style={{flex:1,background:t.inputBg,border:`1px solid rgba(249,115,22,0.3)`,borderRadius:4,color:t.inputText,fontSize:11,padding:"2px 6px",outline:"none"}} onBlur={()=>{if(cfgEditCatName.trim()){saveEncaisseConfig({...encaisseConfig,sortieCategories:encaisseConfig.sortieCategories.map(x=>x.id===c.id?{...x,name:cfgEditCatName.trim()}:x)})}setCfgEditCatId(null)}} onKeyDown={e=>{if(e.key==="Enter")e.target.blur()}}/>
+                  :<span style={{fontSize:11,color:t.text,cursor:"pointer",flex:1}} onClick={()=>{setCfgEditCatId(c.id);setCfgEditCatName(T[ENC_CAT_KEY[c.id]]||c.name)}}>{T[ENC_CAT_KEY[c.id]]||c.name} <span style={{fontSize:9,color:t.textDim}}>✎</span></span>}
+                <button onClick={()=>saveEncaisseConfig({...encaisseConfig,sortieCategories:encaisseConfig.sortieCategories.filter(x=>x.id!==c.id)})} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:3,color:"#ef4444",fontSize:9,padding:"1px 5px",cursor:"pointer"}}>✕</button>
+              </div>))}
+              <input value={cfgNewCatName} onChange={e=>setCfgNewCatName(e.target.value)} placeholder={T.cfgNewCategory} style={{flex:1,background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.inputText,fontSize:11,padding:"3px 6px",outline:"none",width:"100%",boxSizing:"border-box",marginTop:4}} onKeyDown={e=>{if(e.key==="Enter"&&cfgNewCatName.trim()){saveEncaisseConfig({...encaisseConfig,sortieCategories:[...encaisseConfig.sortieCategories,{id:Date.now().toString(),name:cfgNewCatName.trim()}]});setCfgNewCatName("")}}}/>
             </CfgCard>
             <CfgCard id="platforms" title={T.cfgDeliveryPlatforms} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               <div style={{fontSize:11,color:t.textMuted,marginBottom:6}}>{T.cfgPlatformHint}</div>
@@ -8788,20 +8854,6 @@ export default function App(){
               ):(
                 <button onClick={()=>showUpgradePrompt("excelExport")} style={{padding:"5px 14px",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>{T.upgradeToPro}</button>
               )}
-            </CfgCard>
-            </div>)}
-
-            {/* 💵 FINANCES */}
-            {configSubTab==="finances"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
-            <CfgCard id="outflowCats" title={T.cfgOutflowCats} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
-              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{T.cfgOutflowCatHint}</div>
-              {encaisseConfig.sortieCategories.map(c=>(<div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 6px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:4,marginBottom:3}}>
-                {cfgEditCatId===c.id
-                  ?<input autoFocus value={cfgEditCatName} onChange={e=>setCfgEditCatName(e.target.value)} style={{flex:1,background:t.inputBg,border:`1px solid rgba(249,115,22,0.3)`,borderRadius:4,color:t.inputText,fontSize:11,padding:"2px 6px",outline:"none"}} onBlur={()=>{if(cfgEditCatName.trim()){saveEncaisseConfig({...encaisseConfig,sortieCategories:encaisseConfig.sortieCategories.map(x=>x.id===c.id?{...x,name:cfgEditCatName.trim()}:x)})}setCfgEditCatId(null)}} onKeyDown={e=>{if(e.key==="Enter")e.target.blur()}}/>
-                  :<span style={{fontSize:11,color:t.text,cursor:"pointer",flex:1}} onClick={()=>{setCfgEditCatId(c.id);setCfgEditCatName(T[ENC_CAT_KEY[c.id]]||c.name)}}>{T[ENC_CAT_KEY[c.id]]||c.name} <span style={{fontSize:9,color:t.textDim}}>✎</span></span>}
-                <button onClick={()=>saveEncaisseConfig({...encaisseConfig,sortieCategories:encaisseConfig.sortieCategories.filter(x=>x.id!==c.id)})} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:3,color:"#ef4444",fontSize:9,padding:"1px 5px",cursor:"pointer"}}>✕</button>
-              </div>))}
-              <input value={cfgNewCatName} onChange={e=>setCfgNewCatName(e.target.value)} placeholder={T.cfgNewCategory} style={{flex:1,background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.inputText,fontSize:11,padding:"3px 6px",outline:"none",width:"100%",boxSizing:"border-box",marginTop:4}} onKeyDown={e=>{if(e.key==="Enter"&&cfgNewCatName.trim()){saveEncaisseConfig({...encaisseConfig,sortieCategories:[...encaisseConfig.sortieCategories,{id:Date.now().toString(),name:cfgNewCatName.trim()}]});setCfgNewCatName("")}}}/>
             </CfgCard>
             </div>)}
 
@@ -8912,34 +8964,26 @@ export default function App(){
                 <YearEndPackageLazy liveData={liveData} suppliers={suppliers} facFactures={facFactures} companyInfo={companyInfo} canUse={canUse} lang={lang} T={T}/>
               </Suspense>
             </CfgCard>
+            {/* Inventory config + network docs live in Données */}
+            <InvConfigSection invConfig={invConfig} saveInvConfig={saveInvConfig} t={t} T={T}/>
+            {appMode!=="franchiseur"&&cloudUser&&(
+              <CfgCard id="networkDocs" title={<span style={{display:"flex",alignItems:"center",gap:6}}>{T.docNetworkCard}{unreadDocsCount>0&&<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.15)",border:"1px solid rgba(249,115,22,0.3)",borderRadius:8,padding:"1px 6px"}}>{unreadDocsCount}</span>}</span>} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
+                <Suspense fallback={<div style={{padding:8,fontSize:11,opacity:0.5}}>Chargement...</div>}>
+                  <DocumentsTabLazy isFranchisor={false} orgId={getCloudOrgId()} cloudUser={cloudUser} T={T} t={t} onUnreadCountChange={setUnreadDocsCount}/>
+                </Suspense>
+              </CfgCard>
+            )}
             </div>)}
 
-            {/* 🎨 APPARENCE */}
-            {configSubTab==="apparence"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
-            <CfgCard id="theme" title={T.cfgTheme} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
-              <div style={{display:"flex",gap:8}}>
-                {[['dark',T.cfgThemeDark],['light',T.cfgThemeLight]].map(([name,label])=>(
-                  <button key={name} onClick={()=>setThemeTo(name)} style={{flex:1,padding:"8px 12px",borderRadius:7,border:`2px solid ${themeName===name?"#f97316":t.cardBorder}`,background:themeName===name?"rgba(249,115,22,0.08)":t.section,color:themeName===name?"#f97316":t.textSub,cursor:"pointer",fontWeight:themeName===name?700:500,fontSize:12,transition:"all 0.15s"}}>{label}</button>
-                ))}
-              </div>
-            </CfgCard>
-            <CfgCard id="language" title={T.cfgLanguage} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
-              <div style={{display:"flex",gap:8}}>
-                {[["fr",T.cfgLanguageFR],["en",T.cfgLanguageEN]].map(([code,label])=>(
-                  <button key={code} onClick={()=>setLangTo(code)} style={{flex:1,padding:"8px 12px",borderRadius:7,border:`2px solid ${lang===code?"#f97316":t.cardBorder}`,background:lang===code?"rgba(249,115,22,0.08)":t.section,color:lang===code?"#f97316":t.textSub,cursor:"pointer",fontWeight:lang===code?700:500,fontSize:12,transition:"all 0.15s"}}>{label}</button>
-                ))}
-              </div>
-            </CfgCard>
-            </div>)}
-
-            {/* 📱 APPLICATION */}
+            {/* ⚙ APPLICATION */}
             {configSubTab==="application"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
             <CfgCard id="reportEmail" title={T.cfgReportEmail} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{T.cfgReportEmailHint}</div>
               <input value={apiConfig.reportEmail||""} onChange={e=>{const nc={...apiConfig,reportEmail:e.target.value};setApiConfig(nc);saveApiCfg(nc);}} placeholder="rapport@monentreprise.ca" style={{...inputStyle,width:"100%",boxSizing:"border-box",fontFamily:"'DM Mono',monospace"}}/>
             </CfgCard>
-            <CfgCard id="appMode" title={T.cfgAppMode} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+            {/* ── MODE & PLAN (combined) ── */}
+            <CfgCard id="modeAndPlan" title={T.cfgModeAndPlan} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,marginBottom:8}}>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <span style={{fontSize:18}}>{appMode==="franchiseur"?"🏢":"🏪"}</span>
                   <div>
@@ -8949,85 +8993,76 @@ export default function App(){
                 </div>
                 <span style={{fontSize:10,fontWeight:700,color:"#16a34a",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:10,padding:"2px 8px"}}>{T.cfgActive}</span>
               </div>
-              <div style={{fontSize:10.5,color:t.textMuted,marginTop:8}}>{T.cfgModeChangeBtn}</div>
-            </CfgCard>
-            <CfgCard id="activePlan" title={<>{T.cfgActivePlan}{import.meta.env.DEV&&<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"2px 7px",borderRadius:8,letterSpacing:"0.3px",marginLeft:6}}>{T.cfgDevMode}</span>}</>} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
-              {import.meta.env.DEV
-                ?<>
-                  <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                    {["free","network","pro","franchise"].map(p=>(
-                      <button key={p} onClick={async()=>{
-                        setPlan(p);setActivePlan(p);
-                        const nc={...apiConfig,plan:p};setApiConfig(nc);saveApiCfg(nc);
-                        // Also update Supabase org record so edge functions see correct plan
+              <div style={{fontSize:10.5,color:t.textMuted,marginBottom:12}}>{T.cfgModeChangeBtn}</div>
+              <div style={{borderTop:`1px solid ${t.cardBorder}`,paddingTop:10}}>
+                <div style={{fontSize:10.5,fontWeight:700,color:t.textSub,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.5px",display:"flex",alignItems:"center",gap:6}}>{T.cfgActivePlan}{import.meta.env.DEV&&<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"2px 7px",borderRadius:8,letterSpacing:"0.3px"}}>{T.cfgDevMode}</span>}</div>
+                {import.meta.env.DEV
+                  ?<>
+                    <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                      {["free","network","pro","franchise"].map(p=>(
+                        <button key={p} onClick={async()=>{
+                          setPlan(p);setActivePlan(p);
+                          const nc={...apiConfig,plan:p};setApiConfig(nc);saveApiCfg(nc);
+                          try{
+                            const {supabase}=await import('./services/supabase.js');
+                            const {getCloudOrgId}=await import('./services/cloudSync.js');
+                            const oid=getCloudOrgId();
+                            if(oid)await supabase.from('organizations').update({plan:p}).eq('id',oid);
+                          }catch(e){console.warn('plan sync to supabase failed',e);}
+                        }} style={{padding:"5px 16px",borderRadius:20,border:activePlan===p?"none":`1px solid ${t.cardBorder}`,background:activePlan===p?"linear-gradient(135deg,#f97316,#ea580c)":t.section,color:activePlan===p?"#fff":t.textSub,cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'DM Mono',monospace",textTransform:"uppercase"}}>
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{fontSize:10,color:t.textMuted,marginTop:6}}>{T.cfgPlanDevOnly}</div>
+                    {/* ── DEMO DATA LOADER (DEV only) ── */}
+                    <div style={{marginTop:14,paddingTop:12,borderTop:`1px solid ${t.cardBorder}`}}>
+                      <div style={{fontSize:11,fontWeight:700,color:t.textSub,marginBottom:8}}>
+                        {lang==='en'?'Demo Data':'Données démo'}
+                      </div>
+                      <button onClick={async()=>{
+                        if(!window.confirm(lang==='en'
+                          ?'This will OVERWRITE all existing data with demo data (Bistro Maple + Italian bakery). Continue?'
+                          :'Cela va ÉCRASER toutes les données existantes avec les données démo (Bistro Maple + boulangerie italienne). Continuer?')) return;
+                        const btn=document.activeElement;
+                        if(btn)btn.disabled=true;
                         try{
-                          const {supabase}=await import('./services/supabase.js');
-                          const {getCloudOrgId}=await import('./services/cloudSync.js');
-                          const oid=getCloudOrgId();
-                          if(oid)await supabase.from('organizations').update({plan:p}).eq('id',oid);
-                        }catch(e){console.warn('plan sync to supabase failed',e);}
-                      }} style={{padding:"5px 16px",borderRadius:20,border:activePlan===p?"none":`1px solid ${t.cardBorder}`,background:activePlan===p?"linear-gradient(135deg,#f97316,#ea580c)":t.section,color:activePlan===p?"#fff":t.textSub,cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'DM Mono',monospace",textTransform:"uppercase"}}>
-                        {p}
-                      </button>
-                    ))}
-                  </div>
-                  <div style={{fontSize:10,color:t.textMuted,marginTop:6}}>{T.cfgPlanDevOnly}</div>
-                  {/* ── DEMO DATA LOADER (DEV only) ── */}
-                  <div style={{marginTop:14,paddingTop:12,borderTop:`1px solid ${t.cardBorder}`}}>
-                    <div style={{fontSize:11,fontWeight:700,color:t.textSub,marginBottom:8}}>
-                      {lang==='en'?'Demo Data':'Données démo'}
-                    </div>
-                    <button onClick={async()=>{
-                      if(!window.confirm(lang==='en'
-                        ?'This will OVERWRITE all existing data with demo data (Bistro Maple + Italian bakery). Continue?'
-                        :'Cela va ÉCRASER toutes les données existantes avec les données démo (Bistro Maple + boulangerie italienne). Continuer?')) return;
-                      const btn=document.activeElement;
-                      if(btn)btn.disabled=true;
-                      try{
-                        const {loadDemoData}=await import('./utils/demoDataGenerator.js');
-                        const result=await loadDemoData(lang);
-                        if(result.success){
-                          alert(lang==='en'?'✅ Demo data loaded! Reload the app to see the data.':'✅ Données démo chargées! Rechargez l\'app pour voir les données.');
-                          window.location.reload();
-                        } else {
-                          alert('❌ '+(result.message||'Error loading demo data'));
+                          const {loadDemoData}=await import('./utils/demoDataGenerator.js');
+                          const result=await loadDemoData(lang);
+                          if(result.success){
+                            alert(lang==='en'?'✅ Demo data loaded! Reload the app to see the data.':'✅ Données démo chargées! Rechargez l\'app pour voir les données.');
+                            window.location.reload();
+                          } else {
+                            alert('❌ '+(result.message||'Error loading demo data'));
+                          }
+                        }catch(e){
+                          console.error('[DemoData]',e);
+                          alert('❌ '+(e?.message||String(e)));
+                        }finally{
+                          if(btn)btn.disabled=false;
                         }
-                      }catch(e){
-                        console.error('[DemoData]',e);
-                        alert('❌ '+(e?.message||String(e)));
-                      }finally{
-                        if(btn)btn.disabled=false;
-                      }
-                    }} style={{padding:"7px 18px",borderRadius:8,border:"1.5px dashed #f97316",background:"rgba(249,115,22,0.06)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'DM Sans',sans-serif"}}>
-                      🎭 {lang==='en'?'Load demo data':'Charger données démo'}
-                    </button>
-                    <div style={{fontSize:10,color:t.textMuted,marginTop:5}}>
-                      {lang==='en'?'90 days • 3 months P&L • 8 clients • bakery forecasts':'90 jours • 3 mois P&L • 8 clients • prévisions boulangerie'}
+                      }} style={{padding:"7px 18px",borderRadius:8,border:"1.5px dashed #f97316",background:"rgba(249,115,22,0.06)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'DM Sans',sans-serif"}}>
+                        🎭 {lang==='en'?'Load demo data':'Charger données démo'}
+                      </button>
+                      <div style={{fontSize:10,color:t.textMuted,marginTop:5}}>
+                        {lang==='en'?'90 days • 3 months P&L • 8 clients • bakery forecasts':'90 jours • 3 mois P&L • 8 clients • prévisions boulangerie'}
+                      </div>
                     </div>
-                  </div>
-                </>
-                :<>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontSize:12,fontWeight:700,color:"#f97316",fontFamily:"'DM Mono',monospace",textTransform:"uppercase"}}>{activePlan}</span>
-                  </div>
-                  <div style={{fontSize:10,color:t.textDim,marginTop:4}}>{T.cfgPlanChangeNote}</div>
-                </>
-              }
+                  </>
+                  :<>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{fontSize:12,fontWeight:700,color:"#f97316",fontFamily:"'DM Mono',monospace",textTransform:"uppercase"}}>{activePlan}</span>
+                    </div>
+                    <div style={{fontSize:10,color:t.textDim,marginTop:4}}>{T.cfgPlanChangeNote}</div>
+                  </>
+                }
+              </div>
             </CfgCard>
-            {/* ── CLOUD ACCOUNT ── */}
+            {/* ── CLOUD ACCOUNT + SUBSCRIPTION (grouped) ── */}
             <CloudAccountSection cloudUser={cloudUser} syncStatus={syncStatus} onSignIn={handleCloudSignIn} onSignUp={handleCloudSignUp} onSignOut={handleCloudSignOut} t={t} T={T}/>
-            {/* ── SUBSCRIPTION ── */}
             <SubscriptionSection cloudUser={cloudUser} activePlan={activePlan} orgId={getCloudOrgId()} onPlanRefreshed={p=>{setPlan(p);setActivePlan(p);}} t={t} T={T}/>
             {/* ── JOIN FRANCHISE NETWORK (restaurant/franchisee mode only) ── */}
             {appMode!=="franchiseur"&&<JoinNetworkCard cloudUser={cloudUser} franchiseeOrgId={getCloudOrgId()} t={t} T={T}/>}
-            {/* ── FRANCHISE DOCUMENTS (franchisee linked to a network) ── */}
-            {appMode!=="franchiseur"&&cloudUser&&(
-              <CfgCard id="networkDocs" title={<span style={{display:"flex",alignItems:"center",gap:6}}>{T.docNetworkCard}{unreadDocsCount>0&&<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.15)",border:"1px solid rgba(249,115,22,0.3)",borderRadius:8,padding:"1px 6px"}}>{unreadDocsCount}</span>}</span>} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
-                <Suspense fallback={<div style={{padding:8,fontSize:11,opacity:0.5}}>Chargement...</div>}>
-                  <DocumentsTabLazy isFranchisor={false} orgId={getCloudOrgId()} cloudUser={cloudUser} T={T} t={t} onUnreadCountChange={setUnreadDocsCount}/>
-                </Suspense>
-              </CfgCard>
-            )}
             {/* ── PRÉVISIONS MODULE TOGGLE ── */}
             <CfgCard id="previsions" title={T.prevTitle} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               <div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{T.prevDesc}</div>
@@ -9036,8 +9071,30 @@ export default function App(){
                 {previsionsEnabled&&<span style={{fontSize:11,color:"#22c55e"}}>✓ {lang==="en"?"Tab active in main navigation":"Onglet actif dans la navigation principale"}</span>}
               </div>
             </CfgCard>
-            {/* ── INVENTORY CONFIG ── */}
-            <InvConfigSection invConfig={invConfig} saveInvConfig={saveInvConfig} t={t} T={T}/>
+            {/* ── SECTION TOOLTIPS TOGGLE ── */}
+            <CfgCard id="sectionTooltips" title={T.showTooltipsLabel} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{T.showTooltipsDesc}</div>
+              <button onClick={async()=>{const v=!showSectionTooltips;setShowSectionTooltips(v);await window.api.storage.set("balanceiq-section-tooltips",v?"1":"0");}} style={{padding:"5px 18px",borderRadius:20,border:`1px solid ${showSectionTooltips?"#f97316":t.cardBorder}`,background:showSectionTooltips?"rgba(249,115,22,0.15)":t.section,color:showSectionTooltips?"#f97316":t.textSub,cursor:"pointer",fontWeight:700,fontSize:12,transition:"all 0.15s"}}>{showSectionTooltips?T.showTooltipsOn:T.showTooltipsOff}</button>
+            </CfgCard>
+            {/* ── APPARENCE (absorbed from old tab) ── */}
+            <CfgCard id="appearance" title={T.cfgAppearanceAndMore} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{lang==="en"?"Theme":"Thème"}</div>
+              <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:12}}>
+                {["dark","light"].map(n=>(
+                  <button key={n} onClick={()=>setThemeTo(n)} style={{padding:"5px 16px",borderRadius:20,border:themeName===n?"none":`1px solid ${t.cardBorder}`,background:themeName===n?"linear-gradient(135deg,#f97316,#ea580c)":t.section,color:themeName===n?"#fff":t.textSub,cursor:"pointer",fontWeight:700,fontSize:11}}>
+                    {n==="dark"?`☾ ${T.dark}`:`☀ ${T.light}`}
+                  </button>
+                ))}
+              </div>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{lang==="en"?"Language":"Langue"}</div>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                {["fr","en"].map(l=>(
+                  <button key={l} onClick={()=>setLangTo(l)} style={{padding:"5px 16px",borderRadius:20,border:lang===l?"none":`1px solid ${t.cardBorder}`,background:lang===l?"linear-gradient(135deg,#f97316,#ea580c)":t.section,color:lang===l?"#fff":t.textSub,cursor:"pointer",fontWeight:700,fontSize:11}}>
+                    {l==="fr"?"🇫🇷 Français":"🇬🇧 English"}
+                  </button>
+                ))}
+              </div>
+            </CfgCard>
             <PinLockConfig lockConfig={lockConfig} saveLockConfig={saveLockConfig}/>
             <div style={{textAlign:"center",padding:"8px 0 2px"}}>
               <span style={{fontSize:10.5,color:t.textSub,fontFamily:"'DM Mono',monospace"}}>BalanceIQ v{appVersion}</span>
@@ -9046,11 +9103,6 @@ export default function App(){
               </div>
             </div>
             </div>)}
-
-            {/* 💼 PAIE */}
-            {configSubTab==="paie"&&(
-              <PayrollConfig payrollConfig={payrollConfig} savePayrollConfig={savePayrollConfig} appMode={appMode}/>
-            )}
 
             {/* 📍 SUCCURSALES — franchiseur only */}
             {configSubTab==="succursales"&&appMode==="franchiseur"&&(
