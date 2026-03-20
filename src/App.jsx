@@ -7669,6 +7669,7 @@ export default function App(){
   const toggleCfg=useCallback(id=>setCfgExpanded(prev=>{const next={...prev,[id]:!prev[id]};window.api.storage.set("balanceiq-cfg-expanded",JSON.stringify(next)).catch(()=>{});return next;}),[]);
   const [resendTestStatus,setResendTestStatus]=useState(null);
   const [updateAvailable,setUpdateAvailable]=useState(false);
+  const [updateDownloadUrl,setUpdateDownloadUrl]=useState(null);
   const [updating,setUpdating]=useState(false);
   const [updateCheckStatus,setUpdateCheckStatus]=useState(null); // null | 'checking' | 'up-to-date' | 'error'
   const [showEarlyAccess,setShowEarlyAccess]=useState(()=>{try{return localStorage.getItem(`balanceiq-early-access-v${appVersion}`)!=='1';}catch{return true;}});
@@ -7839,7 +7840,7 @@ export default function App(){
 
   useEffect(()=>{
     if(window.api?.updater){
-      window.api.updater.onAvailable(()=>{setUpdateAvailable(true);setUpdateCheckStatus(null);});
+      window.api.updater.onAvailable((payload)=>{setUpdateAvailable(true);setUpdateCheckStatus(null);if(payload?.url)setUpdateDownloadUrl(payload.url);});
       window.api.updater.onStatus(msg=>{
         if(msg==='up-to-date')setUpdateCheckStatus('up-to-date');
         else if(msg?.startsWith('error'))setUpdateCheckStatus('error');
@@ -8272,9 +8273,11 @@ export default function App(){
         {/* ── UPDATE BAR ── */}
         {updateAvailable&&<div style={{background:"linear-gradient(90deg,rgba(249,115,22,0.15),rgba(234,88,12,0.1))",borderBottom:"1px solid rgba(249,115,22,0.3)",padding:"7px 15px",display:"flex",alignItems:"center",justifyContent:"center",gap:12}}>
           <span style={{fontSize:12,color:"#f97316",fontWeight:600}}>
-            {updating?"Téléchargement en cours...":"Nouvelle version disponible — Cliquer pour mettre à jour"}
+            {lang==="en"?"New version available":"Nouvelle version disponible"}
           </span>
-          {!updating&&<button onClick={async()=>{setUpdating(true);await window.api.updater.downloadAndInstall();}} style={{padding:"3px 12px",borderRadius:5,border:"1px solid rgba(249,115,22,0.5)",background:"rgba(249,115,22,0.2)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11}}>Installer</button>}
+          <button onClick={()=>{if(updateDownloadUrl)window.api.shell.openExternal(updateDownloadUrl);}} style={{padding:"3px 12px",borderRadius:5,border:"1px solid rgba(249,115,22,0.5)",background:"rgba(249,115,22,0.2)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11}}>
+            {lang==="en"?"Download":"Télécharger"}
+          </button>
         </div>}
 
         {/* ── DATE NAV + TABS ── */}

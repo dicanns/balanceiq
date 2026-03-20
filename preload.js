@@ -21,7 +21,7 @@ contextBridge.exposeInMainWorld('api', {
     sendResend: (opts) => ipcRenderer.invoke('email:sendResend', opts),
   },
   updater: {
-    onAvailable: (cb) => ipcRenderer.on('update:available', () => cb()),
+    onAvailable: (cb) => ipcRenderer.on('update:available', (_e, payload) => cb(payload)),
     onStatus: (cb) => ipcRenderer.on('update:status', (_e, msg) => cb(msg)),
     check: () => ipcRenderer.invoke('updater:check'),
     checkNow: () => ipcRenderer.invoke('updater:checkNow'),
