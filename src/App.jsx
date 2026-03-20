@@ -145,7 +145,7 @@ const DEFAULT_GL_ACCOUNTS={
   entretien:"6170",fournitures:"6180",publicite:"6190",
   transport:"6200",autre:"6210",
 };
-const BLANK_CASH={cashierId:"",posVentes:null,posTPS:null,posTVQ:null,posLivraisons:null,float:null,interac:null,livraisons:null,deposits:null,finalCash:null};
+const BLANK_CASH={cashierId:"",posVentes:null,posTPS:null,posTVQ:null,posLivraisons:null,float:null,interac:null,livraisons:null,deposits:null,finalCash:null,pmtVisa:null,pmtMastercard:null,pmtDebit:null,pmtAmex:null,pmtOther:null,pmtTips:null,pmtGiftCard:null};
 const BLANK_EMP={name:"",hours:null,wage:null};
 const BLANK_DAY={cashes:[{...BLANK_CASH}],employees:[],hamEnd:null,hamReceived:null,hamStartOverride:null,hotEnd:null,hotReceived:null,hotStartOverride:null,weather:"",tempC:null,gas:null,notes:"",events:""};
 // OWNER_EMAIL removed — use apiConfig.reportEmail (configurable in Settings → Application)
@@ -245,12 +245,31 @@ function ReconLine({label,value,negative,bold,accent,borderTop}){
 function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,roster,posAdvancedConfig}){
   const T=useL();
   const t=useT();
-  const posOk=cash.posVentes!=null;const posT=(cash.posVentes||0)+(cash.posTPS||0)+(cash.posTVQ||0)+(cash.posLivraisons||0);
-  const mc=cash.float!=null&&cash.deposits!=null&&cash.finalCash!=null;
-  const manT=mc?(cash.interac||0)+(cash.livraisons||0)+(cash.deposits||0)+(cash.finalCash||0)-(cash.float||0):null;
-  const canR=posOk&&mc;const ecart=canR?manT-posT:null;const bal=canR&&Math.abs(ecart)<=1;
+  // POS total = Sales + GST + QST (deliveries are SUBSET of sales, already included)
+  const posOk=cash.posVentes!=null;
+  const posT=(cash.posVentes||0)+(cash.posTPS||0)+(cash.posTVQ||0);
+  // Expected in register = Total POS − deliveries (platforms hold delivery money)
+  const posLiv=cash.posLivraisons||0;
+  const expectedInReg=posOk?posT-posLiv:null;
+  const mc=cash.interac!=null&&cash.finalCash!=null;
+  // Manual = only what's physically countable: terminal + cash
+  const manT=mc?(cash.interac||0)+(cash.finalCash||0):null;
+  const canR=posOk&&mc;const ecart=canR?manT-expectedInReg:null;const bal=canR&&Math.abs(ecart)<=1;
   const rN=roster.find(r=>r.id===cash.cashierId)?.name;const label=rN||(T.cashRegisterLabel?`${T.cashRegisterLabel} ${index+1}`:`Caisse ${index+1}`);
-  const fc=[cash.posVentes,cash.float,cash.interac,cash.deposits,cash.finalCash].filter(v=>v!=null).length;
+  const fc=[cash.posVentes,cash.interac,cash.finalCash].filter(v=>v!=null).length;
+  // Payment breakdown (manual side) vs terminal total
+  const termTotal=cash.interac;
+  const pmtSum=(cash.pmtVisa||0)+(cash.pmtMastercard||0)+(cash.pmtDebit||0)+(cash.pmtAmex||0)+(cash.pmtOther||0);
+  const hasPmtBreakdown=!!(cash.pmtVisa||cash.pmtMastercard||cash.pmtDebit||cash.pmtAmex||cash.pmtOther);
+  const pmtVsTermMatch=!hasPmtBreakdown||termTotal==null||Math.abs(pmtSum-(termTotal||0))<=0.01;
+  // Cross-side: POS payment breakdown vs terminal total
+  const posPmts=cash.posPayments||{};
+  const posCardTotal=(posPmts.visa||0)+(posPmts.mastercard||0)+(posPmts.debit||0)+(posPmts.amex||0)+(posPmts.other||0);
+  const hasPosBreakdown=!!(posPmts.visa||posPmts.mastercard||posPmts.debit||posPmts.amex||posPmts.other);
+  const posVsTermMatch=!hasPosBreakdown||termTotal==null||Math.abs(posCardTotal-(termTotal||0))<=0.01;
+  // Expected cash = Expected in register − terminal (what should be physically in the drawer)
+  const expectedCash=(posOk&&termTotal!=null)?(posT-posLiv)-(termTotal||0):null;
+  const cashVariance=(expectedCash!=null&&cash.finalCash!=null)?cash.finalCash-expectedCash:null;
   const outerBorder=bal?t.reconBalBorder:canR&&!bal?t.reconErrBorder:t.cardBorder;
   const headerBg=bal?t.reconBalBg:t.cashHeaderBg;
   return(<div style={{background:t.card,border:`1px solid ${outerBorder}`,borderRadius:10,overflow:"hidden"}}>
@@ -267,33 +286,38 @@ function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,ro
             <F label={T.dailySalesTax} value={cash.posVentes} onChange={v=>onChange({...cash,posVentes:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+1} warn={cash.posVentes!=null&&cash.posVentes<0?T.warnNegativeAmount:cash.posVentes!=null&&cash.posVentes>15000?T.warnHighAmount:null}/>
             <F label={T.dailyGST} value={cash.posTPS} onChange={v=>onChange({...cash,posTPS:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+2} warn={cash.posTPS!=null&&cash.posTPS<0?T.warnNegativeAmount:null}/>
             <F label={T.dailyQST} value={cash.posTVQ} onChange={v=>onChange({...cash,posTVQ:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+3} warn={cash.posTVQ!=null&&cash.posTVQ<0?T.warnNegativeAmount:null}/>
-            <F label={T.dailyDeliveries} value={cash.posLivraisons} onChange={v=>onChange({...cash,posLivraisons:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+4} warn={cash.posLivraisons!=null&&cash.posLivraisons<0?T.warnNegativeAmount:null}/>
             <div style={{marginTop:4,paddingTop:4,borderTop:`1px solid rgba(${t.posRgb},0.15)`}}><RR label={T.dailyTotalPOS} value={posOk?posT:null} accent={t.posColor} bold/></div>
+            {/* Deliveries — informational subset of sales */}
+            <div style={{marginTop:3,paddingLeft:12,borderLeft:`2px solid rgba(${t.posRgb},0.2)`}}>
+              <F label={T.dailyDeliveriesSubset} value={cash.posLivraisons} onChange={v=>onChange({...cash,posLivraisons:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+4} warn={cash.posLivraisons!=null&&cash.posLivraisons<0?T.warnNegativeAmount:null}/>
+              {posOk&&posLiv>0&&(<div style={{fontSize:9.5,color:t.textMuted,marginTop:1,fontStyle:"italic"}}>= {T.dailyExpectedInReg}: <span style={{fontFamily:"'DM Mono',monospace",fontStyle:"normal",color:t.posColor,fontWeight:600}}>{fmt(posT-posLiv)}</span></div>)}
+            </div>
             {posAdvancedConfig?.enabled&&(()=>{
               const adv=posAdvancedConfig.fields||{};
-              const f=v=>typeof v==='number'?`$${v.toFixed(2)}`:'—';
               const rows=[];
-              if(adv.discounts&&(cash.posGrossSales||cash.posDiscounts)){
-                rows.push(<div key="disc" style={{fontSize:10,color:t.textSub,marginTop:5,paddingTop:5,borderTop:`1px solid rgba(${t.posRgb},0.1)`}}>
-                  {cash.posGrossSales>0&&<div>{T.posAdvGross||'Brut POS'}: <b style={{color:t.text}}>{f(cash.posGrossSales)}</b></div>}
-                  {cash.posDiscounts>0&&<div style={{color:"#f97316"}}>{T.posAdvDisc||'Rabais'}: <b>-{f(cash.posDiscounts)}</b></div>}
-                  {cash.posRefunds>0&&<div style={{color:"#ef4444"}}>{T.posAdvRefunds||'Remboursements'}: <b>-{f(cash.posRefunds)}</b></div>}
-                </div>);
-              }
-              if(adv.nonTaxable&&cash.posNonTaxable>0)rows.push(<div key="nt" style={{fontSize:10,color:t.textSub,marginTop:4}}>{T.posAdvNTLabel||'Non taxable'}: <b style={{color:t.text}}>{f(cash.posNonTaxable)}</b></div>);
-              if(adv.tips&&cash.posTips>0)rows.push(<div key="tips" style={{fontSize:10,color:t.textSub,marginTop:4}}>{T.posAdvTipsLabel||'Pourboires'}: <b style={{color:"#a78bfa"}}>{f(cash.posTips)}</b></div>);
-              if(adv.transactionCount&&cash.posTransactionCount>0)rows.push(<div key="tx" style={{fontSize:10,color:t.textSub,marginTop:4}}>{T.posAdvTxLabel||'Transactions'}: <b style={{color:t.text}}>{cash.posTransactionCount}</b>{cash.posVentes>0&&<span style={{color:t.textDim,marginLeft:6}}>{T.posAdvAvg||'Moy.'}: <b style={{color:t.text}}>{f(cash.posVentes/cash.posTransactionCount)}</b></span>}</div>);
-              if(adv.payments&&cash.posPayments)rows.push(<div key="pmts" style={{marginTop:5,paddingTop:5,borderTop:`1px solid rgba(${t.posRgb},0.1)`}}>
-                <div style={{fontSize:9,fontWeight:600,color:t.textMuted,marginBottom:3}}>{T.posAdvPmtTitle||'Modes de paiement'}</div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:3}}>
-                  {[["Visa",cash.posPayments.visa],["MC",cash.posPayments.mastercard],["Débit",cash.posPayments.debit],["Amex",cash.posPayments.amex],["Cash",cash.posPayments.cash],["Autre",cash.posPayments.other]].map(([lbl,val])=>(
-                    <div key={lbl} style={{background:t.section,borderRadius:4,padding:"3px 5px",textAlign:"center"}}>
-                      <div style={{fontSize:8,color:t.textDim}}>{lbl}</div>
-                      <div style={{fontSize:10,fontWeight:700,color:val>0?t.text:t.textDim}}>{f(val||0)}</div>
-                    </div>
-                  ))}
-                </div>
+              if(adv.discounts)rows.push(<div key="disc" style={{marginTop:5,paddingTop:5,borderTop:`1px solid rgba(${t.posRgb},0.1)`}}>
+                <F label={T.posAdvGross||'Brut POS'} value={cash.posGrossSales} onChange={v=>onChange({...cash,posGrossSales:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+16}/>
+                <F label={T.posAdvDisc||'Rabais'} value={cash.posDiscounts} onChange={v=>onChange({...cash,posDiscounts:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+17}/>
+                <F label={T.posAdvRefunds||'Remb.'} value={cash.posRefunds} onChange={v=>onChange({...cash,posRefunds:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+18}/>
               </div>);
+              if(adv.nonTaxable)rows.push(<div key="nt" style={{marginTop:5,paddingTop:5,borderTop:`1px solid rgba(${t.posRgb},0.1)`}}>
+                <F label={T.posAdvNTLabel||'Non-taxable'} value={cash.posNonTaxable} onChange={v=>onChange({...cash,posNonTaxable:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+19}/>
+              </div>);
+              if(adv.tips)rows.push(<div key="tips" style={{marginTop:5,paddingTop:5,borderTop:`1px solid rgba(${t.posRgb},0.1)`}}>
+                <F label={T.posAdvTipsLabel||'Pourboires'} value={cash.posTips} onChange={v=>onChange({...cash,posTips:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+20}/>
+              </div>);
+              if(adv.transactionCount)rows.push(<div key="tx" style={{marginTop:5,paddingTop:5,borderTop:`1px solid rgba(${t.posRgb},0.1)`}}>
+                <F label={T.posAdvTxLabel||'Transactions'} value={cash.posTransactionCount} onChange={v=>onChange({...cash,posTransactionCount:v})} accent={t.posRgb} tabIndex={index*20+21}/>
+              </div>);
+              if(adv.payments){const pp=cash.posPayments||{};const setPP=k=>v=>onChange({...cash,posPayments:{...pp,[k]:v}});rows.push(<div key="pmts" style={{marginTop:5,paddingTop:5,borderTop:`1px solid rgba(${t.posRgb},0.1)`}}>
+                <div style={{fontSize:9,fontWeight:600,color:t.textMuted,marginBottom:3}}>{T.posAdvPmtTitle||'💳 Modes de paiement'}</div>
+                <F label="Visa" value={pp.visa} onChange={setPP('visa')} prefix="$" accent={t.posRgb} tabIndex={index*20+22}/>
+                <F label="Mastercard" value={pp.mastercard} onChange={setPP('mastercard')} prefix="$" accent={t.posRgb} tabIndex={index*20+23}/>
+                <F label={T.dailyPmtDebit||'Débit'} value={pp.debit} onChange={setPP('debit')} prefix="$" accent={t.posRgb} tabIndex={index*20+24}/>
+                <F label="Amex" value={pp.amex} onChange={setPP('amex')} prefix="$" accent={t.posRgb} tabIndex={index*20+25}/>
+                <F label="Cash" value={pp.cash} onChange={setPP('cash')} prefix="$" accent={t.posRgb} tabIndex={index*20+26}/>
+                <F label={T.posAdvOther||'Autre'} value={pp.other} onChange={setPP('other')} prefix="$" accent={t.posRgb} tabIndex={index*20+27}/>
+              </div>);}
               if(adv.hourlySales&&cash.posHourlySales?.length>0){
                 const maxS=Math.max(...cash.posHourlySales.map(h=>h.sales),1);
                 rows.push(<details key="hourly" style={{marginTop:5}}>
@@ -316,21 +340,53 @@ function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,ro
           <div style={{fontSize:9.5,color:"#f97316",fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,marginBottom:4}}><span style={{width:8,height:8,borderRadius:2,background:"#f97316",display:"inline-block",marginRight:4}}/> {T.dailySectionCount}</div>
           <div style={{background:"rgba(249,115,22,0.04)",borderRadius:7,padding:8,border:"1px solid rgba(249,115,22,0.1)"}}>
             <F label={T.dailyFloat} value={cash.float} onChange={v=>onChange({...cash,float:v})} prefix="$" tabIndex={index*20+5} warn={cash.float!=null&&cash.float>500?T.warnHighFloat:cash.float!=null&&cash.float<0?T.warnNegativeFloat:null}/>
-            <F label={T.dailyInterac} value={cash.interac} onChange={v=>onChange({...cash,interac:v})} prefix="$" tabIndex={index*20+6} warn={cash.interac!=null&&cash.interac<0?T.warnNegativeAmount:null}/>
-            <F label={T.dailyDeliveries} value={cash.livraisons} onChange={v=>onChange({...cash,livraisons:v})} prefix="$" tabIndex={index*20+7} warn={cash.livraisons!=null&&cash.livraisons<0?T.warnNegativeAmount:null}/>
+            <F label={T.dailyTerminal} value={cash.interac} onChange={v=>onChange({...cash,interac:v})} prefix="$" tabIndex={index*20+6} warn={cash.interac!=null&&cash.interac<0?T.warnNegativeAmount:null}/>
+            <details style={{marginTop:4}}>
+              <summary style={{fontSize:9.5,fontWeight:600,color:t.textMuted,cursor:"pointer",userSelect:"none",padding:"4px 0",listStyle:"none",display:"flex",alignItems:"center",gap:4}}>{T.dailyPmtBreakdown}</summary>
+              <div style={{marginTop:4,paddingTop:4,borderTop:"1px solid rgba(249,115,22,0.1)"}}>
+                <F label="Visa" value={cash.pmtVisa} onChange={v=>onChange({...cash,pmtVisa:v})} prefix="$" tabIndex={index*20+30}/>
+                <F label="Mastercard" value={cash.pmtMastercard} onChange={v=>onChange({...cash,pmtMastercard:v})} prefix="$" tabIndex={index*20+31}/>
+                <F label={T.dailyPmtDebit} value={cash.pmtDebit} onChange={v=>onChange({...cash,pmtDebit:v})} prefix="$" tabIndex={index*20+32}/>
+                <F label="Amex" value={cash.pmtAmex} onChange={v=>onChange({...cash,pmtAmex:v})} prefix="$" tabIndex={index*20+33}/>
+                <F label={T.posAdvOther} value={cash.pmtOther} onChange={v=>onChange({...cash,pmtOther:v})} prefix="$" tabIndex={index*20+34}/>
+                {hasPmtBreakdown&&termTotal!=null&&(<div style={{marginTop:5,padding:"5px 7px",borderRadius:5,fontSize:10,fontWeight:500,background:pmtVsTermMatch?"rgba(34,197,94,0.07)":"rgba(249,115,22,0.08)",color:pmtVsTermMatch?"#16a34a":"#ea580c",border:`1px solid ${pmtVsTermMatch?"rgba(34,197,94,0.2)":"rgba(249,115,22,0.25)"}`}}>{pmtVsTermMatch?T.dailyPmtMatch:T.dailyPmtMismatch(fmt(pmtSum),fmt(termTotal),fmt(Math.abs(pmtSum-termTotal)))}</div>)}
+                {hasPosBreakdown&&termTotal!=null&&(<div style={{marginTop:4,padding:"5px 7px",borderRadius:5,fontSize:10,fontWeight:500,background:posVsTermMatch?"rgba(34,197,94,0.07)":"rgba(239,68,68,0.07)",color:posVsTermMatch?"#16a34a":"#dc2626",border:`1px solid ${posVsTermMatch?"rgba(34,197,94,0.2)":"rgba(239,68,68,0.2)"}`}}>{posVsTermMatch?T.dailyPosTermMatch:T.dailyPosTermMismatch(fmt(posCardTotal),fmt(termTotal),fmt(Math.abs(posCardTotal-termTotal)))}</div>)}
+              </div>
+            </details>
             <F label={T.dailyDeposits} value={cash.deposits} onChange={v=>onChange({...cash,deposits:v})} prefix="$" tabIndex={index*20+8} warn={cash.deposits!=null&&cash.deposits<0?T.warnNegativeDeposits:null}/>
             <F label={T.dailyFinalCash} value={cash.finalCash} onChange={v=>onChange({...cash,finalCash:v})} prefix="$" tabIndex={index*20+9} warn={cash.finalCash!=null&&cash.finalCash<0?T.warnNegativeAmount:null}/>
+            {expectedCash!=null&&(<div style={{marginTop:5,padding:"5px 7px",borderRadius:5,fontSize:10,background:cashVariance!=null&&Math.abs(cashVariance)>0.01?"rgba(249,115,22,0.08)":"rgba(34,197,94,0.05)",color:cashVariance!=null&&Math.abs(cashVariance)>0.01?"#ea580c":t.textSub,border:`1px solid ${cashVariance!=null&&Math.abs(cashVariance)>0.01?"rgba(249,115,22,0.2)":"rgba(34,197,94,0.12)"}`}}>
+              <div style={{fontWeight:600}}>{T.dailyExpectedCash}: {fmt(expectedCash)}</div>
+              {cashVariance!=null&&Math.abs(cashVariance)>0.01&&<div style={{marginTop:2}}>{cashVariance<0?T.dailyCashVarianceShort(fmt(Math.abs(cashVariance))):T.dailyCashVarianceOver(fmt(cashVariance))}</div>}
+            </div>)}
           </div>
         </div>
       </div>
       <div style={{marginTop:10,padding:"10px 12px",borderRadius:8,background:bal?t.reconBalBg:canR?t.reconErrBg:t.reconNeutralBg,border:`1px solid ${bal?t.reconBalBorder:canR?t.reconErrBorder:t.reconNeutralBorder}`}}>
-        <div style={{fontSize:10,color:t.textSub,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,marginBottom:6}}>{T.dailySectionRecon}</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:8,alignItems:"start"}}>
-          <div><div style={{fontSize:9,color:"#f97316",fontWeight:600,textTransform:"uppercase",marginBottom:4}}>{T.dailyReconCounted}</div><ReconLine label={T.dailyInterac} value={cash.interac??0}/><ReconLine label={T.dailyDeliveries} value={cash.livraisons??0}/><ReconLine label={T.dailyDeposits} value={cash.deposits??0}/><ReconLine label={T.dailyFinalCash} value={cash.finalCash??0}/><ReconLine label={T.dailyFloat} value={cash.float??0} negative/><ReconLine label={T.dailyTotalManual} value={manT} bold accent="#f97316" borderTop/></div>
-          <div style={{display:"flex",alignItems:"center",paddingTop:40}}><span style={{fontSize:13,fontWeight:700,color:t.textMuted}}>vs</span></div>
-          <div><div style={{fontSize:9,color:t.posColor,fontWeight:600,textTransform:"uppercase",marginBottom:4}}>{T.dailyReconPOS}</div><ReconLine label={T.posVentes} value={cash.posVentes??null}/><ReconLine label={T.dailyGST} value={cash.posTPS??0}/><ReconLine label={T.dailyQST} value={cash.posTVQ??0}/><ReconLine label={T.dailyDeliveries} value={cash.posLivraisons??0}/><ReconLine label={T.dailyTotalManual} value={posOk?posT:null} bold accent={t.posColor} borderTop/></div>
-        </div>
+        <div style={{fontSize:10,color:t.textSub,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,marginBottom:8}}>{T.dailySectionRecon}</div>
+        {mc&&(<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,alignItems:"start"}}>
+          <div>
+            <div style={{fontSize:9,color:"#f97316",fontWeight:600,textTransform:"uppercase",marginBottom:4}}>{T.dailySectionCount}</div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 0",borderBottom:`1px solid ${t.divider}`}}>
+              <span style={{fontSize:11,color:t.reconLabel,display:"flex",alignItems:"center",gap:3}}>{T.dailyTerminal}{hasPosBreakdown&&termTotal!=null&&(posVsTermMatch?<span style={{color:"#16a34a",fontSize:10}}> ✓</span>:<span style={{color:"#dc2626",fontSize:10}}> ✗</span>)}</span>
+              <span style={{fontFamily:"'DM Mono',monospace",fontSize:11.5,fontWeight:500,color:t.reconValue}}>{fmt(termTotal??0)}</span>
+            </div>
+            <ReconLine label={`+ ${T.dailyFinalCash}`} value={cash.finalCash??0}/>
+            <ReconLine label={`= ${T.dailyTotalManual}`} value={manT} bold accent="#f97316" borderTop/>
+          </div>
+          <div>
+            <div style={{fontSize:9,color:t.posColor,fontWeight:600,textTransform:"uppercase",marginBottom:4}}>{T.dailyReconPOS}</div>
+            <ReconLine label={T.dailySalesTax} value={cash.posVentes??null}/>
+            <ReconLine label={`+ ${T.dailyGST}`} value={cash.posTPS??0}/>
+            <ReconLine label={`+ ${T.dailyQST}`} value={cash.posTVQ??0}/>
+            <ReconLine label={T.dailyTotalPOS} value={posOk?posT:null} bold accent={t.posColor} borderTop/>
+            {posOk&&posLiv>0&&<ReconLine label={`↳ − ${T.dailyDeliveries}`} value={posLiv} accent={t.textMuted}/>}
+            {posOk&&<ReconLine label={T.dailyExpectedInReg} value={expectedInReg} bold accent={t.posColor}/>}
+            {canR&&<ReconLine label={T.dailySummaryVariance} value={Math.abs(ecart)} bold accent={bal?"#16a34a":"#dc2626"}/>}
+          </div>
+        </div>)}
         {canR?(<div style={{marginTop:8,padding:"7px 10px",borderRadius:6,textAlign:"center",background:bal?"rgba(34,197,94,0.08)":"rgba(239,68,68,0.08)"}}>{bal?<span style={{fontSize:13,fontWeight:700,color:"#16a34a"}}>{T.dailyReconOK(fmt(manT))}</span>:<div><span style={{fontSize:13,fontWeight:700,color:"#dc2626"}}>{T.dailyReconErr(fmt(Math.abs(ecart)))}</span><div style={{fontSize:11,color:"#dc2626",marginTop:1}}>{ecart>0?T.dailySurplus:T.dailyShortage} de {fmt(Math.abs(ecart))}</div></div>}</div>):(<div style={{marginTop:8,padding:"7px 10px",borderRadius:6,textAlign:"center",background:t.reconNeutralBg,border:`1px solid ${t.reconNeutralBorder}`}}><span style={{fontSize:11.5,color:t.textMuted}}>{fc===0?T.dailyFillToRecon:!posOk?T.dailyFillPOS:T.dailyCompleteCount}</span></div>)}
+        <div style={{marginTop:8,padding:"6px 10px",borderRadius:6,fontSize:10.5,color:t.textMuted,background:t.section,border:`1px solid ${t.sectionBorder}`,lineHeight:1.5}}>{T.dailyDeliveriesNote}</div>
       </div>
     </div>)}
   </div>);
@@ -626,9 +682,9 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
               <button onClick={e=>{e.stopPropagation();openImport(platform.id);}} style={{fontSize:9.5,padding:'2px 8px',borderRadius:4,border:'1px solid rgba(56,189,248,0.2)',background:'rgba(56,189,248,0.06)',color:'#38bdf8',cursor:'pointer',fontWeight:600,whiteSpace:'nowrap'}}>{T.livImportStatement}</button>
             </div>
           </div>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-            <F label={T.livPlatformSales} value={pd.ventes} onChange={v=>updPD(platform.id,'ventes',v)} prefix="$"/>
-            <F label={T.livDepositReceived} value={pd.depot} onChange={v=>updPD(platform.id,'depot',v)} prefix="$"/>
+          <div style={{display:'flex',gap:24,flexWrap:'wrap'}}>
+            <div style={{flex:'0 0 220px'}}><F label={T.livPlatformSales} value={pd.ventes} onChange={v=>updPD(platform.id,'ventes',v)} prefix="$"/></div>
+            <div style={{flex:'0 0 220px'}}><F label={T.livDepositReceived} value={pd.depot} onChange={v=>updPD(platform.id,'depot',v)} prefix="$"/></div>
           </div>
           <div style={{marginTop:5,fontSize:11}}>
             {ecart!=null?(<span style={{color:'#f97316',fontWeight:600,fontFamily:"'DM Mono',monospace"}}>Écart: {fmt(ecart)}{ecartPct!=null?` (${ecartPct.toFixed(1)}%)`:''}
@@ -1106,8 +1162,8 @@ function MonthlyPL({computeDay,suppliers,liveData,platforms,expenseItems,glAccou
       const k=`${y}-${m}-${String(d).padStart(2,"0")}`;
       const cd=computeDay(k);
       totalRev+=cd.venteNet||0;
-      totalTPS+=(cd.venteNet||0)*0.05;
-      totalTVQ+=(cd.venteNet||0)*0.09975;
+      totalTPS+=cd.tps||0;
+      totalTVQ+=cd.tvq||0;
       totalLab+=cd.labourCost||0;
     }
     const labC=plData.labourOverride!=null?plData.labourOverride:totalLab;
@@ -4692,10 +4748,11 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
       if(new Date(date+"T12:00:00")<cutoff)return;
       dayData.cashes.forEach(c=>{
         const name=c.nom||c.cashierId;
-        if(!name||c.posVentes==null||c.float==null||c.finalCash==null)return;
-        const manT=(c.interac||0)+(c.livraisons||0)+(c.deposits||0)+(c.finalCash||0)-(c.float||0);
-        const posT=(c.posVentes||0)+(c.posTPS||0)+(c.posTVQ||0)+(c.posLivraisons||0);
-        const ecart=Math.round((manT-posT)*100)/100;
+        if(!name||c.posVentes==null||c.interac==null||c.finalCash==null)return;
+        const manT=(c.interac||0)+(c.finalCash||0);
+        const posT=(c.posVentes||0)+(c.posTPS||0)+(c.posTVQ||0);
+        const expectedInReg=posT-(c.posLivraisons||0);
+        const ecart=Math.round((manT-expectedInReg)*100)/100;
         if(!vars[name])vars[name]={name,ecarts:[],cumul:0};
         vars[name].ecarts.push({date,ecart,manT,posT});
         vars[name].cumul+=ecart;
@@ -5734,7 +5791,8 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
 
       // ── Parse data per location ──
       const calcNet=(cashes=[])=>cashes.reduce((s,c)=>{
-        if(c.float!=null&&c.deposits!=null&&c.finalCash!=null)return s+(c.interac||0)+(c.livraisons||0)+(c.deposits||0)+(c.finalCash||0)-(c.float||0);
+        if(c.posVentes!=null)return s+(c.posVentes||0);
+        if(c.interac!=null&&c.finalCash!=null)return s+(c.interac||0)+(c.finalCash||0);
         return s;
       },0);
 
@@ -5764,10 +5822,11 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
           if(todayData){
             const cashes=todayData.cashes||[];
             const allBal=cashes.length>0&&cashes.every(c=>{
-              if(c.float==null||c.deposits==null||c.finalCash==null||c.posVentes==null)return false;
-              const man=(c.interac||0)+(c.livraisons||0)+(c.deposits||0)+(c.finalCash||0)-(c.float||0);
-              const pos=(c.posVentes||0)+(c.posTPS||0)+(c.posTVQ||0)+(c.posLivraisons||0);
-              return Math.abs(man-pos)<=1;
+              if(c.interac==null||c.finalCash==null||c.posVentes==null)return false;
+              const man=(c.interac||0)+(c.finalCash||0);
+              const pos=(c.posVentes||0)+(c.posTPS||0)+(c.posTVQ||0);
+              const expected=pos-(c.posLivraisons||0);
+              return Math.abs(man-expected)<=1;
             });
             const anyData=cashes.some(c=>c.posVentes!=null||c.finalCash!=null);
             todayStatus=allBal?"balanced":anyData?"error":"partial";
@@ -5811,7 +5870,7 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
             const k=`${plMonth}-${String(d).padStart(2,'0')}`;
             const day=daily[k];if(!day)continue;
             const cashes=day.cashes||[];
-            const net=cashes.reduce((s,c)=>(c.float!=null&&c.deposits!=null&&c.finalCash!=null)?s+(c.interac||0)+(c.livraisons||0)+(c.deposits||0)+(c.finalCash||0)-(c.float||0):s,0);
+            const net=cashes.reduce((s,c)=>(c.posVentes!=null)?s+(c.posVentes||0):(c.interac!=null&&c.finalCash!=null)?s+(c.interac||0)+(c.finalCash||0)+(c.livraisons||0):s,0);
             autoRev+=net;autoLab+=day.labourCost||0;
           }
           const revenue=pl._revenueOverride!=null?pl._revenueOverride:autoRev;
@@ -7748,6 +7807,8 @@ export default function App(){
   const [dismissedBanners,setDismissedBanners]=useState(new Set());
   const [unreadDocsCount,setUnreadDocsCount]=useState(0);
   const [pdfPreview,setPdfPreview]=useState(null);
+  const [closedDays,setClosedDays]=useState({});// {[dateKey]: {closedAt: ISO string}}
+  const [showCloseConfirm,setShowCloseConfirm]=useState(false);
   useEffect(()=>{const h=e=>setPdfPreview(e.detail.html);window.addEventListener('biq:pdf-preview',h);return()=>window.removeEventListener('biq:pdf-preview',h);},[]);
   const [companyInfo,setCompanyInfo]=useState(DEFAULT_COMPANY_INFO);
   const [invoiceTemplate,setInvoiceTemplate]=useState(DEFAULT_INVOICE_TEMPLATE);
@@ -7803,6 +7864,7 @@ export default function App(){
     try{const rIC=await window.api.storage.get("dicann-inv-config");if(rIC?.value){const p=JSON.parse(rIC.value);setInvConfig({...DEFAULT_INV_CONFIG,...p,items:p.items||DEFAULT_INV_CONFIG.items});}}catch(e){}
     try{const rPOS=await window.api.pos?.getCredentials?.();if(rPOS)setPosCredentials(rPOS);}catch(e){}
     try{const rPA=await window.api.storage.get("pos-advanced-config");if(rPA?.value)setPosAdvancedConfig(prev=>({...prev,...JSON.parse(rPA.value),fields:{...prev.fields,...JSON.parse(rPA.value).fields}}));}catch(e){}
+    try{const rCD=await window.api.storage.get("balanceiq-closed-days");if(rCD?.value)setClosedDays(JSON.parse(rCD.value));}catch(e){}
     try{const cfgExp=await window.api.storage.get("balanceiq-cfg-expanded");if(cfgExp?.value){try{setCfgExpanded(JSON.parse(cfgExp.value));}catch(e){}}}catch(e){}
     try{const rOCR=await window.api.storage.get("dicann-ocr-mappings");if(rOCR?.value)setOcrMappings(JSON.parse(rOCR.value))}catch(e){}
     setLoading(false);
@@ -7990,19 +8052,21 @@ export default function App(){
     const oldVal=liveDataRef.current[dt]?.[f];
     _updRaw(dt,f,v);
     const isExisting=initialDatesRef.current.has(dt);
+    const isPastDate=dt<dk(new Date());
+    const isDayClosed=!!closedDays[dt];
     if(!isExisting&&!sessionCreatedRef.current.has(dt)){
       logCreate('daily','jour',dt,{[f]:v});sessionCreatedRef.current.add(dt);
-    }else if(isExisting&&isFinancialField('daily',f)&&oldVal!=null&&oldVal!==""&&oldVal!==0){
+    }else if(isExisting&&(isPastDate||isDayClosed)&&isFinancialField('daily',f)&&oldVal!=null&&oldVal!==""&&oldVal!==0){
       if(sessionCorrectionRef.current.has(dt)){
         logCorrection('daily','jour',dt,f,oldVal,v,sessionCorrectionRef.current.get(dt));
       }else{
-        promptCorrectionReason(DAILY_FIELD_LABELS[f]||f).then(reason=>{
+        promptCorrectionReason(DAILY_FIELD_LABELS[f]||f,lang).then(reason=>{
           if(reason){sessionCorrectionRef.current.set(dt,reason);logCorrection('daily','jour',dt,f,oldVal,v,reason);}
           else{_updRaw(dt,f,oldVal??null);}
         });
       }
     }else{logUpdate('daily','jour',dt,f,oldVal,v);}
-  },[_updRaw]);
+  },[_updRaw,lang,closedDays]);
 
   const checkGasPrice=useCallback(async()=>{
     setGasCheckLoading(true);setGasCheckMsg(null);
@@ -8025,15 +8089,17 @@ export default function App(){
     const oldCash=(liveDataRef.current[dt]?.cashes||[])[i]||{};
     _updCashRaw(dt,i,newCash);
     const isExisting=initialDatesRef.current.has(dt);
+    const isPastDate=dt<dk(new Date());
+    const isDayClosed=!!closedDays[dt];
     const allKeys=new Set([...Object.keys(oldCash),...Object.keys(newCash)]);
     for(const key of allKeys){
       if(oldCash[key]===newCash[key])continue;
-      if(isExisting&&isFinancialField('daily',key)){
+      if(isExisting&&(isPastDate||isDayClosed)&&isFinancialField('daily',key)){
         if(sessionCorrectionRef.current.has(dt)){
           logCorrection('daily','caisse',`${dt}:${i}`,key,oldCash[key],newCash[key],sessionCorrectionRef.current.get(dt));
         }else{
           const snap={...oldCash};
-          promptCorrectionReason(DAILY_FIELD_LABELS[key]||key).then(reason=>{
+          promptCorrectionReason(DAILY_FIELD_LABELS[key]||key,lang).then(reason=>{
             if(reason){sessionCorrectionRef.current.set(dt,reason);logCorrection('daily','caisse',`${dt}:${i}`,key,snap[key],newCash[key],reason);}
             else{_updCashRaw(dt,i,snap);}
           });
@@ -8041,7 +8107,7 @@ export default function App(){
         break;
       }else{logUpdate('daily','caisse',`${dt}:${i}`,key,oldCash[key],newCash[key]);}
     }
-  },[_updCashRaw]);
+  },[_updCashRaw,lang,closedDays]);
   const addCash=useCallback(dt=>{setLiveData(p=>{const d={...(p[dt]||{})};const cs=[...(d.cashes||[{...BLANK_CASH}])];cs.push({...BLANK_CASH});const u={...p,[dt]:{...d,cashes:cs}};persist(u);return u});logUpdate('daily','jour',dt,'caisses',null,'ajout');},[persist]);
   const rmCash=useCallback((dt,i)=>{setLiveData(p=>{const d={...(p[dt]||{})};const cs=[...(d.cashes||[])];cs.splice(i,1);const u={...p,[dt]:{...d,cashes:cs}};persist(u);return u});logUpdate('daily','jour',dt,'caisses',null,`retrait:${i}`);},[persist]);
   const updEmp=useCallback((dt,i,newEmp)=>{
@@ -8077,9 +8143,26 @@ export default function App(){
     const hR=itemResults.ham?.received??0;
     const hoR=itemResults.hot?.received??0;
     const cashes=r.cashes||[];
-    let vN=0,allB=true,anyD=false;
-    cashes.forEach(c=>{const mc=c.float!=null&&c.deposits!=null&&c.finalCash!=null;const manT=mc?(c.interac||0)+(c.livraisons||0)+(c.deposits||0)+(c.finalCash||0)-(c.float||0):0;vN+=manT;const posT=(c.posVentes||0)+(c.posTPS||0)+(c.posTVQ||0)+(c.posLivraisons||0);if(c.posVentes!=null||c.interac!=null||c.finalCash!=null)anyD=true;if(!mc||!c.posVentes||Math.abs(manT-posT)>1)allB=false});
-    const tps=Math.round(vN*0.05*100)/100;const tvq=Math.round(vN*0.09975*100)/100;const tot=Math.round((vN+tps+tvq)*100)/100;
+    let posVN=0,posTPS_=0,posTVQ_=0,posLiv_=0,manVN=0,allB=true,anyD=false;
+    cashes.forEach(c=>{
+      const mc_=c.interac!=null&&c.finalCash!=null;
+      // Manual = terminal + cash (no livraisons — platforms hold delivery money)
+      const manT_=mc_?(c.interac||0)+(c.finalCash||0):0;
+      // POS total = Sales + GST + QST (deliveries are subset of sales, not added)
+      const posT_=(c.posVentes||0)+(c.posTPS||0)+(c.posTVQ||0);
+      const expectedInReg_=posT_-(c.posLivraisons||0);
+      posVN+=c.posVentes||0;posTPS_+=c.posTPS||0;posTVQ_+=c.posTVQ||0;posLiv_+=c.posLivraisons||0;
+      manVN+=manT_;
+      if(c.posVentes!=null||c.interac!=null||c.finalCash!=null)anyD=true;
+      if(!mc_||!c.posVentes||Math.abs(manT_-expectedInReg_)>1)allB=false;
+    });
+    // Net Sales = posVentes (before tax). Fall back to manual total for historical data.
+    const hasPOS=posVN>0;
+    const vN=hasPOS?posVN:manVN;
+    const tps=hasPOS?posTPS_:Math.round(vN*0.05*100)/100;
+    const tvq=hasPOS?posTVQ_:Math.round(vN*0.09975*100)/100;
+    // Gross = Sales + GST + QST (deliveries already included in Sales)
+    const tot=hasPOS?posVN+posTPS_+posTVQ_:Math.round((vN+tps+tvq)*100)/100;
     const moy=vN>0&&tDoz>0?vN/tDoz:null;
     const emps=r.employees||[];let labC=0,labH=0;emps.forEach(e=>{if(e.hours&&e.wage){labC+=e.hours*e.wage;labH+=e.hours}});
     const labP=vN>0&&labC>0?(labC/vN)*100:null;
@@ -8088,6 +8171,39 @@ export default function App(){
 
   const today=computeDay(selectedDate);const d=new Date(selectedDate+"T12:00:00");const holiday=getHol(d);const raw=getLR(selectedDate);const cashes=raw.cashes;const emps=raw.employees;
   const isDayComplete=today.anyData&&today.allBal&&raw.hamEnd!=null&&raw.hotEnd!=null;
+  const isClosed=!!closedDays[selectedDate];
+
+  // Count unclosed days this week that have data
+  const unclosedThisWeek=useMemo(()=>{
+    const today_=new Date();today_.setHours(0,0,0,0);
+    const dow=today_.getDay();const mon=new Date(today_);mon.setDate(today_.getDate()-((dow+6)%7));
+    let count=0;
+    for(let i=0;i<7;i++){
+      const dd=new Date(mon);dd.setDate(mon.getDate()+i);
+      if(dd>=today_)break;// don't count today or future
+      const key=dk(dd);
+      const cd=computeDay(key);
+      if(cd.anyData&&!closedDays[key])count++;
+    }
+    return count;
+  },[computeDay,closedDays]);
+
+  const closeDay=useCallback(async()=>{
+    const key=selectedDate;
+    const closedAt=new Date().toISOString();
+    const dayData=liveDataRef.current[key];
+    // Save immutable snapshot
+    if(dayData&&Object.keys(dayData).length>0){
+      window.api.snapshot.save(key,dayData).catch(()=>{});
+    }
+    // Persist closed state
+    const next={...closedDays,[key]:{closedAt}};
+    setClosedDays(next);
+    window.api.storage.set("balanceiq-closed-days",JSON.stringify(next)).catch(()=>{});
+    // Audit log
+    logUpdate('daily','jour',key,'fermeture',null,closedAt);
+    setShowCloseConfirm(false);
+  },[selectedDate,closedDays]);
 
   // Auto-snapshot when a day becomes "complete" — once per date per session
   useEffect(()=>{
@@ -8181,8 +8297,10 @@ export default function App(){
     h+=`<h1>BalanceIQ — Rapport journalier</h1><p class="sub" style="text-transform:capitalize">${dateStr}${holiday?` · ${holiday}`:""}</p>`;
     h+=`<h3>Ventes</h3><table><tr><th>Vente nette</th><th>TPS</th><th>TVQ</th><th>Total brut</th></tr><tr><td>${fmt(today.venteNet)}</td><td>${fmt(today.tps)}</td><td>${fmt(today.tvq)}</td><td>${fmt(today.total)}</td></tr></table>`;
     h+=`<h3>Caisses</h3><table><tr><th>Caisse</th><th>Total compté</th><th>Total POS</th><th>Statut</th></tr>`;
-    cashes.forEach((c,i)=>{const rN=roster.find(r=>r.id===c.cashierId)?.name||`Caisse ${i+1}`;const mc=c.float!=null&&c.deposits!=null&&c.finalCash!=null;const manT=mc?(c.interac||0)+(c.livraisons||0)+(c.deposits||0)+(c.finalCash||0)-(c.float||0):null;const posT=(c.posVentes||0)+(c.posTPS||0)+(c.posTVQ||0)+(c.posLivraisons||0);const bal=mc&&c.posVentes!=null&&Math.abs(manT-posT)<=1;h+=`<tr><td>${rN}</td><td>${manT!=null?fmt(manT):"—"}</td><td>${c.posVentes!=null?fmt(posT):"—"}</td><td class="${bal?"g":"r"}">${bal?"✓ Balancé":mc&&c.posVentes!=null?`Écart: ${fmt(manT-posT)}`:"Incomplet"}</td></tr>`});
+    cashes.forEach((c,i)=>{const rN=roster.find(r=>r.id===c.cashierId)?.name||`Caisse ${i+1}`;const mc=c.interac!=null&&c.finalCash!=null;const manT=mc?(c.interac||0)+(c.finalCash||0):null;const posT=(c.posVentes||0)+(c.posTPS||0)+(c.posTVQ||0);const expectedInReg=posT-(c.posLivraisons||0);const bal=mc&&c.posVentes!=null&&Math.abs(manT-expectedInReg)<=1;h+=`<tr><td>${rN}</td><td>${manT!=null?fmt(manT):"—"}</td><td>${c.posVentes!=null?fmt(expectedInReg):"—"}</td><td class="${bal?"g":"r"}">${bal?"✓ Balancé":mc&&c.posVentes!=null?`Écart: ${fmt(manT-expectedInReg)}`:"Incomplet"}</td></tr>`});
     h+=`</table>`;
+    const hasPmtBreakdown=cashes.some(c=>c.pmtVisa||c.pmtMastercard||c.pmtDebit||c.pmtAmex||c.pmtOther);
+    if(hasPmtBreakdown){h+=`<h3>Détail par type de paiement</h3><table><tr><th>Caisse</th><th>Terminal</th><th>Visa</th><th>Mastercard</th><th>Débit</th><th>Amex</th><th>Autre</th></tr>`;const f2=v=>v!=null&&v>0?fmt(v):"—";cashes.forEach((c,i)=>{if(!c.pmtVisa&&!c.pmtMastercard&&!c.pmtDebit&&!c.pmtAmex&&!c.pmtOther)return;const rN=roster.find(r=>r.id===c.cashierId)?.name||`Caisse ${i+1}`;h+=`<tr><td>${rN}</td><td>${f2(c.interac)}</td><td>${f2(c.pmtVisa)}</td><td>${f2(c.pmtMastercard)}</td><td>${f2(c.pmtDebit)}</td><td>${f2(c.pmtAmex)}</td><td>${f2(c.pmtOther)}</td></tr>`;});h+=`</table>`;}
     h+=`<h3>Inventaire</h3><table><tr><th>Produit</th><th>Début</th><th>+Reçu</th><th>Fin</th><th>Utilisé</th></tr>`;
     h+=`<tr><td>Hamburger</td><td>${today.hamStart??"-"}</td><td>${today.hamReceived||0}</td><td>${today.hamEnd??"-"}</td><td>${today.hamUsed??"-"}</td></tr>`;
     h+=`<tr><td>Hot Dog</td><td>${today.hotStart??"-"}</td><td>${today.hotReceived||0}</td><td>${today.hotEnd??"-"}</td><td>${today.hotUsed??"-"}</td></tr>`;
@@ -8202,9 +8320,9 @@ export default function App(){
     return Object.entries(data).filter(([k])=>k.startsWith(yearMonth)).reduce((sum,[,v])=>{
       const cashes=v.cashes||[];
       const net=cashes.reduce((s,c)=>{
-        if(c.float!=null&&c.deposits!=null&&c.finalCash!=null){
-          return s+(c.interac||0)+(c.livraisons||0)+(c.deposits||0)+(c.finalCash||0)-(c.float||0);
-        }return s;
+        if(c.posVentes!=null)return s+(c.posVentes||0);
+        if(c.interac!=null&&c.finalCash!=null)return s+(c.interac||0)+(c.finalCash||0);
+        return s;
       },0);return sum+net;
     },0);
     }catch(e){return 0;}
@@ -8356,7 +8474,7 @@ export default function App(){
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <button onClick={()=>{const n=new Date(d);n.setDate(n.getDate()-1);setSelectedDate(dk(n))}} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.text,padding:"3px 8px",cursor:"pointer",fontSize:13}}>←</button>
                 <div>
-                  <div style={{fontSize:15,fontWeight:700,textTransform:"capitalize",color:t.text,display:"flex",alignItems:"center",gap:6}}>{fmtD(d,T)}{isDayComplete&&<span style={{fontSize:9.5,fontWeight:700,color:"#16a34a",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:10,padding:"1px 7px",lineHeight:1.6}}>✓ {T.statusDayComplete}</span>}</div>
+                  <div style={{fontSize:15,fontWeight:700,textTransform:"capitalize",color:t.text,display:"flex",alignItems:"center",gap:6}}>{fmtD(d,T)}{isDayComplete&&<span style={{fontSize:9.5,fontWeight:700,color:"#16a34a",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:10,padding:"1px 7px",lineHeight:1.6}}>✓ {T.statusDayComplete}</span>}{isClosed&&<span style={{fontSize:9.5,fontWeight:700,color:"#f59e0b",background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.25)",borderRadius:10,padding:"1px 7px",lineHeight:1.6}}>{T.closeDayBadge}</span>}</div>
                   <div style={{display:"flex",gap:3,marginTop:1,flexWrap:"wrap"}}>
                     {holiday&&<span style={{fontSize:9,background:t.warnBg,color:t.warnText,padding:"1px 5px",borderRadius:8,fontWeight:600}}>{holiday}</span>}
                     {today.weather&&<span style={{fontSize:9,background:"rgba(56,189,248,0.07)",color:"#38bdf8",padding:"1px 5px",borderRadius:8}}>{xlateWeather(today.weather,T)}{today.tempC!=null?` ${today.tempC}°C`:""}</span>}
@@ -8384,6 +8502,11 @@ export default function App(){
 
           {/* DAILY TAB */}
           {activeTab==="daily"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {unclosedThisWeek>0&&(
+              <div style={{background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.3)",borderRadius:7,padding:"7px 12px",fontSize:12,color:"#f59e0b",fontWeight:600}}>
+                {T.unclosedDaysWarn(unclosedThisWeek)}
+              </div>
+            )}
             <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
               <MC label={T.dailyNetSales} value={fmt(today.venteNet)} accent={t.posColor}/>
               <MC label={T.dailyGross} value={fmt(today.total)} accent="#f97316"/>
@@ -8443,6 +8566,38 @@ export default function App(){
                 ?<span style={{fontSize:12,color:"#16a34a",fontWeight:600}}>✓ Toutes les caisses balancent</span>
                 :<span style={{fontSize:12,color:t.warnText,fontWeight:600}}>{T.verifyCaisses}</span>}
             </div>)}
+
+            {/* Close-out button / closed badge */}
+            {today.anyData&&!isClosed&&(
+              <div style={{textAlign:"center",paddingTop:2}}>
+                <button onClick={()=>setShowCloseConfirm(true)} style={{background:"linear-gradient(135deg,#16a34a,#15803d)",border:"none",borderRadius:8,color:"#fff",padding:"9px 24px",fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:"0.3px"}}>
+                  ✓ {T.closeDayBtn}
+                </button>
+              </div>
+            )}
+            {isClosed&&(()=>{
+              const closedAt=closedDays[selectedDate]?.closedAt;
+              const timeStr=closedAt?new Date(closedAt).toLocaleTimeString(lang==='en'?'en-CA':'fr-CA',{hour:'2-digit',minute:'2-digit'}):'';
+              return(
+                <div style={{textAlign:"center",padding:"6px 10px",borderRadius:6,background:"rgba(34,197,94,0.07)",border:"1px solid rgba(34,197,94,0.2)",fontSize:12,color:"#16a34a",fontWeight:700}}>
+                  {T.closeDayBadge}{timeStr?` — ${timeStr}`:''}
+                </div>
+              );
+            })()}
+
+            {/* Confirmation modal for close-out */}
+            {showCloseConfirm&&(
+              <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9998}} onClick={e=>{if(e.target===e.currentTarget)setShowCloseConfirm(false);}}>
+                <div style={{background:"#1a1d27",border:"1px solid #374151",borderRadius:12,padding:"28px 32px",width:440,maxWidth:"90vw",boxShadow:"0 20px 60px rgba(0,0,0,0.6)"}}>
+                  <h3 style={{margin:"0 0 8px",color:"#16a34a",fontSize:"1rem",fontWeight:700}}>{T.closeDayTitle}</h3>
+                  <p style={{margin:"0 0 20px",color:"#9ca3af",fontSize:"0.875rem",lineHeight:1.6}}>{T.closeDayBody}</p>
+                  <div style={{display:"flex",justifyContent:"flex-end",gap:10}}>
+                    <button onClick={()=>setShowCloseConfirm(false)} style={{padding:"8px 18px",borderRadius:8,border:"1px solid #374151",background:"transparent",color:"#9ca3af",fontSize:"0.875rem",cursor:"pointer"}}>{T.closeDayCancel}</button>
+                    <button onClick={closeDay} style={{padding:"8px 18px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#16a34a,#15803d)",color:"#fff",fontSize:"0.875rem",fontWeight:700,cursor:"pointer"}}>{T.closeDayConfirm}</button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* POS Advanced Data Panel */}
             {posAdvancedConfig.enabled&&(()=>{

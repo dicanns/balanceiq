@@ -171,7 +171,8 @@ function _getModalRoot() {
  * @param {string} [fieldLabel] — optional human-readable field name for the message
  * @returns {Promise<string|null>}
  */
-export function promptCorrectionReason(fieldLabel) {
+export function promptCorrectionReason(fieldLabel, lang = 'fr') {
+  const isEN = lang === 'en';
   return new Promise((resolve) => {
     const root = _getModalRoot();
     root.innerHTML = '';
@@ -192,17 +193,23 @@ export function promptCorrectionReason(fieldLabel) {
 
     const title = document.createElement('h3');
     title.style.cssText = 'margin:0 0 8px;color:#f59e0b;font-size:1rem;font-weight:600;';
-    title.textContent = 'Correction financière';
+    title.textContent = isEN ? 'Financial correction' : 'Correction financière';
 
     const body = document.createElement('p');
     body.style.cssText = 'margin:0 0 16px;color:#9ca3af;font-size:0.875rem;line-height:1.5;';
-    body.textContent = fieldLabel
-      ? `Vous modifiez le champ « ${fieldLabel} » déjà enregistré. Veuillez indiquer la raison :`
-      : 'Vous modifiez un champ déjà enregistré. Veuillez indiquer la raison :';
+    if (isEN) {
+      body.textContent = fieldLabel
+        ? `You are modifying the field "${fieldLabel}" which has already been saved. Please provide a reason:`
+        : 'You are modifying a field that has already been saved. Please provide a reason:';
+    } else {
+      body.textContent = fieldLabel
+        ? `Vous modifiez le champ « ${fieldLabel} » déjà enregistré. Veuillez indiquer la raison :`
+        : 'Vous modifiez un champ déjà enregistré. Veuillez indiquer la raison :';
+    }
 
     const input = document.createElement('textarea');
     input.rows = 3;
-    input.placeholder = 'Raison de la correction…';
+    input.placeholder = isEN ? 'Reason for correction…' : 'Raison de la correction…';
     input.style.cssText = `
       width:100%;box-sizing:border-box;padding:10px 12px;
       background:#0c0e14;border:1px solid #374151;border-radius:8px;
@@ -219,14 +226,14 @@ export function promptCorrectionReason(fieldLabel) {
     btnRow.style.cssText = 'display:flex;justify-content:flex-end;gap:10px;margin-top:18px;';
 
     const btnCancel = document.createElement('button');
-    btnCancel.textContent = 'Annuler';
+    btnCancel.textContent = isEN ? 'Cancel' : 'Annuler';
     btnCancel.style.cssText = `
       padding:8px 18px;border-radius:8px;border:1px solid #374151;
       background:transparent;color:#9ca3af;font-size:0.875rem;cursor:pointer;
     `;
 
     const btnSave = document.createElement('button');
-    btnSave.textContent = 'Sauvegarder';
+    btnSave.textContent = isEN ? 'Save' : 'Sauvegarder';
     btnSave.style.cssText = `
       padding:8px 18px;border-radius:8px;border:none;
       background:linear-gradient(135deg,#f97316,#ea580c);
@@ -244,7 +251,7 @@ export function promptCorrectionReason(fieldLabel) {
     btnSave.addEventListener('click', () => {
       const val = input.value.trim();
       if (!val) {
-        errMsg.textContent = 'La raison est obligatoire.';
+        errMsg.textContent = isEN ? 'A reason is required.' : 'La raison est obligatoire.';
         input.style.borderColor = '#ef4444';
         input.focus();
         return;
