@@ -1144,7 +1144,10 @@ app.whenReady().then(() => {
     autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = true;
 
+    let updateIsAvailable = false;
+
     autoUpdater.on('update-available', () => {
+      updateIsAvailable = true;
       BrowserWindow.getAllWindows().forEach(w =>
         w.webContents.send('update:available')
       );
@@ -1154,7 +1157,13 @@ app.whenReady().then(() => {
       autoUpdater.quitAndInstall(false, true);
     });
 
-    autoUpdater.checkForUpdates().catch(() => {});
+    // Delay check so React has time to mount and register the listener
+    setTimeout(() => {
+      autoUpdater.checkForUpdates().catch(() => {});
+    }, 4000);
+
+    // Allow renderer to poll in case it missed the event (e.g. slow mount)
+    ipcMain.handle('updater:check', () => updateIsAvailable);
   }
 });
 
