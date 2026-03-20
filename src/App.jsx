@@ -7672,6 +7672,7 @@ export default function App(){
   const [updateDownloadUrl,setUpdateDownloadUrl]=useState(null);
   const [updating,setUpdating]=useState(false);
   const [updateCheckStatus,setUpdateCheckStatus]=useState(null); // null | 'checking' | 'up-to-date' | 'error'
+  const [appMessages,setAppMessages]=useState([]); // push messages from Supabase
   const [showEarlyAccess,setShowEarlyAccess]=useState(()=>{try{return localStorage.getItem(`balanceiq-early-access-v${appVersion}`)!=='1';}catch{return true;}});
   const dismissEarlyAccess=useCallback(()=>{try{localStorage.setItem(`balanceiq-early-access-v${appVersion}`,'1');}catch{}setShowEarlyAccess(false);},[]);
   const dismissBanner=useCallback((tabId)=>{setDismissedBanners(prev=>{const next=new Set(prev);next.add(tabId);window.api.storage.set("balanceiq-dismissed-banners",JSON.stringify([...next])).catch(()=>{});return next;});},[]);
@@ -7850,6 +7851,27 @@ export default function App(){
         try{const avail=await window.api.updater.check();if(avail)setUpdateAvailable(true);}catch(e){}
       }, 10000);
     }
+    // Fetch push messages from Supabase (works for all users, no auth needed)
+    const fetchAppMessages=async()=>{
+      try{
+        const {SUPABASE_URL,SUPABASE_ANON_KEY}=await import('./services/supabase.js');
+        const res=await fetch(`${SUPABASE_URL}/rest/v1/app_messages?select=*&active=eq.true&order=created_at.desc`,{
+          headers:{'apikey':SUPABASE_ANON_KEY,'Authorization':`Bearer ${SUPABASE_ANON_KEY}`}
+        });
+        if(!res.ok)return;
+        const msgs=await res.json();
+        const dismissed=JSON.parse(localStorage.getItem('balanceiq-dismissed-msgs')||'[]');
+        const ver=appVersion.split('.').map(Number);
+        const filtered=msgs.filter(m=>{
+          if(dismissed.includes(m.id))return false;
+          if(m.min_version){const mv=m.min_version.split('.').map(Number);if(ver[0]<mv[0]||(ver[0]===mv[0]&&ver[1]<mv[1])||(ver[0]===mv[0]&&ver[1]===mv[1]&&ver[2]<mv[2]))return false;}
+          if(m.max_version){const mv=m.max_version.split('.').map(Number);if(ver[0]>mv[0]||(ver[0]===mv[0]&&ver[1]>mv[1])||(ver[0]===mv[0]&&ver[1]===mv[1]&&ver[2]>mv[2]))return false;}
+          return true;
+        });
+        setAppMessages(filtered);
+      }catch(e){}
+    };
+    fetchAppMessages();
   },[]);
 
   // POS OAuth callback listener
@@ -8269,6 +8291,17 @@ export default function App(){
             </div>
           </div>
         </div>
+
+        {/* ── PUSH MESSAGE BANNERS ── */}
+        {appMessages.map(m=>{
+          const colors={info:{bg:"rgba(59,130,246,0.12)",border:"rgba(59,130,246,0.3)",text:"#60a5fa"},warning:{bg:"rgba(234,179,8,0.12)",border:"rgba(234,179,8,0.3)",text:"#facc15"},update:{bg:"rgba(249,115,22,0.12)",border:"rgba(249,115,22,0.3)",text:"#f97316"}};
+          const c=colors[m.type]||colors.info;
+          return(<div key={m.id} style={{background:c.bg,borderBottom:`1px solid ${c.border}`,padding:"7px 15px",display:"flex",alignItems:"center",justifyContent:"center",gap:12}}>
+            <span style={{fontSize:12,color:c.text,fontWeight:600}}>{m.message}</span>
+            {m.url&&<button onClick={()=>window.api.shell.openExternal(m.url)} style={{padding:"2px 10px",borderRadius:5,border:`1px solid ${c.border}`,background:"none",color:c.text,cursor:"pointer",fontWeight:700,fontSize:11}}>{m.url_label||"En savoir plus"}</button>}
+            <button onClick={()=>{const d=JSON.parse(localStorage.getItem('balanceiq-dismissed-msgs')||'[]');localStorage.setItem('balanceiq-dismissed-msgs',JSON.stringify([...d,m.id]));setAppMessages(prev=>prev.filter(x=>x.id!==m.id));}} style={{padding:"2px 8px",borderRadius:5,border:`1px solid ${c.border}`,background:"none",color:c.text,cursor:"pointer",fontSize:10,opacity:0.7}}>✕</button>
+          </div>);
+        })}
 
         {/* ── UPDATE BAR ── */}
         {updateAvailable&&<div style={{background:"linear-gradient(90deg,rgba(249,115,22,0.15),rgba(234,88,12,0.1))",borderBottom:"1px solid rgba(249,115,22,0.3)",padding:"7px 15px",display:"flex",alignItems:"center",justifyContent:"center",gap:12}}>
