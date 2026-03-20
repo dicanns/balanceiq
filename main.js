@@ -1143,8 +1143,6 @@ app.whenReady().then(() => {
   if (app.isPackaged) {
     autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = true;
-    autoUpdater.logger = require('electron-log');
-    autoUpdater.logger.transports.file.level = 'info';
 
     let updateIsAvailable = false;
 
