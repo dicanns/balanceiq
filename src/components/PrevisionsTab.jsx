@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
+import { trackEvent } from '../services/telemetry.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -558,6 +559,7 @@ function AIAnalysisView({ canUse, allSales, products, weatherMap, weekDates, pre
         throw new Error(lang==='en'?'Claude returned an empty response. Open DevTools Console for details.':'Réponse vide de Claude. Voir la console pour les détails.');
       }
       setResult({ text: data.text, usageCount: data.usageCount, usageLimit: data.usageLimit });
+      trackEvent('feature_used:ai_analysis');
     } catch (e) {
       setResult({ error: e.message });
     }
@@ -1504,6 +1506,7 @@ function ProductionListView({ products, allSales, weatherMap, learnedPatterns = 
 
     const batchItems = Object.values(batchMap);
     setGenerated({ list, batchItems, dates, weatherAnnotations, adjustments });
+    trackEvent('feature_used:production_list');
 
     // Snapshot predictions to accuracy table
     const todayStr = toDateStr(new Date());
