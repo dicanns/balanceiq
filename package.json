@@ -55,7 +55,7 @@
       "category": "public.app-category.business",
       "icon": "build/icon.icns",
       "target": "dmg",
-      "identity": "Developer ID Application: Exxdon The Hamburger Company Inc (462N375L9T)",
+      "identity": "Exxdon The Hamburger Company Inc (462N375L9T)",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
