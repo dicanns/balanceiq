@@ -1581,6 +1581,11 @@ export const FR = {
   prevAILocked:        "L'analyse IA est disponible avec le plan Pro.",
   prevAIError:         "Erreur d'analyse. Réessayez.",
   prevAITitle:         "✨ Analyse IA",
+  // ── TELEMETRY CONSENT ──
+  telemetryTitle:      "Aidez-nous à améliorer BalanceIQ",
+  telemetryBody:       "Partagez des données d'utilisation anonymes — aucune donnée financière, aucun nom, aucune information commerciale n'est transmise. Seulement les fonctionnalités utilisées, la version et la plateforme.",
+  telemetryAccept:     "Accepter",
+  telemetryDecline:    "Non merci",
 };
 
 // ── ENGLISH ──
@@ -3162,4 +3167,9 @@ export const EN = {
   prevAILocked:        "AI analysis is available with the Pro plan.",
   prevAIError:         "Analysis error. Please try again.",
   prevAITitle:         "✨ AI Analysis",
+  // ── TELEMETRY CONSENT ──
+  telemetryTitle:      "Help us improve BalanceIQ",
+  telemetryBody:       "Share anonymous usage data — no financial data, names, or business info is ever sent. Only which features are used, your version, and platform.",
+  telemetryAccept:     "Accept",
+  telemetryDecline:    "No thanks",
 };

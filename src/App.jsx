@@ -8,6 +8,7 @@ import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./confi
 import * as XLSX from "xlsx";
 import { logCreate, logUpdate, logVoid, logCorrection, isFinancialField, promptCorrectionReason } from "./services/auditLogger.js";
 import { initCloudSync, signIn as cloudSignIn, signUp as cloudSignUp, signOut as cloudSignOut, schedulePush, onSyncStatus, onPlanChange, refreshPlan, getCloudOrgId, getCloudParentOrgId } from "./services/cloudSync.js";
+import { initTelemetry, getTelemetryConsent, setTelemetryConsent, trackEvent } from "./services/telemetry.js";
 import { POS_CONFIG, POS_COMING_SOON } from "./config/posConfig.js";
 import { FR, EN } from "./i18n/translations.js";
 
@@ -451,7 +452,7 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
     const now=new Date().toLocaleDateString('fr-CA');
     const pid2=pidRef.current;
     setLastImports(prev=>{const next={...prev,[pid2]:now};localStorage.setItem('biq-last-imports',JSON.stringify(next));return next;});
-    setImportStep('done');setTimeout(()=>{setImportStep('idle');setImportPid(null);setImportMsg(null);},4000);
+    setImportStep('done');trackEvent('feature_used:csv_import',{platform:pName});setTimeout(()=>{setImportStep('idle');setImportPid(null);setImportMsg(null);},4000);
   };
   const startImport=()=>{
     const pid=pidRef.current;
@@ -7740,6 +7741,7 @@ export default function App(){
   const [whiteLabelConfig,setWhiteLabelConfig]=useState({enabled:false,franchiseName:"",accentColor:"#f97316",footer:""});
   const [locationDataCache,setLocationDataCache]=useState({});
   const [upgradePromptFeature,setUpgradePromptFeature]=useState(null);
+  const [showTelemetryPrompt,setShowTelemetryPrompt]=useState(false);
   const [tourActive,setTourActive]=useState(false);
   const [tourStep,setTourStep]=useState(0);
   const [showSectionTooltips,setShowSectionTooltips]=useState(true);
@@ -7824,7 +7826,7 @@ export default function App(){
         }catch(_){}
       });
     }
-    // Install ping — anonymous, works for all users (free + paid)
+    // Install ping + telemetry init — anonymous, works for all users (free + paid)
     setTimeout(async()=>{
       try{
         const deviceId=await window.api.audit.deviceId();
@@ -7835,8 +7837,17 @@ export default function App(){
           version:appVersion,
           last_seen_at:new Date().toISOString(),
         },{onConflict:'device_id'});
+        await initTelemetry(deviceId);
       }catch(_){}
     },2000);
+    // After cloud sync has had time to run, check telemetry consent + fire app_opened
+    setTimeout(()=>{
+      try{
+        const consent=getTelemetryConsent();
+        if(consent===null&&!getCloudOrgId())setShowTelemetryPrompt(true);
+        trackEvent('app_opened',{mode:appMode||'unknown'});
+      }catch(_){}
+    },4000);
   })()},[]);
 
   useEffect(()=>{
@@ -7885,6 +7896,9 @@ export default function App(){
 
   // Keep liveDataRef in sync so audit callbacks can read old values synchronously
   useEffect(()=>{liveDataRef.current=liveData;},[liveData]);
+
+  // Track tab views (once per session per tab, debounced 5min in telemetry service)
+  useEffect(()=>{if(!loading)trackEvent(`tab_viewed:${activeTab}`);},[activeTab]);
 
   // Track which dates have had a snapshot taken this session (avoid duplicates)
   const snapshotTakenRef=useRef(new Set());
@@ -7948,7 +7962,7 @@ export default function App(){
   const handleCloudSignIn=useCallback(async(creds)=>{const res=await cloudSignIn(creds);setCloudUser({email:res.session.user.email,plan:res.plan});if(res.plan!=='free'){setPlan(res.plan);setActivePlan(res.plan);}},[]);
   const handleCloudSignUp=useCallback(async(creds)=>{await cloudSignUp(creds);/* trigger creates org/user server-side; user must confirm email then sign in */},[]);
   const handleCloudSignOut=useCallback(async()=>{await cloudSignOut();setCloudUser(null);setSyncStatus(null);},[]);
-  const showUpgradePrompt=useCallback(featureName=>{if(shouldShowUpgradePrompt(featureName))setUpgradePromptFeature(featureName)},[]);
+  const showUpgradePrompt=useCallback(featureName=>{if(shouldShowUpgradePrompt(featureName)){setUpgradePromptFeature(featureName);trackEvent('upgrade_prompt_shown',{feature:featureName});}},[]);
   const saveCompanyInfo=useCallback(info=>{setCompanyInfo(info);const v=JSON.stringify(info);window.api.storage.set("dicann-company-info",v).catch(()=>{});schedulePush("dicann-company-info",v);},[]);
   const saveInvoiceTemplate=useCallback(tpl=>{setInvoiceTemplate(tpl);const v=JSON.stringify(tpl);window.api.storage.set("dicann-invoice-template",v).catch(()=>{});schedulePush("dicann-invoice-template",v);},[]);
   // Merge white-label settings into invoiceTemplate for PDF builders
@@ -7962,7 +7976,7 @@ export default function App(){
   const saveDocNums=useCallback(nums=>{setDocNums(nums);const v=JSON.stringify(nums);window.api.storage.set("dicann-doc-nums",v).catch(()=>{});schedulePush("dicann-doc-nums",v);},[]);
   const saveFacSoumissions=useCallback(list=>{setFacSoumissions(list);const v=JSON.stringify(list);window.api.storage.set("dicann-fac-soumissions",v).catch(()=>{});schedulePush("dicann-fac-soumissions",v);},[]);
   const saveFacCommandes=useCallback(list=>{setFacCommandes(list);const v=JSON.stringify(list);window.api.storage.set("dicann-fac-commandes",v).catch(()=>{});schedulePush("dicann-fac-commandes",v);},[]);
-  const saveFacFactures=useCallback(list=>{setFacFactures(list);const v=JSON.stringify(list);window.api.storage.set("dicann-fac-factures",v).catch(()=>{});schedulePush("dicann-fac-factures",v);},[]);
+  const saveFacFactures=useCallback(list=>{setFacFactures(list);const v=JSON.stringify(list);window.api.storage.set("dicann-fac-factures",v).catch(()=>{});schedulePush("dicann-fac-factures",v);trackEvent('feature_used:invoice_created');},[]);
   const saveFacCreditNotes=useCallback(list=>{setFacCreditNotes(list);const v=JSON.stringify(list);window.api.storage.set("dicann-fac-creditnotes",v).catch(()=>{});schedulePush("dicann-fac-creditnotes",v);},[]);
   const saveFacRecurrents=useCallback(list=>{setFacRecurrents(list);const v=JSON.stringify(list);window.api.storage.set("dicann-fac-recurrents",v).catch(()=>{});schedulePush("dicann-fac-recurrents",v);},[]);
 
@@ -8217,7 +8231,7 @@ export default function App(){
     <ThemeCtx.Provider value={theme}>
       {upgradePromptFeature&&<UpgradePrompt
         onClose={()=>setUpgradePromptFeature(null)}
-        onSubscribe={()=>{setUpgradePromptFeature(null);setActiveTab("config");setConfigSubTab("application");}}
+        onSubscribe={()=>{trackEvent('upgrade_prompt_clicked',{feature:upgradePromptFeature});setUpgradePromptFeature(null);setActiveTab("config");setConfigSubTab("application");}}
         isFranchise={FRANCHISE_ONLY_FEATURES.includes(upgradePromptFeature)}
       />}
       {tourActive&&<TourOverlay
@@ -8228,6 +8242,21 @@ export default function App(){
         setActiveTab={setActiveTab}
       />}
       {pdfPreview&&<PDFPreviewModal html={pdfPreview} onClose={()=>setPdfPreview(null)}/>}
+      {showTelemetryPrompt&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:9998,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:14,padding:"24px 28px",maxWidth:420,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+              <div style={{width:32,height:28,borderRadius:6,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:"#fff",letterSpacing:-0.5,flexShrink:0}}>BIQ</div>
+              <div style={{fontSize:14,fontWeight:700,color:t.text}}>{T.telemetryTitle}</div>
+            </div>
+            <p style={{fontSize:12,lineHeight:1.65,color:t.textSub,margin:"0 0 20px"}}>{T.telemetryBody}</p>
+            <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+              <button onClick={async()=>{await setTelemetryConsent('opted_out');setShowTelemetryPrompt(false);}} style={{padding:"7px 16px",borderRadius:7,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textMuted,cursor:"pointer",fontWeight:600,fontSize:12}}>{T.telemetryDecline}</button>
+              <button onClick={async()=>{await setTelemetryConsent('opted_in');setShowTelemetryPrompt(false);trackEvent('app_opened',{mode:appMode||'unknown'});}} style={{padding:"7px 16px",borderRadius:7,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12}}>{T.telemetryAccept}</button>
+            </div>
+          </div>
+        </div>
+      )}
       {showEarlyAccess&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={dismissEarlyAccess}>
           <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:14,padding:"28px 32px",maxWidth:460,width:"100%",boxShadow:"0 24px 64px rgba(0,0,0,0.5)"}} onClick={e=>e.stopPropagation()}>
@@ -8394,7 +8423,7 @@ export default function App(){
                           }
                         });
                         newCashes.forEach((c,i)=>updCash(selectedDate,i,c));
-                        setPosImportMsg({ok:T.posImported(sales.length,posCred.merchantName||posType)});
+                        setPosImportMsg({ok:T.posImported(sales.length,posCred.merchantName||posType)});trackEvent('feature_used:pos_import',{posType});
                       }
                     }catch(e){setPosImportMsg({err:T.posImportError});}
                     setPosImporting(false);
@@ -8986,8 +9015,8 @@ export default function App(){
             </div>
             <CfgCard id="dataExport" title="Export" cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                <button onClick={()=>{const h="Date,Vente Nette,Total Brut,TPS,TVQ\n";let r="";Object.keys(liveData).sort().forEach(k=>{const c=computeDay(k);if(c.venteNet>0)r+=`${k},${c.venteNet},${c.total},${c.tps},${c.tvq}\n`});const b=new Blob([h+r],{type:"text/csv"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="balanceiq.csv";document.body.appendChild(a);a.click();document.body.removeChild(a)}} style={{padding:"7px 14px",borderRadius:6,border:"1px solid rgba(34,197,94,0.2)",background:"rgba(34,197,94,0.08)",color:"#16a34a",cursor:"pointer",fontWeight:600,fontSize:12}}>CSV</button>
-                <button onClick={()=>{let h=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>BalanceIQ</title><style>body{font:12px Arial;margin:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:3px 6px;text-align:right}th{background:#f5f5f5}td:first-child{text-align:left}h1{color:#ea580c}</style></head><body><h1>Rapport BalanceIQ</h1><table><tr><th>Date</th><th>Vente Nette</th><th>Total</th></tr>`;Object.keys(liveData).sort().forEach(k=>{const c=computeDay(k);if(c.venteNet>0)h+=`<tr><td>${k}</td><td>${c.venteNet.toFixed(2)}</td><td>${c.total.toFixed(2)}</td></tr>`});h+=`</table></body></html>`;openPDF(h)}} style={{padding:"7px 14px",borderRadius:6,border:`1px solid rgba(${t.posRgb},0.2)`,background:`rgba(${t.posRgb},0.08)`,color:t.posColor,cursor:"pointer",fontWeight:600,fontSize:12}}>PDF</button>
+                <button onClick={()=>{trackEvent('feature_used:export_csv');const h="Date,Vente Nette,Total Brut,TPS,TVQ\n";let r="";Object.keys(liveData).sort().forEach(k=>{const c=computeDay(k);if(c.venteNet>0)r+=`${k},${c.venteNet},${c.total},${c.tps},${c.tvq}\n`});const b=new Blob([h+r],{type:"text/csv"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="balanceiq.csv";document.body.appendChild(a);a.click();document.body.removeChild(a)}} style={{padding:"7px 14px",borderRadius:6,border:"1px solid rgba(34,197,94,0.2)",background:"rgba(34,197,94,0.08)",color:"#16a34a",cursor:"pointer",fontWeight:600,fontSize:12}}>CSV</button>
+                <button onClick={()=>{trackEvent('feature_used:export_pdf');let h=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>BalanceIQ</title><style>body{font:12px Arial;margin:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:3px 6px;text-align:right}th{background:#f5f5f5}td:first-child{text-align:left}h1{color:#ea580c}</style></head><body><h1>Rapport BalanceIQ</h1><table><tr><th>Date</th><th>Vente Nette</th><th>Total</th></tr>`;Object.keys(liveData).sort().forEach(k=>{const c=computeDay(k);if(c.venteNet>0)h+=`<tr><td>${k}</td><td>${c.venteNet.toFixed(2)}</td><td>${c.total.toFixed(2)}</td></tr>`});h+=`</table></body></html>`;openPDF(h)}} style={{padding:"7px 14px",borderRadius:6,border:`1px solid rgba(${t.posRgb},0.2)`,background:`rgba(${t.posRgb},0.08)`,color:t.posColor,cursor:"pointer",fontWeight:600,fontSize:12}}>PDF</button>
                 <button onClick={()=>{const b=new Blob([JSON.stringify({liveData,roster,empRoster,suppliers,apiConfig},null,2)],{type:"application/json"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="balanceiq-backup.json";document.body.appendChild(a);a.click();document.body.removeChild(a)}} style={{padding:"7px 14px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12}}>{T.cfgBackupJSON}</button>
                 <button onClick={async()=>{setRestoreMsg('');const r=await window.api.backup.restore();if(r?.error)setRestoreMsg(r.error);}} style={{padding:"7px 14px",borderRadius:6,border:"1px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontWeight:600,fontSize:12}}>{T.cfgRestoreBackup}</button>
               </div>
