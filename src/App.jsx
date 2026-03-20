@@ -7839,6 +7839,10 @@ export default function App(){
   useEffect(()=>{
     if(window.api?.updater){
       window.api.updater.onAvailable(()=>setUpdateAvailable(true));
+      // Poll once after mount in case the event fired before listener registered
+      setTimeout(async()=>{
+        try{const avail=await window.api.updater.check();if(avail)setUpdateAvailable(true);}catch(e){}
+      }, 5000);
     }
   },[]);
 
