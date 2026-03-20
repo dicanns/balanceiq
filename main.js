@@ -22,7 +22,7 @@ const {
   insightsGetAll, insightsGetUnreadCount, insightUpsert, insightMarkRead, insightMarkAllRead,
 } = require('./src/db/database.js');
 
-const BACKUP_DIR = () => path.join(app.getPath('documents'), 'BalanceIQ Backups');
+const BACKUP_DIR = () => path.join(app.getPath('userData'), 'Backups');
 const BACKUP_KEEP_DAYS = 30;
 
 // Module-level window reference (needed for pos:oauth-result events)
@@ -1143,14 +1143,28 @@ app.whenReady().then(() => {
   if (app.isPackaged) {
     autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.logger = require('electron-log');
+    autoUpdater.logger.transports.file.level = 'info';
 
     let updateIsAvailable = false;
 
+    const notifyRenderers = (channel, payload) => {
+      BrowserWindow.getAllWindows().forEach(w => {
+        if (!w.isDestroyed()) w.webContents.send(channel, payload);
+      });
+    };
+
     autoUpdater.on('update-available', () => {
       updateIsAvailable = true;
-      BrowserWindow.getAllWindows().forEach(w =>
-        w.webContents.send('update:available')
-      );
+      notifyRenderers('update:available');
+    });
+
+    autoUpdater.on('update-not-available', () => {
+      notifyRenderers('update:status', 'up-to-date');
+    });
+
+    autoUpdater.on('error', (err) => {
+      notifyRenderers('update:status', 'error: ' + (err?.message || String(err)));
     });
 
     autoUpdater.on('update-downloaded', () => {
@@ -1160,10 +1174,13 @@ app.whenReady().then(() => {
     // Delay check so React has time to mount and register the listener
     setTimeout(() => {
       autoUpdater.checkForUpdates().catch(() => {});
-    }, 4000);
+    }, 5000);
 
-    // Allow renderer to poll in case it missed the event (e.g. slow mount)
+    // Allow renderer to poll or trigger a fresh check
     ipcMain.handle('updater:check', () => updateIsAvailable);
+    ipcMain.handle('updater:checkNow', () => {
+      return autoUpdater.checkForUpdates().catch(err => ({ error: err?.message }));
+    });
   }
 });
 
