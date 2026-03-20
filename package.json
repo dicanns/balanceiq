@@ -50,7 +50,6 @@
       "!node_modules/**/better-sqlite3/build/Release/.deps/**"
     ],
     "extraResources": [],
-    "afterSign": "build/notarize.js",
     "mac": {
       "category": "public.app-category.business",
       "icon": "build/icon.icns",
@@ -59,7 +58,10 @@
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist"
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": {
+        "teamId": "462N375L9T"
+      }
     },
     "dmg": {
       "title": "BalanceIQ ${version}",
