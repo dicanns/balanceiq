@@ -4,9 +4,10 @@ const fs = require('fs');
 const os = require('os');
 const { autoUpdater } = require('electron-updater');
 const Sentry = require('@sentry/electron/main');
+require('dotenv').config();
 
 Sentry.init({
-  dsn: 'https://SENTRY_DSN_REMOVED',
+  dsn: process.env.SENTRY_DSN || '',
   environment: app.isPackaged ? 'production' : 'development',
 });
 const {
@@ -31,15 +32,15 @@ let mainWindow = null;
 // POS secrets — main process only, never sent to renderer
 const POS_SECRETS = {
   square: {
-    sandbox:    { appSecret: 'SQUARE_SANDBOX_SECRET_REMOVED' },
+    sandbox:    { appSecret: process.env.SQUARE_SANDBOX_APP_SECRET || '' },
     production: { appSecret: process.env.SQUARE_APP_SECRET || '' },
   },
   clover: {
-    sandbox:    { appSecret: 'CLOVER_SANDBOX_SECRET_REMOVED' },
+    sandbox:    { appSecret: process.env.CLOVER_SANDBOX_APP_SECRET || '' },
     production: { appSecret: process.env.CLOVER_APP_SECRET || '' },
   },
   shopify: {
-    clientSecret: 'SHOPIFY_SECRET_REMOVED',
+    clientSecret: process.env.SHOPIFY_CLIENT_SECRET || '',
   },
 };
 
