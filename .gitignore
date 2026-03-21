@@ -5,6 +5,11 @@ release/
 .DS_Store
 .claude/
 
+# Secrets — never commit
+.env
+.env.local
+.env.*.local
+
 # Internal planning & dev docs — not for public repo
 CLAUDE.md
 ROADMAP.md

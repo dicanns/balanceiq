@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 
 init({
-  dsn: 'https://SENTRY_DSN_REMOVED',
+  dsn: import.meta.env.VITE_SENTRY_DSN || '',
 });
 
 const root = createRoot(document.getElementById('root'));
