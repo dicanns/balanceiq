@@ -1,10 +1,14 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import Stripe from 'https://esm.sh/stripe@14';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Franchise Location add-on price — $9/month per location
+const FRANCHISE_LOCATION_PRICE = 'price_1TCLqxGcfc7VEkjZs19hWTOo';
 
 function ok(body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), {
@@ -41,15 +45,56 @@ serve(async (req) => {
       return ok({ error: 'missing_params', message: 'Missing franchisorOrgId, locationId or locationName.' });
     }
 
-    // Verify caller belongs to this org and has franchise plan
+    // Verify caller belongs to this org, has franchise plan, and has an active Stripe subscription
     const { data: orgRow } = await supabaseAdmin
       .from('organizations')
-      .select('plan')
+      .select('plan, stripe_subscription_id')
       .eq('id', franchisorOrgId)
       .single();
 
     if (orgRow?.plan !== 'franchise') {
       return ok({ error: 'upgrade_required', message: 'Franchise plan required to create invitations.' });
+    }
+
+    if (!orgRow?.stripe_subscription_id) {
+      return ok({ error: 'no_subscription', message: 'No active Stripe subscription found. Please complete billing setup in-app.' });
+    }
+
+    // ── Stripe: charge $9/month for this location (if not already billed) ──
+    // Check if a prior invite for this location already created a subscription item.
+    // This prevents double-charging on re-invite (expired code + new code for same location).
+    const { data: existingInvite } = await supabaseAdmin
+      .from('franchise_invitations')
+      .select('stripe_item_id')
+      .eq('franchisor_org_id', franchisorOrgId)
+      .eq('location_id', locationId)
+      .not('stripe_item_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    let stripeItemId: string | null = existingInvite?.stripe_item_id ?? null;
+
+    if (!stripeItemId) {
+      // New location — add $9/month to the franchisor's subscription
+      const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, { apiVersion: '2024-04-10' });
+      try {
+        const item = await stripe.subscriptionItems.create({
+          subscription: orgRow.stripe_subscription_id,
+          price: FRANCHISE_LOCATION_PRICE,
+          quantity: 1,
+        });
+        stripeItemId = item.id;
+        console.log(`Stripe: added location item ${item.id} for org ${franchisorOrgId} location ${locationId}`);
+      } catch (stripeErr) {
+        console.error('Stripe error adding location item:', stripeErr);
+        return ok({
+          error: 'payment_required',
+          message: 'Could not add the $9/month location charge. Please verify your payment method in billing settings.',
+        });
+      }
+    } else {
+      console.log(`Stripe: reusing existing item ${stripeItemId} for location ${locationId} (re-invite)`);
     }
 
     // Expire any existing pending invite for this location
@@ -84,6 +129,7 @@ serve(async (req) => {
         location_name: locationName,
         status: 'pending',
         expires_at: expiresAt,
+        stripe_item_id: stripeItemId,
       });
 
     if (insertError) return ok({ error: 'insert_failed', message: insertError.message });
