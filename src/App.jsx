@@ -5809,7 +5809,7 @@ function SectionTip({text}){
   },[open]);
   return(
     <div ref={ref} style={{position:"relative",display:"inline-flex"}}>
-      <button onClick={e=>{e.stopPropagation();setOpen(o=>!o);}} style={{background:"none",border:"none",cursor:"pointer",color:open?"#f97316":"rgba(255,255,255,0.35)",fontSize:11,padding:"0 2px",lineHeight:1,transition:"color 0.15s"}} title="Info">ℹ</button>
+      <button onClick={e=>{e.stopPropagation();setOpen(o=>!o);}} style={{background:"none",border:"none",cursor:"pointer",color:open?"#f97316":t.textDim,fontSize:11,padding:"0 2px",lineHeight:1,transition:"color 0.15s"}} title="Info">ℹ</button>
       {open&&<div style={{position:"absolute",left:0,top:"calc(100% + 4px)",zIndex:200,width:240,background:t.name==="dark"?"#1e2130":"#fff",border:"1px solid rgba(249,115,22,0.3)",borderRadius:8,padding:"10px 12px",boxShadow:"0 4px 20px rgba(0,0,0,0.35)",fontSize:11.5,color:t.textSub,lineHeight:1.55}}>
         <div style={{position:"absolute",top:-5,left:8,width:8,height:8,background:t.name==="dark"?"#1e2130":"#fff",border:"1px solid rgba(249,115,22,0.3)",borderRight:"none",borderBottom:"none",transform:"rotate(45deg)"}}/>
         {text}
