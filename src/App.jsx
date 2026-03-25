@@ -8167,7 +8167,7 @@ function CloudAccountSection({cloudUser,syncStatus,onSignIn,onSignUp,onSignOut,t
   const doSignIn=async()=>{
     setLoading(true);setMsg(null);
     try{await onSignIn({email:form.email,password:form.password});setMode("idle");}
-    catch(e){setMsg({ok:false,text:T.cfgCloudAuthError});}
+    catch(e){setMsg({ok:false,text:e.message||T.cfgCloudAuthError});}
     finally{setLoading(false);}
   };
   const doSignUp=async()=>{
