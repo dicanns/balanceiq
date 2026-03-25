@@ -45,6 +45,31 @@ function getDb() {
 
       CREATE INDEX IF NOT EXISTS idx_snap_date ON daily_snapshots(date);
 
+      CREATE TABLE IF NOT EXISTS checklist_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title_fr TEXT NOT NULL,
+        title_en TEXT NOT NULL,
+        required INTEGER DEFAULT 0,
+        frequency TEXT DEFAULT 'daily',
+        category TEXT DEFAULT 'custom',
+        sort_order INTEGER DEFAULT 0,
+        active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now','localtime'))
+      );
+
+      CREATE TABLE IF NOT EXISTS checklist_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        template_id INTEGER NOT NULL,
+        date TEXT NOT NULL,
+        completed INTEGER DEFAULT 0,
+        completed_by TEXT,
+        completed_at TEXT,
+        notes TEXT,
+        UNIQUE(template_id, date)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_checklist_date ON checklist_entries(date);
+
       CREATE TABLE IF NOT EXISTS forecast_products (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -357,6 +382,41 @@ function insightMarkAllRead() {
   return true;
 }
 
+// ── Checklist Templates ──
+function checklistTemplatesGetAll() {
+  return getDb().prepare('SELECT * FROM checklist_templates ORDER BY sort_order ASC, id ASC').all();
+}
+function checklistTemplateUpsert(t) {
+  if (t.id) {
+    getDb().prepare(`UPDATE checklist_templates SET title_fr=@title_fr, title_en=@title_en, required=@required, frequency=@frequency, category=@category, sort_order=@sort_order, active=@active WHERE id=@id`).run(t);
+  } else {
+    getDb().prepare(`INSERT INTO checklist_templates (title_fr,title_en,required,frequency,category,sort_order,active) VALUES (@title_fr,@title_en,@required,@frequency,@category,@sort_order,@active)`).run(t);
+  }
+  return true;
+}
+function checklistTemplateDelete(id) {
+  getDb().prepare('UPDATE checklist_templates SET active=0 WHERE id=?').run(id);
+  return true;
+}
+
+// ── Checklist Entries ──
+function checklistEntriesGetForDate(date) {
+  return getDb().prepare('SELECT * FROM checklist_entries WHERE date=?').all(date);
+}
+function checklistEntriesGetRange(dateFrom, dateTo) {
+  return getDb().prepare('SELECT * FROM checklist_entries WHERE date>=? AND date<=? ORDER BY date').all(dateFrom, dateTo);
+}
+function checklistEntryUpsert(entry) {
+  getDb().prepare(`
+    INSERT INTO checklist_entries (template_id,date,completed,completed_by,completed_at,notes)
+    VALUES (@template_id,@date,@completed,@completed_by,@completed_at,@notes)
+    ON CONFLICT(template_id,date) DO UPDATE SET
+      completed=excluded.completed, completed_by=excluded.completed_by,
+      completed_at=excluded.completed_at, notes=excluded.notes
+  `).run(entry);
+  return true;
+}
+
 module.exports = {
   storageGet, storageSet, storageGetAll,
   auditInsert, auditQuery, getDeviceId,
@@ -368,4 +428,6 @@ module.exports = {
   learnedPatternsGetAll, learnedPatternUpsert,
   predAccuracyGetAll, predAccuracyGetForProduct, predAccuracyUpsert,
   insightsGetAll, insightsGetUnreadCount, insightUpsert, insightMarkRead, insightMarkAllRead,
+  checklistTemplatesGetAll, checklistTemplateUpsert, checklistTemplateDelete,
+  checklistEntriesGetForDate, checklistEntriesGetRange, checklistEntryUpsert,
 };
