@@ -120,6 +120,7 @@ function getDb() {
     // ── Column migrations (safe — columns may already exist) ─────────────────
     try { db.prepare("ALTER TABLE forecast_products ADD COLUMN unit_cost REAL").run(); } catch(e) {}
     try { db.prepare("ALTER TABLE forecast_products ADD COLUMN sell_price REAL").run(); } catch(e) {}
+    try { db.prepare("ALTER TABLE forecast_products ADD COLUMN recipe_id TEXT").run(); } catch(e) {}
 
     // ── Learning Engine Tables ──────────────────────────────────────────────
 
@@ -427,14 +428,14 @@ function forecastProductsGetAll() {
 }
 function forecastProductUpsert(p) {
   getDb().prepare(`
-    INSERT INTO forecast_products (id, name, category, base_quantity, shelf_life_days, weather_sensitivity, active, notes, unit_cost, sell_price)
-    VALUES (@id, @name, @category, @base_quantity, @shelf_life_days, @weather_sensitivity, @active, @notes, @unit_cost, @sell_price)
+    INSERT INTO forecast_products (id, name, category, base_quantity, shelf_life_days, weather_sensitivity, active, notes, unit_cost, sell_price, recipe_id)
+    VALUES (@id, @name, @category, @base_quantity, @shelf_life_days, @weather_sensitivity, @active, @notes, @unit_cost, @sell_price, @recipe_id)
     ON CONFLICT(id) DO UPDATE SET
       name=excluded.name, category=excluded.category, base_quantity=excluded.base_quantity,
       shelf_life_days=excluded.shelf_life_days, weather_sensitivity=excluded.weather_sensitivity,
       active=excluded.active, notes=excluded.notes,
-      unit_cost=excluded.unit_cost, sell_price=excluded.sell_price
-  `).run({ unit_cost: null, sell_price: null, ...p });
+      unit_cost=excluded.unit_cost, sell_price=excluded.sell_price, recipe_id=excluded.recipe_id
+  `).run({ unit_cost: null, sell_price: null, recipe_id: null, ...p });
   return true;
 }
 

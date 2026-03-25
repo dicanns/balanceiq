@@ -5037,6 +5037,75 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
   const [aiQueryType,setAiQueryType]=useState(null);
   const [aiUsage,setAiUsage]=useState(null);
   const [aiLimit,setAiLimit]=useState(50);
+  const [actVsTheo,setActVsTheo]=useState(null);
+  const [actVsTheoLoading,setActVsTheoLoading]=useState(false);
+  useEffect(()=>{
+    if(!canUse('ocrScanning'))return;
+    let cancelled=false;
+    (async()=>{
+      setActVsTheoLoading(true);
+      try{
+        const now=new Date();
+        const y=now.getFullYear(),mo=now.getMonth()+1;
+        const mStr=`${y}-${String(mo).padStart(2,'0')}`;
+        const mStart=`${mStr}-01`;
+        const mEnd=`${mStr}-${String(new Date(y,mo,0).getDate()).padStart(2,'0')}`;
+        // ── Actual food cost from P&L ──
+        const plRaw=await window.api.storage.get(`dicann-pl-${mStr}`).catch(()=>null);
+        const plData=JSON.parse(plRaw?.value||'{}');
+        const fpBills=plData.pettyCashFP_bills||[];
+        let actualFoodCost=fpBills.length?fpBills.reduce((s,b)=>s+(b.amount||0),0):(plData.pettyCashFP||0);
+        for(const sup of(suppliers||[])){
+          const bills=plData[`sup_${sup.id}_bills`]||[];
+          actualFoodCost+=bills.length?bills.reduce((s,b)=>s+(b.amount||0),0):(plData[`sup_${sup.id}`]||0);
+        }
+        // ── Net sales for current month ──
+        let netSales=0;
+        const today=now.getDate();
+        for(let d=1;d<=today;d++){
+          const k=`${mStr}-${String(d).padStart(2,'0')}`;
+          const cd=computeDay(k);
+          netSales+=cd.venteNet||0;
+        }
+        // ── Theoretical food cost ──
+        const [allProducts,allRecipes,allIngredients]=await Promise.all([
+          window.api.forecast.products.getAll().catch(()=>[]),
+          window.api.recipes.getAll().catch(()=>[]),
+          window.api.ingredients.getAll().catch(()=>[]),
+        ]);
+        const productsWithRecipe=(allProducts||[]).filter(p=>p.recipe_id&&p.active);
+        if(productsWithRecipe.length===0){
+          if(!cancelled)setActVsTheo({actualFoodCost,netSales,noRecipeLinks:true});
+          return;
+        }
+        const ingMap=Object.fromEntries((allIngredients||[]).map(i=>[i.id,i]));
+        const recipeCostMap={};
+        await Promise.all((allRecipes||[]).map(async rec=>{
+          const recIng=await window.api.recipes.ingredientsGet(rec.id).catch(()=>[]);
+          let cost=0;
+          for(const ri of(recIng||[])){
+            const ing=ingMap[ri.ingredient_id];
+            if(ing?.current_unit_price)cost+=(ri.quantity||0)*ing.current_unit_price;
+          }
+          recipeCostMap[rec.id]=cost;
+        }));
+        const sales=await window.api.forecast.sales.getRange(mStart,mEnd).catch(()=>[]);
+        let theoreticalCost=0;
+        const breakdown=[];
+        for(const prod of productsWithRecipe){
+          const recipeCost=recipeCostMap[prod.recipe_id]??0;
+          const prodSales=(sales||[]).filter(s=>s.product_id===prod.id);
+          const totalQty=prodSales.reduce((s,r)=>s+(r.quantity_sold||0),0);
+          const cost=totalQty*recipeCost;
+          theoreticalCost+=cost;
+          if(totalQty>0)breakdown.push({name:prod.name,qty:totalQty,recipeCost,cost});
+        }
+        if(!cancelled)setActVsTheo({actualFoodCost,theoreticalCost,netSales,breakdown,noRecipeLinks:false});
+      }catch(_){}
+      finally{if(!cancelled)setActVsTheoLoading(false);}
+    })();
+    return()=>{cancelled=true;};
+  },[suppliers,liveData]);
   const d=new Date(selectedDate+"T12:00:00");
   const dowProfiles=useMemo(()=>{
     const profiles=Array(7).fill(null).map(()=>({sales:[],ham:[],hot:[]}));
@@ -5506,6 +5575,81 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
         </div>);
       })()}
     </ICard>
+    {/* Actual vs Theoretical Food Cost (Gap #2, PRO) */}
+    {canUse('ocrScanning')&&(
+      <ICard>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+          <span style={{fontSize:13,fontWeight:700,color:t.text}}>🍽️ {T.actVsTheoTitle||"Coût réel vs théorique"}</span>
+          <span style={{fontSize:9,fontWeight:700,color:'#f97316',background:'rgba(249,115,22,0.1)',padding:'1px 6px',borderRadius:4}}>Pro</span>
+        </div>
+        {actVsTheoLoading&&<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>{T.loading}</div>}
+        {!actVsTheoLoading&&actVsTheo&&(actVsTheo.noRecipeLinks?(
+          <div>
+            {actVsTheo.netSales>0&&actVsTheo.actualFoodCost>0&&(
+              <div style={{marginBottom:10}}>
+                <div style={{fontSize:10.5,color:t.textMuted,marginBottom:4}}>{T.actVsTheoActual||"Coût réel"} — {new Date().toLocaleString('fr-CA',{month:'long',year:'numeric'})}</div>
+                <div style={{display:"flex",alignItems:"baseline",gap:8}}>
+                  <span style={{fontSize:22,fontWeight:800,color:t.text}}>{(actVsTheo.actualFoodCost/actVsTheo.netSales*100).toFixed(1)}%</span>
+                  <span style={{fontSize:12,color:t.textMuted}}>${actVsTheo.actualFoodCost.toFixed(0)} / ${actVsTheo.netSales.toFixed(0)}</span>
+                </div>
+              </div>
+            )}
+            <div style={{padding:"8px 10px",background:"rgba(249,115,22,0.05)",border:"1px solid rgba(249,115,22,0.2)",borderRadius:6,fontSize:11,color:"#f97316",lineHeight:1.5}}>
+              {T.actVsTheoNoRecipes||"Associez une recette à vos produits Prévisions pour calculer le coût théorique."}
+            </div>
+          </div>
+        ):(
+          <div>
+            {actVsTheo.netSales>0?(()=>{
+              const actualPct=actVsTheo.actualFoodCost/actVsTheo.netSales*100;
+              const theoPct=actVsTheo.theoreticalCost>0?actVsTheo.theoreticalCost/actVsTheo.netSales*100:null;
+              const variance=theoPct!=null?Math.abs(actualPct-theoPct):null;
+              const trafficColor=variance==null?t.textMuted:variance<2?'#22c55e':variance<5?'#f59e0b':'#ef4444';
+              const sevLabel=variance==null?'':variance<2?(T.actVsTheoGood||" — Excellent"):variance<5?(T.actVsTheoWarn||" — À surveiller"):(T.actVsTheoBad||" — Attention");
+              return(
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                    <div style={{background:t.section,borderRadius:7,padding:"10px 12px",textAlign:"center"}}>
+                      <div style={{fontSize:9.5,color:t.textMuted,marginBottom:2}}>{T.actVsTheoActual||"Réel"}</div>
+                      <div style={{fontSize:20,fontWeight:800,color:t.text}}>{actualPct.toFixed(1)}%</div>
+                      <div style={{fontSize:10,color:t.textMuted}}>${actVsTheo.actualFoodCost.toFixed(0)}</div>
+                    </div>
+                    <div style={{background:t.section,borderRadius:7,padding:"10px 12px",textAlign:"center"}}>
+                      <div style={{fontSize:9.5,color:t.textMuted,marginBottom:2}}>{T.actVsTheoTheo||"Théorique"}</div>
+                      {theoPct!=null?(
+                        <>
+                          <div style={{fontSize:20,fontWeight:800,color:t.text}}>{theoPct.toFixed(1)}%</div>
+                          <div style={{fontSize:10,color:t.textMuted}}>${actVsTheo.theoreticalCost.toFixed(0)}</div>
+                        </>
+                      ):(
+                        <div style={{fontSize:13,color:t.textMuted,paddingTop:4}}>{T.actVsTheoNoSales||"—"}</div>
+                      )}
+                    </div>
+                  </div>
+                  {variance!=null&&(
+                    <div style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",background:`${trafficColor}18`,border:`1px solid ${trafficColor}44`,borderRadius:7}}>
+                      <div style={{width:9,height:9,borderRadius:"50%",background:trafficColor,flexShrink:0}}/>
+                      <span style={{fontSize:12,fontWeight:700,color:trafficColor}}>{T.actVsTheoVariance||"Écart"}: {variance.toFixed(1)}%{sevLabel}</span>
+                    </div>
+                  )}
+                  {actVsTheo.breakdown?.length>0&&(
+                    <div style={{display:"flex",flexDirection:"column",gap:2}}>
+                      {actVsTheo.breakdown.slice(0,4).map((b,i)=>(
+                        <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:10.5,color:t.textSub,padding:"2px 0",borderBottom:i<Math.min(actVsTheo.breakdown.length,4)-1?`1px solid ${t.divider}`:'none'}}>
+                          <span>{b.name} × {b.qty}</span>
+                          <span style={{color:t.text,fontWeight:600}}>${b.cost.toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{fontSize:10,color:t.textDim}}>{T.actVsTheoHint||"Associez plus de recettes pour améliorer la précision."}</div>
+                </div>
+              );
+            })():<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>{T.actVsTheoNoSales||"Aucune vente ce mois."}</div>}
+          </div>
+        ))}
+      </ICard>
+    )}
     {/* AI Analysis Card */}
     <ICard>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
