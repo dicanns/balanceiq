@@ -15,6 +15,7 @@ let _locationId = null;        // location UUID
 let _plan = 'free';            // plan from organizations table
 let _parentOrgId = null;       // set when org belongs to a franchisor network
 let _lastSyncAt = null;        // ISO timestamp of last successful pull
+let _lastSyncedAt = null;      // ISO timestamp of last setStatus('synced') — for UI display
 let _offlineQueue = [];        // [{key, value}] queued while offline
 let _syncDebounceTimer = null;
 let _statusCallback = null;    // (status) => void
@@ -24,11 +25,26 @@ let _myLinkedLocations = [];   // [{location_id, location_name, franchisor_org_i
 // ── STATUS ─────────────────────────────────────────────────────────────────
 export function onSyncStatus(cb) { _statusCallback = cb; }
 export function onPlanChange(cb) { _planCallback = cb; }
-function setStatus(s) { _statusCallback?.(s); }
+function setStatus(s) {
+  if (s === 'synced') _lastSyncedAt = new Date().toISOString();
+  _statusCallback?.(s);
+}
 
 // ── INIT ───────────────────────────────────────────────────────────────────
 export async function initCloudSync() {
   if (!supabase) return null;
+
+  // Attach online flush trigger once — retries queued changes when network returns
+  if (typeof window !== 'undefined' && !window._biqOnlineListenerAttached) {
+    window.addEventListener('online', () => {
+      if (_session && _offlineQueue.length > 0) {
+        setStatus('syncing');
+        _flushQueue();
+      }
+    });
+    window._biqOnlineListenerAttached = true;
+  }
+
   try {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return null;
@@ -240,6 +256,7 @@ export function getCloudPlan() { return _plan; }
 export function getCloudOrgId() { return _orgId; }
 export function getCloudParentOrgId() { return _parentOrgId; }
 export function getMyLinkedLocations() { return _myLinkedLocations; }
+export function getLastSyncedAt() { return _lastSyncedAt; }
 
 // Legacy export (referenced by auditLogger.js)
 export const CLOUD_SYNC_ENABLED = true;
