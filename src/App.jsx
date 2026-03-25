@@ -1433,14 +1433,14 @@ function MonthlyPL({computeDay,suppliers,liveData,platforms,expenseItems,glAccou
       const hdr=["Date","Journal","Référence","Description","Compte GL","Débit","Crédit","Note"];
       rows.push(hdr);
       if(totalRev>0){
-        rows.push([lastDay,"VT",ref,T.plRevenue||"Ventes nettes",GL.revenue,"",totalRev.toFixed(2),note]);
-        rows.push([lastDay,"VT",ref,"TPS collectée",GL.tps,"",totalTPS.toFixed(2),note]);
-        rows.push([lastDay,"VT",ref,"TVQ collectée",GL.tvq,"",totalTVQ.toFixed(2),note]);
+        rows.push([lastDay,"GJ",ref,T.plRevenue||"Ventes nettes",GL.revenue,"",totalRev.toFixed(2),note]);
+        rows.push([lastDay,"GJ",ref,"TPS collectée",GL.tps,"",totalTPS.toFixed(2),note]);
+        rows.push([lastDay,"GJ",ref,"TVQ collectée",GL.tvq,"",totalTVQ.toFixed(2),note]);
       }
-      if(labC>0)rows.push([lastDay,"VT",ref,T.plLabour||"Salaires",GL.labour,labC.toFixed(2),"",note]);
-      expenseItems.forEach(item=>{const amt=billsSum(`exp_${item.id}`);if(amt>0){const acct=GL[item.id]||GL.autre;rows.push([lastDay,"VT",ref,item.label,acct,amt.toFixed(2),"",note]);}});
-      const fpAmt=billsSum('pettyCashFP');if(fpAmt>0)rows.push([lastDay,"VT",ref,"Food & Paper",GL.fp,fpAmt.toFixed(2),"",note]);
-      suppliers.forEach(s=>{const amt=billsSum(`sup_${s.id}`);if(amt>0)rows.push([lastDay,"VT",ref,s.name,GL.fp,amt.toFixed(2),"",note]);});
+      if(labC>0)rows.push([lastDay,"GJ",ref,T.plLabour||"Salaires",GL.labour,labC.toFixed(2),"",note]);
+      expenseItems.forEach(item=>{const amt=billsSum(`exp_${item.id}`);if(amt>0){const acct=GL[item.id]||GL.autre;rows.push([lastDay,"GJ",ref,item.label,acct,amt.toFixed(2),"",note]);}});
+      const fpAmt=billsSum('pettyCashFP');if(fpAmt>0)rows.push([lastDay,"GJ",ref,"Food & Paper",GL.fp,fpAmt.toFixed(2),"",note]);
+      suppliers.forEach(s=>{const amt=billsSum(`sup_${s.id}`);if(amt>0)rows.push([lastDay,"GJ",ref,s.name,GL.fp,amt.toFixed(2),"",note]);});
     } else {
       const hdr=["Date","Source","Comment","Account Number","Account Description","Debit","Credit"];
       rows.push(hdr);
@@ -1893,17 +1893,26 @@ function ComptabiliteExport({factures,clients,produits,categories,companyInfo,on
     const isEn=T===EN;
     const warnings=[];
     const acctIdx=fmt==="acomba"?hdr.indexOf("Compte GL"):hdr.indexOf("Account Number");
+    const debitIdx=fmt==="acomba"?hdr.indexOf("Débit"):hdr.indexOf("Debit");
+    const creditIdx=fmt==="acomba"?hdr.indexOf("Crédit"):hdr.indexOf("Credit");
     const dateIdx=0;
     const dateRe=/^\d{4}-\d{2}-\d{2}$/;
-    let missingAcct=0,badDate=0;
+    let missingAcct=0,badDate=0,badDecimal=0,totalDebit=0,totalCredit=0;
     for(const r of rows){
       if(acctIdx>=0&&!r[acctIdx])missingAcct++;
       const d=String(r[dateIdx]||"");
       if(d&&!dateRe.test(d))badDate++;
+      const dv=String(r[debitIdx]||"");const cv=String(r[creditIdx]||"");
+      if(dv.includes(",")||cv.includes(","))badDecimal++;
+      if(dv)totalDebit+=parseFloat(dv)||0;
+      if(cv)totalCredit+=parseFloat(cv)||0;
     }
     if(missingAcct>0)warnings.push({type:"warn",msg:isEn?`${missingAcct} line(s) have no GL account — assign account numbers in Facturation → Categories.`:`${missingAcct} ligne(s) sans compte GL — assignez des numéros de compte dans Facturation → Catégories.`});
     if(badDate>0)warnings.push({type:"warn",msg:isEn?`${badDate} date(s) not in YYYY-MM-DD format.`:`${badDate} date(s) pas au format AAAA-MM-JJ.`});
-    if(!warnings.length)warnings.push({type:"ok",msg:isEn?`Format validated — ${rows.length} line(s) ready.`:`Format validé — ${rows.length} ligne(s) prêtes.`});
+    if(badDecimal>0)warnings.push({type:"warn",msg:isEn?`${badDecimal} amount(s) contain comma — file uses period (.) as decimal as required.`:`${badDecimal} montant(s) contiennent une virgule — le fichier utilise le point (.) comme séparateur décimal requis.`});
+    const imbalance=Math.abs(totalDebit-totalCredit);
+    if(rows.length>0&&imbalance>0.02)warnings.push({type:"warn",msg:isEn?`Debits $${totalDebit.toFixed(2)} ≠ Credits $${totalCredit.toFixed(2)} (diff $${imbalance.toFixed(2)}) — verify A/R entries are included.`:`Débits ${totalDebit.toFixed(2)} $ ≠ Crédits ${totalCredit.toFixed(2)} $ (écart ${imbalance.toFixed(2)} $) — vérifiez que les écritures A/R sont incluses.`});
+    if(!warnings.length)warnings.push({type:"ok",msg:isEn?`Format validated — ${rows.length} line(s), debits = credits ($${totalDebit.toFixed(2)}).`:`Format validé — ${rows.length} ligne(s), débits = crédits (${totalDebit.toFixed(2)} $).`});
     return warnings;
   };
   const buildCSV=(rows,filename)=>{
@@ -2128,8 +2137,13 @@ function ComptabiliteExport({factures,clients,produits,categories,companyInfo,on
       {/* Disclaimer + preview for Acomba / Sage 50 */}
       {(exportType==="acomba"||exportType==="sage50")&&(
         <div>
+          <div style={{background:"rgba(59,130,246,0.05)",border:"1px solid rgba(59,130,246,0.18)",borderRadius:6,padding:"6px 11px",fontSize:10,color:"#60a5fa",lineHeight:1.55,marginBottom:6}}>
+            ℹ {exportType==="acomba"
+              ?(T===EN?"Format: YYYY-MM-DD dates · period (.) decimal · UTF-8 BOM encoding · Journal code GJ (Journal Général) · Compatible with Acomba 15+":"Format : dates AAAA-MM-JJ · décimale point (.) · encodage UTF-8 BOM · Code journal GJ (Journal Général) · Compatible Acomba 15+")
+              :(T===EN?"Format: YYYY-MM-DD dates · period (.) decimal · UTF-8 BOM encoding · Compatible with Sage 50 Canadian (Simple Comptable). Note: direct CSV import requires Sage 50's Import/Export wizard — verify column mapping with your accountant.":"Format : dates AAAA-MM-JJ · décimale point (.) · encodage UTF-8 BOM · Compatible Sage 50 Canada (Simple Comptable). Note : l'import direct CSV nécessite l'assistant Import/Export de Sage 50 — vérifiez le mapping des colonnes avec votre comptable.")}
+          </div>
           <div style={{background:"rgba(234,179,8,0.07)",border:"1px solid rgba(234,179,8,0.25)",borderRadius:6,padding:"7px 11px",fontSize:10.5,color:"#ca8a04",lineHeight:1.55,marginBottom:8}}>
-            ⚠ {T===EN?"Verify with your accountant that the column headers and account numbers match your Acomba/Sage 50 configuration before importing.":"Vérifiez avec votre comptable que les en-têtes de colonnes et les numéros de compte correspondent à votre configuration Acomba/Sage 50 avant d'importer."}
+            ⚠ {T===EN?"Verify with your accountant that GL account numbers match your accounting configuration before importing.":"Vérifiez avec votre comptable que les numéros de compte GL correspondent à votre configuration comptable avant d'importer."}
           </div>
           <button onClick={()=>{
             const{hdr,data}=exportType==="acomba"?buildAcombaRows():buildSage50Rows();
