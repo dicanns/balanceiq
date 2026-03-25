@@ -73,14 +73,34 @@ serve(async (req) => {
       .update({
         status: 'accepted',
         accepted_by_org_id: franchiseeOrgId,
+        accepted_by_user_id: user.id,
       })
       .eq('id', invite.id);
+
+    // Record the linked location for the accepting user (MUO support)
+    // upsert so re-accepting the same code is idempotent
+    await supabaseAdmin
+      .from('user_linked_locations')
+      .upsert({
+        user_id: user.id,
+        franchisor_org_id: invite.franchisor_org_id,
+        franchisee_org_id: franchiseeOrgId,
+        location_id: invite.location_id,
+        location_name: invite.location_name,
+      }, { onConflict: 'user_id,location_id' });
+
+    // Check if this user already manages other locations (for MUO UX hint)
+    const { data: allLinked } = await supabaseAdmin
+      .from('user_linked_locations')
+      .select('location_id, location_name')
+      .eq('user_id', user.id);
 
     return ok({
       success: true,
       franchisorName: franchisorOrg?.name || 'Réseau franchise',
       locationName: invite.location_name,
       locationId: invite.location_id,
+      alreadyManages: (allLinked || []).filter(l => l.location_id !== invite.location_id),
     });
 
   } catch (err) {
