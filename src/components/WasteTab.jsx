@@ -33,6 +33,28 @@ const REASON_COLORS = {
   return:'#60a5fa', spoilage:'#a78bfa', other:'#6b7280',
 };
 
+function InfoTip({ text, t }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+      <button onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}
+        onClick={e => { e.stopPropagation(); setOpen(o => !o); }}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', color: open ? '#f97316' : 'rgba(128,128,128,0.45)', fontSize: 12, padding: '0 3px', lineHeight: 1 }}>ℹ</button>
+      {open && (
+        <div style={{ position: 'absolute', left: 0, top: 'calc(100% + 4px)', zIndex: 200, width: 250,
+          background: t?.name === 'dark' ? '#1e2130' : '#fff',
+          border: '1px solid rgba(249,115,22,0.3)', borderRadius: 8, padding: '10px 12px',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.35)', fontSize: 11.5, color: t?.textSub || '#9ca3af', lineHeight: 1.55, fontWeight: 400 }}>
+          <div style={{ position: 'absolute', top: -5, left: 8, width: 8, height: 8,
+            background: t?.name === 'dark' ? '#1e2130' : '#fff',
+            border: '1px solid rgba(249,115,22,0.3)', borderRight: 'none', borderBottom: 'none', transform: 'rotate(45deg)' }}/>
+          {text}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function catLabel(v, lang) { const c = WASTE_CATEGORIES.find(x => x.value === v); return c ? (lang==='en'?c.en:c.fr) : v; }
 function reasonLabel(v, lang) { const c = WASTE_REASONS.find(x => x.value === v); return c ? (lang==='en'?c.en:c.fr) : v; }
 function shiftLabel(v, lang) { const c = SHIFTS.find(x => x.value === v); return c ? (lang==='en'?c.en:c.fr) : v; }
@@ -134,8 +156,12 @@ export default function WasteTab({ t, T, lang, canUse, ingredients }) {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
         <div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: t.text }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: t.text, display: 'flex', alignItems: 'center', gap: 4 }}>
             📉 {lang === 'en' ? 'Food Waste Tracking' : 'Suivi du gaspillage alimentaire'}
+            <InfoTip t={t} text={lang === 'en'
+              ? 'Log each waste event with its category, reason and shift. If you link an ingredient that has a unit price, the dollar value is calculated automatically. All data feeds the waste alerts in the Intelligence tab and the Prévisions learning engine.'
+              : 'Enregistrez chaque gaspillage avec sa catégorie, raison et quart de travail. Si vous liez un ingrédient avec un prix unitaire, la valeur en dollars est calculée automatiquement. Les données alimentent les alertes de gaspillage dans l\'onglet Intelligence et le moteur d\'apprentissage des Prévisions.'
+            }/>
           </div>
           <div style={{ fontSize: 11, color: t.textMuted, marginTop: 2 }}>
             {lang === 'en' ? `${entries.length} entries this month` : `${entries.length} entrée${entries.length !== 1 ? 's' : ''} ce mois`}
