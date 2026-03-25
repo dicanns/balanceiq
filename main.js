@@ -21,6 +21,8 @@ const {
   learnedPatternsGetAll, learnedPatternUpsert,
   predAccuracyGetAll, predAccuracyGetForProduct, predAccuracyUpsert,
   insightsGetAll, insightsGetUnreadCount, insightUpsert, insightMarkRead, insightMarkAllRead,
+  checklistTemplatesGetAll, checklistTemplateUpsert, checklistTemplateDelete,
+  checklistEntriesGetForDate, checklistEntriesGetRange, checklistEntryUpsert,
 } = require('./src/db/database.js');
 
 const BACKUP_DIR = () => path.join(app.getPath('userData'), 'Backups');
@@ -1103,6 +1105,14 @@ ipcMain.handle('forecast:insights:getUnreadCount', () => insightsGetUnreadCount(
 ipcMain.handle('forecast:insights:upsert', (_e, ins) => insightUpsert(ins));
 ipcMain.handle('forecast:insights:markRead', (_e, id) => insightMarkRead(id));
 ipcMain.handle('forecast:insights:markAllRead', () => insightMarkAllRead());
+
+// Checklist
+ipcMain.handle('checklist:getTemplates',    ()          => checklistTemplatesGetAll());
+ipcMain.handle('checklist:saveTemplate',    (_e, t)     => checklistTemplateUpsert(t));
+ipcMain.handle('checklist:deleteTemplate',  (_e, id)    => checklistTemplateDelete(id));
+ipcMain.handle('checklist:getEntries',      (_e, date)  => checklistEntriesGetForDate(date));
+ipcMain.handle('checklist:getEntriesRange', (_e, f, to) => checklistEntriesGetRange(f, to));
+ipcMain.handle('checklist:saveEntry',       (_e, entry) => checklistEntryUpsert(entry));
 
 // Register balanceiq:// as protocol handler for OAuth callbacks
 app.setAsDefaultProtocolClient('balanceiq');

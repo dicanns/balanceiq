@@ -104,4 +104,12 @@ contextBridge.exposeInMainWorld('api', {
       markAllRead: () => ipcRenderer.invoke('forecast:insights:markAllRead'),
     },
   },
+  checklist: {
+    getTemplates:    ()           => ipcRenderer.invoke('checklist:getTemplates'),
+    saveTemplate:    (t)          => ipcRenderer.invoke('checklist:saveTemplate', t),
+    deleteTemplate:  (id)         => ipcRenderer.invoke('checklist:deleteTemplate', id),
+    getEntries:      (date)       => ipcRenderer.invoke('checklist:getEntries', date),
+    getEntriesRange: (from, to)   => ipcRenderer.invoke('checklist:getEntriesRange', from, to),
+    saveEntry:       (entry)      => ipcRenderer.invoke('checklist:saveEntry', entry),
+  },
 });

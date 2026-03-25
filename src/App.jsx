@@ -4718,7 +4718,7 @@ function CashierVarianceCard({cashierVariances,T,t}){
   );
 }
 
-function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProfiles,getLR,platforms,encaisseData,encaisseConfig,apiConfig}){
+function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProfiles,getLR,platforms,encaisseData,encaisseConfig,apiConfig,checklistCompliance}){
   const T=useL();
   const t=useT();
   const [aiResponse,setAiResponse]=useState(null);
@@ -4901,6 +4901,30 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
       </div>)):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>{T.intelAnomalyEmpty}</div>)}
     </ICard>
     <CashierVarianceCard cashierVariances={cashierVariances} T={T} t={t}/>
+    {checklistCompliance&&(
+      <ICard>
+        <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>☑ {T.checklistCompTitle||"Conformité des checklists"}</span>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
+          <div style={{width:52,height:52,borderRadius:"50%",background:`conic-gradient(${checklistCompliance.pct>=80?"#22c55e":checklistCompliance.pct>=50?"#f59e0b":"#ef4444"} ${checklistCompliance.pct*3.6}deg,rgba(255,255,255,0.06) 0)`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            <div style={{width:38,height:38,borderRadius:"50%",background:t.card,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:800,color:t.text}}>{checklistCompliance.pct}%</div>
+          </div>
+          <div>
+            <div style={{fontSize:12,fontWeight:600,color:t.text}}>{typeof T.checklistCompDesc==='function'?T.checklistCompDesc(checklistCompliance.pct,checklistCompliance.totalDays):T.checklistCompDesc}</div>
+            <div style={{fontSize:11,color:t.textMuted,marginTop:2}}>{typeof T.checklistCompDays==='function'?T.checklistCompDays(checklistCompliance.completeDays,checklistCompliance.totalDays):T.checklistCompDays}</div>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <div style={{background:t.section,borderRadius:6,padding:"6px 10px",flex:1,textAlign:"center"}}>
+            <div style={{fontSize:9.5,color:t.textMuted,marginBottom:2}}>{T.checklistRequired||"Tâches requises"}</div>
+            <div style={{fontSize:15,fontWeight:700,color:t.text}}>{checklistCompliance.requiredCount}</div>
+          </div>
+          <div style={{background:t.section,borderRadius:6,padding:"6px 10px",flex:1,textAlign:"center"}}>
+            <div style={{fontSize:9.5,color:t.textMuted,marginBottom:2}}>{T.checklistOptional||"Optionnelles"}</div>
+            <div style={{fontSize:15,fontWeight:700,color:t.text}}>{checklistCompliance.itemCount-checklistCompliance.requiredCount}</div>
+          </div>
+        </div>
+      </ICard>
+    )}
     <ICard>
       <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>{T.intelVelocityTitle(T.days[dow])}</span>
       {velocityData.some(v=>v.n>0)?(<div>
@@ -5738,6 +5762,185 @@ function MarqueBlancheConfig({whiteLabelConfig,saveWhiteLabel}){
           </div>
         </>)}
         <button onClick={()=>saveWhiteLabel(cfg)} style={{alignSelf:"flex-start",padding:"6px 16px",borderRadius:7,border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.1)",color:"#c4b5fd",cursor:"pointer",fontWeight:600,fontSize:11}}>{T.save}</button>
+      </div>
+    </div>
+  );
+}
+
+// ── CLOSE-OUT CHECKLIST PANEL ──
+function ChecklistPanel({templates,entries,onToggle,isClosed,t,T}){
+  const daily=templates.filter(tp=>tp.active&&tp.frequency==='daily');
+  if(!daily.length)return(
+    <div style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:"12px 14px"}}>
+      <div style={{fontSize:11,fontWeight:700,color:t.textSub,marginBottom:4}}>☑ {T.checklistTitle}</div>
+      <div style={{fontSize:11,color:t.textMuted}}>{T.checklistNoItems} <span style={{color:"#f97316"}}>{T.checklistNoItemsHint}</span></div>
+    </div>
+  );
+  const required=daily.filter(tp=>tp.required);
+  const optional=daily.filter(tp=>!tp.required);
+  const allReqDone=required.every(tp=>entries.find(e=>e.template_id===tp.id&&e.completed));
+  return(
+    <div style={{background:t.section,border:`1px solid ${allReqDone?"rgba(34,197,94,0.25)":t.cardBorder}`,borderRadius:9,padding:"12px 14px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+        <span style={{fontSize:11,fontWeight:700,color:t.textSub}}>☑ {T.checklistTitle}</span>
+        {allReqDone&&<span style={{fontSize:9.5,fontWeight:700,color:"#22c55e",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:8,padding:"1px 7px"}}>✓ {T.checklistRequired}</span>}
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:5}}>
+        {daily.map(tp=>{
+          const entry=entries.find(e=>e.template_id===tp.id);
+          const done=!!(entry?.completed);
+          return(
+            <label key={tp.id} style={{display:"flex",alignItems:"center",gap:8,cursor:isClosed?"default":"pointer",opacity:isClosed?0.7:1}}>
+              <input type="checkbox" checked={done} disabled={isClosed} onChange={e=>onToggle(tp.id,e.target.checked)}
+                style={{width:14,height:14,accentColor:"#f97316",cursor:isClosed?"default":"pointer",flexShrink:0}}/>
+              <span style={{fontSize:11.5,color:done?t.textMuted:t.text,textDecoration:done?"line-through":"none",flex:1}}>
+                {tp.title_fr}
+              </span>
+              {tp.required&&<span style={{fontSize:9,fontWeight:700,color:done?"#22c55e":"#f59e0b",background:done?"rgba(34,197,94,0.1)":"rgba(245,158,11,0.1)",border:`1px solid ${done?"rgba(34,197,94,0.25)":"rgba(245,158,11,0.3)"}`,borderRadius:8,padding:"1px 6px",whiteSpace:"nowrap"}}>{T.checklistRequired}</span>}
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── CHECKLIST CONFIG SECTION ──
+const PREBUILT_TEMPLATES=[
+  {g:'restaurant',items:[
+    {title_fr:"Température chambre froide vérifiée",title_en:"Walk-in cooler temp verified",required:1,category:'kitchen'},
+    {title_fr:"Feuilles de préparation complétées",title_en:"Prep sheets completed",required:1,category:'kitchen'},
+    {title_fr:"Caisse comptée deux fois",title_en:"Cash counted twice",required:1,category:'management'},
+    {title_fr:"Dépôt au coffre effectué",title_en:"Safe deposit made",required:1,category:'management'},
+    {title_fr:"Portes verrouillées",title_en:"Doors locked",required:1,category:'management'},
+  ]},
+  {g:'bakery',items:[
+    {title_fr:"Fours éteints",title_en:"Ovens shut off",required:1,category:'kitchen'},
+    {title_fr:"Températures réfrigérateurs enregistrées",title_en:"Cooler temps logged",required:1,category:'kitchen'},
+    {title_fr:"Liste préparation du lendemain affichée",title_en:"Next-day prep list posted",required:0,category:'kitchen'},
+  ]},
+  {g:'generic',items:[
+    {title_fr:"Lumières éteintes",title_en:"Lights off",required:0,category:'management'},
+    {title_fr:"Alarme activée",title_en:"Alarm set",required:1,category:'management'},
+    {title_fr:"Rapport Z de caisse imprimé",title_en:"Register Z-tape printed",required:1,category:'management'},
+  ]},
+];
+const PREBUILT_LABELS={restaurant:"🍔 Restaurant / QSR",bakery:"🥐 Boulangerie / Café",generic:"⚙️ Générique"};
+
+function ChecklistConfigSection({templates,onSave,onDelete,t,T}){
+  const [editing,setEditing]=React.useState(null); // null | {id?,title_fr,title_en,required,frequency,category,sort_order,active}
+  const [showPrebuilt,setShowPrebuilt]=React.useState(false);
+  const empty={title_fr:'',title_en:'',required:0,frequency:'daily',category:'custom',sort_order:0,active:1};
+  const active=templates.filter(tp=>tp.active);
+
+  const freqLabel=f=>({daily:T.checklistFreqDaily||'Quotidien',weekly:T.checklistFreqWeekly||'Hebdomadaire',monthly:T.checklistFreqMonthly||'Mensuel'}[f]||f);
+  const catLabel=c=>({kitchen:T.checklistCatKitchen||'Cuisine',foh:T.checklistCatFOH||'Service',management:T.checklistCatMgmt||'Gestion',custom:T.checklistCatCustom||'Autre'}[c]||c);
+
+  const inp={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:11.5,padding:"5px 8px",outline:"none",width:"100%",boxSizing:"border-box",fontFamily:"'Outfit',sans-serif"};
+  const sel={...inp,appearance:"none"};
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:10,padding:"14px 16px"}}>
+        <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:4}}>{T.checklistCfgTitle}</div>
+        <div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{T.checklistCfgDesc}</div>
+
+        {/* Existing items */}
+        {active.length>0&&(
+          <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
+            {active.map(tp=>(
+              <div key={tp.id} style={{display:"flex",alignItems:"center",gap:8,background:t.section,borderRadius:7,padding:"8px 10px"}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:12,fontWeight:600,color:t.text}}>{tp.title_fr}</div>
+                  {tp.title_en&&<div style={{fontSize:10.5,color:t.textMuted}}>{tp.title_en}</div>}
+                  <div style={{display:"flex",gap:6,marginTop:3,flexWrap:"wrap"}}>
+                    <span style={{fontSize:9,color:t.textDim,background:t.inputBg,borderRadius:4,padding:"1px 5px"}}>{freqLabel(tp.frequency)}</span>
+                    <span style={{fontSize:9,color:t.textDim,background:t.inputBg,borderRadius:4,padding:"1px 5px"}}>{catLabel(tp.category)}</span>
+                    {tp.required?<span style={{fontSize:9,fontWeight:700,color:"#f59e0b",background:"rgba(245,158,11,0.1)",borderRadius:4,padding:"1px 5px"}}>{T.checklistRequired}</span>:<span style={{fontSize:9,color:t.textDim,background:t.inputBg,borderRadius:4,padding:"1px 5px"}}>{T.checklistOptional}</span>}
+                  </div>
+                </div>
+                <button onClick={()=>setEditing({...tp})} style={{background:"none",border:"none",color:"#f97316",fontSize:11,cursor:"pointer",padding:"2px 6px",fontWeight:600}}>✏️</button>
+                <button onClick={()=>onDelete(tp.id)} style={{background:"none",border:"none",color:"#ef4444",fontSize:11,cursor:"pointer",padding:"2px 6px",fontWeight:600}}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+        {active.length===0&&!editing&&<div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{T.checklistCfgNoItems||"Aucune tâche."}</div>}
+
+        {/* Edit / Add form */}
+        {editing?(
+          <div style={{background:t.section,borderRadius:8,padding:"12px",border:`1px solid ${t.cardBorder}`}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+              <div>
+                <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.checklistCfgTitleFr} *</div>
+                <input style={inp} value={editing.title_fr} onChange={e=>setEditing(p=>({...p,title_fr:e.target.value}))} placeholder="Ex: Fours éteints"/>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.checklistCfgTitleEn}</div>
+                <input style={inp} value={editing.title_en} onChange={e=>setEditing(p=>({...p,title_en:e.target.value}))} placeholder="Ex: Ovens shut off"/>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr auto",gap:8,marginBottom:10,alignItems:"end"}}>
+              <div>
+                <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.checklistCfgFreq}</div>
+                <select style={sel} value={editing.frequency} onChange={e=>setEditing(p=>({...p,frequency:e.target.value}))}>
+                  <option value="daily">{T.checklistFreqDaily}</option>
+                  <option value="weekly">{T.checklistFreqWeekly}</option>
+                  <option value="monthly">{T.checklistFreqMonthly}</option>
+                </select>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.checklistCfgCat}</div>
+                <select style={sel} value={editing.category} onChange={e=>setEditing(p=>({...p,category:e.target.value}))}>
+                  <option value="kitchen">{T.checklistCatKitchen}</option>
+                  <option value="foh">{T.checklistCatFOH}</option>
+                  <option value="management">{T.checklistCatMgmt}</option>
+                  <option value="custom">{T.checklistCatCustom}</option>
+                </select>
+              </div>
+              <label style={{display:"flex",alignItems:"center",gap:5,fontSize:11.5,color:t.text,cursor:"pointer",whiteSpace:"nowrap",paddingBottom:2}}>
+                <input type="checkbox" checked={!!editing.required} onChange={e=>setEditing(p=>({...p,required:e.target.checked?1:0}))} style={{accentColor:"#f97316"}}/>
+                {T.checklistCfgRequired}
+              </label>
+            </div>
+            <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+              <button onClick={()=>setEditing(null)} style={{padding:"5px 14px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textMuted,fontSize:11,cursor:"pointer"}}>{T.checklistCfgCancel}</button>
+              <button onClick={()=>{if(!editing.title_fr.trim())return;onSave({...editing,sort_order:editing.sort_order||active.length,active:1});setEditing(null);}} style={{padding:"5px 14px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>{T.checklistCfgSave}</button>
+            </div>
+          </div>
+        ):(
+          <button onClick={()=>setEditing({...empty,sort_order:active.length})} style={{fontSize:11,padding:"5px 14px",borderRadius:6,border:"1px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:600}}>+ {T.checklistCfgAdd}</button>
+        )}
+      </div>
+
+      {/* Pre-built templates */}
+      <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:10,padding:"14px 16px"}}>
+        <button onClick={()=>setShowPrebuilt(p=>!p)} style={{background:"none",border:"none",color:t.text,fontSize:12,fontWeight:700,cursor:"pointer",padding:0,display:"flex",alignItems:"center",gap:6}}>
+          📋 {T.checklistCfgPrebuilt} {showPrebuilt?"▲":"▼"}
+        </button>
+        {showPrebuilt&&(
+          <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:10}}>
+            {PREBUILT_TEMPLATES.map(({g,items})=>(
+              <div key={g}>
+                <div style={{fontSize:11,fontWeight:700,color:t.textSub,marginBottom:5}}>{PREBUILT_LABELS[g]}</div>
+                <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                  {items.map((item,i)=>{
+                    const already=templates.some(tp=>tp.active&&tp.title_fr===item.title_fr);
+                    return(
+                      <div key={i} style={{display:"flex",alignItems:"center",gap:8,background:t.section,borderRadius:6,padding:"6px 10px"}}>
+                        <span style={{flex:1,fontSize:11.5,color:already?t.textMuted:t.text}}>{item.title_fr}</span>
+                        {item.required?<span style={{fontSize:9,fontWeight:700,color:"#f59e0b"}}>Requis</span>:<span style={{fontSize:9,color:t.textDim}}>Optionnel</span>}
+                        {already?<span style={{fontSize:9,color:"#22c55e",fontWeight:600}}>✓</span>:(
+                          <button onClick={()=>onSave({...item,title_en:item.title_en,frequency:'daily',sort_order:active.length,active:1})} style={{fontSize:10,padding:"2px 8px",borderRadius:5,border:"1px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:600}}>{T.checklistCfgAdd1||"Ajouter"}</button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -7912,6 +8115,8 @@ export default function App(){
   const [syncStatus,setSyncStatus]=useState(null); // 'synced'|'syncing'|'offline'|'error'|null
   const [myLinkedLocations,setMyLinkedLocations]=useState([]); // MUO: [{location_id, location_name, ...}]
   const [activeMUOLocationId,setActiveMUOLocationId]=useState(null); // currently selected MUO location
+  const [checklistTemplates,setChecklistTemplates]=useState([]); // [{id,title_fr,title_en,required,frequency,category,active}]
+  const [checklistEntries,setChecklistEntries]=useState({}); // date → [{template_id,completed,completed_by,completed_at}]
   const [lockConfig,setLockConfig]=useState({enabled:false,pin:"",lockedUntil:null});
   const [appLocked,setAppLocked]=useState(false);
   const [locations,setLocations]=useState([]);
@@ -8004,6 +8209,17 @@ export default function App(){
     setLoading(false);
     // Load auto-backup info after a short delay (backup runs at t+3s)
     setTimeout(async()=>{try{const info=await window.api.backup.getInfo();setBackupInfo(info)}catch(_){}},4000);
+    // Load checklist templates + last 31 days of entries for compliance stats
+    try{
+      const tmpl=await window.api.checklist.getTemplates();
+      setChecklistTemplates(tmpl);
+      const d31=new Date(Date.now()-31*24*3600*1000).toISOString().slice(0,10);
+      const tod=new Date().toISOString().slice(0,10);
+      const entries=await window.api.checklist.getEntriesRange(d31,tod);
+      const byDate={};
+      entries.forEach(e=>{if(!byDate[e.date])byDate[e.date]=[];byDate[e.date].push(e);});
+      setChecklistEntries(byDate);
+    }catch(_){}
     // Init cloud sync — non-blocking, won't affect app if offline
     setTimeout(async()=>{
       try{
@@ -8161,6 +8377,28 @@ export default function App(){
   const handleCloudSignIn=useCallback(async(creds)=>{const res=await cloudSignIn(creds);setCloudUser({email:res.session.user.email,plan:res.plan});setMyLinkedLocations(getMyLinkedLocations());if(res.plan!=='free'){setPlan(res.plan);setActivePlan(res.plan);}},[]);
   const handleCloudSignUp=useCallback(async(creds)=>{await cloudSignUp(creds);/* trigger creates org/user server-side; user must confirm email then sign in */},[]);
   const handleCloudSignOut=useCallback(async()=>{await cloudSignOut();setCloudUser(null);setSyncStatus(null);setMyLinkedLocations([]);setActiveMUOLocationId(null);},[]);
+
+  const toggleChecklistEntry=useCallback(async(templateId,completed,completedBy='')=>{
+    const entry={template_id:templateId,date:selectedDate,completed:completed?1:0,completed_by:completedBy||null,completed_at:completed?new Date().toISOString():null,notes:null};
+    try{await window.api.checklist.saveEntry(entry);}catch(_){}
+    setChecklistEntries(prev=>{
+      const existing=prev[selectedDate]||[];
+      const idx=existing.findIndex(e=>e.template_id===templateId);
+      const updated=idx>=0?existing.map((e,i)=>i===idx?{...e,...entry}:e):[...existing,entry];
+      return{...prev,[selectedDate]:updated};
+    });
+  },[selectedDate]);
+
+  const saveChecklistTemplate=useCallback(async(template)=>{
+    await window.api.checklist.saveTemplate(template);
+    const tmpl=await window.api.checklist.getTemplates();
+    setChecklistTemplates(tmpl);
+  },[]);
+
+  const deleteChecklistTemplate=useCallback(async(id)=>{
+    await window.api.checklist.deleteTemplate(id);
+    setChecklistTemplates(prev=>prev.filter(t=>t.id!==id));
+  },[]);
   const showUpgradePrompt=useCallback(featureName=>{if(shouldShowUpgradePrompt(featureName)){setUpgradePromptFeature(featureName);trackEvent('upgrade_prompt_shown',{feature:featureName});}},[]);
   const saveCompanyInfo=useCallback(info=>{setCompanyInfo(info);const v=JSON.stringify(info);window.api.storage.set("dicann-company-info",v).catch(()=>{});schedulePush("dicann-company-info",v);},[]);
   const saveInvoiceTemplate=useCallback(tpl=>{setInvoiceTemplate(tpl);const v=JSON.stringify(tpl);window.api.storage.set("dicann-invoice-template",v).catch(()=>{});schedulePush("dicann-invoice-template",v);},[]);
@@ -8343,6 +8581,15 @@ export default function App(){
     setShowCloseConfirm(false);
   },[selectedDate,closedDays]);
 
+  // Load checklist entries for the selected date (fills gaps not covered by range load)
+  useEffect(()=>{
+    if(!selectedDate||!window.api?.checklist)return;
+    if(checklistEntries[selectedDate]!==undefined)return; // already loaded
+    window.api.checklist.getEntries(selectedDate).then(entries=>{
+      setChecklistEntries(prev=>({...prev,[selectedDate]:entries}));
+    }).catch(()=>{});
+  },[selectedDate]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-snapshot when a day becomes "complete" — once per date per session
   useEffect(()=>{
     if(!isDayComplete||loading)return;
@@ -8465,6 +8712,28 @@ export default function App(){
     },0);
     }catch(e){return 0;}
   },[]);
+
+  const checklistComplianceStats=useMemo(()=>{
+    const daily=checklistTemplates.filter(t=>t.active&&t.frequency==='daily');
+    const required=daily.filter(t=>t.required);
+    if(!required.length)return null;
+    const dates=Object.keys(checklistEntries).filter(k=>k.match(/^\d{4}-\d{2}-\d{2}$/)).sort().slice(-30);
+    if(!dates.length)return null;
+    let completeDays=0;
+    for(const date of dates){
+      const entries=checklistEntries[date]||[];
+      if(required.every(t=>entries.find(e=>e.template_id===t.id&&e.completed)))completeDays++;
+    }
+    return{pct:Math.round(completeDays/dates.length*100),completeDays,totalDays:dates.length,itemCount:daily.length,requiredCount:required.length};
+  },[checklistTemplates,checklistEntries]);
+
+  // Count unchecked required items for today (shown in close-out warning)
+  const checklistUncheckedRequired=useMemo(()=>{
+    const required=checklistTemplates.filter(t=>t.active&&t.required&&t.frequency==='daily');
+    if(!required.length)return 0;
+    const entries=checklistEntries[selectedDate]||[];
+    return required.filter(t=>!entries.find(e=>e.template_id===t.id&&e.completed)).length;
+  },[checklistTemplates,checklistEntries,selectedDate]);
 
   const tabs=[
     ...(appMode==="franchiseur"?[{id:"reseau",label:T.tabNetwork}]:[]),
@@ -8717,6 +8986,17 @@ export default function App(){
                 :<span style={{fontSize:12,color:t.warnText,fontWeight:600}}>{T.verifyCaisses}</span>}
             </div>)}
 
+            {/* Close-out Checklist */}
+            {today.anyData&&checklistTemplates.filter(tp=>tp.active&&tp.frequency==='daily').length>0&&(
+              <ChecklistPanel
+                templates={checklistTemplates}
+                entries={checklistEntries[selectedDate]||[]}
+                onToggle={toggleChecklistEntry}
+                isClosed={isClosed}
+                t={t} T={T}
+              />
+            )}
+
             {/* Close-out button / closed badge */}
             {today.anyData&&!isClosed&&(
               <div style={{textAlign:"center",paddingTop:2}}>
@@ -8740,6 +9020,7 @@ export default function App(){
               <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9998}} onClick={e=>{if(e.target===e.currentTarget)setShowCloseConfirm(false);}}>
                 <div style={{background:"#1a1d27",border:"1px solid #374151",borderRadius:12,padding:"28px 32px",width:440,maxWidth:"90vw",boxShadow:"0 20px 60px rgba(0,0,0,0.6)"}}>
                   <h3 style={{margin:"0 0 8px",color:"#16a34a",fontSize:"1rem",fontWeight:700}}>{T.closeDayTitle}</h3>
+                  {checklistUncheckedRequired>0&&<div style={{margin:"0 0 12px",padding:"8px 12px",borderRadius:7,background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.3)",fontSize:12,color:"#f59e0b",fontWeight:600}}>{typeof T.checklistWarnRequired==='function'?T.checklistWarnRequired(checklistUncheckedRequired):T.checklistWarnRequired}</div>}
                   <p style={{margin:"0 0 20px",color:"#9ca3af",fontSize:"0.875rem",lineHeight:1.6}}>{T.closeDayBody}</p>
                   <div style={{display:"flex",justifyContent:"flex-end",gap:10}}>
                     <button onClick={()=>setShowCloseConfirm(false)} style={{padding:"8px 18px",borderRadius:8,border:"1px solid #374151",background:"transparent",color:"#9ca3af",fontSize:"0.875rem",cursor:"pointer"}}>{T.closeDayCancel}</button>
@@ -9015,7 +9296,7 @@ export default function App(){
           {activeTab==="monthly"&&<MonthlyPL computeDay={computeDay} suppliers={suppliers} liveData={liveData} platforms={platforms} expenseItems={expenseItems} glAccounts={glAccounts} apiConfig={apiConfig} ocrMappings={ocrMappings} setOcrMappings={setOcrMappings} payrollConfig={payrollConfig} lang={lang} showSectionTooltips={showSectionTooltips} setActiveTab={setActiveTab}/>}
           {activeTab==="encaisse"&&<EncaisseTab liveData={liveData} encaisseData={encaisseData} persistEncaisse={persistEncaisse} encaisseConfig={encaisseConfig} saveEncaisseConfig={saveEncaisseConfig}/>}
           {activeTab==="facturation"&&<FacturationTab categories={facCategories} saveCategories={saveFacCategories} produits={facProduits} saveProduits={saveFacProduits} clients={facClients} saveClients={saveFacClients} soumissions={facSoumissions} saveSoumissions={saveFacSoumissions} commandes={facCommandes} saveCommandes={saveFacCommandes} factures={facFactures} saveFactures={saveFacFactures} creditNotes={facCreditNotes} saveCreditNotes={saveFacCreditNotes} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData} persistEncaisse={persistEncaisse} showUpgradePrompt={showUpgradePrompt} apiConfig={apiConfig} recurrents={facRecurrents} saveRecurrents={saveFacRecurrents} invoiceTemplate={effectiveTemplate} rawInvoiceTemplate={invoiceTemplate} saveInvoiceTemplate={saveInvoiceTemplate} canUse={canUse} glAccounts={glAccounts} saveGlAccounts={saveGlAccounts}/>}
-          {activeTab==="intelligence"&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR} platforms={platforms} encaisseData={encaisseData} encaisseConfig={encaisseConfig} apiConfig={apiConfig}/>}
+          {activeTab==="intelligence"&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR} platforms={platforms} encaisseData={encaisseData} encaisseConfig={encaisseConfig} apiConfig={apiConfig} checklistCompliance={checklistComplianceStats}/>}
           {activeTab==="previsions"&&previsionsEnabled&&(
             <Suspense fallback={<div style={{padding:16,fontSize:12,opacity:0.5}}>Chargement...</div>}>
               <PrevisionsTabLazy apiConfig={apiConfig} showUpgradePrompt={showUpgradePrompt} canUse={canUse} T={T} t={t} lang={lang} onInsightCountChange={setPrevInsightCount}/>
@@ -9030,6 +9311,7 @@ export default function App(){
                 {id:"entreprise",       label:T.cfgBusiness},
                 {id:"personnel-paie",   label:T.cfgPersonnelPayroll},
                 {id:"pl-fournisseurs",  label:T.cfgPLSuppliers},
+                {id:"operations",       label:T.cfgOperations||"⚙️ Opérations"},
                 {id:"integrations",     label:T.cfgIntegrations},
                 {id:"donnees",          label:T.cfgData},
                 {id:"application",      label:T.cfgApplication},
@@ -9235,6 +9517,16 @@ export default function App(){
               )}
             </CfgCard>
             </div>)}
+
+            {/* ⚙️ OPÉRATIONS */}
+            {configSubTab==="operations"&&(
+              <ChecklistConfigSection
+                templates={checklistTemplates}
+                onSave={saveChecklistTemplate}
+                onDelete={deleteChecklistTemplate}
+                t={t} T={T}
+              />
+            )}
 
             {/* 🔌 INTÉGRATIONS */}
             {configSubTab==="integrations"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
