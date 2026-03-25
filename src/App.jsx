@@ -5978,13 +5978,16 @@ function LocationsConfig({locations,saveLocations,facClients,orgId,cloudUser,whi
     try{
       const {supabase}=await import('./services/supabase.js');
       const {getCloudOrgId}=await import('./services/cloudSync.js');
-      await supabase.from('franchise_invitations')
-        .update({status:'expired'})
-        .eq('franchisor_org_id',orgId||getCloudOrgId())
-        .eq('location_id',loc.id)
-        .eq('status','pending');
+      const franchisorOrgId=orgId||getCloudOrgId();
+      const {data,error}=await supabase.functions.invoke('revoke-invitation',{
+        body:{franchisorOrgId,locationId:loc.id,locationName:loc.nom}
+      });
+      if(error||data?.error)throw new Error(data?.message||error?.message||'Revocation failed');
       setInvites(p=>({...p,[loc.id]:{...p[loc.id],status:'expired'}}));
       setInviteModal(null);
+      // Audit log
+      const stripeNote=data.stripeRemoved?' — $9/mo Stripe item removed':'';
+      await window.api.audit.log({action:'FRANCHISE_INVITE_REVOKED',details:`Location: ${loc.nom} (${loc.id})${stripeNote}`,userId:cloudUser?.id||'unknown'});
     }catch(e){setInviteError(e.message);}
     setInviteLoading(null);
   };
@@ -6003,7 +6006,26 @@ function LocationsConfig({locations,saveLocations,facClients,orgId,cloudUser,whi
     setEditing(null);setForm({});
   };
   const deactivate=(id)=>saveLocations(locations.map(l=>l.id===id?{...l,statut:l.statut==="inactive"?"active":"inactive"}:l));
-  const deleteLoc=(loc)=>{if(window.confirm(T.locDeleteConfirm(loc.nom)))saveLocations(locations.filter(l=>l.id!==loc.id));}
+  const deleteLoc=async(loc)=>{
+    if(!window.confirm(T.locDeleteConfirm(loc.nom)))return;
+    // Attempt to remove the $9/mo Stripe billing for this location before deleting
+    try{
+      const {supabase}=await import('./services/supabase.js');
+      const {getCloudOrgId}=await import('./services/cloudSync.js');
+      const franchisorOrgId=orgId||getCloudOrgId();
+      if(franchisorOrgId&&cloudUser){
+        const {data}=await supabase.functions.invoke('revoke-invitation',{
+          body:{franchisorOrgId,locationId:loc.id,locationName:loc.nom}
+        });
+        const stripeNote=data?.stripeRemoved?' — $9/mo Stripe item removed':'';
+        await window.api.audit.log({action:'FRANCHISE_LOCATION_REMOVED',details:`Location: ${loc.nom} (${loc.id})${stripeNote}`,userId:cloudUser?.id||'unknown'});
+      }
+    }catch(e){
+      console.error('revoke-invitation on deleteLoc:',e);
+      // Non-blocking — proceed with local deletion even if cloud call fails
+    }
+    saveLocations(locations.filter(l=>l.id!==loc.id));
+  };
   const inp={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:12,padding:"5px 8px",outline:"none",width:"100%"};
 
   // Invite modal for a location
