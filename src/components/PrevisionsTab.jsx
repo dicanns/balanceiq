@@ -268,9 +268,14 @@ function ProductFormModal({ product, existingCategories, onSave, onClose, T, t, 
     notes: product?.notes || '',
     unit_cost: product?.unit_cost != null ? String(product.unit_cost) : '',
     sell_price: product?.sell_price != null ? String(product.sell_price) : '',
+    recipe_id: product?.recipe_id || null,
   });
   const [newCat, setNewCat] = useState('');
   const [catMode, setCatMode] = useState(false);
+  const [recipes, setRecipes] = useState([]);
+  useEffect(() => {
+    window.api.recipes.getAll().then(r => setRecipes(r || [])).catch(() => {});
+  }, []);
 
   const ws = [
     { value:-2, label: T.prevWSMinus2 },
@@ -301,6 +306,7 @@ function ProductFormModal({ product, existingCategories, onSave, onClose, T, t, 
       shelf_life_days: Math.max(1, form.shelf_life_days || 1),
       unit_cost: form.unit_cost !== '' ? parseFloat(form.unit_cost) : null,
       sell_price: form.sell_price !== '' ? parseFloat(form.sell_price) : null,
+      recipe_id: form.recipe_id || null,
     });
   };
 
@@ -406,6 +412,17 @@ function ProductFormModal({ product, existingCategories, onSave, onClose, T, t, 
               {ws.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
+
+          {recipes.length > 0 && (
+            <div>
+              <label style={lbl}>🧪 {lang==='en'?'Linked recipe (for food cost calculation)':'Recette liée (calcul coût alimentaire)'}</label>
+              <select style={inp} value={form.recipe_id || ''} onChange={e=>setForm(f=>({...f,recipe_id:e.target.value||null}))}>
+                <option value="">{lang==='en'?'— No recipe linked —':'— Aucune recette liée —'}</option>
+                {recipes.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
+              {form.recipe_id && <div style={{fontSize:10,color:'#22c55e',marginTop:3}}>✓ {lang==='en'?'Recipe linked — food cost will be calculated in Intelligence tab':'Recette liée — coût alimentaire calculé dans l\'onglet Intelligence'}</div>}
+            </div>
+          )}
 
           <div>
             <label style={lbl}>{T.prevProdNotes}</label>

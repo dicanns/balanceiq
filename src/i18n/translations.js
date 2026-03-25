@@ -20,6 +20,16 @@ export const FR = {
   priceAlertTitle:  "Alertes de prix fournisseurs",
   priceAlertMore:   (n) => `+${n} autres changements`,
   priceAlertHint:   "Onglet Recettes → Prix pour l'historique complet.",
+  actVsTheoTitle:   "Coût alimentaire réel vs théorique",
+  actVsTheoActual:  "Coût réel",
+  actVsTheoTheo:    "Théorique",
+  actVsTheoVariance:"Écart",
+  actVsTheoGood:    " — Excellent",
+  actVsTheoWarn:    " — À surveiller",
+  actVsTheoBad:     " — Attention",
+  actVsTheoNoRecipes: "Associez une recette à vos produits Prévisions pour calculer le coût théorique. (Prévisions → modifier produit → Recette liée)",
+  actVsTheoNoSales: "Aucune vente enregistrée ce mois.",
+  actVsTheoHint:    "Basé sur les recettes liées. Plus vous associez de produits, plus le calcul est précis.",
 
   // ── CLOSE-OUT CHECKLIST ──
   checklistTitle:         "Liste de fermeture",
@@ -1743,6 +1753,16 @@ export const EN = {
   priceAlertTitle:  "Vendor price alerts",
   priceAlertMore:   (n) => `+${n} more changes`,
   priceAlertHint:   "Go to Recipes tab → Prices for full history.",
+  actVsTheoTitle:   "Actual vs Theoretical Food Cost",
+  actVsTheoActual:  "Actual cost",
+  actVsTheoTheo:    "Theoretical",
+  actVsTheoVariance:"Variance",
+  actVsTheoGood:    " — Excellent",
+  actVsTheoWarn:    " — Monitor",
+  actVsTheoBad:     " — Investigate",
+  actVsTheoNoRecipes: "Link a recipe to your Forecasting products to calculate theoretical cost. (Forecasting → edit product → Linked recipe)",
+  actVsTheoNoSales: "No sales recorded this month.",
+  actVsTheoHint:    "Based on linked recipes. Link more products for better accuracy.",
 
   // ── CLOSE-OUT CHECKLIST ──
   checklistTitle:         "Close-out Checklist",
