@@ -9430,11 +9430,6 @@ export default function App(){
     }
   },[syncStatus]);
 
-  // ── SYSTEM TRAY: update tooltip with today's sales ────────────────────────
-  useEffect(()=>{
-    if(!window.api?.tray?.updateSales)return;
-    if(today.venteNet>0){window.api.tray.updateSales({sales:fmt(today.venteNet),date:selectedDate}).catch(()=>{});}
-  },[today.venteNet,selectedDate]);
 
   const toggleChecklistEntry=useCallback(async(templateId,completed,completedBy='')=>{
     const entry={template_id:templateId,date:selectedDate,completed:completed?1:0,completed_by:completedBy||null,completed_at:completed?new Date().toISOString():null,notes:null};
@@ -9605,6 +9600,12 @@ export default function App(){
 
   const today=computeDay(selectedDate);const d=new Date(selectedDate+"T12:00:00");const holiday=getHol(d);const raw=getLR(selectedDate);const cashes=raw.cashes;const emps=raw.employees;
   const isDayComplete=today.anyData&&today.allBal&&raw.hamEnd!=null&&raw.hotEnd!=null;
+
+  // ── SYSTEM TRAY: update tooltip with today's sales ────────────────────────
+  useEffect(()=>{
+    if(!window.api?.tray?.updateSales)return;
+    if(today.venteNet>0){window.api.tray.updateSales({sales:fmt(today.venteNet),date:selectedDate}).catch(()=>{});}
+  },[today.venteNet,selectedDate]);
   const isClosed=!!closedDays[selectedDate];
 
   // Count unclosed days this week that have data
