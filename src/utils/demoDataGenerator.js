@@ -736,12 +736,61 @@ export async function loadDemoData(_lang = 'fr') {
     // ——— Enable prévisions ———
     const apiConfig = JSON.parse((await api.storage.get('dicann-api-config'))?.value || '{}');
     apiConfig.previsionsEnabled = true;
+    apiConfig.demoMode = true;
     await api.storage.set('dicann-api-config', JSON.stringify(apiConfig));
     await api.storage.set('balanceiq-previsions-enabled', JSON.stringify(true));
 
     return { success: true, message: 'Données démo chargées avec succès.' };
   } catch (err) {
     console.error('[demoDataGenerator] Error:', err);
+    return { success: false, message: err?.message || String(err) };
+  }
+}
+
+export async function clearDemoData() {
+  const api = window.api;
+  try {
+    // Clear daily data keys that have demo prefix in day data
+    const v7Raw = await api.storage.get('dicann-v7');
+    const v7 = JSON.parse(v7Raw?.value || '{}');
+    // Remove any dates where the data was demo-generated (has demo-cashier IDs)
+    const demoKeys = Object.keys(v7).filter(k => {
+      const d = v7[k];
+      return d?.caisses?.some?.(c => c?.id?.startsWith?.('demo-cashier'));
+    });
+    demoKeys.forEach(k => delete v7[k]);
+    await api.storage.set('dicann-v7', JSON.stringify(v7));
+
+    // Clear P&L months that were demo-generated
+    const allPLKeys = Object.keys(v7); // won't help; iterate known demo months
+    const demoMonths = ['2025-12','2026-01','2026-02','2026-03'];
+    for (const m of demoMonths) {
+      await api.storage.set(`dicann-pl-${m}`, JSON.stringify({}));
+    }
+
+    // Clear Prévisions SQLite tables
+    if (api.forecast) {
+      // Products
+      const prods = await api.forecast.products.list();
+      for (const p of (prods || [])) {
+        if (p.id?.startsWith('demo-prev-')) await api.forecast.products.delete(p.id);
+      }
+      // Daily sales
+      const sales = await api.forecast.sales.getRange?.('2025-01-01', '2026-12-31') || [];
+      for (const s of sales) {
+        if (s.id?.startsWith('demo-sale-')) await api.forecast.sales.delete?.(s.id);
+      }
+    }
+
+    // Clear demo mode flag
+    const apiConfigRaw = await api.storage.get('dicann-api-config');
+    const apiConfig = JSON.parse(apiConfigRaw?.value || '{}');
+    delete apiConfig.demoMode;
+    await api.storage.set('dicann-api-config', JSON.stringify(apiConfig));
+
+    return { success: true, message: 'Données démo effacées.' };
+  } catch (err) {
+    console.error('[clearDemoData] Error:', err);
     return { success: false, message: err?.message || String(err) };
   }
 }

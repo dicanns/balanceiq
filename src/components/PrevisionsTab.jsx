@@ -2,6 +2,35 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import * as XLSX from 'xlsx';
 import { trackEvent } from '../services/telemetry.js';
 
+// ── Tooltip component ─────────────────────────────────────────────────────────
+function PrevTip({ text, children, align = 'center' }) {
+  const [show, setShow] = useState(false);
+  if (!text) return children;
+  const hPos = align === 'left' ? { left: 0, transform: 'none' } : align === 'right' ? { right: 0, left: 'auto', transform: 'none' } : { left: '50%', transform: 'translateX(-50%)' };
+  const arrowHPos = align === 'left' ? { left: 10, transform: 'none' } : align === 'right' ? { right: 10, left: 'auto', transform: 'none' } : { left: '50%', transform: 'translateX(-50%)' };
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
+      onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
+      {children}
+      {show && (
+        <span style={{ position: 'absolute', bottom: 'calc(100% + 6px)', ...hPos, background: '#1a1d27', color: '#e5e7eb', fontSize: 11, padding: '8px 11px', borderRadius: 6, whiteSpace: 'normal', width: 260, lineHeight: 1.5, boxShadow: '0 4px 16px rgba(0,0,0,0.35)', zIndex: 99999, pointerEvents: 'none', border: '1px solid rgba(255,255,255,0.08)', textAlign: 'left', fontWeight: 400 }}>
+          {text}
+          <span style={{ position: 'absolute', top: '100%', ...arrowHPos, borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderTop: '5px solid #1a1d27', display: 'block', width: 0, height: 0 }} />
+        </span>
+      )}
+    </span>
+  );
+}
+
+// Small ⓘ icon helper
+function TipIcon({ text, align = 'center' }) {
+  return (
+    <PrevTip text={text} align={align}>
+      <span style={{ marginLeft: 4, fontSize: 11, color: '#9ca3af', cursor: 'help', lineHeight: 1, userSelect: 'none' }}>ⓘ</span>
+    </PrevTip>
+  );
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function uuid() { return crypto.randomUUID(); }
@@ -443,7 +472,9 @@ function CellDetailPopover({ product, dateStr, result, weatherMap, T, t, lang, o
         <div style={{fontSize:11,color:t.textMuted,marginBottom:12}}>{formatDateFull(dateStr, lang)}</div>
         <div style={{fontSize:28,fontWeight:800,color:'#f97316',marginBottom:10,lineHeight:1}}>{result.prediction}</div>
         <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:12}}>
-          <span style={{fontSize:10,fontWeight:700,color:confColors[result.confidence],background:`${confColors[result.confidence]}22`,border:`1px solid ${confColors[result.confidence]}44`,borderRadius:8,padding:'2px 8px'}}>{confLabels[result.confidence]}</span>
+          <PrevTip text={lang==='en'?'Confidence level. High = 85%+ accuracy based on consistent patterns. Medium = learning, ~70% accurate. Low = fewer than 7 days of data. Below 60%, treat as a rough estimate.':'Niveau de confiance. Élevée = 85%+ de précision avec des patterns réguliers. Moyenne = en apprentissage, ~70%. Faible = moins de 7 jours de données. En dessous de 60%, c\'est une estimation approximative.'}>
+            <span style={{fontSize:10,fontWeight:700,color:confColors[result.confidence],background:`${confColors[result.confidence]}22`,border:`1px solid ${confColors[result.confidence]}44`,borderRadius:8,padding:'2px 8px',cursor:'help'}}>{confLabels[result.confidence]}</span>
+          </PrevTip>
           <span style={{fontSize:11,color:t.textMuted}}>{T.prevDataPoints(result.dataPoints)}</span>
         </div>
         <div style={{borderTop:`1px solid ${t.cardBorder}`,paddingTop:10,fontSize:12,color:t.textSub,lineHeight:2}}>
@@ -654,7 +685,10 @@ function ProductsView({ products, onSaveProduct, T, t, lang }) {
     <div>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12,gap:8,flexWrap:'wrap'}}>
         <div>
-          <div style={{fontSize:13,fontWeight:700,color:'inherit'}}>{T.prevProdTitle}</div>
+          <div style={{fontSize:13,fontWeight:700,color:'inherit',display:'flex',alignItems:'center'}}>
+            {T.prevProdTitle}
+            <TipIcon text={lang==='en'?'These products are tracked daily. Add each item you regularly produce. The system tracks sales and starts predicting after 7 days of data.':'Ces produits sont suivis quotidiennement. Ajoutez chaque item que vous produisez régulièrement. Le système suit les ventes et commence à prédire après 7 jours de données.'} align="left"/>
+          </div>
           <div style={{fontSize:11,opacity:0.6,marginTop:2}}>{T.prevProdDesc}</div>
         </div>
         <button onClick={()=>{setEditing(null);setShowForm(true);}} style={{padding:'7px 14px',borderRadius:7,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:12,fontWeight:600,whiteSpace:'nowrap'}}>{T.prevProdNew}</button>
@@ -766,7 +800,10 @@ function ManualEntryView({ products, selectedDate, setSelectedDate, salesByDate,
   return (
     <div>
       <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14,flexWrap:'wrap'}}>
-        <div style={{fontSize:13,fontWeight:700}}>{T.prevManualTitle}<span style={{color:'#f97316'}}>{formatDateFull(selectedDate, lang)}</span></div>
+        <div style={{fontSize:13,fontWeight:700,display:'flex',alignItems:'center',gap:2}}>
+          {T.prevManualTitle}<span style={{color:'#f97316'}}>{formatDateFull(selectedDate, lang)}</span>
+          <TipIcon text={lang==='en'?'Enter daily quantities sold for each product. To automate this import, connect your POS (Square, Clover, Shopify) in Config → Integrations. The more complete your data, the more accurate predictions will be.':'Entrez les quantités vendues chaque jour par produit. Pour automatiser, connectez votre POS (Square, Clover, Shopify) dans Config → Intégrations. Des données complètes = prédictions précises.'} align="left"/>
+        </div>
         <input type="date" value={selectedDate} onChange={e=>setSelectedDate(e.target.value)}
           style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:'inherit',fontSize:12,padding:'4px 8px',outline:'none',fontFamily:"'Outfit',sans-serif"}}/>
       </div>
@@ -917,7 +954,10 @@ function CSVImportView({ products, onImported, savedFormats, onSaveFormat, T, t,
 
   return (
     <div>
-      <div style={{fontSize:13,fontWeight:700,marginBottom:12}}>{T.prevImportTitle}</div>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:12,display:'flex',alignItems:'center',gap:2}}>
+        {T.prevImportTitle}
+        <TipIcon text={lang==='en'?'Upload a CSV or Excel export from your POS (or any spreadsheet). Map columns once and save the format — future imports will use it automatically. Connect your POS in Config → Integrations to automate daily imports.':'Téléversez un CSV ou Excel exporté de votre POS (ou tout tableur). Mappez les colonnes une fois et sauvegardez le format — les imports futurs l\'utiliseront automatiquement. Connectez votre POS dans Config → Intégrations pour automatiser les imports.'} align="left"/>
+      </div>
 
       {/* POS Import section */}
       <div style={{marginBottom:14,padding:'10px 12px',background:t.section,borderRadius:7,border:`1px solid ${t.cardBorder}`}}>
@@ -1059,7 +1099,10 @@ function AlertsView({ products, allSales, T, lang }) {
 
   return (
     <div>
-      <div style={{fontSize:13,fontWeight:700,marginBottom:12}}>{T.prevSubAlerts}</div>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:12,display:'flex',alignItems:'center',gap:2}}>
+        {T.prevSubAlerts}
+        <TipIcon text={lang==='en'?'Automatic observations from the learning engine, based on your actual data. Stockout alerts mean you ran out on a given day — the system will adjust the prediction upward. Overproduction alerts mean you consistently made too much.':'Observations automatiques du moteur d\'apprentissage. Les alertes de rupture indiquent que vous avez manqué de stock — le système ajuste la prédiction à la hausse. Les alertes de surproduction indiquent une production excessive récurrente.'} align="left"/>
+      </div>
       {total === 0 && alerts.optimized.length === 0 && (
         <div style={{textAlign:'center',padding:'24px 0',fontSize:12,opacity:0.5}}>{T.prevNoAlerts}</div>
       )}
@@ -1560,7 +1603,10 @@ function ProductionListView({ products, allSales, weatherMap, learnedPatterns = 
 
   return (
     <div>
-      <div style={{fontSize:13,fontWeight:700,marginBottom:12}}>{T.prevListTitle}</div>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:12,display:'flex',alignItems:'center',gap:2}}>
+        {T.prevListTitle}
+        <TipIcon text={lang==='en'?'Your printable list of what to prepare today. You can adjust quantities before printing — the system records your adjustments to refine future predictions.':'Liste imprimable de ce qu\'il faut préparer aujourd\'hui. Vous pouvez ajuster les quantités avant d\'imprimer — le système enregistre vos ajustements pour affiner les futures prédictions.'} align="left"/>
+      </div>
 
       <div style={{display:'flex',gap:8,marginBottom:10,flexWrap:'wrap',alignItems:'center'}}>
         <span style={{fontSize:11,opacity:0.6}}>{T.prevListRange}:</span>
@@ -1885,70 +1931,6 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
     }
   };
 
-  // ── Sample data seeding (demo only) ──────────────────────────────────────────
-  const seedSampleData = async () => {
-    // 5 products typical of a QSR / burger restaurant
-    const sampleProds = [
-      { id: uuid(), name: lang==='en'?'Hamburger Buns':'Pains à hamburger',   category: lang==='en'?'Bread':'Pain',      base_quantity:80,  shelf_life_days:1, weather_sensitivity: 0, active:1, notes:'' },
-      { id: uuid(), name: lang==='en'?'Hot Dog Buns':'Pains à hot-dog',        category: lang==='en'?'Bread':'Pain',      base_quantity:30,  shelf_life_days:1, weather_sensitivity: 0, active:1, notes:'' },
-      { id: uuid(), name: lang==='en'?'Milkshake':'Milkshake',                 category: lang==='en'?'Drinks':'Boissons', base_quantity:25,  shelf_life_days:1, weather_sensitivity: 2, active:1, notes:'' },
-      { id: uuid(), name: lang==='en'?'Beef Patties':'Galettes de bœuf',       category: lang==='en'?'Meats':'Viandes',   base_quantity:90,  shelf_life_days:2, weather_sensitivity: 1, active:1, notes:'' },
-      { id: uuid(), name: lang==='en'?'Poutine Sauce':'Sauce poutine',         category: lang==='en'?'Sauces':'Sauces',   base_quantity:15,  shelf_life_days:3, weather_sensitivity:-1, active:1, notes:'' },
-    ];
-    for (const p of sampleProds) await window.api.forecast.products.upsert(p);
-
-    // 14 days of sales: March 1–14, 2026
-    // Week 1 (Mar 1–7) slightly lower; Week 2 (Mar 8–14) slightly higher — shows upward trend
-    // [hamburger, hotdog, milkshake, patty, sauce] — [made, sold, stockout]
-    const salesW1 = {
-      sun: [[75,64,0],[28,19,0],[22,13,0],[85,70,0],[15,11,0]],
-      mon: [[78,51,0],[28,13,0],[18,10,0],[88,57,0],[14, 7,0]],
-      tue: [[78,65,0],[28,19,0],[18,12,0],[88,73,0],[14, 9,0]],
-      wed: [[78,67,0],[28,21,0],[18,14,0],[88,75,0],[14,11,0]],
-      thu: [[78,71,0],[28,23,0],[18,16,0],[88,79,0],[14,12,0]],
-      fri: [[82,78,0],[28,25,0],[20,18,0],[88,81,0],[14,13,0]],
-      sat: [[78,75,1],[33,27,0],[24,17,0],[88,81,0],[19,16,0]],
-    };
-    const salesW2 = {
-      sun: [[75,68,0],[30,22,0],[25,16,0],[90,76,0],[15,12,0]],
-      mon: [[80,56,0],[30,16,0],[20,13,0],[90,61,0],[15, 9,0]],
-      tue: [[80,71,0],[30,23,0],[20,15,0],[90,79,0],[15,11,0]],
-      wed: [[80,73,0],[30,25,0],[20,17,0],[90,81,0],[15,13,0]],
-      thu: [[80,76,0],[30,27,0],[20,19,0],[90,83,0],[15,14,0]],
-      fri: [[85,83,0],[32,29,0],[22,21,0],[92,86,0],[15,15,0]],
-      sat: [[80,80,1],[35,31,0],[26,21,0],[92,86,0],[20,19,0]],
-    };
-    // March 1=Sun, 7=Sat, 8=Sun, 14=Sat
-    const allDays = [
-      { date:'2026-03-01', m:salesW1, dow:'sun' },
-      { date:'2026-03-02', m:salesW1, dow:'mon' },
-      { date:'2026-03-03', m:salesW1, dow:'tue' },
-      { date:'2026-03-04', m:salesW1, dow:'wed' },
-      { date:'2026-03-05', m:salesW1, dow:'thu' },
-      { date:'2026-03-06', m:salesW1, dow:'fri' },
-      { date:'2026-03-07', m:salesW1, dow:'sat' },
-      { date:'2026-03-08', m:salesW2, dow:'sun' },
-      { date:'2026-03-09', m:salesW2, dow:'mon' },
-      { date:'2026-03-10', m:salesW2, dow:'tue' },
-      { date:'2026-03-11', m:salesW2, dow:'wed' },
-      { date:'2026-03-12', m:salesW2, dow:'thu' },
-      { date:'2026-03-13', m:salesW2, dow:'fri' },
-      { date:'2026-03-14', m:salesW2, dow:'sat' },
-    ];
-    for (const day of allDays) {
-      const matrix = day.m[day.dow];
-      for (let i = 0; i < sampleProds.length; i++) {
-        const [made, sold, stockout] = matrix[i];
-        await window.api.forecast.sales.upsert({
-          id: uuid(), product_id: sampleProds[i].id, date: day.date,
-          quantity_made: made, quantity_sold: sold, quantity_remaining: made - sold,
-          stockout, source: 'manual',
-        });
-      }
-    }
-    await loadProducts();
-    await loadSales();
-  };
 
   const activeProducts = useMemo(() => products.filter(p=>p.active), [products]);
 
@@ -2018,8 +2000,98 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
     { id:'ai',         label: T.prevSubAI, isPro: true },
   ];
 
+  const fr = lang !== 'en';
+  const [howOpen, setHowOpen] = useState(false);
+
+  const HOW_IT_WORKS = {
+    fr: [
+      '1. Ajoutez les produits que vous vendez (hamburgers, croissants, café, etc.)',
+      '2. Chaque jour, entrez combien vous avez vendu de chaque produit',
+      '3. Après 7 jours, le système commence à prédire la demande',
+      '4. Après 30 jours, les prédictions deviennent fiables',
+      '5. Imprimez la liste de production chaque matin avant le service',
+    ],
+    en: [
+      '1. Add the products you sell (burgers, croissants, coffee, etc.)',
+      '2. Each day, enter how much you sold of each product',
+      '3. After 7 days, the system starts predicting demand',
+      '4. After 30 days, predictions become reliable',
+      '5. Print the production list each morning before service',
+    ],
+    noteFr: 'Le système s\'améliore seul — il apprend vos patterns par jour de semaine, ajuste selon la météo et les tendances. Si vous connectez votre POS, les ventes s\'importent automatiquement.',
+    noteEn: 'The system improves on its own — it learns your patterns by day of week, adjusts for weather and trends. Connect your POS to import sales automatically.',
+    tipFr: 'Astuce\u00a0: Commencez avec vos 5\u201310 produits principaux. Vous n\'avez pas besoin de tout suivre dès le début.',
+    tipEn: 'Tip: Start with your 5\u201310 main products. You don\'t need to track everything from day one.',
+  };
+
+  const TIPS = {
+    header: fr
+      ? 'Les Prévisions utilisent vos données de ventes passées pour prédire combien de chaque produit vous devriez produire. Le système apprend automatiquement en arrière-plan — plus vous entrez de données, plus les prédictions deviennent précises.'
+      : 'Forecasting uses your past sales data to predict how much of each product you should produce. The system learns automatically in the background — the more data you enter, the more accurate predictions become.',
+    trackedProducts: fr
+      ? 'Ces produits sont suivis quotidiennement. Ajoutez chaque item que vous produisez régulièrement. Le système suit les ventes et commence à prédire après 7 jours de données.'
+      : 'These products are tracked daily. Add each item you regularly produce. The system tracks sales and starts predicting after 7 days of data.',
+    addProduct: fr
+      ? 'Entrez le nom du produit tel que vous l\'appelez en cuisine. Ajoutez un coût unitaire et un prix de vente pour activer le suivi financier (gaspillage en $, ruptures en $).'
+      : 'Enter the product name as you call it in your kitchen. Add a unit cost and sell price to enable financial tracking (waste in $, stockouts in $).',
+    prediction: fr
+      ? 'Ce que le système recommande de produire, basé sur: le jour de la semaine, les tendances récentes, la météo et les patterns saisonniers. Ce chiffre s\'affine chaque semaine.'
+      : 'What the system recommends producing, based on: day of week, recent trends, weather, and seasonal patterns. This number gets more accurate each week.',
+    confidence: fr
+      ? 'Niveau de confiance de la prédiction. Plus le % est élevé, plus le système est certain. La confiance augmente avec plus de données. En dessous de 60%, c\'est une estimation approximative.'
+      : 'Prediction confidence level. The higher the %, the more certain the system is. Confidence increases with more data. Below 60%, the prediction is a rough estimate.',
+    productionList: fr
+      ? 'Liste imprimable de ce qu\'il faut préparer aujourd\'hui. Vous pouvez ajuster les quantités avant d\'imprimer — le système enregistre vos ajustements pour affiner les futures prédictions.'
+      : 'Printable list of what to prepare today. You can adjust quantities before printing — the system records your adjustments to refine future predictions.',
+    learningEngine: fr
+      ? 'Le système détecte automatiquement des patterns dans vos données\u00a0:\n• Jour de semaine (lundi = lent, vendredi = fort)\n• Météo (glaces +30% quand il fait chaud)\n• Tendances (produit en hausse/baisse)\n• Gaspillage (surproduction récurrente)\n• Ruptures de stock (manque chaque samedi)\nRien à configurer — tout s\'apprend seul.'
+      : 'The system automatically detects patterns:\n• Day of week (Monday = slow, Friday = busy)\n• Weather (ice cream +30% on hot days)\n• Trends (product trending up/down)\n• Waste (recurring overproduction)\n• Stockouts (ran out every Saturday)\nNothing to configure — it all learns on its own.',
+    weather: fr
+      ? 'Le système récupère les prévisions météo de votre région et les corrèle avec vos ventes passées. Après quelques semaines, il ajuste automatiquement les prédictions selon la météo du jour.'
+      : 'The system fetches weather forecasts for your area and correlates them with past sales. After a few weeks, it automatically adjusts predictions based on today\'s weather.',
+    waste: fr
+      ? 'Enregistrez ce que vous avez jeté et pourquoi (surproduction, expiré, etc.). Le système utilise ces données pour affiner les prédictions et calculer l\'impact en dollars par mois.'
+      : 'Record what you threw away and why (overproduction, expired, etc.). The system uses this data to refine predictions and calculate the monthly dollar impact.',
+    stockout: fr
+      ? 'Quand un produit est épuisé avant la fin du service, enregistrez-le. Le système calcule le revenu perdu estimé et augmente la prédiction pour la prochaine fois.'
+      : 'When a product runs out before end of service, record it. The system calculates estimated lost revenue and increases the prediction for next time.',
+    financialImpact: fr
+      ? 'Résumé mensuel en dollars\u00a0: gaspillage, ruptures, et économies potentielles si vous suivez les prédictions. Nécessite le coût unitaire et le prix de vente pour chaque produit.'
+      : 'Monthly dollar summary: waste, stockouts, and potential savings if you follow predictions. Requires unit cost and sell price for each product.',
+    accuracy: fr
+      ? 'Compare les prédictions du système avec vos ventes réelles sur 30 jours. 85%+ = excellent. En dessous de 70%, le système a besoin de plus de données ou vos ventes sont très variables.'
+      : 'Compares system predictions with your actual sales over 30 days. 85%+ = excellent. Below 70%, the system needs more data or your sales are highly variable.',
+    insights: fr
+      ? 'Observations automatiques du moteur d\'apprentissage, basées sur vos données réelles. Les badges indiquent le nombre de nouveaux insights non lus. Cliquez pour voir le détail et l\'action recommandée.'
+      : 'Automatic observations from the learning engine, based on your actual data. Badges show unread count. Click to see details and the recommended action.',
+    aiAnalysis: fr
+      ? 'L\'IA analyse vos données de prévision et vous donne une explication en langage clair\u00a0: quels produits montent ou descendent, pourquoi, et quoi faire. Chaque analyse utilise 1 de vos 50 requêtes mensuelles (Pro).'
+      : 'AI analyzes your forecast data and gives you a plain-language explanation: which products are trending up or down, why, and what to do. Each analysis uses 1 of your 50 monthly queries (Pro).',
+    salesEntry: fr
+      ? 'Entrez ici les quantités vendues chaque jour par produit. Pour automatiser cet import, connectez votre POS (Square, Clover, Shopify) dans Config → Intégrations. Plus vos données sont complètes, plus les prédictions seront précises.'
+      : 'Enter daily quantities sold for each product. To automate this import, connect your POS (Square, Clover, Shopify) in Config → Integrations. The more complete your data, the more accurate predictions will be.',
+  };
+
   return (
     <div style={{display:'flex',flexDirection:'column',gap:0}}>
+      {/* How it works collapsible */}
+      <div style={{marginBottom:12}}>
+        <button onClick={()=>setHowOpen(o=>!o)} style={{background:'none',border:'none',color:t.textMuted,cursor:'pointer',fontSize:11.5,fontWeight:600,display:'flex',alignItems:'center',gap:4,padding:'2px 0',fontFamily:"'DM Sans','Outfit',sans-serif"}}>
+          <span style={{fontSize:10,display:'inline-block',transform:howOpen?'rotate(90deg)':'rotate(0deg)',transition:'transform 0.15s'}}>▶</span>
+          {fr ? 'Comment fonctionnent les Prévisions ?' : 'How does Forecasting work?'}
+        </button>
+        {howOpen && (
+          <div style={{marginTop:10,background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:8,padding:'12px 14px',fontSize:11.5,lineHeight:1.7,color:t.textSub}}>
+            <ol style={{margin:0,padding:'0 0 0 16px'}}>
+              {HOW_IT_WORKS[fr?'fr':'en'].map((step,i)=><li key={i} style={{marginBottom:4}}>{step}</li>)}
+            </ol>
+            <p style={{marginTop:10,marginBottom:4,color:t.textSub}}>{fr?HOW_IT_WORKS.noteFr:HOW_IT_WORKS.noteEn}</p>
+            <div style={{marginTop:8,background:'rgba(249,115,22,0.07)',border:'1px solid rgba(249,115,22,0.2)',borderRadius:5,padding:'6px 10px',fontSize:11,color:'#f97316'}}>
+              💡 {fr?HOW_IT_WORKS.tipFr:HOW_IT_WORKS.tipEn}
+            </div>
+          </div>
+        )}
+      </div>
       {/* Sub-nav */}
       <div style={{display:'flex',gap:0,borderBottom:`1px solid ${t.cardBorder}`,marginBottom:16,overflowX:'auto'}}>
         {subTabs.map(tab=>{
@@ -2085,12 +2157,12 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
             return (
               <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:14}}>
                 {[
-                  {icon:'🗑️',label:lang==='en'?'Monthly Waste':'Gaspillage du mois',val:`$${mWaste.toFixed(0)}`,trend:wTrend,goodDown:true},
-                  {icon:'📉',label:lang==='en'?'Estimated Stockouts':'Ruptures estimées',val:`$${mStock.toFixed(0)}`,trend:sTrend,goodDown:true},
-                  {icon:'💰',label:lang==='en'?'Potential Improvement':'Amélioration potentielle',val:`$${potential.toFixed(0)}/mo`,trend:null,highlight:true},
+                  {icon:'🗑️',label:lang==='en'?'Monthly Waste':'Gaspillage du mois',val:`$${mWaste.toFixed(0)}`,trend:wTrend,goodDown:true,tip:TIPS.waste},
+                  {icon:'📉',label:lang==='en'?'Estimated Stockouts':'Ruptures estimées',val:`$${mStock.toFixed(0)}`,trend:sTrend,goodDown:true,tip:TIPS.stockout},
+                  {icon:'💰',label:lang==='en'?'Potential Improvement':'Amélioration potentielle',val:`$${potential.toFixed(0)}/mo`,trend:null,highlight:true,tip:TIPS.financialImpact},
                 ].map((c,i)=>(
                   <div key={i} style={{padding:'12px 14px',background:c.highlight?'rgba(249,115,22,0.08)':t.section,border:`1px solid ${c.highlight?'rgba(249,115,22,0.3)':t.cardBorder}`,borderRadius:8}}>
-                    <div style={{fontSize:10,opacity:0.6,marginBottom:3}}>{c.icon} {c.label}</div>
+                    <div style={{fontSize:10,opacity:0.6,marginBottom:3,display:'flex',alignItems:'center',gap:2}}>{c.icon} {c.label}{c.tip&&<TipIcon text={c.tip} align={i===2?'right':'center'}/>}</div>
                     <div style={{fontSize:18,fontWeight:800,color:c.highlight?'#f97316':t.text}}>{c.val}</div>
                     {c.trend!=null&&<div style={{fontSize:10,marginTop:2,color:((c.goodDown&&c.trend<0)||(!c.goodDown&&c.trend>0))?'#22c55e':'#ef4444'}}>{c.trend>=0?'↑':'↓'}{Math.abs(Math.round(c.trend*100))}% vs {lang==='en'?'last month':'mois dernier'}</div>}
                   </div>
@@ -2103,8 +2175,9 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
           {insights.filter(i=>!i.read).length > 0 && (
             <div style={{marginBottom:14,padding:'12px 14px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:8}}>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
-                <div style={{fontSize:12,fontWeight:700}}>
+                <div style={{fontSize:12,fontWeight:700,display:'flex',alignItems:'center',gap:2}}>
                   📊 {insights.filter(i=>!i.read).length} {lang==='en'?'new insights this week':'nouveaux insights cette semaine'}
+                  <TipIcon text={lang==='en'?'Automatic observations from the learning engine, based on your actual data — not guesses. Each insight shows the recommended action and estimated dollar impact.':'Observations automatiques du moteur d\'apprentissage, basées sur vos données réelles. Chaque insight indique l\'action recommandée et l\'impact financier estimé.'} align="right"/>
                 </div>
                 <button onClick={async()=>{await window.api.forecast.insights.markAllRead().catch(()=>{});await loadInsights();}}
                   style={{fontSize:10,background:'none',border:'none',cursor:'pointer',opacity:0.55,color:t.textSub}}>
@@ -2139,9 +2212,11 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
             <span style={{fontSize:13,fontWeight:700,flex:1}}>{T.prevWeekOf(formatDateShort(currentWeekMonday, lang))} → {formatDateShort(addDays(currentWeekMonday,6), lang)}</span>
             <button onClick={()=>setCurrentWeekMonday(m=>addDays(m,7))} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,padding:'5px 10px',cursor:'pointer',fontSize:13}}>→</button>
             <button onClick={()=>setCurrentWeekMonday(getMondayOf(toDateStr(new Date())))} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:'#f97316',padding:'5px 10px',cursor:'pointer',fontSize:11,fontWeight:600}}>{T.prevToday}</button>
-            <button onClick={()=>{setSubView('ai');setSelectedProduct(null);}} style={{padding:'5px 12px',borderRadius:6,border:'1px solid rgba(167,139,250,0.3)',background:'rgba(167,139,250,0.08)',color:'#a78bfa',cursor:'pointer',fontSize:11,fontWeight:600}}>
-              ✨ {lang==='en'?'AI Analysis':'Analyse IA'}{!canUse('aiAnalysis')&&<span style={{marginLeft:4,fontSize:8,verticalAlign:'middle',padding:'1px 4px',borderRadius:3,background:'rgba(167,139,250,0.2)'}}>PRO</span>}
-            </button>
+            <PrevTip text={lang==='en'?'AI analyzes your forecast data and gives you a plain-language report: which products are trending up/down, why, and what to do. Uses 1 of your 50 monthly queries (Pro).':'L\'IA analyse vos données et vous donne un rapport en langage clair\u00a0: quels produits montent/descendent, pourquoi, et quoi faire. Utilise 1 de vos 50 requêtes mensuelles (Pro).'} align="right">
+              <button onClick={()=>{setSubView('ai');setSelectedProduct(null);}} style={{padding:'5px 12px',borderRadius:6,border:'1px solid rgba(167,139,250,0.3)',background:'rgba(167,139,250,0.08)',color:'#a78bfa',cursor:'pointer',fontSize:11,fontWeight:600}}>
+                ✨ {lang==='en'?'AI Analysis':'Analyse IA'}{!canUse('aiAnalysis')&&<span style={{marginLeft:4,fontSize:8,verticalAlign:'middle',padding:'1px 4px',borderRadius:3,background:'rgba(167,139,250,0.2)'}}>PRO</span>}
+              </button>
+            </PrevTip>
           </div>
 
           {/* Inline alert summary */}
@@ -2169,7 +2244,12 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
               <thead>
                 {/* Weather row */}
                 <tr style={{background:t.section,borderBottom:`1px solid ${t.cardBorder}`}}>
-                  <th style={{textAlign:'left',padding:'6px 8px',fontSize:10,fontWeight:600,opacity:0.5,minWidth:100}}>{T.prevWeatherBar}</th>
+                  <th style={{textAlign:'left',padding:'6px 8px',fontSize:10,fontWeight:600,opacity:0.5,minWidth:100}}>
+                    <span style={{display:'inline-flex',alignItems:'center',gap:2}}>
+                      {T.prevWeatherBar}
+                      <TipIcon text={lang==='en'?'Weather data auto-fetched for your location. Click any day to override manually. The system correlates weather with your past sales to adjust predictions (e.g., rainy day = fewer customers).':'Données météo auto-récupérées pour votre région. Cliquez un jour pour l\'ajuster manuellement. Le système corrèle la météo avec vos ventes passées pour ajuster les prédictions.'} align="left"/>
+                    </span>
+                  </th>
                   {weekDates.map(date => {
                     const w = weatherMap[date];
                     const isManual = w?.source === 'manual';
@@ -2205,9 +2285,6 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
                   <tr>
                     <td colSpan={10} style={{textAlign:'center',padding:'30px 20px'}}>
                       <div style={{fontSize:12,opacity:0.5,marginBottom:10}}>{T.prevNoProducts}</div>
-                      <button onClick={seedSampleData} style={{padding:'6px 16px',borderRadius:6,border:'1px solid rgba(249,115,22,0.4)',background:'rgba(249,115,22,0.08)',color:'#f97316',cursor:'pointer',fontSize:11,fontWeight:600}}>
-                        {lang==='en'?'Load demo data':'Charger données démo'}
-                      </button>
                     </td>
                   </tr>
                 </tbody>
@@ -2313,7 +2390,7 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
             if (weeks.length < 2) return null;
             return (
               <div style={{padding:'10px 14px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:8,marginTop:14}}>
-                <div style={{fontSize:11,fontWeight:700,marginBottom:6}}>📊 {lang==='en'?'Forecast Accuracy':'Précision des prévisions'}</div>
+                <div style={{fontSize:11,fontWeight:700,marginBottom:6,display:'flex',alignItems:'center',gap:2}}>📊 {lang==='en'?'Forecast Accuracy':'Précision des prévisions'}<TipIcon text={TIPS.accuracy} align="right"/></div>
                 <div style={{display:'flex',gap:16,alignItems:'flex-end'}}>
                   {weeks.map(([wk,accs],i)=>{
                     const valid=accs.filter(v=>v!=null&&v>=0);

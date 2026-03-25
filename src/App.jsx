@@ -3,8 +3,13 @@ import React, { useState, useEffect, useCallback, useRef, useMemo, useContext, c
 const DocumentsTabLazy = lazy(() => import('./components/DocumentsTab.jsx'));
 const YearEndPackageLazy = lazy(() => import('./components/YearEndPackage.jsx'));
 const PrevisionsTabLazy = lazy(() => import('./components/PrevisionsTab.jsx'));
+const RecettesTabLazy          = lazy(() => import('./components/RecettesTab.jsx'));
+const WasteTabLazy             = lazy(() => import('./components/WasteTab.jsx'));
+const EcocontributionTabLazy   = lazy(() => import('./components/EcocontributionTab.jsx'));
+const TipPoolModal      = lazy(() => import('./components/TipPoolModal.jsx'));
 import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./config/features.js";
+import { buildFlashReportHTML } from "./services/flashReport.js";
 import * as XLSX from "xlsx";
 import { logCreate, logUpdate, logVoid, logCorrection, isFinancialField, promptCorrectionReason } from "./services/auditLogger.js";
 import { initCloudSync, signIn as cloudSignIn, signUp as cloudSignUp, signOut as cloudSignOut, schedulePush, onSyncStatus, onPlanChange, refreshPlan, getCloudOrgId, getCloudParentOrgId, getMyLinkedLocations } from "./services/cloudSync.js";
@@ -126,7 +131,7 @@ const DEFAULT_DOC_NUMS={prefix:"",soumission:1,commande:1,facture:1,creditNote:1
 function fmtDocNum(prefix,code,num){return`${prefix||""}${code}-${String(num).padStart(4,"0")}`;}
 
 const DEFAULT_SUPPLIERS=[]; // Fresh installs start blank — users add their own suppliers
-const DEFAULT_PLATFORMS=[{id:"doordash",name:"DoorDash",emoji:"🔴"},{id:"ubereats",name:"Uber Eats",emoji:"🟢"},{id:"skip",name:"Skip The Dishes",emoji:"🟠"}];
+const DEFAULT_PLATFORMS=[{id:"doordash",name:"DoorDash",emoji:"🔴",commissionRate:25},{id:"ubereats",name:"Uber Eats",emoji:"🟢",commissionRate:30},{id:"skip",name:"Skip The Dishes",emoji:"🟠",commissionRate:20}];
 const DEFAULT_SORTIE_CATS=[{id:"fournisseur_cash",name:"Fournisseur payé cash"},{id:"avance_employe",name:"Avance employé"},{id:"achats_divers",name:"Achats divers"},{id:"reparations",name:"Réparations"},{id:"autre",name:"Autre"}];
 const DEFAULT_CASH_LOCATIONS=[{id:"tills",name:"Tiroirs-caisses"},{id:"petty",name:"Petite caisse"},{id:"office",name:"Bureau / Office"}];
 const DEFAULT_ENCAISSE_CONFIG={sortieCategories:DEFAULT_SORTIE_CATS,cashLocations:DEFAULT_CASH_LOCATIONS};
@@ -159,13 +164,41 @@ const xlateWeather=(str,T_)=>{if(!str||!T_)return str;const map={"Ensoleillé":"
 function genDemo(){const data={};const base=new Date(2024,0,1);for(let i=0;i<366;i++){const d=new Date(base);d.setDate(d.getDate()+i);const dow=d.getDay(),isWe=dow===0||dow===6;const total=Math.max(800,Math.round((isWe?2800:1900)+Math.sin((d.getMonth()/12)*Math.PI)*400+(Math.random()-0.5)*600));data[dk(d)]={venteNet:total,hamUsed:Math.round((18+Math.random()*12)*(0.7+Math.random()*0.25)),hotUsed:Math.round((12+Math.random()*8)*(0.7+Math.random()*0.25))}}return data}
 
 // ── ATOMS ──
-function F({label,value,onChange,disabled,prefix,suffix,type="number",placeholder,wide,accent:ac,tabIndex:ti,warn,note}){
+function Tip({text,children,pos='top',align='center'}){
+  const [show,setShow]=useState(false);
+  if(!text)return children;
+  const above=pos==='top';
+  const hPos=align==='left'?{left:0,transform:'none'}:align==='right'?{right:0,left:'auto',transform:'none'}:{left:'50%',transform:'translateX(-50%)'};
+  const arrowHPos=align==='left'?{left:10,transform:'none'}:align==='right'?{right:10,left:'auto',transform:'none'}:{left:'50%',transform:'translateX(-50%)'};
+  return(
+    <span style={{position:'relative',display:'inline-flex',alignItems:'center'}}
+      onMouseEnter={()=>setShow(true)} onMouseLeave={()=>setShow(false)}>
+      {children}
+      {show&&(
+        <span style={{position:'absolute',[above?'bottom':'top']:'calc(100% + 6px)',...hPos,
+          background:'#1a1d27',color:'#e5e7eb',fontSize:11,padding:'6px 10px',borderRadius:6,
+          whiteSpace:'normal',width:220,lineHeight:1.45,
+          boxShadow:'0 4px 16px rgba(0,0,0,0.35)',zIndex:99999,pointerEvents:'none',
+          border:'1px solid rgba(255,255,255,0.08)',textAlign:'left',fontWeight:400}}>
+          {text}
+          <span style={{position:'absolute',[above?'top':'bottom']:'100%',...arrowHPos,
+            borderLeft:'5px solid transparent',borderRight:'5px solid transparent',
+            [above?'borderTop':'borderBottom']:'5px solid #1a1d27',display:'block',width:0,height:0}}/>
+        </span>
+      )}
+    </span>
+  );
+}
+
+function F({label,value,onChange,disabled,prefix,suffix,type="number",placeholder,wide,accent:ac,tabIndex:ti,warn,note,tooltip}){
   const t=useT();
   const [touched,setTouched]=useState(false);
   const border=disabled?`1px solid ${t.disabledBorder}`:ac?`1px solid rgba(${ac},0.25)`:`1px solid rgba(249,115,22,${value!=null&&value!==""?0.25:0.1})`;
   return(<div>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"3.5px 0",borderBottom:`1px solid ${t.divider}`,gap:4}}>
-      <span style={{fontSize:11.5,color:disabled?t.textDisabled:t.textSub,fontWeight:500,whiteSpace:"nowrap"}}>{label}</span>
+      <span style={{fontSize:11.5,color:disabled?t.textDisabled:t.textSub,fontWeight:500,whiteSpace:"nowrap"}}>
+        {tooltip?<Tip text={tooltip} align='left'>{label}<span style={{marginLeft:3,fontSize:10,color:'#9ca3af',cursor:'help'}}>ⓘ</span></Tip>:label}
+      </span>
       <div style={{display:"flex",alignItems:"center",gap:2}}>
         {prefix&&<span style={{fontSize:10.5,color:t.textDisabled}}>{prefix}</span>}
         <input type={type} inputMode={type==="number"?"decimal":"text"} placeholder={placeholder||""} value={value??""}
@@ -684,40 +717,81 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
 
       {platforms.map(platform=>{
         const pd=getPD(platform.id);const hasV=pd.ventes!=null;const hasD=pd.depot!=null;
-        const ecart=(hasV&&hasD)?pd.depot-pd.ventes:null;
-        const ecartPct=(ecart!=null&&pd.ventes>0)?(Math.abs(ecart)/pd.ventes*100):null;
+        const promo=pd.promo||0;
+        const rate=platform.commissionRate??25;
+        // Commission analysis
+        const expectedComm=hasV?Math.round(pd.ventes*rate/100*100)/100:null;
+        const actualComm=(hasV&&hasD)?Math.round((pd.ventes-pd.depot-promo)*100)/100:null;
+        const actualRate=(actualComm!=null&&pd.ventes>0)?actualComm/pd.ventes*100:null;
+        const overcharge=actualRate!=null&&actualRate>rate+1.5;
+        const netRevenue=(hasV&&hasD)?pd.depot+promo:null;
         const active=importPid===platform.id&&importStep!=='idle'&&importStep!=='done';
-        return(<div key={platform.id} style={{marginBottom:8,padding:10,borderRadius:7,background:t.section,border:`1px solid ${active?'rgba(56,189,248,0.35)':t.sectionBorder}`}}>
+        return(<div key={platform.id} style={{marginBottom:8,padding:10,borderRadius:7,background:t.section,border:`1px solid ${overcharge?'rgba(239,68,68,0.35)':active?'rgba(56,189,248,0.35)':t.sectionBorder}`}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
             <div style={{display:'flex',alignItems:'center',gap:6}}>
               <span style={{fontSize:12,fontWeight:700,color:t.text}}>{platform.emoji} {platform.name}</span>
               {lastImports[platform.id]&&<span style={{fontSize:9,color:t.textMuted}}>{T.delivLastImport(lastImports[platform.id])}</span>}
             </div>
             <div style={{display:'flex',gap:5,alignItems:'center'}}>
-              <button onClick={()=>{const urls={doordash:'https://www.doordash.com/merchant/financials/payouts',ubereats:'https://merchants.ubereats.com/manager/reports',skip:'https://restaurants.skipthedishes.com/'};const u=urls[platform.id];if(!u)return;if(portalIntroSeen.current){window.api.shell.openExternal(u);}else{setPortalIntro({platformId:platform.id,url:u});}}} style={{padding:"3px 9px",borderRadius:4,border:`1px solid rgba(249,115,22,0.25)`,background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontSize:10,fontWeight:600,whiteSpace:"nowrap"}}>{T.delivOpenPortal}</button>
-              <button onClick={e=>{e.stopPropagation();openImport(platform.id);}} style={{fontSize:9.5,padding:'2px 8px',borderRadius:4,border:'1px solid rgba(56,189,248,0.2)',background:'rgba(56,189,248,0.06)',color:'#38bdf8',cursor:'pointer',fontWeight:600,whiteSpace:'nowrap'}}>{T.livImportStatement}</button>
+              <Tip text={T.livOnlineReportTip}><button onClick={()=>{const urls={doordash:'https://www.doordash.com/merchant/financials/payouts',ubereats:'https://merchants.ubereats.com/manager/reports',skip:'https://restaurants.skipthedishes.com/'};const u=urls[platform.id];if(!u)return;if(portalIntroSeen.current){window.api.shell.openExternal(u);}else{setPortalIntro({platformId:platform.id,url:u});}}  } style={{padding:"3px 9px",borderRadius:4,border:`1px solid rgba(249,115,22,0.25)`,background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontSize:10,fontWeight:600,whiteSpace:"nowrap"}}>{T.delivOpenPortal}</button></Tip>
+              <Tip text={T.livImportStatementTip}><button onClick={e=>{e.stopPropagation();openImport(platform.id);}} style={{fontSize:9.5,padding:'2px 8px',borderRadius:4,border:'1px solid rgba(56,189,248,0.2)',background:'rgba(56,189,248,0.06)',color:'#38bdf8',cursor:'pointer',fontWeight:600,whiteSpace:'nowrap'}}>{T.livImportStatement}</button></Tip>
             </div>
           </div>
-          <div style={{display:'flex',gap:24,flexWrap:'wrap'}}>
-            <div style={{flex:'0 0 220px'}}><F label={T.livPlatformSales} value={pd.ventes} onChange={v=>updPD(platform.id,'ventes',v)} prefix="$"/></div>
-            <div style={{flex:'0 0 220px'}}><F label={T.livDepositReceived} value={pd.depot} onChange={v=>updPD(platform.id,'depot',v)} prefix="$"/></div>
+          <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
+            <div style={{flex:'1 1 160px',maxWidth:220}}><F label={T.livPlatformSales} value={pd.ventes} onChange={v=>updPD(platform.id,'ventes',v)} prefix="$" tooltip={T.livPlatformSalesTip}/></div>
+            <div style={{flex:'1 1 160px',maxWidth:220}}><F label={T.livDepositReceived} value={pd.depot} onChange={v=>updPD(platform.id,'depot',v)} prefix="$" tooltip={T.livDepositReceivedTip}/></div>
+            <div style={{flex:'1 1 140px',maxWidth:200}}><F label={T.livPromoAdj||"Promo / Ajust."} value={pd.promo||null} onChange={v=>updPD(platform.id,'promo',v)} prefix="$" tooltip={T.livPromoAdjTip||"Crédits promotionnels, ajustements d'erreurs ou rétrofacturations appliqués par la plateforme sur ce dépôt."}/></div>
           </div>
-          <div style={{marginTop:5,fontSize:11}}>
-            {ecart!=null?(<span style={{color:'#f97316',fontWeight:600,fontFamily:"'DM Mono',monospace"}}>Écart: {fmt(ecart)}{ecartPct!=null?` (${ecartPct.toFixed(1)}%)`:''}
-            </span>):hasV?(<span style={{color:t.textMuted}}>{T.livPending}</span>):null}
-          </div>
+          {/* Commission analysis */}
+          {(hasV||hasD)&&(
+            <div style={{marginTop:7,padding:'6px 8px',borderRadius:6,background:overcharge?'rgba(239,68,68,0.06)':'rgba(0,0,0,0.03)',border:`1px solid ${overcharge?'rgba(239,68,68,0.2)':t.innerBorder}`}}>
+              <div style={{display:'flex',gap:16,flexWrap:'wrap',fontSize:11}}>
+                <span style={{color:t.textMuted}}>
+                  {T.livExpectedComm||"Comm. attendue"}:&nbsp;
+                  <span style={{color:t.text,fontWeight:600,fontFamily:"'DM Mono',monospace"}}>{expectedComm!=null?`${fmt(expectedComm)} (${rate}%)`:'—'}</span>
+                </span>
+                {actualComm!=null&&(
+                  <span style={{color:overcharge?'#ef4444':t.textMuted}}>
+                    {T.livActualComm||"Comm. réelle"}:&nbsp;
+                    <span style={{fontWeight:600,fontFamily:"'DM Mono',monospace",color:overcharge?'#ef4444':t.text}}>{fmt(actualComm)} ({actualRate?.toFixed(1)}%)</span>
+                    {overcharge&&<span style={{marginLeft:6,fontWeight:700,color:'#ef4444'}}>⚠ {T.livOvercharge||"Surcharge"}</span>}
+                  </span>
+                )}
+                {netRevenue!=null&&(
+                  <span style={{color:t.textMuted}}>
+                    {T.livNetRevenue||"Revenu net"}:&nbsp;
+                    <span style={{fontWeight:700,fontFamily:"'DM Mono',monospace",color:'#16a34a'}}>{fmt(netRevenue)}</span>
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+          {!hasV&&hasD&&<div style={{marginTop:4,fontSize:10,color:t.textMuted}}>{T.livPending}</div>}
         </div>);
       })}
 
-      {platforms.length>0&&(<div style={{marginTop:4,padding:'8px 10px',borderRadius:7,background:t.reconNeutralBg,border:`1px solid ${t.reconNeutralBorder}`}}>
-        <div style={{fontSize:9.5,color:t.textMuted,fontWeight:700,textTransform:'uppercase',letterSpacing:0.7,marginBottom:4}}>Sommaire du jour — informatif</div>
-        <RR label={T.livTotalSales} value={totalVentes>0?totalVentes:null}/>
-        <RR label={T.livTotalDeposits} value={totalDepots>0?totalDepots:null}/>
-        {totalVentes>0&&totalDepots>0&&(<div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'3.5px 0',borderTop:`1px solid ${t.divider}`,marginTop:2}}>
-          <span style={{fontSize:11.5,color:t.textSub,fontWeight:500}}>Commission totale</span>
-          <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:'#f97316',fontWeight:700}}>{fmt(totalComm)} ({totalCommPct.toFixed(1)}%)</span>
-        </div>)}
-      </div>)}
+      {platforms.length>0&&(()=>{
+        const totalPromo=platforms.reduce((s,p)=>s+(getPD(p.id).promo||0),0);
+        const totalNet=totalDepots+totalPromo;
+        const anyOvercharge=platforms.some(p=>{const pd=getPD(p.id);if(!pd.ventes||!pd.depot)return false;const rate=p.commissionRate??25;const ac=(pd.ventes-pd.depot-(pd.promo||0))/pd.ventes*100;return ac>rate+1.5;});
+        return(<div style={{marginTop:4,padding:'8px 10px',borderRadius:7,background:t.reconNeutralBg,border:`1px solid ${anyOvercharge?'rgba(239,68,68,0.25)':t.reconNeutralBorder}`}}>
+          <div style={{fontSize:9.5,color:t.textMuted,fontWeight:700,textTransform:'uppercase',letterSpacing:0.7,marginBottom:4}}>Sommaire du jour — informatif</div>
+          <RR label={T.livTotalSales} value={totalVentes>0?totalVentes:null}/>
+          <RR label={T.livTotalDeposits} value={totalDepots>0?totalDepots:null}/>
+          {totalPromo!==0&&<RR label={T.livPromoAdj||"Promo / Ajust."} value={totalPromo}/>}
+          {totalVentes>0&&totalDepots>0&&(<>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'3.5px 0',borderTop:`1px solid ${t.divider}`,marginTop:2}}>
+              <span style={{fontSize:11.5,color:t.textSub,fontWeight:500}}>Commission totale</span>
+              <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:'#f97316',fontWeight:700}}>{fmt(totalComm)} ({totalCommPct.toFixed(1)}%)</span>
+            </div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'3.5px 0'}}>
+              <span style={{fontSize:11.5,color:t.textSub,fontWeight:500}}>{T.livNetRevenue||"Revenu net livraisons"}</span>
+              <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:'#16a34a',fontWeight:700}}>{fmt(totalNet)}</span>
+            </div>
+            {anyOvercharge&&<div style={{fontSize:10,color:'#ef4444',fontWeight:600,marginTop:3}}>⚠ {T.livOverchargeWarn||"Surcharge détectée sur une plateforme — vérifiez votre contrat."}</div>}
+          </>)}
+        </div>);
+      })()}
     </div>)}
     {/* Portal intro modal */}
     {portalIntro&&(<div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={()=>setPortalIntro(null)}>
@@ -812,6 +886,83 @@ function BillEntry({label,baseKey,plData,updPL,accent="249,115,22"}){
 // Uses a custom DOM event so any component can open the in-app preview modal
 function openPDF(html){
   window.dispatchEvent(new CustomEvent('biq:pdf-preview',{detail:{html}}));
+}
+
+function FlashReportPopup({data,lang,t,onClose}){
+  const fr=lang==='fr';
+  const fmtC=n=>(n??0).toLocaleString('fr-CA',{style:'currency',currency:'CAD'});
+  const fmtP=n=>n!=null?`${n.toFixed(1)}%`:'—';
+  const {date,venteNet,total,wtdSales,wtdDays,closedCount,totalRegs,isClosed,labourCost,labourPct,cashes}=data;
+  const d=new Date(date+'T12:00:00');
+  const DAYS_=fr?['Dim','Lun','Mar','Mer','Jeu','Ven','Sam']:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const MONTHS_=fr?['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.']:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const dateLabel=`${DAYS_[d.getDay()]} ${d.getDate()} ${MONTHS_[d.getMonth()]}`;
+  // Cash variance summary
+  const cashSummary=(cashes||[]).map((c,i)=>{
+    const mc=c.interac!=null&&c.finalCash!=null;
+    const manT=mc?(c.interac||0)+(c.finalCash||0)+(c.deposits||0):null;
+    const posT=(c.posVentes||0)+(c.posTPS||0)+(c.posTVQ||0);
+    const expected=posT-(c.posLivraisons||0);
+    const ecart=mc&&c.posVentes?manT-expected:null;
+    const bal=ecart!=null&&Math.abs(ecart)<=1;
+    const name=c.cashierId||`#${i+1}`;
+    if(!c.posVentes&&!c.interac&&!c.finalCash)return null;
+    return{name,bal,ecart};
+  }).filter(Boolean);
+  const allBal=cashSummary.length>0&&cashSummary.every(c=>c.bal);
+  const issues=cashSummary.filter(c=>!c.bal);
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',display:'flex',alignItems:'flex-start',justifyContent:'flex-end',zIndex:9990,padding:'60px 20px 0 0'}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:14,width:300,boxShadow:'0 20px 60px rgba(0,0,0,0.4)',overflow:'hidden'}}>
+        {/* Header */}
+        <div style={{background:'linear-gradient(135deg,#f97316,#ea580c)',padding:'12px 16px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <div>
+            <div style={{color:'#fff',fontWeight:800,fontSize:13,letterSpacing:'-0.2px'}}>⚡ {fr?'Rapport flash':'Flash Report'}</div>
+            <div style={{color:'rgba(255,255,255,0.85)',fontSize:11,marginTop:1}}>{dateLabel}</div>
+          </div>
+          <button onClick={onClose} style={{background:'none',border:'none',color:'rgba(255,255,255,0.8)',fontSize:18,cursor:'pointer',lineHeight:1,padding:0}}>×</button>
+        </div>
+        {/* Content */}
+        <div style={{padding:'14px 16px',display:'flex',flexDirection:'column',gap:12}}>
+          {/* Net sales */}
+          <div>
+            <div style={{fontSize:28,fontWeight:800,color:t.text,lineHeight:1}}>{fmtC(venteNet)}</div>
+            <div style={{fontSize:11,color:t.textMuted,marginTop:2}}>{fr?'Ventes nettes — hier':'Net sales — yesterday'}</div>
+          </div>
+          {/* WTD */}
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 10px',background:t.section,borderRadius:8}}>
+            <span style={{fontSize:12,color:t.textMuted}}>{fr?'Semaine en cours':'Week-to-date'}</span>
+            <span style={{fontSize:13,fontWeight:700,color:t.text}}>{fmtC(wtdSales)}<span style={{fontSize:10,color:t.textMuted,fontWeight:400}}> / {wtdDays}j</span></span>
+          </div>
+          {/* Cash status */}
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <span style={{fontSize:12,color:t.textMuted}}>{fr?'Caisses':'Registers'}</span>
+            <span style={{fontSize:12,fontWeight:600,color:allBal?'#16a34a':issues.length>0?'#ef4444':'#6b7280'}}>
+              {allBal?(fr?'✓ Tout balancé':'✓ All balanced'):issues.length>0?(fr?`⚠️ ${issues.length} écart${issues.length>1?'s':''}`:` ⚠️ ${issues.length} issue${issues.length>1?'s':''}`):fr?'— Incomplet':'— Incomplete'}
+            </span>
+          </div>
+          {/* Close-out status */}
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <span style={{fontSize:12,color:t.textMuted}}>{fr?'Fermeture':'Close-out'}</span>
+            <span style={{fontSize:12,fontWeight:600,color:isClosed?'#16a34a':'#f59e0b'}}>
+              {isClosed?(fr?'✓ Journée fermée':'✓ Day closed'):(fr?`${closedCount}/${totalRegs} fermées`:`${closedCount}/${totalRegs} closed`)}
+            </span>
+          </div>
+          {/* Labour (if available) */}
+          {labourPct!=null&&(
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <span style={{fontSize:12,color:t.textMuted}}>{fr?"Main d'œuvre":'Labour'}</span>
+              <span style={{fontSize:12,fontWeight:600,color:labourPct>35?'#ef4444':labourPct>28?'#f59e0b':'#16a34a'}}>{fmtC(labourCost)} ({fmtP(labourPct)})</span>
+            </div>
+          )}
+          {/* Open app link */}
+          <button onClick={onClose} style={{marginTop:2,padding:'7px 0',borderRadius:7,border:`1px solid ${t.cardBorder}`,background:'none',color:t.textMuted,fontSize:11,cursor:'pointer'}}>
+            {fr?'Voir les détails dans l\'app →':'View details in app →'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function PDFPreviewModal({html,onClose}){
@@ -913,6 +1064,10 @@ function GeoSearch({apiConfig,saveApiCfg}){
   </div>);
 }
 
+// ── Levenshtein for fuzzy ingredient matching ──
+function _lev(a,b){const m=a.length,n=b.length;const dp=Array.from({length:m+1},(_,i)=>[i,...Array(n).fill(0)]);for(let j=0;j<=n;j++)dp[0][j]=j;for(let i=1;i<=m;i++)for(let j=1;j<=n;j++)dp[i][j]=a[i-1]===b[j-1]?dp[i-1][j-1]:1+Math.min(dp[i-1][j-1],dp[i-1][j],dp[i][j-1]);return dp[m][n];}
+function _fuzzyMatchIngredient(desc,ingredients){const d=desc.toLowerCase().trim();let best=null,bestDist=4;for(const ing of ingredients){for(const name of[ing.name_fr,ing.name_en].filter(Boolean)){const dist=_lev(d,name.toLowerCase().trim());if(dist<bestDist){best=ing;bestDist=dist;}}}return best;}
+
 // ── INVOICE OCR MODAL ──
 function InvoiceOCRModal({section,suppliers,expenseItems,updPL,plData,ocrMappings,setOcrMappings,month,apiConfig,onClose}){
   const t=useT();
@@ -927,6 +1082,8 @@ function InvoiceOCRModal({section,suppliers,expenseItems,updPL,plData,ocrMapping
   const [editedTPS,setEditedTPS]=useState('');
   const [editedTVQ,setEditedTVQ]=useState('');
   const [editedTotal,setEditedTotal]=useState('');
+  const [lineItemRows,setLineItemRows]=useState([]); // [{...raw, matchStatus, ingredientId, ingredientName, prevPrice, pricePct, skipped}]
+  const [showLineItems,setShowLineItems]=useState(true);
 
   const fpOpts=[
     {baseKey:'pettyCashFP',label:T.plPettyCashFP||'Petite caisse F&P'},
@@ -973,13 +1130,41 @@ function InvoiceOCRModal({section,suppliers,expenseItems,updPL,plData,ocrMapping
       setEditedTotal(total>0?total.toFixed(2):'');
       setEditedAmount(ht>0?ht.toFixed(2):'');
       setStep('review');
+      // Process line items asynchronously
+      if(data.lineItems?.length>0){
+        try{
+          const ings=await window.api.ingredients.getAll().catch(()=>[]);
+          const rows=[];
+          for(const li of data.lineItems){
+            if(!li.description)continue;
+            const desc=li.description||'';
+            const sup=data.supplier||'';
+            // 1. Alias match
+            let match=null;
+            try{match=await window.api.ingredients.aliasFind(desc,sup);}catch(_){}
+            // 2. Fuzzy match
+            if(!match)match=_fuzzyMatchIngredient(desc,ings);
+            // 3. Price change check
+            let prevPrice=null,pricePct=null,matchStatus='unmatched';
+            if(match){
+              try{const ph=await window.api.priceHistory.getLast(match.id,sup);prevPrice=ph?.unit_price??null;}catch(_){}
+              if(li.unit_price!=null&&prevPrice!=null){
+                pricePct=prevPrice>0?(li.unit_price-prevPrice)/prevPrice*100:null;
+                matchStatus=pricePct!=null&&Math.abs(pricePct)>0.5?'price_change':'matched';
+              }else{matchStatus='matched';}
+            }
+            rows.push({...li,matchStatus,ingredientId:match?.id||null,ingredientName:match?.name_fr||null,prevPrice,pricePct,skipped:false});
+          }
+          setLineItemRows(rows);
+        }catch(_){}
+      }
     }catch(e){
       setError(e.message||'Erreur inattendue');
       setStep('select');
     }
   };
 
-  const doConfirm=()=>{
+  const doConfirm=async()=>{
     if(!selectedKey||!result)return;
     const subtotal=parseFloat(editedAmount);
     if(!subtotal||isNaN(subtotal)||subtotal<=0)return;
@@ -993,6 +1178,29 @@ function InvoiceOCRModal({section,suppliers,expenseItems,updPL,plData,ocrMapping
       setOcrMappings(nm);
       window.api.storage.set('dicann-ocr-mappings',JSON.stringify(nm)).catch(()=>{});
     }
+    // Save line items + update ingredient prices
+    if(lineItemRows.length>0){
+      const toSave=lineItemRows.filter(r=>!r.skipped).map(r=>({
+        invoice_ref:bill.id,invoice_date:billDate,supplier_name:result.supplier||'',
+        raw_description:r.description||'',quantity:r.quantity??null,unit:r.unit||'',
+        unit_price:r.unit_price??null,extended_price:r.extended_price??null,
+        ingredient_id:r.ingredientId||null,match_status:r.matchStatus||'unmatched',
+      }));
+      try{await window.api.invoiceLines.save(toSave);}catch(_){}
+      // Update ingredient prices for matched items
+      for(const r of lineItemRows){
+        if(!r.ingredientId||!r.unit_price||r.skipped)continue;
+        try{
+          await window.api.priceHistory.save({ingredient_id:r.ingredientId,supplier_name:result.supplier||'',
+            unit_price:r.unit_price,quantity:r.quantity??null,unit:r.unit||'',
+            invoice_date:billDate,invoice_ref:bill.id});
+          // Update current price on ingredient
+          const ings=await window.api.ingredients.getAll().catch(()=>[]);
+          const ing=ings.find(i=>i.id===r.ingredientId);
+          if(ing)await window.api.ingredients.save({...ing,current_unit_price:r.unit_price,last_price_update:billDate}).catch(()=>{});
+        }catch(_){}
+      }
+    }
     onClose();
   };
 
@@ -1000,7 +1208,7 @@ function InvoiceOCRModal({section,suppliers,expenseItems,updPL,plData,ocrMapping
 
   return(
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={onClose}>
-      <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:12,padding:24,maxWidth:460,width:'100%',boxShadow:'0 8px 32px rgba(0,0,0,0.3)'}} onClick={e=>e.stopPropagation()}>
+      <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:12,padding:24,maxWidth:520,width:'100%',boxShadow:'0 8px 32px rgba(0,0,0,0.3)',maxHeight:'90vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
           <div style={{fontSize:15,fontWeight:700,color:t.text}}>📷 {T.ocrScanTitle}</div>
           <button onClick={onClose} style={{background:'none',border:'none',color:t.textMuted,fontSize:18,cursor:'pointer',lineHeight:1}}>✕</button>
@@ -1085,12 +1293,49 @@ function InvoiceOCRModal({section,suppliers,expenseItems,updPL,plData,ocrMapping
               </div>
             </div>
 
+            {/* Line items section */}
+            {lineItemRows.length>0&&(
+              <div style={{background:t.section,borderRadius:8,border:`1px solid ${t.cardBorder}`}}>
+                <button onClick={()=>setShowLineItems(p=>!p)} style={{background:'none',border:'none',color:t.text,fontSize:11,fontWeight:700,cursor:'pointer',padding:'8px 12px',width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <span>🧾 {T.ocrLineItems||'Ingrédients détectés'} ({lineItemRows.filter(r=>!r.skipped).length}/{lineItemRows.length})</span>
+                  <span style={{fontSize:10}}>{showLineItems?'▲':'▼'}</span>
+                </button>
+                {showLineItems&&(
+                  <div style={{padding:'0 10px 10px',display:'flex',flexDirection:'column',gap:5}}>
+                    {lineItemRows.map((r,i)=>{
+                      const statusColor=r.matchStatus==='matched'?'#22c55e':r.matchStatus==='price_change'?'#f59e0b':r.matchStatus==='new_product'?'#f97316':'#6b7280';
+                      const icon=r.matchStatus==='matched'?'✓':r.matchStatus==='price_change'?'⚠️':r.matchStatus==='new_product'?'?':'—';
+                      return(
+                        <div key={i} style={{display:'flex',alignItems:'center',gap:7,padding:'5px 8px',background:r.skipped?'none':t.card,borderRadius:6,border:`1px solid ${r.skipped?'transparent':t.cardBorder}`,opacity:r.skipped?0.45:1}}>
+                          <span style={{fontSize:11,fontWeight:700,color:statusColor,flexShrink:0,width:16,textAlign:'center'}}>{icon}</span>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:10.5,color:t.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{r.description}</div>
+                            {r.ingredientName&&<div style={{fontSize:9.5,color:'#f97316'}}>→ {r.ingredientName}</div>}
+                            {r.matchStatus==='price_change'&&r.pricePct!=null&&(
+                              <div style={{fontSize:9.5,color:'#d97706'}}>
+                                ${r.prevPrice?.toFixed(2)} → ${r.unit_price?.toFixed(2)} ({r.pricePct>0?'+':''}{r.pricePct.toFixed(1)}%)
+                              </div>
+                            )}
+                          </div>
+                          {r.unit_price!=null&&<span style={{fontSize:10,color:t.textMuted,flexShrink:0}}>${r.unit_price.toFixed(2)}{r.unit?'/'+r.unit:''}</span>}
+                          <button onClick={()=>setLineItemRows(p=>p.map((x,j)=>j===i?{...x,skipped:!x.skipped}:x))}
+                            style={{background:'none',border:'none',color:r.skipped?'#22c55e':t.textDim,cursor:'pointer',fontSize:10,flexShrink:0,fontWeight:600}}>
+                            {r.skipped?'↩':'✕'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Disclaimer */}
             <div style={{fontSize:10,color:t.textMuted,lineHeight:1.5,padding:'6px 9px',background:t.section,borderRadius:5,border:`1px solid ${t.cardBorder}`}}>{T.ocrReviewWarning}</div>
 
             {/* Actions */}
             <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
-              <button onClick={()=>{setStep('select');setResult(null);setError(null);setEditedAmount('');setEditedTPS('');setEditedTVQ('');setEditedTotal('');}}style={{padding:'7px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:'none',color:t.textSub,cursor:'pointer',fontSize:12}}>📷 {T.ocrScanAnother}</button>
+              <button onClick={()=>{setStep('select');setResult(null);setError(null);setEditedAmount('');setEditedTPS('');setEditedTVQ('');setEditedTotal('');setLineItemRows([]);}}style={{padding:'7px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:'none',color:t.textSub,cursor:'pointer',fontSize:12}}>📷 {T.ocrScanAnother}</button>
               <button onClick={doConfirm} disabled={!selectedKey} style={{padding:'7px 18px',borderRadius:6,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',fontWeight:700,fontSize:12,cursor:selectedKey?'pointer':'default',opacity:selectedKey?1:0.5}}>✓ {T.ocrAddToPL}</button>
             </div>
           </div>
@@ -1331,9 +1576,12 @@ function MonthlyPL({computeDay,suppliers,liveData,platforms,expenseItems,glAccou
       <button onClick={handleSave} style={{padding:"9px 20px",borderRadius:7,border:"none",cursor:"pointer",fontWeight:700,fontSize:13,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff"}}>{T.plSaveAndPrint}</button>
       <button onClick={handleEmail} style={{padding:"9px 16px",borderRadius:7,border:"1px solid rgba(34,197,94,0.2)",background:"rgba(34,197,94,0.08)",color:"#16a34a",cursor:"pointer",fontWeight:600,fontSize:12}}>{T.plSendEmailBtn(apiConfig?.reportEmail||"")}</button>
       {canUse("excelExport")
-        ?(<div style={{display:"flex",gap:4}}>
-            <button onClick={()=>exportPLAcomba("acomba")} style={{padding:"7px 12px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:600,fontSize:11}}>⬇ Acomba</button>
-            <button onClick={()=>exportPLAcomba("sage50")} style={{padding:"7px 12px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:600,fontSize:11}}>⬇ Sage 50</button>
+        ?(<div style={{display:"flex",flexDirection:"column",gap:4}}>
+            <div style={{display:"flex",gap:4}}>
+              <button onClick={()=>exportPLAcomba("acomba")} style={{padding:"7px 12px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:600,fontSize:11}}>⬇ Acomba</button>
+              <button onClick={()=>exportPLAcomba("sage50")} style={{padding:"7px 12px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:600,fontSize:11}}>⬇ Sage 50</button>
+            </div>
+            <div style={{fontSize:9.5,color:"#ca8a04",lineHeight:1.45,maxWidth:280}}>⚠ {lang==="en"?"Verify format with your accountant before importing.":"Vérifiez le format avec votre comptable avant d'importer."}</div>
           </div>)
         :(<span style={{padding:"7px 12px",borderRadius:6,border:"1px solid rgba(107,114,128,0.2)",background:"none",color:"#6b7280",fontSize:11,display:"inline-flex",alignItems:"center",gap:5}}>{T.exportPLAcomba||"⬇ Acomba / Sage 50"} <span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"1px 5px",borderRadius:4}}>Pro</span></span>)}
       {saved&&<span style={{fontSize:12,color:"#16a34a",fontWeight:600}}>{T.saved}</span>}
@@ -1640,6 +1888,24 @@ function ComptabiliteExport({factures,clients,produits,categories,companyInfo,on
   const [exportType,setExportType]=useState("facturation");
   const [upgradeMsg,setUpgradeMsg]=useState(false);
   const [msg,setMsg]=useState("");
+  const [previewData,setPreviewData]=useState(null); // {hdr, rows, warnings}
+  const validateRows=(fmt,hdr,rows)=>{
+    const isEn=T===EN;
+    const warnings=[];
+    const acctIdx=fmt==="acomba"?hdr.indexOf("Compte GL"):hdr.indexOf("Account Number");
+    const dateIdx=0;
+    const dateRe=/^\d{4}-\d{2}-\d{2}$/;
+    let missingAcct=0,badDate=0;
+    for(const r of rows){
+      if(acctIdx>=0&&!r[acctIdx])missingAcct++;
+      const d=String(r[dateIdx]||"");
+      if(d&&!dateRe.test(d))badDate++;
+    }
+    if(missingAcct>0)warnings.push({type:"warn",msg:isEn?`${missingAcct} line(s) have no GL account — assign account numbers in Facturation → Categories.`:`${missingAcct} ligne(s) sans compte GL — assignez des numéros de compte dans Facturation → Catégories.`});
+    if(badDate>0)warnings.push({type:"warn",msg:isEn?`${badDate} date(s) not in YYYY-MM-DD format.`:`${badDate} date(s) pas au format AAAA-MM-JJ.`});
+    if(!warnings.length)warnings.push({type:"ok",msg:isEn?`Format validated — ${rows.length} line(s) ready.`:`Format validé — ${rows.length} ligne(s) prêtes.`});
+    return warnings;
+  };
   const buildCSV=(rows,filename)=>{
     const csv=rows.map(r=>r.map(v=>`"${String(v==null?"":v).replace(/"/g,'""')}"`).join(",")).join("\n");
     const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});
@@ -1854,11 +2120,55 @@ function ComptabiliteExport({factures,clients,produits,categories,companyInfo,on
         <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={iS}/>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:6}}>
-        {OPTS.map(o=>(<label key={o.id} onClick={()=>!o.pro||canUse("excelExport")?setExportType(o.id):showUpgradePrompt?showUpgradePrompt("excelExport"):setUpgradeMsg(true)} style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",padding:"9px 12px",borderRadius:8,border:`1px solid ${exportType===o.id?"#f97316":t.cardBorder}`,background:exportType===o.id?"rgba(249,115,22,0.06)":t.card,opacity:o.pro&&!canUse("excelExport")?0.65:1}}>
+        {OPTS.map(o=>(<label key={o.id} onClick={()=>{if(!o.pro||canUse("excelExport")){setExportType(o.id);setPreviewData(null);}else{showUpgradePrompt?showUpgradePrompt("excelExport"):setUpgradeMsg(true);}}} style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",padding:"9px 12px",borderRadius:8,border:`1px solid ${exportType===o.id?"#f97316":t.cardBorder}`,background:exportType===o.id?"rgba(249,115,22,0.06)":t.card,opacity:o.pro&&!canUse("excelExport")?0.65:1}}>
           <input type="radio" checked={exportType===o.id} onChange={()=>{}} style={{accentColor:"#f97316",flexShrink:0}}/>
           <div><div style={{fontSize:12,fontWeight:600,color:t.text,display:"flex",alignItems:"center",gap:6}}>{o.label}{o.pro&&<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"1px 5px",borderRadius:4}}>Pro</span>}</div><div style={{fontSize:10,color:t.textMuted,marginTop:1}}>{o.desc}</div></div>
         </label>))}
       </div>
+      {/* Disclaimer + preview for Acomba / Sage 50 */}
+      {(exportType==="acomba"||exportType==="sage50")&&(
+        <div>
+          <div style={{background:"rgba(234,179,8,0.07)",border:"1px solid rgba(234,179,8,0.25)",borderRadius:6,padding:"7px 11px",fontSize:10.5,color:"#ca8a04",lineHeight:1.55,marginBottom:8}}>
+            ⚠ {T===EN?"Verify with your accountant that the column headers and account numbers match your Acomba/Sage 50 configuration before importing.":"Vérifiez avec votre comptable que les en-têtes de colonnes et les numéros de compte correspondent à votre configuration Acomba/Sage 50 avant d'importer."}
+          </div>
+          <button onClick={()=>{
+            const{hdr,data}=exportType==="acomba"?buildAcombaRows():buildSage50Rows();
+            const warnings=validateRows(exportType,hdr,data);
+            setPreviewData({hdr,rows:data.slice(0,15),total:data.length,warnings});
+          }} style={{padding:"5px 14px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>
+            🔍 {T===EN?"Preview export":"Prévisualiser l'export"}
+          </button>
+        </div>
+      )}
+      {/* Preview panel */}
+      {previewData&&(
+        <div style={{borderTop:`1px solid ${t.cardBorder}`,paddingTop:10}}>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+            {previewData.warnings.map((w,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:5,fontSize:10.5,fontWeight:600,color:w.type==="ok"?"#22c55e":"#f59e0b"}}>
+                {w.type==="ok"?"✅":"⚠"} {w.msg}
+              </div>
+            ))}
+          </div>
+          <div style={{overflowX:"auto",maxHeight:180,overflowY:"auto",borderRadius:6,border:`1px solid ${t.cardBorder}`}}>
+            <table style={{borderCollapse:"collapse",fontSize:10,minWidth:"100%",whiteSpace:"nowrap"}}>
+              <thead>
+                <tr style={{background:"rgba(255,255,255,0.05)"}}>
+                  {previewData.hdr.map((h,i)=><th key={i} style={{padding:"5px 8px",color:t.textMuted,fontWeight:600,textAlign:"left",borderBottom:`1px solid ${t.cardBorder}`}}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {previewData.rows.map((r,ri)=>(
+                  <tr key={ri} style={{borderBottom:`1px solid ${t.cardBorder}`}}>
+                    {r.map((v,ci)=><td key={ci} style={{padding:"4px 8px",color:t.textSub}}>{String(v==null?"":v)}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {previewData.total>15&&<div style={{fontSize:10,color:t.textMuted,marginTop:4}}>{T===EN?`Showing first 15 of ${previewData.total} rows`:`Affichage des 15 premières sur ${previewData.total} lignes`}</div>}
+        </div>
+      )}
       <div style={{display:"flex",gap:8,alignItems:"center",borderTop:`1px solid ${t.dividerMid}`,paddingTop:10,flexWrap:"wrap"}}>
         <button onClick={doExport} style={{padding:"7px 20px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Outfit',sans-serif"}}>⬇ {T.exportCSV}</button>
         <button onClick={doExportExcel} style={{padding:"7px 14px",borderRadius:6,border:`1px solid ${canUse("excelExport")?"rgba(34,197,94,0.3)":t.cardBorder}`,background:canUse("excelExport")?"rgba(34,197,94,0.08)":t.section,color:canUse("excelExport")?"#16a34a":t.textDim,cursor:"pointer",fontWeight:600,fontSize:11,display:"flex",alignItems:"center",gap:5}}>
@@ -4718,7 +5028,7 @@ function CashierVarianceCard({cashierVariances,T,t}){
   );
 }
 
-function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProfiles,getLR,platforms,encaisseData,encaisseConfig,apiConfig,checklistCompliance}){
+function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProfiles,getLR,platforms,encaisseData,encaisseConfig,apiConfig,checklistCompliance,priceAlerts,suppliers}){
   const T=useL();
   const t=useT();
   const [aiResponse,setAiResponse]=useState(null);
@@ -4786,6 +5096,74 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
       return{...v,n,avg,shortCount,overCount,lossAlert,isShort,isOver};
     }).sort((a,b)=>(a.lossAlert?-1:b.lossAlert?1:0)||(a.isShort?-1:b.isShort?1:0)||a.name.localeCompare(b.name));
   },[liveData]);
+
+  // Delivery mix — last 30 days
+  const deliveryMix=useMemo(()=>{
+    if(!platforms||platforms.length===0)return null;
+    const cutoff=new Date();cutoff.setDate(cutoff.getDate()-30);
+    const stats={};
+    platforms.forEach(p=>{stats[p.id]={id:p.id,name:p.name,emoji:p.emoji,rate:p.commissionRate??25,ventes:0,depots:0,promos:0,days:0};});
+    let totalSalesAll=0;
+    Object.entries(liveData).forEach(([date,dayData])=>{
+      if(new Date(date+"T12:00:00")<cutoff)return;
+      const pd=dayData.platformLivraisons||{};
+      const cd=computeDay(date);if(cd.venteNet>0)totalSalesAll+=cd.venteNet;
+      platforms.forEach(p=>{
+        const pdat=pd[p.id];if(!pdat)return;
+        if(pdat.ventes>0){stats[p.id].ventes+=pdat.ventes;stats[p.id].days++;}
+        if(pdat.depot>0)stats[p.id].depots+=pdat.depot;
+        if(pdat.promo)stats[p.id].promos+=pdat.promo;
+      });
+    });
+    const rows=Object.values(stats).filter(s=>s.ventes>0);
+    if(rows.length===0)return null;
+    const totalDelivery=rows.reduce((s,r)=>s+r.ventes,0);
+    return rows.map(r=>{
+      const netRev=r.depots+r.promos;
+      const actualComm=r.ventes-netRev;
+      const actualRate=r.ventes>0?actualComm/r.ventes*100:0;
+      const pctOfTotal=totalSalesAll>0?r.ventes/totalSalesAll*100:0;
+      const pctOfDelivery=totalDelivery>0?r.ventes/totalDelivery*100:0;
+      const overcharge=actualRate>r.rate+1.5;
+      return{...r,netRev,actualComm,actualRate,pctOfTotal,pctOfDelivery,overcharge};
+    }).sort((a,b)=>b.ventes-a.ventes);
+  },[liveData,platforms,computeDay]);
+
+  // 30-day operational KPI stats
+  const kpiStats=useMemo(()=>{
+    const cutoff=new Date();cutoff.setDate(cutoff.getDate()-30);
+    let totalV=0,totalLabC=0,totalLabH=0,totalDoz=0,days=0;
+    Object.keys(liveData).forEach(k=>{
+      if(new Date(k+'T12:00:00')<cutoff)return;
+      const cd=computeDay(k);if(cd.venteNet<=0)return;
+      totalV+=cd.venteNet;totalLabC+=cd.labourCost||0;totalLabH+=cd.labourHrs||0;totalDoz+=cd.totalDoz||0;days++;
+    });
+    return{
+      labourPct:totalV>0&&totalLabC>0?(totalLabC/totalV)*100:null,
+      salesPerHr:totalLabH>0?totalV/totalLabH:null,
+      dzAvg:totalDoz>0&&totalV>0?totalV/totalDoz:null,
+      totalV,days,
+    };
+  },[liveData,computeDay]);
+
+  const [plFoodCostPct,setPlFoodCostPct]=useState(null);
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const n=new Date();
+        const mk=`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`;
+        const [rPL,rSup]=await Promise.all([window.api.storage.get(`dicann-pl-${mk}`),window.api.storage.get('dicann-suppliers-v2')]);
+        if(!rPL?.value)return;
+        const pl=JSON.parse(rPL.value);
+        const sups=rSup?.value?JSON.parse(rSup.value):[];
+        const bSum=key=>{const bills=pl[`${key}_bills`];return bills&&bills.length?bills.reduce((s,b)=>s+(b.amount||0),0):(pl[key]||0);};
+        let fpT=bSum('pettyCashFP');sups.forEach(s=>{fpT+=bSum(`sup_${s.id}`);});
+        let rev=0;Object.keys(liveData).forEach(k=>{if(k.startsWith(mk)){const cd=computeDay(k);rev+=cd.venteNet||0;}});
+        if(rev>0&&fpT>0)setPlFoodCostPct((fpT/rev)*100);
+      }catch(e){}
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
 
   const hasDowData=dowProfiles.some(p=>p.n>0);
   const dow=d.getDay();
@@ -4901,6 +5279,108 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
       </div>)):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>{T.intelAnomalyEmpty}</div>)}
     </ICard>
     <CashierVarianceCard cashierVariances={cashierVariances} T={T} t={t}/>
+
+    {/* KPI panel */}
+    {kpiStats.days>0&&(()=>{
+      const showDz=apiConfig?.showDzKpi??false;
+      const sqft=apiConfig?.sqft?parseFloat(apiConfig.sqft):null;
+      const customKpis=apiConfig?.customKpis||[];
+      const kpiColor=(val,good,warn,dir)=>{
+        if(val==null)return t.textMuted;
+        return dir==='low'?(val<=good?'#22c55e':val<=warn?'#f59e0b':'#ef4444'):(val>=good?'#22c55e':val>=warn?'#f59e0b':'#ef4444');
+      };
+      const rows=[];
+      rows.push({id:'labour',label:T.kpiLabour,val:kpiStats.labourPct,disp:kpiStats.labourPct!=null?`${kpiStats.labourPct.toFixed(1)}%`:T.kpiNA,target:'< 35%',color:kpiColor(kpiStats.labourPct,30,35,'low')});
+      rows.push({id:'salesPerHr',label:T.kpiSalesPerHr,val:kpiStats.salesPerHr,disp:kpiStats.salesPerHr!=null?fmt(kpiStats.salesPerHr):T.kpiNA,target:'> $50',color:kpiColor(kpiStats.salesPerHr,50,35,'high')});
+      if(plFoodCostPct!=null){
+        rows.push({id:'foodCost',label:T.kpiFoodCost,val:plFoodCostPct,disp:`${plFoodCostPct.toFixed(1)}%`,target:'< 35%',color:kpiColor(plFoodCostPct,30,35,'low')});
+        if(kpiStats.labourPct!=null){const pc=kpiStats.labourPct+plFoodCostPct;rows.push({id:'primeCost',label:T.kpiPrimeCost,val:pc,disp:`${pc.toFixed(1)}%`,target:'< 65%',color:kpiColor(pc,60,65,'low')});}
+      }
+      if(showDz&&kpiStats.dzAvg!=null)rows.push({id:'dzAvg',label:T.kpiDzAvg,val:kpiStats.dzAvg,disp:fmt(kpiStats.dzAvg),target:'> $4.50',color:kpiColor(kpiStats.dzAvg,4.5,3.5,'high')});
+      if(sqft&&kpiStats.totalV>0){const rs=kpiStats.totalV/sqft;rows.push({id:'revSqft',label:T.kpiRevSqft,val:rs,disp:`${fmt(rs)}/pi²`,target:'> $25',color:kpiColor(rs,25,15,'high')});}
+      const fmtKpiVal=(kpi,val)=>{if(val==null)return T.kpiNA;const isPct=['labourPct','foodCostPct','primeCostPct'].includes(kpi.formula);return isPct?`${val.toFixed(1)}%`:fmt(val);};
+      customKpis.forEach(kpi=>{
+        const valMap={labourPct:kpiStats.labourPct,salesPerHr:kpiStats.salesPerHr,dzAvg:kpiStats.dzAvg,foodCostPct:plFoodCostPct,primeCostPct:(kpiStats.labourPct!=null&&plFoodCostPct!=null?kpiStats.labourPct+plFoodCostPct:null)};
+        const val=valMap[kpi.formula];const tgt=kpi.target?parseFloat(kpi.target):null;
+        const dir=kpi.direction||'low';
+        const color=tgt!=null&&val!=null?kpiColor(val,dir==='low'?tgt*0.9:tgt,dir==='low'?tgt:tgt*0.9,dir):t.text;
+        const kpiLabel=T===EN?(kpi.nameEn||kpi.nameFr):(kpi.nameFr||kpi.nameEn);
+        rows.push({id:kpi.id,label:kpiLabel,val,disp:fmtKpiVal(kpi,val),target:tgt!=null?`${dir==='low'?'<':'>'} ${fmtKpiVal(kpi,tgt)}`:'',color});
+      });
+      return(
+        <ICard>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+            <span style={{fontSize:13,fontWeight:700,color:t.text}}>📊 {T.kpiPanelTitle}</span>
+            <span style={{fontSize:10,color:t.textMuted}}>{T.kpiDaysWindow(kpiStats.days)}</span>
+          </div>
+          {rows.map(row=>(
+            <div key={row.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'4px 0',borderBottom:`1px solid ${t.divider}`}}>
+              <span style={{fontSize:11.5,color:t.textSub}}>{row.label}</span>
+              <div style={{display:'flex',alignItems:'center',gap:10}}>
+                {row.target&&<span style={{fontSize:10,color:t.textMuted}}>{T.kpiTarget}: {row.target}</span>}
+                <span style={{fontSize:13,fontWeight:700,fontFamily:"'DM Mono',monospace",color:row.color}}>{row.disp}</span>
+              </div>
+            </div>
+          ))}
+        </ICard>
+      );
+    })()}
+
+    {/* Delivery mix card */}
+    {deliveryMix&&deliveryMix.length>0&&(
+      <ICard>
+        <span style={{fontSize:13,fontWeight:700,marginBottom:10,display:"block",color:t.text}}>📱 {T.delivMixTitle||"Mix livraisons — 30 jours"}</span>
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {deliveryMix.map(r=>(
+            <div key={r.id} style={{padding:"7px 9px",borderRadius:7,background:t.section,border:`1px solid ${r.overcharge?"rgba(239,68,68,0.3)":t.sectionBorder}`}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                <span style={{fontSize:12,fontWeight:700,color:t.text}}>{r.emoji} {r.name}</span>
+                <span style={{fontSize:12,fontWeight:700,color:t.text,fontFamily:"'DM Mono',monospace"}}>{fmt(r.ventes)}</span>
+              </div>
+              {/* Bar showing % of total delivery */}
+              <div style={{height:4,borderRadius:2,background:t.divider,marginBottom:5}}>
+                <div style={{height:4,borderRadius:2,background:"#f97316",width:`${Math.min(100,r.pctOfDelivery).toFixed(1)}%`,transition:"width 0.3s"}}/>
+              </div>
+              <div style={{display:"flex",gap:12,flexWrap:"wrap",fontSize:10,color:t.textMuted}}>
+                <span>% ventes totales: <strong style={{color:t.text}}>{r.pctOfTotal.toFixed(1)}%</strong></span>
+                <span>% livraison: <strong style={{color:t.text}}>{r.pctOfDelivery.toFixed(1)}%</strong></span>
+                <span>Comm. réelle: <strong style={{color:r.overcharge?"#ef4444":t.text}}>{r.actualRate.toFixed(1)}% {r.overcharge?"⚠":""}(prévu {r.rate}%)</strong></span>
+                <span>Net: <strong style={{color:"#16a34a"}}>{fmt(r.netRev)}</strong></span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </ICard>
+    )}
+
+    {priceAlerts&&priceAlerts.length>0&&(
+      <ICard>
+        <span style={{fontSize:13,fontWeight:700,marginBottom:8,display:"block",color:t.text}}>⚠️ {T.priceAlertTitle||"Alertes de prix fournisseurs"}</span>
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {priceAlerts.slice(0,5).map((a,i)=>{
+            const isUp=a.pct>0;
+            const sevColor=a.sev==='major'?'#ef4444':a.sev==='moderate'?'#f59e0b':'#6b7280';
+            const sevBg=a.sev==='major'?'rgba(239,68,68,0.1)':a.sev==='moderate'?'rgba(245,158,11,0.1)':'rgba(107,114,128,0.1)';
+            return(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 9px",background:t.section,borderRadius:7}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:600,color:t.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.ingredientName}</div>
+                  {a.supplierName&&<div style={{fontSize:10.5,color:t.textMuted}}>{a.supplierName}</div>}
+                </div>
+                <div style={{textAlign:"right",flexShrink:0}}>
+                  <div style={{fontSize:11,color:t.textMuted,fontFamily:"'DM Mono',monospace"}}>${a.oldPrice.toFixed(2)} → ${a.newPrice.toFixed(2)}{a.unit?"/"+a.unit:""}</div>
+                  <div style={{fontSize:10,fontWeight:700,color:sevColor,background:sevBg,borderRadius:5,padding:"1px 6px",display:"inline-block",marginTop:2}}>
+                    {isUp?"+":""}{a.pct.toFixed(1)}%
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {priceAlerts.length>5&&<div style={{fontSize:10.5,color:t.textMuted,textAlign:"center",paddingTop:2}}>{typeof T.priceAlertMore==='function'?T.priceAlertMore(priceAlerts.length-5):T.priceAlertMore}</div>}
+        </div>
+        <div style={{marginTop:8,fontSize:10.5,color:t.textMuted}}>{T.priceAlertHint}</div>
+      </ICard>
+    )}
     {checklistCompliance&&(
       <ICard>
         <span style={{fontSize:13,fontWeight:700,marginBottom:6,display:"block",color:t.text}}>☑ {T.checklistCompTitle||"Conformité des checklists"}</span>
@@ -5768,7 +6248,7 @@ function MarqueBlancheConfig({whiteLabelConfig,saveWhiteLabel}){
 }
 
 // ── CLOSE-OUT CHECKLIST PANEL ──
-function ChecklistPanel({templates,entries,onToggle,isClosed,t,T}){
+function ChecklistPanel({templates,entries,onToggle,isClosed,t,T,lang}){
   const daily=templates.filter(tp=>tp.active&&tp.frequency==='daily');
   if(!daily.length)return(
     <div style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:"12px 14px"}}>
@@ -5794,7 +6274,7 @@ function ChecklistPanel({templates,entries,onToggle,isClosed,t,T}){
               <input type="checkbox" checked={done} disabled={isClosed} onChange={e=>onToggle(tp.id,e.target.checked)}
                 style={{width:14,height:14,accentColor:"#f97316",cursor:isClosed?"default":"pointer",flexShrink:0}}/>
               <span style={{fontSize:11.5,color:done?t.textMuted:t.text,textDecoration:done?"line-through":"none",flex:1}}>
-                {tp.title_fr}
+                {lang==='en'?(tp.title_en||tp.title_fr):tp.title_fr}
               </span>
               {tp.required&&<span style={{fontSize:9,fontWeight:700,color:done?"#22c55e":"#f59e0b",background:done?"rgba(34,197,94,0.1)":"rgba(245,158,11,0.1)",border:`1px solid ${done?"rgba(34,197,94,0.25)":"rgba(245,158,11,0.3)"}`,borderRadius:8,padding:"1px 6px",whiteSpace:"nowrap"}}>{T.checklistRequired}</span>}
             </label>
@@ -5827,7 +6307,7 @@ const PREBUILT_TEMPLATES=[
 ];
 const PREBUILT_LABELS={restaurant:"🍔 Restaurant / QSR",bakery:"🥐 Boulangerie / Café",generic:"⚙️ Générique"};
 
-function ChecklistConfigSection({templates,onSave,onDelete,t,T}){
+function ChecklistConfigSection({templates,onSave,onDelete,t,T,lang}){
   const [editing,setEditing]=React.useState(null); // null | {id?,title_fr,title_en,required,frequency,category,sort_order,active}
   const [showPrebuilt,setShowPrebuilt]=React.useState(false);
   const empty={title_fr:'',title_en:'',required:0,frequency:'daily',category:'custom',sort_order:0,active:1};
@@ -5835,6 +6315,7 @@ function ChecklistConfigSection({templates,onSave,onDelete,t,T}){
 
   const freqLabel=f=>({daily:T.checklistFreqDaily||'Quotidien',weekly:T.checklistFreqWeekly||'Hebdomadaire',monthly:T.checklistFreqMonthly||'Mensuel'}[f]||f);
   const catLabel=c=>({kitchen:T.checklistCatKitchen||'Cuisine',foh:T.checklistCatFOH||'Service',management:T.checklistCatMgmt||'Gestion',custom:T.checklistCatCustom||'Autre'}[c]||c);
+  const prebuiltLabel={restaurant:T.checklistPrebuiltRestaurant||PREBUILT_LABELS.restaurant,bakery:T.checklistPrebuiltBakery||PREBUILT_LABELS.bakery,generic:T.checklistPrebuiltGeneric||PREBUILT_LABELS.generic};
 
   const inp={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:11.5,padding:"5px 8px",outline:"none",width:"100%",boxSizing:"border-box",fontFamily:"'Outfit',sans-serif"};
   const sel={...inp,appearance:"none"};
@@ -5851,8 +6332,8 @@ function ChecklistConfigSection({templates,onSave,onDelete,t,T}){
             {active.map(tp=>(
               <div key={tp.id} style={{display:"flex",alignItems:"center",gap:8,background:t.section,borderRadius:7,padding:"8px 10px"}}>
                 <div style={{flex:1}}>
-                  <div style={{fontSize:12,fontWeight:600,color:t.text}}>{tp.title_fr}</div>
-                  {tp.title_en&&<div style={{fontSize:10.5,color:t.textMuted}}>{tp.title_en}</div>}
+                  <div style={{fontSize:12,fontWeight:600,color:t.text}}>{lang==='en'?(tp.title_en||tp.title_fr):tp.title_fr}</div>
+                  {lang!=='en'&&tp.title_en&&<div style={{fontSize:10.5,color:t.textMuted}}>{tp.title_en}</div>}
                   <div style={{display:"flex",gap:6,marginTop:3,flexWrap:"wrap"}}>
                     <span style={{fontSize:9,color:t.textDim,background:t.inputBg,borderRadius:4,padding:"1px 5px"}}>{freqLabel(tp.frequency)}</span>
                     <span style={{fontSize:9,color:t.textDim,background:t.inputBg,borderRadius:4,padding:"1px 5px"}}>{catLabel(tp.category)}</span>
@@ -5865,7 +6346,7 @@ function ChecklistConfigSection({templates,onSave,onDelete,t,T}){
             ))}
           </div>
         )}
-        {active.length===0&&!editing&&<div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{T.checklistCfgNoItems||"Aucune tâche."}</div>}
+        {active.length===0&&!editing&&<div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{T.checklistCfgNoItems}</div>}
 
         {/* Edit / Add form */}
         {editing?(
@@ -5922,16 +6403,16 @@ function ChecklistConfigSection({templates,onSave,onDelete,t,T}){
           <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:10}}>
             {PREBUILT_TEMPLATES.map(({g,items})=>(
               <div key={g}>
-                <div style={{fontSize:11,fontWeight:700,color:t.textSub,marginBottom:5}}>{PREBUILT_LABELS[g]}</div>
+                <div style={{fontSize:11,fontWeight:700,color:t.textSub,marginBottom:5}}>{prebuiltLabel[g]}</div>
                 <div style={{display:"flex",flexDirection:"column",gap:4}}>
                   {items.map((item,i)=>{
                     const already=templates.some(tp=>tp.active&&tp.title_fr===item.title_fr);
                     return(
                       <div key={i} style={{display:"flex",alignItems:"center",gap:8,background:t.section,borderRadius:6,padding:"6px 10px"}}>
-                        <span style={{flex:1,fontSize:11.5,color:already?t.textMuted:t.text}}>{item.title_fr}</span>
-                        {item.required?<span style={{fontSize:9,fontWeight:700,color:"#f59e0b"}}>Requis</span>:<span style={{fontSize:9,color:t.textDim}}>Optionnel</span>}
+                        <span style={{flex:1,fontSize:11.5,color:already?t.textMuted:t.text}}>{lang==='en'?(item.title_en||item.title_fr):item.title_fr}</span>
+                        {item.required?<span style={{fontSize:9,fontWeight:700,color:"#f59e0b"}}>{T.checklistRequired}</span>:<span style={{fontSize:9,color:t.textDim}}>{T.checklistOptional}</span>}
                         {already?<span style={{fontSize:9,color:"#22c55e",fontWeight:600}}>✓</span>:(
-                          <button onClick={()=>onSave({...item,title_en:item.title_en,frequency:'daily',sort_order:active.length,active:1})} style={{fontSize:10,padding:"2px 8px",borderRadius:5,border:"1px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:600}}>{T.checklistCfgAdd1||"Ajouter"}</button>
+                          <button onClick={()=>onSave({...item,title_en:item.title_en,frequency:'daily',sort_order:active.length,active:1})} style={{fontSize:10,padding:"2px 8px",borderRadius:5,border:"1px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:600}}>{T.checklistCfgAdd1}</button>
                         )}
                       </div>
                     );
@@ -6252,16 +6733,19 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
     const d=monthlyData[locId];if(!d)return null;
     const loc=locations.find(l=>l.id===locId);if(!loc)return null;
     const targets={ventesCible:50000,fpPctCible:33,labourPctCible:30,dzCible:4.5};
+    const showDz=apiConfig?.showDzKpi??false;
     let score=100;
     const metrics=[];
     // Labour %
     const labOk=d.avgLabourPct>0&&d.avgLabourPct<=targets.labourPctCible;
     metrics.push({label:T.colLabourPct,val:`${d.avgLabourPct.toFixed(1)}%`,target:`<${targets.labourPctCible}%`,ok:labOk});
     if(!labOk&&d.avgLabourPct>0)score-=20;
-    // Avg $/dz
-    const dzOk=d.avgDz>=targets.dzCible;
-    metrics.push({label:T.scoreDzAvg,val:d.avgDz>0?fmtFull(d.avgDz):"—",target:`>${fmtFull(targets.dzCible)}`,ok:dzOk});
-    if(!dzOk&&d.avgDz>0)score-=15;
+    // Avg $/dz (conditional on toggle)
+    if(showDz){
+      const dzOk=d.avgDz>=targets.dzCible;
+      metrics.push({label:T.scoreDzAvg,val:d.avgDz>0?fmtFull(d.avgDz):"—",target:`>${fmtFull(targets.dzCible)}`,ok:dzOk});
+      if(!dzOk&&d.avgDz>0)score-=15;
+    }
     // Days without data
     const incomplete=d.daysSinceFilled>0?Math.min(d.daysSinceFilled,5):0;
     metrics.push({label:T.scoreIncomplDays,val:`${incomplete}`,target:"0",ok:incomplete===0});
@@ -8030,6 +8514,40 @@ function InvConfigSection({invConfig,saveInvConfig,t,T}){
   </div>);
 }
 
+// ── KpiAddForm ──
+function KpiAddForm({apiConfig,setApiConfig,saveApiCfg,lang,T,t,inputStyle}){
+  const FORMULA_OPTIONS=[
+    {id:'labourPct',label:T.kpiLabour},{id:'salesPerHr',label:T.kpiSalesPerHr},{id:'foodCostPct',label:T.kpiFoodCost},{id:'primeCostPct',label:T.kpiPrimeCost},{id:'dzAvg',label:T.kpiDzAvg},
+  ];
+  const [open,setOpen]=useState(false);
+  const [draft,setDraft]=useState({nameFr:'',nameEn:'',formula:'labourPct',target:'',direction:'low'});
+  if(!open)return(<button onClick={()=>setOpen(true)} style={{padding:"5px 14px",borderRadius:6,border:`1px dashed ${t.cardBorder}`,background:"none",color:t.textSub,cursor:"pointer",fontSize:11,marginTop:4}}>+ {T.kpiAddBtn}</button>);
+  const save=()=>{
+    if(!draft.nameFr.trim())return;
+    const kpi={id:`kpi-${Date.now()}`,nameFr:draft.nameFr.trim(),nameEn:draft.nameEn.trim()||draft.nameFr.trim(),formula:draft.formula,target:draft.target||null,direction:draft.direction};
+    const nc={...apiConfig,customKpis:[...(apiConfig.customKpis||[]),kpi]};
+    setApiConfig(nc);saveApiCfg(nc);
+    setDraft({nameFr:'',nameEn:'',formula:'labourPct',target:'',direction:'low'});setOpen(false);
+  };
+  return(
+    <div style={{background:t.section,borderRadius:7,padding:10,marginTop:6,display:'flex',flexDirection:'column',gap:7}}>
+      <div style={{display:'flex',gap:6}}>
+        <div style={{flex:1}}><div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.kpiNameFr}</div><input value={draft.nameFr} onChange={e=>setDraft(p=>({...p,nameFr:e.target.value}))} style={{...inputStyle,width:'100%',boxSizing:'border-box'}}/></div>
+        <div style={{flex:1}}><div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.kpiNameEn}</div><input value={draft.nameEn} onChange={e=>setDraft(p=>({...p,nameEn:e.target.value}))} style={{...inputStyle,width:'100%',boxSizing:'border-box'}}/></div>
+      </div>
+      <div style={{display:'flex',gap:6}}>
+        <div style={{flex:2}}><div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.kpiFormula}</div><select value={draft.formula} onChange={e=>setDraft(p=>({...p,formula:e.target.value}))} style={{...inputStyle,width:'100%'}}>{FORMULA_OPTIONS.map(o=><option key={o.id} value={o.id}>{o.label}</option>)}</select></div>
+        <div style={{flex:1}}><div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.kpiTargetVal}</div><input type="number" value={draft.target} onChange={e=>setDraft(p=>({...p,target:e.target.value}))} placeholder="35" style={{...inputStyle,width:'100%',boxSizing:'border-box'}}/></div>
+        <div style={{flex:1}}><div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{lang==='fr'?'Direction':'Dir.'}</div><select value={draft.direction} onChange={e=>setDraft(p=>({...p,direction:e.target.value}))} style={{...inputStyle,width:'100%'}}><option value="low">↓ {T.kpiDirLow}</option><option value="high">↑ {T.kpiDirHigh}</option></select></div>
+      </div>
+      <div style={{display:'flex',gap:6}}>
+        <button onClick={save} disabled={!draft.nameFr.trim()} style={{padding:"5px 14px",borderRadius:6,border:"none",background:draft.nameFr.trim()?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:draft.nameFr.trim()?"#fff":t.textDim,cursor:draft.nameFr.trim()?"pointer":"default",fontWeight:700,fontSize:11}}>{T.kpiAddBtn}</button>
+        <button onClick={()=>setOpen(false)} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>{T.cancel}</button>
+      </div>
+    </div>
+  );
+}
+
 // ── CfgCard ──
 function CfgCard({id,title,cfgExpanded,onToggle,children}){
   const t=useT();
@@ -8117,6 +8635,7 @@ export default function App(){
   const [activeMUOLocationId,setActiveMUOLocationId]=useState(null); // currently selected MUO location
   const [checklistTemplates,setChecklistTemplates]=useState([]); // [{id,title_fr,title_en,required,frequency,category,active}]
   const [checklistEntries,setChecklistEntries]=useState({}); // date → [{template_id,completed,completed_by,completed_at}]
+  const [recentLineItems,setRecentLineItems]=useState([]); // from invoice_line_items table
   const [lockConfig,setLockConfig]=useState({enabled:false,pin:"",lockedUntil:null});
   const [appLocked,setAppLocked]=useState(false);
   const [locations,setLocations]=useState([]);
@@ -8148,6 +8667,9 @@ export default function App(){
   const [pdfPreview,setPdfPreview]=useState(null);
   const [closedDays,setClosedDays]=useState({});// {[dateKey]: {closedAt: ISO string}}
   const [showCloseConfirm,setShowCloseConfirm]=useState(false);
+  const [showTipPool,setShowTipPool]=useState(false);
+  const [flashTestStatus,setFlashTestStatus]=useState(null); // null | 'sending' | {ok} | {err}
+  const [flashReport,setFlashReport]=useState(null); // null | {date, venteNet, total, wtdSales, wtdDays, closedCount, totalRegs, isClosed, labourCost, labourPct, cashes}
   useEffect(()=>{const h=e=>setPdfPreview(e.detail.html);window.addEventListener('biq:pdf-preview',h);return()=>window.removeEventListener('biq:pdf-preview',h);},[]);
   const [companyInfo,setCompanyInfo]=useState(DEFAULT_COMPANY_INFO);
   const [invoiceTemplate,setInvoiceTemplate]=useState(DEFAULT_INVOICE_TEMPLATE);
@@ -8174,7 +8696,7 @@ export default function App(){
     try{const r4=await window.api.storage.get("dicann-api-config");if(r4?.value){const cfg=JSON.parse(r4.value);setApiConfig(cfg);if(cfg.plan&&import.meta.env.DEV){setPlan(cfg.plan);setActivePlan(cfg.plan);}}}catch(e){}
     try{const rPrev=await window.api.storage.get("balanceiq-previsions-enabled");if(rPrev?.value==="1")setPrevisionsEnabled(true);}catch(e){}
     try{const r5=await window.api.storage.get("balanceiq-theme");if(r5?.value==='light'||r5?.value==='dark')setThemeName(r5.value)}catch(e){}
-    try{const r6=await window.api.storage.get("dicann-platforms");if(r6?.value)setPlatforms(JSON.parse(r6.value))}catch(e){}
+    try{const r6=await window.api.storage.get("dicann-platforms");if(r6?.value){const saved=JSON.parse(r6.value);setPlatforms(saved.map(p=>({commissionRate:DEFAULT_PLATFORMS.find(d=>d.id===p.id)?.commissionRate||25,...p})));}}catch(e){}
     try{const r7=await window.api.storage.get("dicann-encaisse");if(r7?.value)setEncaisseData(JSON.parse(r7.value))}catch(e){}
     try{const r8=await window.api.storage.get("dicann-encaisse-config");if(r8?.value)setEncaisseConfig(prev=>({...DEFAULT_ENCAISSE_CONFIG,...JSON.parse(r8.value)}))}catch(e){}
     try{const r9=await window.api.storage.get("balanceiq-mode");if(r9?.value)setAppMode(r9.value);else setAppMode(null)}catch(e){setAppMode(null)}
@@ -8220,6 +8742,8 @@ export default function App(){
       entries.forEach(e=>{if(!byDate[e.date])byDate[e.date]=[];byDate[e.date].push(e);});
       setChecklistEntries(byDate);
     }catch(_){}
+    // Load recent invoice line items for price alert card
+    try{const items=await window.api.invoiceLines.getRecent();setRecentLineItems(items||[]);}catch(_){}
     // Init cloud sync — non-blocking, won't affect app if offline
     setTimeout(async()=>{
       try{
@@ -8264,6 +8788,111 @@ export default function App(){
       }catch(_){}
     },4000);
   })()},[]);
+
+  // ── Flash Report ─────────────────────────────────────────────────────────
+  const sendFlashReport=useCallback(async(cfg,ld,cdDays)=>{
+    try{
+      const yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);
+      const ydk=yesterday.toISOString().slice(0,10);
+      const yRaw=ld[ydk];if(!yRaw||!Object.keys(yRaw).length)return;
+      const cashes=yRaw.cashes||[];
+      let posVN=0,manVN=0,posTPS_=0,posTVQ_=0,anyD=false,closedCnt=0;
+      const totalRegs=cashes.length||1;
+      cashes.forEach(c=>{
+        const mc=c.interac!=null&&c.finalCash!=null;
+        const manT=mc?(c.interac||0)+(c.finalCash||0)+(c.deposits||0):0;
+        posVN+=c.posVentes||0;posTPS_+=c.posTPS||0;posTVQ_+=c.posTVQ||0;
+        manVN+=manT;
+        if(c.posVentes!=null||c.interac!=null||c.finalCash!=null)anyD=true;
+        if(mc&&c.posVentes)closedCnt++;
+      });
+      if(!anyD)return;
+      const hasPOS=posVN>0;
+      const venteNet=hasPOS?posVN:manVN;
+      const total=hasPOS?posVN+posTPS_+posTVQ_:venteNet;
+      const emps_=yRaw.employees||[];let labC=0;emps_.forEach(e=>{if(e.hours&&e.wage)labC+=e.hours*e.wage;});
+      const labP=venteNet>0&&labC>0?(labC/venteNet)*100:null;
+      // WTD
+      const mon=new Date(yesterday);mon.setDate(yesterday.getDate()-((yesterday.getDay()+6)%7));
+      let wtdSales=0,wtdDays_=0;const wtdVals=[];
+      for(let i=0;i<=6;i++){
+        const d_=new Date(mon);d_.setDate(mon.getDate()+i);if(d_>yesterday)break;
+        const dk_=d_.toISOString().slice(0,10);const day_=ld[dk_];
+        let s=0;if(day_&&Object.keys(day_).length){const cs=day_.cashes||[];let pv=0,mv=0;cs.forEach(c=>{pv+=c.posVentes||0;const mc=c.interac!=null&&c.finalCash!=null;mv+=mc?(c.interac||0)+(c.finalCash||0)+(c.deposits||0):0;});s=pv>0?pv:mv;}
+        wtdVals.push(s);if(s>0){wtdSales+=s;wtdDays_++;}
+      }
+      // Same day last week (PRO WoW)
+      const prevWeekD_=new Date(yesterday);prevWeekD_.setDate(yesterday.getDate()-7);
+      const prevDk_=prevWeekD_.toISOString().slice(0,10);
+      const prevRaw=ld[prevDk_];let prevDay_=null;
+      if(prevRaw){const pcs=prevRaw.cashes||[];let pv=0,mv=0;pcs.forEach(c=>{pv+=c.posVentes||0;const mc=c.interac!=null&&c.finalCash!=null;mv+=mc?(c.interac||0)+(c.finalCash||0)+(c.deposits||0):0;});const s=pv>0?pv:mv;if(s>0)prevDay_={anyData:true,venteNet:s};}
+      const isPro=canUse('cloudSync');
+      const flashLang_=cfg.flashLang||lang;
+      const html=buildFlashReportHTML({
+        date:ydk,day:{venteNet,total,anyData:anyD,labourCost:labC,labourPct:labP,cashes},
+        closedCount:closedCnt,totalRegs,isClosed:!!(cdDays||{})[ydk],
+        wtdSales,wtdDays:wtdDays_,deliveries:{},wtdValues:wtdVals,prevWeekDay:prevDay_,
+      },flashLang_,isPro);
+      const subj=flashLang_==='en'?`Flash Report — ${ydk}`:`Rapport flash — ${ydk}`;
+      const to=(cfg.flashEmail||cfg.reportEmail||'').trim();
+      if(!to||!cfg.resendKey)return;
+      await window.api.email.sendResend({apiKey:cfg.resendKey,from:cfg.resendFrom||'noreply@balanceiq.ca',to,subject:subj,html,attachments:[]});
+      await window.api.storage.set('balanceiq-flash-sent',ydk);
+    }catch(_){}
+  },[lang]);
+
+  // Check flash report once after data has loaded (5 s delay)
+  useEffect(()=>{
+    if(loading)return;
+    const timer=setTimeout(async()=>{
+      try{
+        if(!apiConfig.flashEnabled)return;
+        const [h,m]=(apiConfig.flashTime||'07:00').split(':').map(Number);
+        const now=new Date();
+        if(now.getHours()<h||(now.getHours()===h&&now.getMinutes()<m))return;
+        // Check if already shown today
+        const lastSeen=(await window.api.storage.get('balanceiq-flash-seen'))?.value||'';
+        const yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);
+        const ydk=yesterday.toISOString().slice(0,10);
+        if(lastSeen===ydk)return;
+        // Build report data from yesterday's liveData
+        const yRaw=liveData[ydk];if(!yRaw||!Object.keys(yRaw).length)return;
+        const cashes_=yRaw.cashes||[];
+        let posVN=0,manVN=0,posTPS_=0,posTVQ_=0,anyD=false,closedCnt=0;
+        const totalRegs_=cashes_.length||1;
+        cashes_.forEach(c=>{
+          const mc=c.interac!=null&&c.finalCash!=null;
+          const manT=mc?(c.interac||0)+(c.finalCash||0)+(c.deposits||0):0;
+          posVN+=c.posVentes||0;posTPS_+=c.posTPS||0;posTVQ_+=c.posTVQ||0;manVN+=manT;
+          if(c.posVentes!=null||c.interac!=null||c.finalCash!=null)anyD=true;
+          if(mc&&c.posVentes)closedCnt++;
+        });
+        if(!anyD)return;
+        const hasPOS=posVN>0;
+        const venteNet_=hasPOS?posVN:manVN;
+        const total_=hasPOS?posVN+posTPS_+posTVQ_:venteNet_;
+        const emps_=yRaw.employees||[];let labC_=0;emps_.forEach(e=>{if(e.hours&&e.wage)labC_+=e.hours*e.wage;});
+        const labP_=venteNet_>0&&labC_>0?(labC_/venteNet_)*100:null;
+        // WTD
+        const mon_=new Date(yesterday);mon_.setDate(yesterday.getDate()-((yesterday.getDay()+6)%7));
+        let wtdSales_=0,wtdDays__=0;
+        for(let i=0;i<=6;i++){
+          const d_=new Date(mon_);d_.setDate(mon_.getDate()+i);if(d_>yesterday)break;
+          const dk_=d_.toISOString().slice(0,10);const dr=liveData[dk_];
+          if(dr&&Object.keys(dr).length){const cs=dr.cashes||[];let pv=0,mv=0;cs.forEach(c=>{pv+=c.posVentes||0;const mc=c.interac!=null&&c.finalCash!=null;mv+=mc?(c.interac||0)+(c.finalCash||0)+(c.deposits||0):0;});const s=pv>0?pv:mv;if(s>0){wtdSales_+=s;wtdDays__++;}}
+        }
+        const reportData={date:ydk,venteNet:venteNet_,total:total_,wtdSales:wtdSales_,wtdDays:wtdDays__,closedCount:closedCnt,totalRegs:totalRegs_,isClosed:!!(closedDays||{})[ydk],labourCost:labC_,labourPct:labP_,cashes:cashes_};
+        setFlashReport(reportData);
+        await window.api.storage.set('balanceiq-flash-seen',ydk);
+        // PRO + Resend: also send by email
+        if(canUse('cloudSync')&&apiConfig.resendKey&&(apiConfig.flashEmail||apiConfig.reportEmail)){
+          sendFlashReport(apiConfig,liveData,closedDays);
+        }
+      }catch(_){}
+    },5000);
+    return()=>clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[loading]);
 
   useEffect(()=>{
     if(window.api?.updater){
@@ -8727,6 +9356,31 @@ export default function App(){
     return{pct:Math.round(completeDays/dates.length*100),completeDays,totalDays:dates.length,itemCount:daily.length,requiredCount:required.length};
   },[checklistTemplates,checklistEntries]);
 
+  // Derive price alerts from recent line items (Gap #3)
+  const priceAlerts=useMemo(()=>{
+    const minorPct=Number(apiConfig?.priceAlertMinor??1);
+    const modPct=Number(apiConfig?.priceAlertModerate??5);
+    const majPct=Number(apiConfig?.priceAlertMajor??15);
+    const seen=new Set();
+    const alerts=[];
+    for(const item of recentLineItems){
+      if(item.match_status!=='price_change'||!item.unit_price)continue;
+      const key=`${item.ingredient_id}-${item.supplier_name}`;
+      if(seen.has(key))continue;
+      seen.add(key);
+      // Find previous price from earlier line items with same ingredient+supplier
+      const prev=recentLineItems.find(x=>x!==item&&x.ingredient_id===item.ingredient_id&&x.supplier_name===item.supplier_name&&x.unit_price&&x.invoice_date<item.invoice_date);
+      if(!prev)continue;
+      const pct=(item.unit_price-prev.unit_price)/prev.unit_price*100;
+      const absPct=Math.abs(pct);
+      if(absPct<minorPct)continue;
+      const sev=absPct>=majPct?'major':absPct>=modPct?'moderate':'minor';
+      alerts.push({ingredientId:item.ingredient_id,ingredientName:item.name_fr||item.raw_description,supplierName:item.supplier_name||'',
+        oldPrice:prev.unit_price,newPrice:item.unit_price,pct,unit:item.unit||'',date:item.invoice_date,sev});
+    }
+    return alerts.sort((a,b)=>Math.abs(b.pct)-Math.abs(a.pct));
+  },[recentLineItems,apiConfig]);
+
   // Count unchecked required items for today (shown in close-out warning)
   const checklistUncheckedRequired=useMemo(()=>{
     const required=checklistTemplates.filter(t=>t.active&&t.required&&t.frequency==='daily');
@@ -8743,6 +9397,9 @@ export default function App(){
     {id:"encaisse",label:T.tabCash},
     {id:"intelligence",label:T.tabIntelligence},
     ...(previsionsEnabled?[{id:"previsions",label:T.tabPrevisions}]:[]),
+    ...(canUse('ocrScanning')?[{id:"recettes",label:T.tabRecettes||"🧪 Recettes"}]:[]),
+    {id:"waste",label:T.tabWaste||"📉 Gaspillage"},
+    ...(appMode==="franchiseur"?[{id:"eco",label:lang==='en'?'🌿 Écocontrib.':'🌿 Écocontrib.'}]:[]),
     {id:"settings",label:T.tabConfig}
   ];
 
@@ -8768,6 +9425,7 @@ export default function App(){
         setActiveTab={setActiveTab}
       />}
       {pdfPreview&&<PDFPreviewModal html={pdfPreview} onClose={()=>setPdfPreview(null)}/>}
+      {flashReport&&<FlashReportPopup data={flashReport} lang={lang} t={t} onClose={()=>setFlashReport(null)}/>}
       {showTelemetryPrompt&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:9998,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:14,padding:"24px 28px",maxWidth:420,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
@@ -8865,6 +9523,22 @@ export default function App(){
             <button onClick={()=>{const d=JSON.parse(localStorage.getItem('balanceiq-dismissed-msgs')||'[]');localStorage.setItem('balanceiq-dismissed-msgs',JSON.stringify([...d,m.id]));setAppMessages(prev=>prev.filter(x=>x.id!==m.id));}} style={{padding:"2px 8px",borderRadius:5,border:`1px solid ${c.border}`,background:"none",color:c.text,cursor:"pointer",fontSize:10,opacity:0.7}}>✕</button>
           </div>);
         })}
+        {/* ── DEMO MODE BANNER ── */}
+        {apiConfig.demoMode&&(
+          <div style={{background:"rgba(249,115,22,0.15)",borderBottom:"2px dashed rgba(249,115,22,0.5)",padding:"6px 15px",display:"flex",alignItems:"center",justifyContent:"center",gap:12}}>
+            <span style={{fontSize:12,color:"#f97316",fontWeight:700,fontFamily:"'DM Mono',monospace",letterSpacing:0.3}}>🎭 DONNÉES DÉMO</span>
+            <span style={{fontSize:11,color:"#f97316",opacity:0.8}}>{lang==='en'?'You are viewing demo data — not real restaurant data.':'Vous consultez des données de démonstration — pas de vraies données.'}</span>
+            <button onClick={async()=>{
+              if(!window.confirm(lang==='en'?'Clear all demo data?':'Effacer toutes les données démo?')) return;
+              const {clearDemoData}=await import('./utils/demoDataGenerator.js');
+              const r=await clearDemoData();
+              if(r.success){setApiConfig(c=>({...c,demoMode:false}));window.location.reload();}
+              else alert('❌ '+(r.message||'Error'));
+            }} style={{padding:"2px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.4)",background:"none",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11}}>
+              {lang==='en'?'Clear demo data':'Effacer les démos'}
+            </button>
+          </div>
+        )}
 
         {/* ── UPDATE BAR ── */}
         {updateAvailable&&<div style={{background:"linear-gradient(90deg,rgba(249,115,22,0.15),rgba(234,88,12,0.1))",borderBottom:"1px solid rgba(249,115,22,0.3)",padding:"7px 15px",display:"flex",alignItems:"center",justifyContent:"center",gap:12}}>
@@ -8993,15 +9667,18 @@ export default function App(){
                 entries={checklistEntries[selectedDate]||[]}
                 onToggle={toggleChecklistEntry}
                 isClosed={isClosed}
-                t={t} T={T}
+                t={t} T={T} lang={lang}
               />
             )}
 
             {/* Close-out button / closed badge */}
             {today.anyData&&!isClosed&&(
-              <div style={{textAlign:"center",paddingTop:2}}>
+              <div style={{display:"flex",gap:8,justifyContent:"center",paddingTop:2,flexWrap:"wrap"}}>
                 <button onClick={()=>setShowCloseConfirm(true)} style={{background:"linear-gradient(135deg,#16a34a,#15803d)",border:"none",borderRadius:8,color:"#fff",padding:"9px 24px",fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:"0.3px"}}>
                   ✓ {T.closeDayBtn}
+                </button>
+                <button onClick={()=>setShowTipPool(true)} style={{background:"linear-gradient(135deg,#f59e0b,#d97706)",border:"none",borderRadius:8,color:"#fff",padding:"9px 18px",fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:"0.3px"}}>
+                  💰 {lang==='en'?'Tip Pool':'Pourboires'}
                 </button>
               </div>
             )}
@@ -9009,8 +9686,13 @@ export default function App(){
               const closedAt=closedDays[selectedDate]?.closedAt;
               const timeStr=closedAt?new Date(closedAt).toLocaleTimeString(lang==='en'?'en-CA':'fr-CA',{hour:'2-digit',minute:'2-digit'}):'';
               return(
-                <div style={{textAlign:"center",padding:"6px 10px",borderRadius:6,background:"rgba(34,197,94,0.07)",border:"1px solid rgba(34,197,94,0.2)",fontSize:12,color:"#16a34a",fontWeight:700}}>
-                  {T.closeDayBadge}{timeStr?` — ${timeStr}`:''}
+                <div style={{display:"flex",gap:8,justifyContent:"center",alignItems:"center",flexWrap:"wrap"}}>
+                  <div style={{padding:"6px 10px",borderRadius:6,background:"rgba(34,197,94,0.07)",border:"1px solid rgba(34,197,94,0.2)",fontSize:12,color:"#16a34a",fontWeight:700}}>
+                    {T.closeDayBadge}{timeStr?` — ${timeStr}`:''}
+                  </div>
+                  <button onClick={()=>setShowTipPool(true)} style={{background:"linear-gradient(135deg,#f59e0b,#d97706)",border:"none",borderRadius:8,color:"#fff",padding:"6px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                    💰 {lang==='en'?'Tip Pool':'Pourboires'}
+                  </button>
                 </div>
               );
             })()}
@@ -9028,6 +9710,13 @@ export default function App(){
                   </div>
                 </div>
               </div>
+            )}
+
+            {/* Tip Pool Modal */}
+            {showTipPool&&(
+              <Suspense fallback={null}>
+                <TipPoolModal lang={lang} date={selectedDate} dailyEmployees={emps||[]} staffRoster={empRoster||[]} onClose={()=>setShowTipPool(false)}/>
+              </Suspense>
             )}
 
             {/* POS Advanced Data Panel */}
@@ -9296,10 +9985,28 @@ export default function App(){
           {activeTab==="monthly"&&<MonthlyPL computeDay={computeDay} suppliers={suppliers} liveData={liveData} platforms={platforms} expenseItems={expenseItems} glAccounts={glAccounts} apiConfig={apiConfig} ocrMappings={ocrMappings} setOcrMappings={setOcrMappings} payrollConfig={payrollConfig} lang={lang} showSectionTooltips={showSectionTooltips} setActiveTab={setActiveTab}/>}
           {activeTab==="encaisse"&&<EncaisseTab liveData={liveData} encaisseData={encaisseData} persistEncaisse={persistEncaisse} encaisseConfig={encaisseConfig} saveEncaisseConfig={saveEncaisseConfig}/>}
           {activeTab==="facturation"&&<FacturationTab categories={facCategories} saveCategories={saveFacCategories} produits={facProduits} saveProduits={saveFacProduits} clients={facClients} saveClients={saveFacClients} soumissions={facSoumissions} saveSoumissions={saveFacSoumissions} commandes={facCommandes} saveCommandes={saveFacCommandes} factures={facFactures} saveFactures={saveFacFactures} creditNotes={facCreditNotes} saveCreditNotes={saveFacCreditNotes} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData} persistEncaisse={persistEncaisse} showUpgradePrompt={showUpgradePrompt} apiConfig={apiConfig} recurrents={facRecurrents} saveRecurrents={saveFacRecurrents} invoiceTemplate={effectiveTemplate} rawInvoiceTemplate={invoiceTemplate} saveInvoiceTemplate={saveInvoiceTemplate} canUse={canUse} glAccounts={glAccounts} saveGlAccounts={saveGlAccounts}/>}
-          {activeTab==="intelligence"&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR} platforms={platforms} encaisseData={encaisseData} encaisseConfig={encaisseConfig} apiConfig={apiConfig} checklistCompliance={checklistComplianceStats}/>}
+          {activeTab==="intelligence"&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR} platforms={platforms} encaisseData={encaisseData} encaisseConfig={encaisseConfig} apiConfig={apiConfig} checklistCompliance={checklistComplianceStats} priceAlerts={priceAlerts} suppliers={suppliers}/>}
           {activeTab==="previsions"&&previsionsEnabled&&(
             <Suspense fallback={<div style={{padding:16,fontSize:12,opacity:0.5}}>Chargement...</div>}>
               <PrevisionsTabLazy apiConfig={apiConfig} showUpgradePrompt={showUpgradePrompt} canUse={canUse} T={T} t={t} lang={lang} onInsightCountChange={setPrevInsightCount}/>
+            </Suspense>
+          )}
+
+          {activeTab==="recettes"&&canUse('ocrScanning')&&(
+            <Suspense fallback={<div style={{padding:16,fontSize:12,opacity:0.5}}>Chargement...</div>}>
+              <RecettesTabLazy t={t} T={T} lang={lang} activePlan={activePlan} canUse={canUse}/>
+            </Suspense>
+          )}
+
+          {activeTab==="waste"&&(
+            <Suspense fallback={<div style={{padding:16,fontSize:12,opacity:0.5}}>Chargement...</div>}>
+              <WasteTabLazy t={t} T={T} lang={lang} canUse={canUse}/>
+            </Suspense>
+          )}
+
+          {activeTab==="eco"&&(
+            <Suspense fallback={<div style={{padding:16,fontSize:12,opacity:0.5}}>Chargement...</div>}>
+              <EcocontributionTabLazy t={t} T={T} lang={lang}/>
             </Suspense>
           )}
 
@@ -9478,8 +10185,12 @@ export default function App(){
             </CfgCard>
             <CfgCard id="platforms" title={T.cfgDeliveryPlatforms} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               <div style={{fontSize:11,color:t.textMuted,marginBottom:6}}>{T.cfgPlatformHint}</div>
-              {platforms.map(p=>(<div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:5,marginBottom:3}}>
-                <span style={{fontSize:12,color:t.text}}>{p.emoji} {p.name}</span>
+              {platforms.map(p=>(<div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",background:t.rowBg,border:`1px solid ${t.rowBorder}`,borderRadius:5,marginBottom:3,gap:8}}>
+                <span style={{fontSize:12,color:t.text,flex:1}}>{p.emoji} {p.name}</span>
+                <div style={{display:"flex",alignItems:"center",gap:4}}>
+                  <span style={{fontSize:10,color:t.textMuted}}>%</span>
+                  <input type="number" min="0" max="100" step="0.5" value={p.commissionRate??25} onChange={e=>{const np=platforms.map(x=>x.id===p.id?{...x,commissionRate:parseFloat(e.target.value)||0}:x);setPlatforms(np);savePlatforms(np);}} style={{...inputStyle,width:52,textAlign:'center',padding:"2px 4px",fontSize:11}} title={lang==='en'?"Commission rate":"Taux de commission"}/>
+                </div>
                 <button onClick={()=>{const np=platforms.filter(x=>x.id!==p.id);setPlatforms(np);savePlatforms(np)}} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:4,color:"#ef4444",fontSize:10,padding:"2px 6px",cursor:"pointer"}}>✕</button>
               </div>))}
               <div style={{display:"flex",gap:6,marginTop:4}}>
@@ -9519,14 +10230,33 @@ export default function App(){
             </div>)}
 
             {/* ⚙️ OPÉRATIONS */}
-            {configSubTab==="operations"&&(
+            {configSubTab==="operations"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
               <ChecklistConfigSection
                 templates={checklistTemplates}
                 onSave={saveChecklistTemplate}
                 onDelete={deleteChecklistTemplate}
-                t={t} T={T}
+                t={t} T={T} lang={lang}
               />
-            )}
+              {/* Price alert thresholds */}
+              <CfgCard id="priceAlerts" title={<span style={{fontSize:13,fontWeight:700,color:t.text}}>🔍 {lang==='en'?'Vendor price alert thresholds':'Seuils d\'alerte de prix fournisseurs'} <span style={{fontSize:9,fontWeight:700,color:'#f97316',background:'rgba(249,115,22,0.1)',padding:'1px 6px',borderRadius:4,marginLeft:4}}>Pro</span></span>} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
+                <div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{lang==='en'?'When a scanned invoice shows a price change, these thresholds determine the severity level.':'Quand une facture numérisée montre un changement de prix, ces seuils déterminent le niveau de sévérité.'}</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+                  {[
+                    {key:'priceAlertMinor',   labelFr:'Mineur (%)',   labelEn:'Minor (%)',   default:1,  color:'#6b7280'},
+                    {key:'priceAlertModerate',labelFr:'Modéré (%)',   labelEn:'Moderate (%)',default:5,  color:'#f59e0b'},
+                    {key:'priceAlertMajor',   labelFr:'Majeur (%)',   labelEn:'Major (%)',   default:15, color:'#ef4444'},
+                  ].map(({key,labelFr,labelEn,default:def,color})=>(
+                    <div key={key}>
+                      <div style={{fontSize:10,color,fontWeight:600,marginBottom:4}}>{lang==='en'?labelEn:labelFr}</div>
+                      <input type="number" min="0" max="100" step="0.5" value={apiConfig[key]??def}
+                        onChange={e=>{const nc={...apiConfig,[key]:parseFloat(e.target.value)||def};setApiConfig(nc);saveApiCfg(nc);}}
+                        style={{...inputStyle,width:"100%",boxSizing:"border-box",textAlign:"right",fontFamily:"'DM Mono',monospace"}}/>
+                    </div>
+                  ))}
+                </div>
+                <div style={{marginTop:8,fontSize:10,color:t.textMuted}}>{lang==='en'?'Price changes above Major threshold require confirmation before saving.':'Les hausses au-delà du seuil Majeur nécessitent une confirmation avant l\'enregistrement.'}</div>
+              </CfgCard>
+            </div>)}
 
             {/* 🔌 INTÉGRATIONS */}
             {configSubTab==="integrations"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -9563,6 +10293,59 @@ export default function App(){
                   :<span style={{fontSize:11,color:"#ef4444",fontWeight:600}}>✗ {resendTestStatus.err}</span>)}
               </div>
             </CfgCard>
+
+            {/* Daily Flash Report */}
+            <CfgCard id="flashReport" title={T.flashReportTitle} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{T.flashReportHint}</div>
+              <label style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,cursor:"pointer"}}>
+                <input type="checkbox" checked={!!apiConfig.flashEnabled} onChange={e=>{const nc={...apiConfig,flashEnabled:e.target.checked};setApiConfig(nc);saveApiCfg(nc);}}/>
+                <span style={{fontSize:13,color:t.text,fontWeight:600}}>{T.flashEnabled}</span>
+              </label>
+              <div style={{marginBottom:10}}>
+                <div style={{fontSize:12,color:t.textMuted,marginBottom:3}}>{T.flashTimeLabel}</div>
+                <input type="time" value={apiConfig.flashTime||"07:00"} onChange={e=>{const nc={...apiConfig,flashTime:e.target.value};setApiConfig(nc);saveApiCfg(nc);}} style={{...inputStyle,width:120}}/>
+              </div>
+              {/* Email section — PRO only */}
+              <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${t.cardBorder}`}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+                  <span style={{fontSize:12,fontWeight:700,color:t.text}}>{lang==='fr'?"Par courriel":"By email"}</span>
+                  <span style={{fontSize:9,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",padding:"1px 6px",borderRadius:8,fontWeight:700,letterSpacing:"0.5px"}}>PRO</span>
+                </div>
+                {!canUse('cloudSync')?(
+                  <div style={{fontSize:11,color:t.textMuted,padding:"6px 8px",background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5}}>
+                    {lang==='en'?"Automatic email delivery is a Pro feature. Upgrade to also receive your flash report by email every morning.":"L'envoi par courriel est une fonctionnalité Pro. Passez à Pro pour recevoir votre rapport flash par courriel chaque matin."}
+                  </div>
+                ):(
+                  <>
+                    {!apiConfig.resendKey&&(
+                      <div style={{fontSize:11,color:"#f59e0b",marginBottom:8,padding:"5px 8px",background:"rgba(245,158,11,0.06)",border:"1px solid rgba(245,158,11,0.2)",borderRadius:5}}>{T.flashRequiresResend}</div>
+                    )}
+                    <div style={{marginBottom:8}}>
+                      <div style={{fontSize:12,color:t.textMuted,marginBottom:3}}>{T.flashEmailLabel}</div>
+                      <input value={apiConfig.flashEmail||""} onChange={e=>{const nc={...apiConfig,flashEmail:e.target.value};setApiConfig(nc);saveApiCfg(nc);}} placeholder={apiConfig.reportEmail||"vous@exemple.ca"} style={{...inputStyle,width:"100%",boxSizing:"border-box"}}/>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <button onClick={async()=>{
+                        if(!apiConfig.resendKey){setFlashTestStatus({err:"Clé Resend manquante."});return;}
+                        const to=(apiConfig.flashEmail||apiConfig.reportEmail||'').trim();
+                        if(!to){setFlashTestStatus({err:"Adresse courriel requise."});return;}
+                        setFlashTestStatus('sending');
+                        try{
+                          await sendFlashReport({...apiConfig,flashEmail:to},liveData,closedDays);
+                          setFlashTestStatus({ok:true});setTimeout(()=>setFlashTestStatus(null),3000);
+                        }catch(e){setFlashTestStatus({err:e.message||"Erreur"});}
+                      }} style={{padding:"5px 14px",borderRadius:5,border:`1px solid ${apiConfig.resendKey?"rgba(249,115,22,0.3)":t.cardBorder}`,background:apiConfig.resendKey?"rgba(249,115,22,0.08)":t.section,color:apiConfig.resendKey?"#f97316":t.textDim,cursor:apiConfig.resendKey?"pointer":"default",fontWeight:600,fontSize:11}} disabled={!apiConfig.resendKey||flashTestStatus==='sending'}>
+                        {flashTestStatus==='sending'?T.flashSending:T.flashSendTest}
+                      </button>
+                      {flashTestStatus&&flashTestStatus!=='sending'&&(flashTestStatus.ok
+                        ?<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>{T.flashSentOk}</span>
+                        :<span style={{fontSize:11,color:"#ef4444",fontWeight:600}}>{typeof T.flashSentErr==='function'?T.flashSentErr(flashTestStatus.err):flashTestStatus.err}</span>)}
+                    </div>
+                  </>
+                )}
+              </div>
+            </CfgCard>
+
             {/* POS Integration */}
             <POSIntegrationSection posCredentials={posCredentials} setPosCredentials={setPosCredentials} posAdvancedConfig={posAdvancedConfig} onSavePosAdvanced={cfg=>{setPosAdvancedConfig(cfg);window.api.storage.set("pos-advanced-config",JSON.stringify(cfg));}} t={t} T={T} canUse={canUse} showUpgradePrompt={showUpgradePrompt}/>
             {/* Delivery API Credentials */}
@@ -9686,39 +10469,6 @@ export default function App(){
                       ))}
                     </div>
                     <div style={{fontSize:10,color:t.textMuted,marginTop:6}}>{T.cfgPlanDevOnly}</div>
-                    {/* ── DEMO DATA LOADER (DEV only) ── */}
-                    <div style={{marginTop:14,paddingTop:12,borderTop:`1px solid ${t.cardBorder}`}}>
-                      <div style={{fontSize:11,fontWeight:700,color:t.textSub,marginBottom:8}}>
-                        {lang==='en'?'Demo Data':'Données démo'}
-                      </div>
-                      <button onClick={async()=>{
-                        if(!window.confirm(lang==='en'
-                          ?'This will OVERWRITE all existing data with demo data (Bistro Maple + Italian bakery). Continue?'
-                          :'Cela va ÉCRASER toutes les données existantes avec les données démo (Bistro Maple + boulangerie italienne). Continuer?')) return;
-                        const btn=document.activeElement;
-                        if(btn)btn.disabled=true;
-                        try{
-                          const {loadDemoData}=await import('./utils/demoDataGenerator.js');
-                          const result=await loadDemoData(lang);
-                          if(result.success){
-                            alert(lang==='en'?'✅ Demo data loaded! Reload the app to see the data.':'✅ Données démo chargées! Rechargez l\'app pour voir les données.');
-                            window.location.reload();
-                          } else {
-                            alert('❌ '+(result.message||'Error loading demo data'));
-                          }
-                        }catch(e){
-                          console.error('[DemoData]',e);
-                          alert('❌ '+(e?.message||String(e)));
-                        }finally{
-                          if(btn)btn.disabled=false;
-                        }
-                      }} style={{padding:"7px 18px",borderRadius:8,border:"1.5px dashed #f97316",background:"rgba(249,115,22,0.06)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'DM Sans',sans-serif"}}>
-                        🎭 {lang==='en'?'Load demo data':'Charger données démo'}
-                      </button>
-                      <div style={{fontSize:10,color:t.textMuted,marginTop:5}}>
-                        {lang==='en'?'90 days • 3 months P&L • 8 clients • bakery forecasts':'90 jours • 3 mois P&L • 8 clients • prévisions boulangerie'}
-                      </div>
-                    </div>
                   </>
                   :<>
                     <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -9727,6 +10477,52 @@ export default function App(){
                     <div style={{fontSize:10,color:t.textDim,marginTop:4}}>{T.cfgPlanChangeNote}</div>
                   </>
                 }
+                {/* ── DEMO DATA ── always visible ── */}
+                <div style={{marginTop:14,paddingTop:12,borderTop:`1px solid ${t.cardBorder}`}}>
+                  <div style={{fontSize:11,fontWeight:700,color:t.textSub,marginBottom:8}}>
+                    {lang==='en'?'Demo Data':'Données démo'}
+                  </div>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                    <button onClick={async()=>{
+                      if(!window.confirm(lang==='en'
+                        ?'This will OVERWRITE all existing data with demo data (Bistro Maple + Italian bakery). Continue?'
+                        :'Cela va ÉCRASER toutes les données existantes avec les données démo (Bistro Maple + boulangerie italienne). Continuer?')) return;
+                      const btn=document.activeElement;
+                      if(btn)btn.disabled=true;
+                      try{
+                        const {loadDemoData}=await import('./utils/demoDataGenerator.js');
+                        const result=await loadDemoData(lang);
+                        if(result.success){
+                          alert(lang==='en'?'✅ Demo data loaded! Reload the app to see the data.':'✅ Données démo chargées! Rechargez l\'app pour voir les données.');
+                          window.location.reload();
+                        } else {
+                          alert('❌ '+(result.message||'Error loading demo data'));
+                        }
+                      }catch(e){
+                        console.error('[DemoData]',e);
+                        alert('❌ '+(e?.message||String(e)));
+                      }finally{
+                        if(btn)btn.disabled=false;
+                      }
+                    }} style={{padding:"7px 18px",borderRadius:8,border:"1.5px dashed #f97316",background:"rgba(249,115,22,0.06)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'DM Sans',sans-serif"}}>
+                      🎭 {lang==='en'?'Load demo data':'Charger données démo'}
+                    </button>
+                    {apiConfig.demoMode&&(
+                      <button onClick={async()=>{
+                        if(!window.confirm(lang==='en'?'Clear all demo data?':'Effacer toutes les données démo?')) return;
+                        const {clearDemoData}=await import('./utils/demoDataGenerator.js');
+                        const r=await clearDemoData();
+                        if(r.success){setApiConfig(c=>({...c,demoMode:false}));window.location.reload();}
+                        else alert('❌ '+(r.message||'Error'));
+                      }} style={{padding:"7px 14px",borderRadius:8,border:"1px solid rgba(239,68,68,0.4)",background:"rgba(239,68,68,0.06)",color:"#ef4444",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'DM Sans',sans-serif"}}>
+                        🗑 {lang==='en'?'Clear demo data':'Effacer les démos'}
+                      </button>
+                    )}
+                  </div>
+                  <div style={{fontSize:10,color:t.textMuted,marginTop:5}}>
+                    {lang==='en'?'90 days • 3 months P&L • 8 clients • bakery forecasts':'90 jours • 3 mois P&L • 8 clients • prévisions boulangerie'}
+                  </div>
+                </div>
               </div>
             </CfgCard>
             {/* ── CLOUD ACCOUNT + SUBSCRIPTION (grouped) ── */}
@@ -9746,6 +10542,34 @@ export default function App(){
             <CfgCard id="sectionTooltips" title={T.showTooltipsLabel} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               <div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{T.showTooltipsDesc}</div>
               <button onClick={async()=>{const v=!showSectionTooltips;setShowSectionTooltips(v);await window.api.storage.set("balanceiq-section-tooltips",v?"1":"0");}} style={{padding:"5px 18px",borderRadius:20,border:`1px solid ${showSectionTooltips?"#f97316":t.cardBorder}`,background:showSectionTooltips?"rgba(249,115,22,0.15)":t.section,color:showSectionTooltips?"#f97316":t.textSub,cursor:"pointer",fontWeight:700,fontSize:12,transition:"all 0.15s"}}>{showSectionTooltips?T.showTooltipsOn:T.showTooltipsOff}</button>
+            </CfgCard>
+            {/* ── KPI SETTINGS ── */}
+            <CfgCard id="kpiSettings" title={`📊 ${T.kpiPanelTitle}`} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
+              {/* $/dozen toggle */}
+              <div style={{marginBottom:12}}>
+                <div style={{fontSize:11.5,fontWeight:600,color:t.text,marginBottom:3}}>{T.showDzKpiLabel}</div>
+                <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{T.showDzKpiHint}</div>
+                <button onClick={()=>{const nc={...apiConfig,showDzKpi:!apiConfig.showDzKpi};setApiConfig(nc);saveApiCfg(nc);}} style={{padding:"5px 18px",borderRadius:20,border:`1px solid ${apiConfig.showDzKpi?"#f97316":t.cardBorder}`,background:apiConfig.showDzKpi?"rgba(249,115,22,0.15)":t.section,color:apiConfig.showDzKpi?"#f97316":t.textSub,cursor:"pointer",fontWeight:700,fontSize:12,transition:"all 0.15s"}}>{apiConfig.showDzKpi?T.prevToggleOn:T.prevToggleOff}</button>
+              </div>
+              {/* Sqft */}
+              <div style={{borderTop:`1px solid ${t.cardBorder}`,paddingTop:10,marginBottom:12}}>
+                <div style={{fontSize:11.5,fontWeight:600,color:t.text,marginBottom:3}}>{T.sqftLabel}</div>
+                <div style={{fontSize:11,color:t.textMuted,marginBottom:6}}>{T.sqftHint}</div>
+                <input type="number" value={apiConfig.sqft||""} onChange={e=>{const nc={...apiConfig,sqft:e.target.value?Number(e.target.value):null};setApiConfig(nc);saveApiCfg(nc);}} placeholder="ex: 1200" style={{...inputStyle,width:110}}/>
+              </div>
+              {/* Custom KPIs */}
+              <div style={{borderTop:`1px solid ${t.cardBorder}`,paddingTop:10}}>
+                <div style={{fontSize:11.5,fontWeight:600,color:t.text,marginBottom:8}}>{T.customKpisTitle}</div>
+                {(apiConfig.customKpis||[]).map((kpi,i)=>(
+                  <div key={kpi.id} style={{display:'flex',gap:8,alignItems:'center',padding:'5px 8px',background:t.section,borderRadius:6,marginBottom:4}}>
+                    <span style={{flex:1,fontSize:11,color:t.text}}>{lang==='en'?(kpi.nameEn||kpi.nameFr):kpi.nameFr}</span>
+                    <span style={{fontSize:10,color:t.textMuted,fontFamily:"'DM Mono',monospace"}}>{kpi.formula}</span>
+                    {kpi.target&&<span style={{fontSize:10,color:t.textMuted}}>{kpi.direction==='low'?'<':'>'} {kpi.target}</span>}
+                    <button onClick={()=>{const kpis=(apiConfig.customKpis||[]).filter((_,j)=>j!==i);const nc={...apiConfig,customKpis:kpis};setApiConfig(nc);saveApiCfg(nc);}} style={{padding:'2px 7px',borderRadius:4,border:'1px solid rgba(239,68,68,0.3)',background:'rgba(239,68,68,0.06)',color:'#ef4444',cursor:'pointer',fontSize:10}}>{T.kpiDeleteKpi}</button>
+                  </div>
+                ))}
+                <KpiAddForm apiConfig={apiConfig} setApiConfig={setApiConfig} saveApiCfg={saveApiCfg} lang={lang} T={T} t={t} inputStyle={inputStyle}/>
+              </div>
             </CfgCard>
             {/* ── APPARENCE (absorbed from old tab) ── */}
             <CfgCard id="appearance" title={T.cfgAppearanceAndMore} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
