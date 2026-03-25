@@ -9,16 +9,17 @@ import { supabase } from './supabase.js';
 import { setPlan } from '../config/features.js';
 
 // ── STATE ──────────────────────────────────────────────────────────────────
-let _session = null;       // Supabase auth session
-let _orgId = null;         // organization UUID
-let _locationId = null;    // location UUID
-let _plan = 'free';        // plan from organizations table
-let _parentOrgId = null;   // set when org belongs to a franchisor network
-let _lastSyncAt = null;    // ISO timestamp of last successful pull
-let _offlineQueue = [];    // [{key, value}] queued while offline
+let _session = null;           // Supabase auth session
+let _orgId = null;             // organization UUID
+let _locationId = null;        // location UUID
+let _plan = 'free';            // plan from organizations table
+let _parentOrgId = null;       // set when org belongs to a franchisor network
+let _lastSyncAt = null;        // ISO timestamp of last successful pull
+let _offlineQueue = [];        // [{key, value}] queued while offline
 let _syncDebounceTimer = null;
-let _statusCallback = null; // (status) => void
-let _planCallback = null;   // (plan) => void
+let _statusCallback = null;    // (status) => void
+let _planCallback = null;      // (plan) => void
+let _myLinkedLocations = [];   // [{location_id, location_name, franchisor_org_id, franchisee_org_id}]
 
 // ── STATUS ─────────────────────────────────────────────────────────────────
 export function onSyncStatus(cb) { _statusCallback = cb; }
@@ -27,6 +28,7 @@ function setStatus(s) { _statusCallback?.(s); }
 
 // ── INIT ───────────────────────────────────────────────────────────────────
 export async function initCloudSync() {
+  if (!supabase) return null;
   try {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return null;
@@ -79,6 +81,13 @@ async function _loadOrgAndPlan() {
     if (newLoc) _locationId = newLoc.id;
     console.log('[CloudSync] auto-created location:', _locationId);
   }
+
+  // Load all linked locations for this user (MUO support)
+  const { data: linked } = await supabase
+    .from('user_linked_locations')
+    .select('location_id, location_name, franchisor_org_id, franchisee_org_id')
+    .eq('user_id', _session.user.id);
+  _myLinkedLocations = linked || [];
 }
 
 // ── SIGN UP ────────────────────────────────────────────────────────────────
@@ -117,7 +126,7 @@ export async function signIn({ email, password }) {
 export async function signOut() {
   await supabase.auth.signOut();
   _session = null; _orgId = null; _locationId = null; _plan = 'free';
-  _offlineQueue = [];
+  _offlineQueue = []; _myLinkedLocations = [];
   setStatus(null);
 }
 
@@ -230,6 +239,7 @@ export function getCloudSession() { return _session; }
 export function getCloudPlan() { return _plan; }
 export function getCloudOrgId() { return _orgId; }
 export function getCloudParentOrgId() { return _parentOrgId; }
+export function getMyLinkedLocations() { return _myLinkedLocations; }
 
 // Legacy export (referenced by auditLogger.js)
 export const CLOUD_SYNC_ENABLED = true;

@@ -7,7 +7,8 @@ import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./config/features.js";
 import * as XLSX from "xlsx";
 import { logCreate, logUpdate, logVoid, logCorrection, isFinancialField, promptCorrectionReason } from "./services/auditLogger.js";
-import { initCloudSync, signIn as cloudSignIn, signUp as cloudSignUp, signOut as cloudSignOut, schedulePush, onSyncStatus, onPlanChange, refreshPlan, getCloudOrgId, getCloudParentOrgId } from "./services/cloudSync.js";
+import { initCloudSync, signIn as cloudSignIn, signUp as cloudSignUp, signOut as cloudSignOut, schedulePush, onSyncStatus, onPlanChange, refreshPlan, getCloudOrgId, getCloudParentOrgId, getMyLinkedLocations } from "./services/cloudSync.js";
+import { supabase as _supabaseClient } from "./services/supabase.js";
 import { initTelemetry, getTelemetryConsent, setTelemetryConsent, trackEvent } from "./services/telemetry.js";
 import { POS_CONFIG, POS_COMING_SOON } from "./config/posConfig.js";
 import { FR, EN } from "./i18n/translations.js";
@@ -158,7 +159,7 @@ const xlateWeather=(str,T_)=>{if(!str||!T_)return str;const map={"Ensoleillé":"
 function genDemo(){const data={};const base=new Date(2024,0,1);for(let i=0;i<366;i++){const d=new Date(base);d.setDate(d.getDate()+i);const dow=d.getDay(),isWe=dow===0||dow===6;const total=Math.max(800,Math.round((isWe?2800:1900)+Math.sin((d.getMonth()/12)*Math.PI)*400+(Math.random()-0.5)*600));data[dk(d)]={venteNet:total,hamUsed:Math.round((18+Math.random()*12)*(0.7+Math.random()*0.25)),hotUsed:Math.round((12+Math.random()*8)*(0.7+Math.random()*0.25))}}return data}
 
 // ── ATOMS ──
-function F({label,value,onChange,disabled,prefix,suffix,type="number",placeholder,wide,accent:ac,tabIndex:ti,warn}){
+function F({label,value,onChange,disabled,prefix,suffix,type="number",placeholder,wide,accent:ac,tabIndex:ti,warn,note}){
   const t=useT();
   const [touched,setTouched]=useState(false);
   const border=disabled?`1px solid ${t.disabledBorder}`:ac?`1px solid rgba(${ac},0.25)`:`1px solid rgba(249,115,22,${value!=null&&value!==""?0.25:0.1})`;
@@ -177,6 +178,7 @@ function F({label,value,onChange,disabled,prefix,suffix,type="number",placeholde
       </div>
     </div>
     {touched&&warn&&<div style={{fontSize:10,color:"#f97316",padding:"1px 0 2px"}}>{warn}</div>}
+    {note&&<div style={{fontSize:9,color:t.textDim,fontStyle:"italic",padding:"1px 0 2px"}}>{note}</div>}
   </div>);
 }
 
@@ -251,9 +253,14 @@ function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,ro
   // Expected in register = Total POS − deliveries (platforms hold delivery money)
   const posLiv=cash.posLivraisons||0;
   const expectedInReg=posOk?posT-posLiv:null;
+  // Net Sales = Sales before tax − Discounts − Refunds (royalty base)
+  const posDisc=cash.posDiscounts||0;
+  const posRef=cash.posRefunds||0;
+  const hasDiscRef=posOk&&(posDisc>0||posRef>0);
+  const netSales=posOk?(cash.posVentes||0)-posDisc-posRef:null;
   const mc=cash.interac!=null&&cash.finalCash!=null;
-  // Manual = only what's physically countable: terminal + cash
-  const manT=mc?(cash.interac||0)+(cash.finalCash||0):null;
+  // Manual = terminal + cash remaining in till + deposits removed to safe during the day
+  const manT=mc?(cash.interac||0)+(cash.finalCash||0)+(cash.deposits||0):null;
   const canR=posOk&&mc;const ecart=canR?manT-expectedInReg:null;const bal=canR&&Math.abs(ecart)<=1;
   const rN=roster.find(r=>r.id===cash.cashierId)?.name;const label=rN||(T.cashRegisterLabel?`${T.cashRegisterLabel} ${index+1}`:`Caisse ${index+1}`);
   const fc=[cash.posVentes,cash.interac,cash.finalCash].filter(v=>v!=null).length;
@@ -269,7 +276,9 @@ function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,ro
   const posVsTermMatch=!hasPosBreakdown||termTotal==null||Math.abs(posCardTotal-(termTotal||0))<=0.01;
   // Expected cash = Expected in register − terminal (what should be physically in the drawer)
   const expectedCash=(posOk&&termTotal!=null)?(posT-posLiv)-(termTotal||0):null;
-  const cashVariance=(expectedCash!=null&&cash.finalCash!=null)?cash.finalCash-expectedCash:null;
+  // Physical cash = what's in till + what was moved to safe (deposits)
+  const physCash=(cash.finalCash||0)+(cash.deposits||0);
+  const cashVariance=(expectedCash!=null&&cash.finalCash!=null)?physCash-expectedCash:null;
   const outerBorder=bal?t.reconBalBorder:canR&&!bal?t.reconErrBorder:t.cardBorder;
   const headerBg=bal?t.reconBalBg:t.cashHeaderBg;
   return(<div style={{background:t.card,border:`1px solid ${outerBorder}`,borderRadius:10,overflow:"hidden"}}>
@@ -296,18 +305,23 @@ function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,ro
               const adv=posAdvancedConfig.fields||{};
               const rows=[];
               if(adv.discounts)rows.push(<div key="disc" style={{marginTop:5,paddingTop:5,borderTop:`1px solid rgba(${t.posRgb},0.1)`}}>
-                <F label={T.posAdvGross||'Brut POS'} value={cash.posGrossSales} onChange={v=>onChange({...cash,posGrossSales:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+16}/>
                 <F label={T.posAdvDisc||'Rabais'} value={cash.posDiscounts} onChange={v=>onChange({...cash,posDiscounts:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+17}/>
                 <F label={T.posAdvRefunds||'Remb.'} value={cash.posRefunds} onChange={v=>onChange({...cash,posRefunds:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+18}/>
+                {hasDiscRef&&<div style={{marginTop:3,paddingLeft:12,borderLeft:`2px solid rgba(${t.posRgb},0.2)`}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"2px 0"}}>
+                    <span style={{fontSize:9.5,color:t.posColor,fontWeight:600,fontStyle:"italic"}}>{T.posAdvNetSales||'= Ventes nettes'}</span>
+                    <span style={{fontFamily:"'DM Mono',monospace",fontSize:10.5,fontWeight:700,color:t.posColor}}>{fmt(netSales)}</span>
+                  </div>
+                </div>}
               </div>);
               if(adv.nonTaxable)rows.push(<div key="nt" style={{marginTop:5,paddingTop:5,borderTop:`1px solid rgba(${t.posRgb},0.1)`}}>
-                <F label={T.posAdvNTLabel||'Non-taxable'} value={cash.posNonTaxable} onChange={v=>onChange({...cash,posNonTaxable:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+19}/>
+                <F label={T.posAdvNTLabel||'Non-taxable'} value={cash.posNonTaxable} onChange={v=>onChange({...cash,posNonTaxable:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+19} note={T.posAdvNTNote||'inclus dans ventes — informatif'}/>
               </div>);
               if(adv.tips)rows.push(<div key="tips" style={{marginTop:5,paddingTop:5,borderTop:`1px solid rgba(${t.posRgb},0.1)`}}>
                 <F label={T.posAdvTipsLabel||'Pourboires'} value={cash.posTips} onChange={v=>onChange({...cash,posTips:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+20}/>
               </div>);
               if(adv.transactionCount)rows.push(<div key="tx" style={{marginTop:5,paddingTop:5,borderTop:`1px solid rgba(${t.posRgb},0.1)`}}>
-                <F label={T.posAdvTxLabel||'Transactions'} value={cash.posTransactionCount} onChange={v=>onChange({...cash,posTransactionCount:v})} accent={t.posRgb} tabIndex={index*20+21}/>
+                <F label={T.posAdvTxCountLabel||'Nombre de transactions'} value={cash.posTransactionCount} onChange={v=>onChange({...cash,posTransactionCount:v})} accent={t.posRgb} tabIndex={index*20+21} note={T.posAdvTxNote||'informatif'}/>
               </div>);
               if(adv.payments){const pp=cash.posPayments||{};const setPP=k=>v=>onChange({...cash,posPayments:{...pp,[k]:v}});rows.push(<div key="pmts" style={{marginTop:5,paddingTop:5,borderTop:`1px solid rgba(${t.posRgb},0.1)`}}>
                 <div style={{fontSize:9,fontWeight:600,color:t.textMuted,marginBottom:3}}>{T.posAdvPmtTitle||'💳 Modes de paiement'}</div>
@@ -372,6 +386,7 @@ function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,ro
               <span style={{fontFamily:"'DM Mono',monospace",fontSize:11.5,fontWeight:500,color:t.reconValue}}>{fmt(termTotal??0)}</span>
             </div>
             <ReconLine label={`+ ${T.dailyFinalCash}`} value={cash.finalCash??0}/>
+            {(cash.deposits||0)>0&&<ReconLine label={`+ ${T.dailyDeposits}`} value={cash.deposits??0}/>}
             <ReconLine label={`= ${T.dailyTotalManual}`} value={manT} bold accent="#f97316" borderTop/>
           </div>
           <div>
@@ -382,6 +397,7 @@ function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,ro
             <ReconLine label={T.dailyTotalPOS} value={posOk?posT:null} bold accent={t.posColor} borderTop/>
             {posOk&&posLiv>0&&<ReconLine label={`↳ − ${T.dailyDeliveries}`} value={posLiv} accent={t.textMuted}/>}
             {posOk&&<ReconLine label={T.dailyExpectedInReg} value={expectedInReg} bold accent={t.posColor}/>}
+            {hasDiscRef&&<ReconLine label={T.posAdvNetSales||'Ventes nettes'} value={netSales} bold accent={t.posColor} borderTop/>}
             {canR&&<ReconLine label={T.dailySummaryVariance} value={Math.abs(ecart)} bold accent={bal?"#16a34a":"#dc2626"}/>}
           </div>
         </div>)}
@@ -4749,7 +4765,7 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
       dayData.cashes.forEach(c=>{
         const name=c.nom||c.cashierId;
         if(!name||c.posVentes==null||c.interac==null||c.finalCash==null)return;
-        const manT=(c.interac||0)+(c.finalCash||0);
+        const manT=(c.interac||0)+(c.finalCash||0)+(c.deposits||0);
         const posT=(c.posVentes||0)+(c.posTPS||0)+(c.posTVQ||0);
         const expectedInReg=posT-(c.posLivraisons||0);
         const ecart=Math.round((manT-expectedInReg)*100)/100;
@@ -5723,6 +5739,122 @@ function MarqueBlancheConfig({whiteLabelConfig,saveWhiteLabel}){
         </>)}
         <button onClick={()=>saveWhiteLabel(cfg)} style={{alignSelf:"flex-start",padding:"6px 16px",borderRadius:7,border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.1)",color:"#c4b5fd",cursor:"pointer",fontWeight:600,fontSize:11}}>{T.save}</button>
       </div>
+    </div>
+  );
+}
+
+// ── MES SUCCURSALES TAB (Multi-Unit Franchisee) ──
+function MesSuccursalesTab({myLinkedLocations,activeMUOLocationId,setActiveMUOLocationId}){
+  const t=useT();
+  const T=useLang();
+  const [locationData,setLocationData]=React.useState({}); // location_id → {today, week, month, synced}
+  const [loading,setLoading]=React.useState(true);
+
+  React.useEffect(()=>{
+    if(!myLinkedLocations.length){setLoading(false);return;}
+    if(!_supabaseClient){setLoading(false);return;}
+    let cancelled=false;
+    async function load(){
+      setLoading(true);
+      const results={};
+      for(const loc of myLinkedLocations){
+        try{
+          const today=new Date().toISOString().slice(0,10);
+          const{data}=await _supabaseClient.from('synced_data')
+            .select('key,value,updated_at')
+            .eq('org_id',loc.franchisee_org_id)
+            .like('key','dicann-v7%')
+            .order('updated_at',{ascending:false})
+            .limit(30);
+          if(!data||!data.length){results[loc.location_id]={synced:false};continue;}
+          // Parse daily entries to sum sales
+          let todaySales=null,weekSales=0,monthSales=0;
+          const weekAgo=new Date(Date.now()-7*24*3600*1000).toISOString().slice(0,10);
+          const monthStart=today.slice(0,7)+'-01';
+          for(const row of data){
+            try{
+              const val=typeof row.value==='string'?JSON.parse(row.value):row.value;
+              if(!val)continue;
+              // val = {entries: {YYYY-MM-DD: {...daily data}}} or flat daily map
+              const entries=val.entries||val;
+              if(typeof entries==='object'){
+                for(const[date,day]of Object.entries(entries)){
+                  if(typeof day!=='object'||!day)continue;
+                  const caisses=day.caisses||[];
+                  const vn=caisses.reduce((s,c)=>{
+                    if(c.interac!=null&&c.finalCash!=null)return s+(c.interac||0)+(c.finalCash||0)+(c.deposits||0);
+                    return s;
+                  },0);
+                  if(date===today)todaySales=(todaySales||0)+vn;
+                  if(date>=weekAgo)weekSales+=vn;
+                  if(date>=monthStart)monthSales+=vn;
+                }
+              }
+            }catch(_){}
+          }
+          results[loc.location_id]={synced:true,today:todaySales,week:weekSales||null,month:monthSales||null,lastSync:data[0]?.updated_at};
+        }catch(_){results[loc.location_id]={synced:false};}
+      }
+      if(!cancelled){setLocationData(results);setLoading(false);}
+    }
+    load();
+    return()=>{cancelled=true;};
+  },[myLinkedLocations]);
+
+  const fmt=v=>v==null?"—":new Intl.NumberFormat('fr-CA',{style:'currency',currency:'CAD',maximumFractionDigits:0}).format(v);
+  const fmtDate=s=>{if(!s)return"—";const d=new Date(s);return d.toLocaleDateString('fr-CA',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});};
+
+  return(
+    <div style={{maxWidth:900,margin:"0 auto",padding:"12px 10px"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+        <span style={{fontSize:18}}>📍</span>
+        <div>
+          <div style={{fontSize:15,fontWeight:700,color:t.text}}>{T.myLocTitle||"Mes succursales"}</div>
+          <div style={{fontSize:11,color:t.textMuted,marginTop:1}}>{T.myLocOwnerNote||"Vous gérez plusieurs succursales."}</div>
+        </div>
+      </div>
+
+      {loading&&<div style={{color:t.textMuted,fontSize:12,padding:"20px 0",textAlign:"center"}}>Chargement...</div>}
+
+      {!loading&&(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {myLinkedLocations.map(loc=>{
+            const d=locationData[loc.location_id]||{};
+            const isActive=activeMUOLocationId===loc.location_id;
+            return(
+              <div key={loc.location_id} style={{background:t.section,border:`1px solid ${isActive?"#f97316":t.cardBorder}`,borderRadius:10,padding:"14px 16px",transition:"border-color 0.15s"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:2}}>{loc.location_name}</div>
+                    <div style={{fontSize:10,color:t.textMuted}}>
+                      {d.synced
+                        ?<span style={{color:"#22c55e",fontWeight:600}}>● {T.myLocSynced||"Synchronisé"}{d.lastSync?` · ${fmtDate(d.lastSync)}`:""}</span>
+                        :<span style={{color:"#ef4444",fontWeight:600}}>● {T.myLocNotSynced||"Non synchronisé"}</span>
+                      }
+                    </div>
+                  </div>
+                  <button onClick={()=>setActiveMUOLocationId(isActive?null:loc.location_id)}
+                    style={{background:isActive?"rgba(249,115,22,0.15)":"rgba(249,115,22,0.07)",border:`1px solid ${isActive?"#f97316":"rgba(249,115,22,0.3)"}`,borderRadius:6,color:"#f97316",fontSize:10.5,fontWeight:600,padding:"4px 10px",cursor:"pointer"}}>
+                    {isActive?"✓ Active":T.myLocSwitch||"Basculer"}
+                  </button>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+                  {[
+                    {label:T.myLocToday||"Aujourd'hui",val:d.today},
+                    {label:T.myLocWeek||"Cette semaine",val:d.week},
+                    {label:T.myLocMonth||"Ce mois",val:d.month},
+                  ].map(({label,val})=>(
+                    <div key={label} style={{background:t.inputBg,borderRadius:7,padding:"9px 10px"}}>
+                      <div style={{fontSize:9.5,color:t.textMuted,marginBottom:3,fontWeight:600,textTransform:"uppercase",letterSpacing:0.4}}>{label}</div>
+                      <div style={{fontSize:14,fontWeight:700,color:val?t.text:t.textDim,fontFamily:"'DM Mono',monospace"}}>{fmt(val)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -7778,6 +7910,8 @@ export default function App(){
   const [lang,setLang]=useState("fr");
   const [cloudUser,setCloudUser]=useState(null); // {email, plan} or null
   const [syncStatus,setSyncStatus]=useState(null); // 'synced'|'syncing'|'offline'|'error'|null
+  const [myLinkedLocations,setMyLinkedLocations]=useState([]); // MUO: [{location_id, location_name, ...}]
+  const [activeMUOLocationId,setActiveMUOLocationId]=useState(null); // currently selected MUO location
   const [lockConfig,setLockConfig]=useState({enabled:false,pin:"",lockedUntil:null});
   const [appLocked,setAppLocked]=useState(false);
   const [locations,setLocations]=useState([]);
@@ -7876,7 +8010,10 @@ export default function App(){
         onSyncStatus(setSyncStatus);
         onPlanChange(p=>{setPlan(p);setActivePlan(p);});
         const cloud=await initCloudSync();
-        if(cloud?.session){setCloudUser({email:cloud.session.user.email,plan:cloud.plan});}
+        if(cloud?.session){
+          setCloudUser({email:cloud.session.user.email,plan:cloud.plan});
+          setMyLinkedLocations(getMyLinkedLocations());
+        }
       }catch(_){}
     },1000);
     // Subscription plan refresh — triggered when Stripe redirects back after checkout/portal
@@ -8021,9 +8158,9 @@ export default function App(){
   const saveWhiteLabel=useCallback(cfg=>{setWhiteLabelConfig(cfg);window.api.storage.set("balanceiq-whitelabel",JSON.stringify(cfg)).catch(()=>{})},[]);
   const saveLockConfig=useCallback(cfg=>{setLockConfig(cfg);window.api.storage.set("balanceiq-lock",JSON.stringify(cfg)).catch(()=>{})},[]);
   const saveInvConfig=useCallback(cfg=>{setInvConfig(cfg);const v=JSON.stringify(cfg);window.api.storage.set("dicann-inv-config",v).catch(()=>{});schedulePush("dicann-inv-config",v);},[]);
-  const handleCloudSignIn=useCallback(async(creds)=>{const res=await cloudSignIn(creds);setCloudUser({email:res.session.user.email,plan:res.plan});if(res.plan!=='free'){setPlan(res.plan);setActivePlan(res.plan);}},[]);
+  const handleCloudSignIn=useCallback(async(creds)=>{const res=await cloudSignIn(creds);setCloudUser({email:res.session.user.email,plan:res.plan});setMyLinkedLocations(getMyLinkedLocations());if(res.plan!=='free'){setPlan(res.plan);setActivePlan(res.plan);}},[]);
   const handleCloudSignUp=useCallback(async(creds)=>{await cloudSignUp(creds);/* trigger creates org/user server-side; user must confirm email then sign in */},[]);
-  const handleCloudSignOut=useCallback(async()=>{await cloudSignOut();setCloudUser(null);setSyncStatus(null);},[]);
+  const handleCloudSignOut=useCallback(async()=>{await cloudSignOut();setCloudUser(null);setSyncStatus(null);setMyLinkedLocations([]);setActiveMUOLocationId(null);},[]);
   const showUpgradePrompt=useCallback(featureName=>{if(shouldShowUpgradePrompt(featureName)){setUpgradePromptFeature(featureName);trackEvent('upgrade_prompt_shown',{feature:featureName});}},[]);
   const saveCompanyInfo=useCallback(info=>{setCompanyInfo(info);const v=JSON.stringify(info);window.api.storage.set("dicann-company-info",v).catch(()=>{});schedulePush("dicann-company-info",v);},[]);
   const saveInvoiceTemplate=useCallback(tpl=>{setInvoiceTemplate(tpl);const v=JSON.stringify(tpl);window.api.storage.set("dicann-invoice-template",v).catch(()=>{});schedulePush("dicann-invoice-template",v);},[]);
@@ -8143,25 +8280,26 @@ export default function App(){
     const hR=itemResults.ham?.received??0;
     const hoR=itemResults.hot?.received??0;
     const cashes=r.cashes||[];
-    let posVN=0,posTPS_=0,posTVQ_=0,posLiv_=0,manVN=0,allB=true,anyD=false;
+    let posVN=0,posTPS_=0,posTVQ_=0,posLiv_=0,posDisc_=0,posRef_=0,manVN=0,allB=true,anyD=false;
     cashes.forEach(c=>{
       const mc_=c.interac!=null&&c.finalCash!=null;
-      // Manual = terminal + cash (no livraisons — platforms hold delivery money)
-      const manT_=mc_?(c.interac||0)+(c.finalCash||0):0;
+      // Manual = terminal + cash remaining in till + deposits removed to safe
+      const manT_=mc_?(c.interac||0)+(c.finalCash||0)+(c.deposits||0):0;
       // POS total = Sales + GST + QST (deliveries are subset of sales, not added)
       const posT_=(c.posVentes||0)+(c.posTPS||0)+(c.posTVQ||0);
       const expectedInReg_=posT_-(c.posLivraisons||0);
       posVN+=c.posVentes||0;posTPS_+=c.posTPS||0;posTVQ_+=c.posTVQ||0;posLiv_+=c.posLivraisons||0;
+      posDisc_+=c.posDiscounts||0;posRef_+=c.posRefunds||0;
       manVN+=manT_;
       if(c.posVentes!=null||c.interac!=null||c.finalCash!=null)anyD=true;
       if(!mc_||!c.posVentes||Math.abs(manT_-expectedInReg_)>1)allB=false;
     });
-    // Net Sales = posVentes (before tax). Fall back to manual total for historical data.
+    // Net Sales = Sales before tax − Discounts − Refunds. Fall back to manual for historical data.
     const hasPOS=posVN>0;
-    const vN=hasPOS?posVN:manVN;
+    const vN=hasPOS?posVN-posDisc_-posRef_:manVN;
     const tps=hasPOS?posTPS_:Math.round(vN*0.05*100)/100;
     const tvq=hasPOS?posTVQ_:Math.round(vN*0.09975*100)/100;
-    // Gross = Sales + GST + QST (deliveries already included in Sales)
+    // Total POS = Sales before tax + GST + QST (deliveries already included in Sales)
     const tot=hasPOS?posVN+posTPS_+posTVQ_:Math.round((vN+tps+tvq)*100)/100;
     const moy=vN>0&&tDoz>0?vN/tDoz:null;
     const emps=r.employees||[];let labC=0,labH=0;emps.forEach(e=>{if(e.hours&&e.wage){labC+=e.hours*e.wage;labH+=e.hours}});
@@ -8330,6 +8468,7 @@ export default function App(){
 
   const tabs=[
     ...(appMode==="franchiseur"?[{id:"reseau",label:T.tabNetwork}]:[]),
+    ...(appMode!=="franchiseur"&&myLinkedLocations.length>1?[{id:"mylocations",label:T.tabMyLocations||"📍 Mes succursales"}]:[]),
     {id:"daily",label:T.tabDaily},
     {id:"monthly",label:T.tabPL},
     {id:"encaisse",label:T.tabCash},
@@ -8419,6 +8558,14 @@ export default function App(){
                   ))}
                 </select>
               )}
+              {appMode!=="franchiseur"&&myLinkedLocations.length>1&&(
+                <select value={activeMUOLocationId||myLinkedLocations[0]?.location_id||""} onChange={e=>{setActiveMUOLocationId(e.target.value);setActiveTab("mylocations");}}
+                  style={{marginLeft:12,background:"rgba(249,115,22,0.08)",border:"1px solid rgba(249,115,22,0.25)",borderRadius:6,color:"#f97316",fontSize:11,fontWeight:600,padding:"3px 8px",cursor:"pointer",outline:"none",fontFamily:"'Outfit',sans-serif"}}>
+                  {myLinkedLocations.map(l=>(
+                    <option key={l.location_id} value={l.location_id}>📍 {l.location_name}</option>
+                  ))}
+                </select>
+              )}
             </div>
             <div style={{display:"flex",alignItems:"center",gap:6}}>
               {saving&&<span style={{fontSize:9,color:"#f97316",fontFamily:"'DM Mono',monospace"}}>sauvegarde...</span>}
@@ -8496,6 +8643,9 @@ export default function App(){
 
         {/* ── CONTENT ── */}
         <div style={{maxWidth:1120,margin:"0 auto",padding:"10px 15px 30px"}}>
+
+          {/* MES SUCCURSALES TAB (Multi-Unit Franchisee) */}
+          {activeTab==="mylocations"&&<MesSuccursalesTab myLinkedLocations={myLinkedLocations} activeMUOLocationId={activeMUOLocationId} setActiveMUOLocationId={setActiveMUOLocationId}/>}
 
           {/* RÉSEAU TAB */}
           {activeTab==="reseau"&&<ReseauTab locations={locations} facFactures={facFactures} facCreditNotes={facCreditNotes} facClients={facClients} royaltyConfig={royaltyConfig} facCategories={facCategories} facProduits={facProduits} saveFacFactures={saveFacFactures} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} apiConfig={apiConfig} perfTargets={perfTargets} payrollConfig={payrollConfig} cloudUser={cloudUser} alertConfig={alertConfig} orgId={getCloudOrgId()} onUnreadDocsChange={setUnreadDocsCount}/>}
