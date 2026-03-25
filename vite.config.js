@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [react()],
   root: 'src',
   base: './',
+  envDir: '../',  // load .env from project root (not src/)
   server: {
     port: 5173,
   },
