@@ -112,4 +112,66 @@ contextBridge.exposeInMainWorld('api', {
     getEntriesRange: (from, to)   => ipcRenderer.invoke('checklist:getEntriesRange', from, to),
     saveEntry:       (entry)      => ipcRenderer.invoke('checklist:saveEntry', entry),
   },
+  ingredients: {
+    getAll:       ()           => ipcRenderer.invoke('ingredients:getAll'),
+    save:         (p)          => ipcRenderer.invoke('ingredients:save', p),
+    delete:       (id)         => ipcRenderer.invoke('ingredients:delete', id),
+    aliasesGet:   (id)         => ipcRenderer.invoke('ingredients:aliasesGet', id),
+    aliasSave:    (a)          => ipcRenderer.invoke('ingredients:aliasSave', a),
+    aliasDelete:  (id)         => ipcRenderer.invoke('ingredients:aliasDelete', id),
+    aliasFind:    (alias, s)   => ipcRenderer.invoke('ingredients:aliasFind', alias, s),
+  },
+  priceHistory: {
+    get:     (id)       => ipcRenderer.invoke('priceHistory:get', id),
+    getLast: (id, s)    => ipcRenderer.invoke('priceHistory:getLast', id, s),
+    save:    (r)        => ipcRenderer.invoke('priceHistory:save', r),
+  },
+  recipes: {
+    getAll:          ()         => ipcRenderer.invoke('recipes:getAll'),
+    save:            (r)        => ipcRenderer.invoke('recipes:save', r),
+    delete:          (id)       => ipcRenderer.invoke('recipes:delete', id),
+    ingredientsGet:  (id)       => ipcRenderer.invoke('recipes:ingredientsGet', id),
+    ingredientsSet:  (id, list) => ipcRenderer.invoke('recipes:ingredientsSetAll', id, list),
+  },
+  invoiceLines: {
+    save:          (items) => ipcRenderer.invoke('invoiceLines:save', items),
+    getForInvoice: (ref)   => ipcRenderer.invoke('invoiceLines:getForInvoice', ref),
+    getRecent:     ()      => ipcRenderer.invoke('invoiceLines:getRecent'),
+  },
+  waste: {
+    getRange: (f, to)   => ipcRenderer.invoke('waste:getRange', f, to),
+    save:     (entry)   => ipcRenderer.invoke('waste:save', entry),
+    delete:   (id)      => ipcRenderer.invoke('waste:delete', id),
+  },
+  tipPool: {
+    config: {
+      get:  ()    => ipcRenderer.invoke('tipPool:config:get'),
+      save: (cfg) => ipcRenderer.invoke('tipPool:config:save', cfg),
+    },
+    session: {
+      get:      (date)    => ipcRenderer.invoke('tipPool:session:get', date),
+      getRange: (f, to)   => ipcRenderer.invoke('tipPool:session:getRange', f, to),
+      save:     (session) => ipcRenderer.invoke('tipPool:session:save', session),
+    },
+  },
+  eco: {
+    items: {
+      getAll: ()       => ipcRenderer.invoke('eco:items:getAll'),
+      upsert: (item)   => ipcRenderer.invoke('eco:items:upsert', item),
+      delete: (id)     => ipcRenderer.invoke('eco:items:delete', id),
+    },
+    config: {
+      get:  ()    => ipcRenderer.invoke('eco:config:get'),
+      save: (cfg) => ipcRenderer.invoke('eco:config:save', cfg),
+    },
+    rates: {
+      getForYear: (year)  => ipcRenderer.invoke('eco:rates:getForYear', year),
+      upsert:     (rate)  => ipcRenderer.invoke('eco:rates:upsert', rate),
+    },
+    usage: {
+      getForYear: (year)             => ipcRenderer.invoke('eco:usage:getForYear', year),
+      upsert:     (usage)            => ipcRenderer.invoke('eco:usage:upsert', usage),
+      delete:     (y, pid, lid)      => ipcRenderer.invoke('eco:usage:delete', y, pid, lid),
+    },
+  },
 });

@@ -161,6 +161,167 @@ function getDb() {
       created_at TEXT DEFAULT (datetime('now','localtime'))
     )`).run();
     // TODO: add rush_hour pattern when POS hourly data is available
+
+    // ── Recipe Costing Tables ─────────────────────────────────────────────
+    db.prepare(`CREATE TABLE IF NOT EXISTS ingredients (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name_fr TEXT NOT NULL,
+      name_en TEXT DEFAULT '',
+      category TEXT DEFAULT 'other',
+      default_unit TEXT DEFAULT 'kg',
+      current_unit_price REAL,
+      last_price_update TEXT,
+      supplier_id TEXT DEFAULT '',
+      sku TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    )`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_ingredients_name ON ingredients(name_fr)`).run();
+
+    db.prepare(`CREATE TABLE IF NOT EXISTS ingredient_aliases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ingredient_id INTEGER NOT NULL,
+      alias TEXT NOT NULL,
+      supplier_id TEXT DEFAULT '',
+      match_count INTEGER DEFAULT 0,
+      UNIQUE(alias, supplier_id)
+    )`).run();
+
+    db.prepare(`CREATE TABLE IF NOT EXISTS supplier_price_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ingredient_id INTEGER NOT NULL,
+      supplier_name TEXT DEFAULT '',
+      unit_price REAL NOT NULL,
+      quantity REAL,
+      unit TEXT DEFAULT 'kg',
+      invoice_date TEXT NOT NULL,
+      invoice_ref TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    )`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_price_hist ON supplier_price_history(ingredient_id, invoice_date DESC)`).run();
+
+    db.prepare(`CREATE TABLE IF NOT EXISTS recipes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name_fr TEXT NOT NULL,
+      name_en TEXT DEFAULT '',
+      category TEXT DEFAULT 'main',
+      yield_qty REAL DEFAULT 1,
+      yield_unit TEXT DEFAULT 'portions',
+      active INTEGER DEFAULT 1,
+      notes TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    )`).run();
+
+    db.prepare(`CREATE TABLE IF NOT EXISTS recipe_ingredients (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      recipe_id INTEGER NOT NULL,
+      ingredient_id INTEGER NOT NULL,
+      quantity REAL NOT NULL,
+      unit TEXT NOT NULL,
+      notes TEXT DEFAULT ''
+    )`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_rec_ing ON recipe_ingredients(recipe_id)`).run();
+
+    db.prepare(`CREATE TABLE IF NOT EXISTS invoice_line_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      invoice_ref TEXT DEFAULT '',
+      invoice_date TEXT DEFAULT '',
+      supplier_name TEXT DEFAULT '',
+      raw_description TEXT NOT NULL,
+      quantity REAL,
+      unit TEXT DEFAULT '',
+      unit_price REAL,
+      extended_price REAL,
+      ingredient_id INTEGER,
+      match_status TEXT DEFAULT 'unmatched',
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    )`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_line_items_date ON invoice_line_items(invoice_date)`).run();
+
+    // ── Food Waste Tracking ───────────────────────────────────────────────
+    db.prepare(`CREATE TABLE IF NOT EXISTS waste_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL,
+      ingredient_id INTEGER,
+      category TEXT NOT NULL DEFAULT 'other',
+      quantity REAL NOT NULL,
+      unit TEXT DEFAULT 'kg',
+      reason TEXT NOT NULL DEFAULT 'other',
+      shift TEXT DEFAULT 'evening',
+      unit_cost REAL,
+      dollar_value REAL,
+      notes TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    )`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_waste_date ON waste_entries(date)`).run();
+
+    // ── Tip Pooling ───────────────────────────────────────────────────────
+    db.prepare(`CREATE TABLE IF NOT EXISTS tip_pool_config (
+      id INTEGER PRIMARY KEY DEFAULT 1,
+      method TEXT NOT NULL DEFAULT 'equal',
+      manager_included INTEGER DEFAULT 0,
+      roles TEXT DEFAULT '[]',
+      notes TEXT DEFAULT ''
+    )`).run();
+    db.prepare(`CREATE TABLE IF NOT EXISTS tip_pool_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL UNIQUE,
+      total_tips REAL NOT NULL,
+      method_used TEXT NOT NULL,
+      distributions TEXT NOT NULL DEFAULT '[]',
+      finalized INTEGER DEFAULT 0,
+      finalized_by TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    )`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_tip_date ON tip_pool_sessions(date)`).run();
+    // ── Écocontribution ──
+    db.prepare(`CREATE TABLE IF NOT EXISTS packaging_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name_fr TEXT NOT NULL,
+      name_en TEXT DEFAULT '',
+      material_category TEXT NOT NULL,
+      unit_weight_grams REAL NOT NULL DEFAULT 0,
+      supplier_id INTEGER,
+      active INTEGER DEFAULT 1,
+      notes TEXT DEFAULT ''
+    )`).run();
+    db.prepare(`CREATE TABLE IF NOT EXISTS eco_config (
+      id INTEGER PRIMARY KEY DEFAULT 1,
+      year INTEGER NOT NULL DEFAULT 2025,
+      takeout_percentage REAL NOT NULL DEFAULT 80,
+      dine_in_percentage REAL NOT NULL DEFAULT 20,
+      methodology_notes TEXT DEFAULT '',
+      num_quebec_locations INTEGER DEFAULT 1
+    )`).run();
+    db.prepare(`CREATE TABLE IF NOT EXISTS eco_rates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      year INTEGER NOT NULL,
+      material_category TEXT NOT NULL,
+      rate_per_tonne REAL NOT NULL,
+      malus_percentage REAL DEFAULT 0,
+      recycled_credit_percentage REAL DEFAULT 0,
+      UNIQUE(year, material_category)
+    )`).run();
+    db.prepare(`CREATE TABLE IF NOT EXISTS eco_usage (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      year INTEGER NOT NULL,
+      packaging_item_id INTEGER NOT NULL,
+      annual_units REAL NOT NULL DEFAULT 0,
+      source TEXT DEFAULT 'manual',
+      location_id TEXT DEFAULT 'all',
+      notes TEXT DEFAULT '',
+      UNIQUE(year, packaging_item_id, location_id)
+    )`).run();
+    // Seed 2025 PFP rates on first run
+    const ecoRateCount = db.prepare('SELECT COUNT(*) as cnt FROM eco_rates WHERE year=2025').get();
+    if (ecoRateCount.cnt === 0) {
+      const ins2025 = db.prepare(`INSERT OR IGNORE INTO eco_rates (year,material_category,rate_per_tonne,malus_percentage) VALUES (?,?,?,?)`);
+      [['corrugated',539.67,0],['flat_cardboard',712.91,0],['paper_laminates',1199.99,0],
+       ['pp_plastic',1194.26,0],['pet_plastic',1006.09,0],['hdpe_film',1781.92,0],
+       ['polystyrene_pvc_pla',3391.42,50],['aluminum',444.57,0],['printed_matter',737.12,0]
+      ].forEach(([cat,rate,malus])=>ins2025.run(2025,cat,rate,malus));
+    }
   }
   return db;
 }
@@ -417,6 +578,208 @@ function checklistEntryUpsert(entry) {
   return true;
 }
 
+// ── Ingredients (Recipe Costing Products) ──
+function ingredientsGetAll() {
+  return getDb().prepare('SELECT * FROM ingredients WHERE active=1 ORDER BY category, name_fr').all();
+}
+function ingredientUpsert(p) {
+  const db = getDb();
+  if (p.id) {
+    db.prepare(`UPDATE ingredients SET name_fr=@name_fr, name_en=@name_en, category=@category,
+      default_unit=@default_unit, current_unit_price=@current_unit_price, last_price_update=@last_price_update,
+      supplier_id=@supplier_id, sku=@sku, notes=@notes, active=@active WHERE id=@id`).run(p);
+    return p.id;
+  } else {
+    const info = db.prepare(`INSERT INTO ingredients (name_fr,name_en,category,default_unit,current_unit_price,last_price_update,supplier_id,sku,notes,active)
+      VALUES (@name_fr,@name_en,@category,@default_unit,@current_unit_price,@last_price_update,@supplier_id,@sku,@notes,@active)`).run(p);
+    return info.lastInsertRowid;
+  }
+}
+function ingredientDelete(id) {
+  getDb().prepare('UPDATE ingredients SET active=0 WHERE id=?').run(id);
+  return true;
+}
+
+// ── Ingredient Aliases ──
+function ingredientAliasesGetForIngredient(ingredientId) {
+  return getDb().prepare('SELECT * FROM ingredient_aliases WHERE ingredient_id=? ORDER BY alias').all(ingredientId);
+}
+function ingredientAliasUpsert(a) {
+  getDb().prepare(`INSERT INTO ingredient_aliases (ingredient_id, alias, supplier_id, match_count)
+    VALUES (@ingredient_id, @alias, @supplier_id, @match_count)
+    ON CONFLICT(alias, supplier_id) DO UPDATE SET match_count=excluded.match_count, ingredient_id=excluded.ingredient_id`).run(a);
+  return true;
+}
+function ingredientAliasDelete(id) {
+  getDb().prepare('DELETE FROM ingredient_aliases WHERE id=?').run(id);
+  return true;
+}
+function ingredientAliasFindMatch(alias, supplierName) {
+  // Try exact match with supplier first, then any supplier
+  const row = getDb().prepare(
+    `SELECT a.*, i.name_fr, i.name_en, i.category, i.default_unit, i.current_unit_price
+     FROM ingredient_aliases a JOIN ingredients i ON a.ingredient_id=i.id
+     WHERE (a.alias=? AND a.supplier_id=?) OR (a.alias=? AND a.supplier_id='')
+     ORDER BY CASE WHEN a.supplier_id=? THEN 0 ELSE 1 END LIMIT 1`
+  ).get(alias, supplierName||'', alias, supplierName||'');
+  return row || null;
+}
+
+// ── Supplier Price History ──
+function priceHistoryGetForIngredient(ingredientId, limit=20) {
+  return getDb().prepare('SELECT * FROM supplier_price_history WHERE ingredient_id=? ORDER BY invoice_date DESC LIMIT ?').all(ingredientId, limit);
+}
+function priceHistoryGetLastPrice(ingredientId, supplierName) {
+  return getDb().prepare(`SELECT * FROM supplier_price_history WHERE ingredient_id=? AND supplier_name=?
+    ORDER BY invoice_date DESC LIMIT 1`).get(ingredientId, supplierName||'') || null;
+}
+function priceHistorySave(record) {
+  getDb().prepare(`INSERT INTO supplier_price_history (ingredient_id, supplier_name, unit_price, quantity, unit, invoice_date, invoice_ref)
+    VALUES (@ingredient_id, @supplier_name, @unit_price, @quantity, @unit, @invoice_date, @invoice_ref)`).run(record);
+  return true;
+}
+
+// ── Recipes ──
+function recipesGetAll() {
+  return getDb().prepare('SELECT * FROM recipes WHERE active=1 ORDER BY category, name_fr').all();
+}
+function recipeUpsert(r) {
+  const db = getDb();
+  if (r.id) {
+    db.prepare(`UPDATE recipes SET name_fr=@name_fr, name_en=@name_en, category=@category,
+      yield_qty=@yield_qty, yield_unit=@yield_unit, active=@active, notes=@notes WHERE id=@id`).run(r);
+    return r.id;
+  } else {
+    const info = db.prepare(`INSERT INTO recipes (name_fr,name_en,category,yield_qty,yield_unit,active,notes)
+      VALUES (@name_fr,@name_en,@category,@yield_qty,@yield_unit,@active,@notes)`).run(r);
+    return info.lastInsertRowid;
+  }
+}
+function recipeDelete(id) {
+  getDb().prepare('UPDATE recipes SET active=0 WHERE id=?').run(id);
+  return true;
+}
+
+// ── Recipe Ingredients ──
+function recipeIngredientsGet(recipeId) {
+  return getDb().prepare(`SELECT ri.*, i.name_fr, i.name_en, i.current_unit_price, i.default_unit
+    FROM recipe_ingredients ri JOIN ingredients i ON ri.ingredient_id=i.id
+    WHERE ri.recipe_id=?`).all(recipeId);
+}
+function recipeIngredientsSetAll(recipeId, ingredients) {
+  const db = getDb();
+  db.prepare('DELETE FROM recipe_ingredients WHERE recipe_id=?').run(recipeId);
+  const ins = db.prepare(`INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit, notes)
+    VALUES (@recipe_id, @ingredient_id, @quantity, @unit, @notes)`);
+  for (const ri of ingredients) ins.run({ ...ri, recipe_id: recipeId });
+  return true;
+}
+
+// ── Invoice Line Items ──
+function invoiceLineItemsSave(items) {
+  const ins = getDb().prepare(`INSERT INTO invoice_line_items
+    (invoice_ref, invoice_date, supplier_name, raw_description, quantity, unit, unit_price, extended_price, ingredient_id, match_status)
+    VALUES (@invoice_ref, @invoice_date, @supplier_name, @raw_description, @quantity, @unit, @unit_price, @extended_price, @ingredient_id, @match_status)`);
+  for (const item of items) ins.run(item);
+  return true;
+}
+function invoiceLineItemsGetForInvoice(invoiceRef) {
+  return getDb().prepare('SELECT * FROM invoice_line_items WHERE invoice_ref=? ORDER BY id').all(invoiceRef);
+}
+function invoiceLineItemsGetRecent(limit=50) {
+  return getDb().prepare(`SELECT li.*, i.name_fr FROM invoice_line_items li
+    LEFT JOIN ingredients i ON li.ingredient_id=i.id
+    ORDER BY li.invoice_date DESC, li.id DESC LIMIT ?`).all(limit);
+}
+
+// ── Tip Pooling ──
+function tipPoolConfigGet() {
+  return getDb().prepare('SELECT * FROM tip_pool_config WHERE id=1').get() || { id:1, method:'equal', manager_included:0, roles:'[]', notes:'' };
+}
+function tipPoolConfigSave(cfg) {
+  getDb().prepare(`INSERT INTO tip_pool_config (id,method,manager_included,roles,notes) VALUES (1,@method,@manager_included,@roles,@notes)
+    ON CONFLICT(id) DO UPDATE SET method=excluded.method, manager_included=excluded.manager_included, roles=excluded.roles, notes=excluded.notes`).run(cfg);
+  return true;
+}
+function tipPoolSessionGet(date) {
+  return getDb().prepare('SELECT * FROM tip_pool_sessions WHERE date=?').get(date) || null;
+}
+function tipPoolSessionGetRange(dateFrom, dateTo) {
+  return getDb().prepare('SELECT * FROM tip_pool_sessions WHERE date>=? AND date<=? ORDER BY date DESC').all(dateFrom, dateTo);
+}
+function tipPoolSessionSave(session) {
+  getDb().prepare(`INSERT INTO tip_pool_sessions (date,total_tips,method_used,distributions,finalized,finalized_by)
+    VALUES (@date,@total_tips,@method_used,@distributions,@finalized,@finalized_by)
+    ON CONFLICT(date) DO UPDATE SET total_tips=excluded.total_tips, method_used=excluded.method_used,
+      distributions=excluded.distributions, finalized=excluded.finalized, finalized_by=excluded.finalized_by`).run(session);
+  return true;
+}
+
+// ── Food Waste ──
+function wasteGetRange(dateFrom, dateTo) {
+  return getDb().prepare('SELECT * FROM waste_entries WHERE date>=? AND date<=? ORDER BY date DESC, id DESC').all(dateFrom, dateTo);
+}
+function wasteSave(entry) {
+  const db = getDb();
+  if (entry.id) {
+    db.prepare(`UPDATE waste_entries SET date=@date, ingredient_id=@ingredient_id, category=@category, quantity=@quantity, unit=@unit, reason=@reason, shift=@shift, unit_cost=@unit_cost, dollar_value=@dollar_value, notes=@notes WHERE id=@id`).run(entry);
+    return entry.id;
+  } else {
+    const info = db.prepare(`INSERT INTO waste_entries (date,ingredient_id,category,quantity,unit,reason,shift,unit_cost,dollar_value,notes) VALUES (@date,@ingredient_id,@category,@quantity,@unit,@reason,@shift,@unit_cost,@dollar_value,@notes)`).run(entry);
+    return info.lastInsertRowid;
+  }
+}
+function wasteDelete(id) {
+  getDb().prepare('DELETE FROM waste_entries WHERE id=?').run(id);
+  return true;
+}
+
+// ── Écocontribution ──
+function ecoItemsGetAll() {
+  return getDb().prepare('SELECT * FROM packaging_items ORDER BY material_category, name_fr').all();
+}
+function ecoItemUpsert(item) {
+  const db = getDb();
+  if (item.id) {
+    db.prepare(`UPDATE packaging_items SET name_fr=@name_fr,name_en=@name_en,material_category=@material_category,unit_weight_grams=@unit_weight_grams,supplier_id=@supplier_id,active=@active,notes=@notes WHERE id=@id`).run(item);
+    return item.id;
+  } else {
+    return db.prepare(`INSERT INTO packaging_items (name_fr,name_en,material_category,unit_weight_grams,supplier_id,active,notes) VALUES (@name_fr,@name_en,@material_category,@unit_weight_grams,@supplier_id,@active,@notes)`).run(item).lastInsertRowid;
+  }
+}
+function ecoItemDelete(id) {
+  getDb().prepare('UPDATE packaging_items SET active=0 WHERE id=?').run(id);
+  return true;
+}
+function ecoConfigGet() {
+  return getDb().prepare('SELECT * FROM eco_config WHERE id=1').get() || {id:1,year:new Date().getFullYear(),takeout_percentage:80,dine_in_percentage:20,methodology_notes:'',num_quebec_locations:1};
+}
+function ecoConfigSave(cfg) {
+  getDb().prepare(`INSERT INTO eco_config (id,year,takeout_percentage,dine_in_percentage,methodology_notes,num_quebec_locations) VALUES (1,@year,@takeout_percentage,@dine_in_percentage,@methodology_notes,@num_quebec_locations)
+    ON CONFLICT(id) DO UPDATE SET year=excluded.year,takeout_percentage=excluded.takeout_percentage,dine_in_percentage=excluded.dine_in_percentage,methodology_notes=excluded.methodology_notes,num_quebec_locations=excluded.num_quebec_locations`).run(cfg);
+  return true;
+}
+function ecoRatesGetForYear(year) {
+  return getDb().prepare('SELECT * FROM eco_rates WHERE year=? ORDER BY material_category').all(year);
+}
+function ecoRateUpsert(rate) {
+  getDb().prepare(`INSERT INTO eco_rates (year,material_category,rate_per_tonne,malus_percentage,recycled_credit_percentage) VALUES (@year,@material_category,@rate_per_tonne,@malus_percentage,@recycled_credit_percentage)
+    ON CONFLICT(year,material_category) DO UPDATE SET rate_per_tonne=excluded.rate_per_tonne,malus_percentage=excluded.malus_percentage,recycled_credit_percentage=excluded.recycled_credit_percentage`).run(rate);
+  return true;
+}
+function ecoUsageGetForYear(year) {
+  return getDb().prepare('SELECT * FROM eco_usage WHERE year=?').all(year);
+}
+function ecoUsageUpsert(usage) {
+  getDb().prepare(`INSERT INTO eco_usage (year,packaging_item_id,annual_units,source,location_id,notes) VALUES (@year,@packaging_item_id,@annual_units,@source,@location_id,@notes)
+    ON CONFLICT(year,packaging_item_id,location_id) DO UPDATE SET annual_units=excluded.annual_units,source=excluded.source,notes=excluded.notes`).run(usage);
+  return true;
+}
+function ecoUsageDelete(year, packaging_item_id, location_id) {
+  getDb().prepare('DELETE FROM eco_usage WHERE year=? AND packaging_item_id=? AND location_id=?').run(year, packaging_item_id, location_id || 'all');
+  return true;
+}
+
 module.exports = {
   storageGet, storageSet, storageGetAll,
   auditInsert, auditQuery, getDeviceId,
@@ -430,4 +793,17 @@ module.exports = {
   insightsGetAll, insightsGetUnreadCount, insightUpsert, insightMarkRead, insightMarkAllRead,
   checklistTemplatesGetAll, checklistTemplateUpsert, checklistTemplateDelete,
   checklistEntriesGetForDate, checklistEntriesGetRange, checklistEntryUpsert,
+  ingredientsGetAll, ingredientUpsert, ingredientDelete,
+  ingredientAliasesGetForIngredient, ingredientAliasUpsert, ingredientAliasDelete, ingredientAliasFindMatch,
+  priceHistoryGetForIngredient, priceHistoryGetLastPrice, priceHistorySave,
+  recipesGetAll, recipeUpsert, recipeDelete,
+  recipeIngredientsGet, recipeIngredientsSetAll,
+  invoiceLineItemsSave, invoiceLineItemsGetForInvoice, invoiceLineItemsGetRecent,
+  wasteGetRange, wasteSave, wasteDelete,
+  tipPoolConfigGet, tipPoolConfigSave,
+  tipPoolSessionGet, tipPoolSessionGetRange, tipPoolSessionSave,
+  ecoItemsGetAll, ecoItemUpsert, ecoItemDelete,
+  ecoConfigGet, ecoConfigSave,
+  ecoRatesGetForYear, ecoRateUpsert,
+  ecoUsageGetForYear, ecoUsageUpsert, ecoUsageDelete,
 };

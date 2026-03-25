@@ -39,7 +39,12 @@ If no such pattern exists, calculate: subtotalTaxable = tps / 0.05.
 STEP 5 — Non-taxable:
 subtotalNonTaxable = subtotalBeforeTax - subtotalTaxable
 
-STEP 6 — Return ONLY this JSON, no explanation:
+STEP 6 — Line items:
+Extract every product/ingredient line from the invoice body (skip tax lines, totals, shipping fees, and header rows).
+For each product line, extract: description (exact text from invoice), quantity (number only), unit (kg/lb/case/L/each/etc.), unit_price (price per unit), extended_price (total for that line).
+If a field is unreadable or absent, use null.
+
+STEP 7 — Return ONLY this JSON, no explanation:
 {
   "supplier": "supplier or vendor name",
   "date": "YYYY-MM-DD or null",
@@ -51,10 +56,13 @@ STEP 6 — Return ONLY this JSON, no explanation:
   "tvq": number from Step 2 (0 if none),
   "total": number from Step 1,
   "currency": "CAD",
-  "notes": null
+  "notes": null,
+  "lineItems": [
+    {"description": "exact text", "quantity": number_or_null, "unit": "kg", "unit_price": number_or_null, "extended_price": number_or_null}
+  ]
 }
 
-All values must be plain numbers (no $ signs, no commas). Return ONLY the JSON.`;
+All numeric values must be plain numbers (no $ signs, no commas). lineItems must be an array (empty [] if no items readable). Return ONLY the JSON.`;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -146,7 +154,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1024,
+        max_tokens: 4096,
         messages: [{
           role: 'user',
           content: [

@@ -23,6 +23,19 @@ const {
   insightsGetAll, insightsGetUnreadCount, insightUpsert, insightMarkRead, insightMarkAllRead,
   checklistTemplatesGetAll, checklistTemplateUpsert, checklistTemplateDelete,
   checklistEntriesGetForDate, checklistEntriesGetRange, checklistEntryUpsert,
+  ingredientsGetAll, ingredientUpsert, ingredientDelete,
+  ingredientAliasesGetForIngredient, ingredientAliasUpsert, ingredientAliasDelete, ingredientAliasFindMatch,
+  priceHistoryGetForIngredient, priceHistoryGetLastPrice, priceHistorySave,
+  recipesGetAll, recipeUpsert, recipeDelete,
+  recipeIngredientsGet, recipeIngredientsSetAll,
+  invoiceLineItemsSave, invoiceLineItemsGetForInvoice, invoiceLineItemsGetRecent,
+  wasteGetRange, wasteSave, wasteDelete,
+  tipPoolConfigGet, tipPoolConfigSave,
+  tipPoolSessionGet, tipPoolSessionGetRange, tipPoolSessionSave,
+  ecoItemsGetAll, ecoItemUpsert, ecoItemDelete,
+  ecoConfigGet, ecoConfigSave,
+  ecoRatesGetForYear, ecoRateUpsert,
+  ecoUsageGetForYear, ecoUsageUpsert, ecoUsageDelete,
 } = require('./src/db/database.js');
 
 const BACKUP_DIR = () => path.join(app.getPath('userData'), 'Backups');
@@ -1113,6 +1126,50 @@ ipcMain.handle('checklist:deleteTemplate',  (_e, id)    => checklistTemplateDele
 ipcMain.handle('checklist:getEntries',      (_e, date)  => checklistEntriesGetForDate(date));
 ipcMain.handle('checklist:getEntriesRange', (_e, f, to) => checklistEntriesGetRange(f, to));
 ipcMain.handle('checklist:saveEntry',       (_e, entry) => checklistEntryUpsert(entry));
+
+// ── Recipe Costing IPC ──────────────────────────────────────────────────────
+ipcMain.handle('ingredients:getAll',           ()             => ingredientsGetAll());
+ipcMain.handle('ingredients:save',             (_e, p)        => ingredientUpsert(p));
+ipcMain.handle('ingredients:delete',           (_e, id)       => ingredientDelete(id));
+ipcMain.handle('ingredients:aliasesGet',       (_e, id)       => ingredientAliasesGetForIngredient(id));
+ipcMain.handle('ingredients:aliasSave',        (_e, a)        => ingredientAliasUpsert(a));
+ipcMain.handle('ingredients:aliasDelete',      (_e, id)       => ingredientAliasDelete(id));
+ipcMain.handle('ingredients:aliasFind',        (_e, alias, s) => ingredientAliasFindMatch(alias, s));
+ipcMain.handle('priceHistory:get',             (_e, id)       => priceHistoryGetForIngredient(id));
+ipcMain.handle('priceHistory:getLast',         (_e, id, s)    => priceHistoryGetLastPrice(id, s));
+ipcMain.handle('priceHistory:save',            (_e, r)        => priceHistorySave(r));
+ipcMain.handle('recipes:getAll',               ()             => recipesGetAll());
+ipcMain.handle('recipes:save',                 (_e, r)        => recipeUpsert(r));
+ipcMain.handle('recipes:delete',               (_e, id)       => recipeDelete(id));
+ipcMain.handle('recipes:ingredientsGet',       (_e, id)       => recipeIngredientsGet(id));
+ipcMain.handle('recipes:ingredientsSetAll',    (_e, id, list) => recipeIngredientsSetAll(id, list));
+ipcMain.handle('invoiceLines:save',            (_e, items)    => invoiceLineItemsSave(items));
+ipcMain.handle('invoiceLines:getForInvoice',   (_e, ref)      => invoiceLineItemsGetForInvoice(ref));
+ipcMain.handle('invoiceLines:getRecent',       ()             => invoiceLineItemsGetRecent());
+
+// ── Food Waste IPC ──────────────────────────────────────────────────────────
+ipcMain.handle('waste:getRange',  (_e, f, to) => wasteGetRange(f, to));
+ipcMain.handle('waste:save',      (_e, entry) => wasteSave(entry));
+ipcMain.handle('waste:delete',    (_e, id)    => wasteDelete(id));
+
+// ── Tip Pooling IPC ─────────────────────────────────────────────────────────
+ipcMain.handle('tipPool:config:get',       ()             => tipPoolConfigGet());
+ipcMain.handle('tipPool:config:save',      (_e, cfg)      => tipPoolConfigSave(cfg));
+ipcMain.handle('tipPool:session:get',      (_e, date)     => tipPoolSessionGet(date));
+ipcMain.handle('tipPool:session:getRange', (_e, f, to)    => tipPoolSessionGetRange(f, to));
+ipcMain.handle('tipPool:session:save',     (_e, session)  => tipPoolSessionSave(session));
+
+// ── Écocontribution IPC ──────────────────────────────────────────────────────
+ipcMain.handle('eco:items:getAll',          ()              => ecoItemsGetAll());
+ipcMain.handle('eco:items:upsert',          (_e, item)      => ecoItemUpsert(item));
+ipcMain.handle('eco:items:delete',          (_e, id)        => ecoItemDelete(id));
+ipcMain.handle('eco:config:get',            ()              => ecoConfigGet());
+ipcMain.handle('eco:config:save',           (_e, cfg)       => ecoConfigSave(cfg));
+ipcMain.handle('eco:rates:getForYear',      (_e, year)      => ecoRatesGetForYear(year));
+ipcMain.handle('eco:rates:upsert',          (_e, rate)      => ecoRateUpsert(rate));
+ipcMain.handle('eco:usage:getForYear',      (_e, year)      => ecoUsageGetForYear(year));
+ipcMain.handle('eco:usage:upsert',          (_e, usage)     => ecoUsageUpsert(usage));
+ipcMain.handle('eco:usage:delete',          (_e, y, pid, lid)=>ecoUsageDelete(y, pid, lid));
 
 // Register balanceiq:// as protocol handler for OAuth callbacks
 app.setAsDefaultProtocolClient('balanceiq');
