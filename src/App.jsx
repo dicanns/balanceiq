@@ -6271,6 +6271,18 @@ function RedevancesConfig({royaltyConfig,saveRoyaltyConfig,facCategories,facProd
               {facProduits.map(p=><option key={p.id} value={p.id}>{p.nom}</option>)}
             </select>
           </div>
+          <div>
+            <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>⏱ {T.frcGracePeriod||"Délai de grâce (jours)"}</div>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <input type="number" min="0" max="90" value={cfg.gracePeriod??15} onChange={e=>setCfg(p=>({...p,gracePeriod:parseInt(e.target.value)||0}))} style={{...inp,width:70}}/>
+              <span style={{fontSize:10,color:t.textMuted}}>{T.frcGracePeriodHint||"jours après facturation avant rappel"}</span>
+            </div>
+          </div>
+          <div style={{gridColumn:"1/-1"}}>
+            <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>📧 {T.frcReminderEmail||"Email de rappel (optionnel)"}</div>
+            <input type="email" value={cfg.reminderEmail||""} onChange={e=>setCfg(p=>({...p,reminderEmail:e.target.value}))} style={{...inp,width:"100%"}} placeholder="cc@reseau.ca"/>
+            <div style={{fontSize:9.5,color:t.textDim,marginTop:2}}>{T.frcReminderEmailHint||"Copie CC sur chaque rappel de redevance envoyé"}</div>
+          </div>
         </div>
         {cfg.structure==="progressive"&&(
           <div>
@@ -6996,7 +7008,7 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       {/* Sub-tabs */}
       <div style={{display:"flex",gap:2,borderBottom:`1px solid ${t.dividerMid}`,paddingBottom:1}}>
-        {[{id:"performance",label:"📊 Performance"},{id:"scorecards",label:"🏆 Scorecards"},{id:"redevances",label:T.reseauRedevances},{id:"reconciliation",label:T.reseauRecon},{id:"audit",label:T.reseauAudit},{id:"documents",label:T.reseauDocs}].map(st=>(
+        {[{id:"performance",label:"📊 Performance"},{id:"scorecards",label:"🏆 Scorecards"},{id:"redevances",label:T.reseauRedevances},{id:"reconciliation",label:T.reseauRecon},{id:"retards",label:T.reseauRetards||"⚠️ Retards"},{id:"audit",label:T.reseauAudit},{id:"documents",label:T.reseauDocs}].map(st=>(
           <button key={st.id} onClick={()=>setScoreTab(st.id)} style={{background:"none",border:"none",color:scoreTab===st.id?"#a78bfa":t.textMuted,fontSize:11,fontWeight:scoreTab===st.id?700:500,padding:"5px 11px",cursor:"pointer",borderBottom:scoreTab===st.id?"2px solid #a78bfa":"2px solid transparent",whiteSpace:"nowrap"}}>
             {st.label}
           </button>
@@ -7344,6 +7356,13 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
         </div>
       )}
 
+      {/* Retards (Delinquency) sub-tab */}
+      {scoreTab==="retards"&&(
+        !canUse('autoGenerateRoyaltyInvoices')?
+        <div style={{padding:24,textAlign:"center",color:"#8b8fa3",fontSize:13}}>🔒 {T.reseauRetardsLocked||"Disponible avec le plan Franchise."}</div>:
+        <DelinquencyPanel facFactures={facFactures} facClients={facClients} locations={locations} royaltyConfig={royaltyConfig} apiConfig={apiConfig} T={T} t={t}/>
+      )}
+
       {/* Audit réseau sub-tab */}
       {scoreTab==="audit"&&(
         <AuditReseauPanel locations={locations}/>
@@ -7353,6 +7372,159 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
           <DocumentsTabLazy isFranchisor={true} orgId={orgId} cloudUser={cloudUser} T={T} t={t} onUnreadCountChange={onUnreadDocsChange}/>
         </React.Suspense>
       )}
+    </div>
+  );
+}
+
+function DelinquencyPanel({facFactures,facClients,locations,royaltyConfig,apiConfig,T,t}){
+  const gracePeriod=royaltyConfig?.gracePeriod??15;
+  const today=new Date();
+  const fmt2=v=>`${v<0?'-':''}$${Math.abs(v).toLocaleString('fr-CA',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const [remindersSent,setRemindersSent]=useState({});
+  const [sending,setSending]=useState({});
+  useEffect(()=>{
+    window.api.storage.get('balanceiq-royalty-reminders').then(r=>{
+      if(r?.value)try{setRemindersSent(JSON.parse(r.value));}catch(_){}
+    }).catch(()=>{});
+  },[]);
+  const saveReminders=async(updated)=>{
+    setRemindersSent(updated);
+    await window.api.storage.set('balanceiq-royalty-reminders',JSON.stringify(updated)).catch(()=>{});
+  };
+  // Compute overdue royalty invoices
+  const overdueInvoices=useMemo(()=>{
+    return facFactures
+      .filter(f=>f.tags?.includes("redevance")&&(f.statut==="Envoyée"||f.statut==="Payée partiellement"))
+      .map(f=>{
+        const invDate=new Date((f.date||new Date().toISOString().slice(0,10))+"T12:00:00");
+        const dueDate=new Date(invDate);dueDate.setDate(invDate.getDate()+gracePeriod);
+        const daysOverdue=Math.max(0,Math.floor((today-dueDate)/(1000*60*60*24)));
+        const loc=locations.find(l=>l.clientId===f.clientId);
+        const client=facClients.find(c=>c.id===f.clientId);
+        const balance=(f.total||0)-(f.paidAmount||0);
+        return{...f,daysOverdue,dueDate,loc,client,balance};
+      })
+      .filter(f=>f.daysOverdue>0)
+      .sort((a,b)=>b.daysOverdue-a.daysOverdue);
+  },[facFactures,gracePeriod,locations,facClients]);
+  // Aging buckets
+  const aging=useMemo(()=>{
+    const buckets={b1_30:0,b31_60:0,b61_90:0,b90plus:0};
+    let total=0;
+    overdueInvoices.forEach(f=>{
+      total+=f.balance;
+      if(f.daysOverdue<=30)buckets.b1_30+=f.balance;
+      else if(f.daysOverdue<=60)buckets.b31_60+=f.balance;
+      else if(f.daysOverdue<=90)buckets.b61_90+=f.balance;
+      else buckets.b90plus+=f.balance;
+    });
+    return{...buckets,total};
+  },[overdueInvoices]);
+  const delinquentLocs=new Set(overdueInvoices.map(f=>f.clientId)).size;
+  const sendReminder=async(inv,days)=>{
+    const key=`${inv.id}-${days}`;
+    setSending(s=>({...s,[key]:true}));
+    try{
+      const to=inv.client?.email||'';
+      if(!to||!apiConfig?.resendKey){alert(T.reseauReminderNoEmail||"Email du client introuvable ou clé Resend non configurée.");return;}
+      const locName=inv.loc?.nom||inv.client?.entreprise||'Votre succursale';
+      const invoiceRef=inv.numero||inv.id;
+      const html=`<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+<h2 style="color:#7c3aed">Rappel de paiement — Redevances</h2>
+<p>Bonjour,</p>
+<p>Cet avis concerne la facture de redevances <strong>#${invoiceRef}</strong> pour <strong>${locName}</strong>, qui est en souffrance depuis <strong>${inv.daysOverdue} jour${inv.daysOverdue>1?'s':''}</strong>.</p>
+<table style="width:100%;border-collapse:collapse;margin:16px 0">
+<tr style="background:#f5f3ff"><td style="padding:8px 12px;font-weight:600">Facture</td><td style="padding:8px 12px">#${invoiceRef}</td></tr>
+<tr><td style="padding:8px 12px;font-weight:600">Date</td><td style="padding:8px 12px">${inv.date||'—'}</td></tr>
+<tr style="background:#f5f3ff"><td style="padding:8px 12px;font-weight:600">Montant dû</td><td style="padding:8px 12px;color:#7c3aed;font-weight:700">${fmt2(inv.balance)}</td></tr>
+<tr><td style="padding:8px 12px;font-weight:600">Jours en retard</td><td style="padding:8px 12px;color:#dc2626;font-weight:700">${inv.daysOverdue} jour${inv.daysOverdue>1?'s':''}</td></tr>
+</table>
+<p>Veuillez procéder au paiement dans les plus brefs délais ou communiquer avec nous si vous avez des questions.</p>
+<p style="color:#6b7280;font-size:13px">Ce rappel a été généré automatiquement par BalanceIQ.</p>
+</div>`;
+      const from=apiConfig.resendFrom||'noreply@balanceiq.ca';
+      const cc=royaltyConfig?.reminderEmail?[royaltyConfig.reminderEmail]:[];
+      await window.api.email.sendResend({apiKey:apiConfig.resendKey,from,to,subject:`Rappel ${inv.daysOverdue}j — Redevances #${invoiceRef}`,html,cc,attachments:[]});
+      const today2=new Date().toISOString().slice(0,10);
+      const updated={...remindersSent,[inv.id]:{...(remindersSent[inv.id]||{}),manual:today2,[days]:today2}};
+      await saveReminders(updated);
+    }catch(e){alert('Erreur lors de l\'envoi: '+(e?.message||String(e)));}
+    finally{setSending(s=>({...s,[key]:false}));}
+  };
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {/* Summary cards */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+        {[
+          {label:T.reseauRetardTotal||"Solde en souffrance",val:fmt2(aging.total),color:"#ef4444"},
+          {label:T.reseauRetardCount||"Factures en retard",val:String(overdueInvoices.length),color:"#f59e0b"},
+          {label:T.reseauRetardLocs||"Succursales en retard",val:String(delinquentLocs),color:"#f97316"},
+        ].map((c,i)=>(
+          <div key={i} style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:"10px 14px"}}>
+            <div style={{fontSize:9,color:t.textMuted,textTransform:"uppercase",letterSpacing:0.7,fontWeight:600,marginBottom:4}}>{c.label}</div>
+            <div style={{fontSize:20,fontWeight:700,fontFamily:"'DM Mono',monospace",color:c.color}}>{c.val}</div>
+          </div>
+        ))}
+      </div>
+      {/* Aging buckets */}
+      {aging.total>0&&(
+        <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:"12px 14px"}}>
+          <div style={{fontSize:11,fontWeight:700,color:t.text,marginBottom:8}}>📊 {T.reseauAging||"Vieillissement des créances"}</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+            {[
+              {label:"1–30 j",val:aging.b1_30,color:"#f59e0b"},
+              {label:"31–60 j",val:aging.b31_60,color:"#f97316"},
+              {label:"61–90 j",val:aging.b61_90,color:"#ef4444"},
+              {label:"90+ j",val:aging.b90plus,color:"#991b1b"},
+            ].map((b,i)=>(
+              <div key={i} style={{textAlign:"center",padding:"8px 6px",background:t.section,borderRadius:7,border:`1px solid ${b.val>0?b.color+'44':t.cardBorder}`}}>
+                <div style={{fontSize:9,color:t.textMuted,marginBottom:3}}>{b.label}</div>
+                <div style={{fontSize:14,fontWeight:700,color:b.val>0?b.color:t.textDim,fontFamily:"'DM Mono',monospace"}}>{b.val>0?fmt2(b.val):"—"}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {/* Per-invoice table */}
+      {overdueInvoices.length===0?(
+        <div style={{padding:24,textAlign:"center",color:"#22c55e",fontSize:13,fontWeight:600}}>✓ {T.reseauNoRetards||"Aucun retard de paiement — toutes les redevances sont à jour."}</div>
+      ):(
+        <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,overflow:"hidden"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+            <thead>
+              <tr style={{background:t.section}}>
+                {[T.colStore||"Succursale","#",T.colBilled||"Montant",T.reseauBalance||"Solde",T.reseauDaysLate||"Retard",T.reseauLastReminder||"Dernier rappel",""].map((h,i)=>(
+                  <th key={i} style={{padding:"7px 10px",textAlign:i>1?"right":"left",fontWeight:600,color:t.textSub,fontSize:10,whiteSpace:"nowrap"}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {overdueInvoices.map((inv,i)=>{
+                const sentMap=remindersSent[inv.id]||{};
+                const lastSent=sentMap.manual||sentMap[30]||sentMap[14]||sentMap[7]||null;
+                const dayColor=inv.daysOverdue>90?"#991b1b":inv.daysOverdue>60?"#ef4444":inv.daysOverdue>30?"#f97316":"#f59e0b";
+                const isSending=sending[`${inv.id}-reminder`];
+                return(
+                  <tr key={inv.id} style={{borderTop:`1px solid ${t.divider}`}}>
+                    <td style={{padding:"8px 10px",fontWeight:600,color:t.text}}>{inv.loc?.nom||inv.client?.entreprise||'—'}</td>
+                    <td style={{padding:"8px 10px",color:t.textMuted,fontFamily:"'DM Mono',monospace",fontSize:10}}>{inv.numero||inv.id?.slice(-6)}</td>
+                    <td style={{padding:"8px 10px",fontFamily:"'DM Mono',monospace",textAlign:"right",color:t.text}}>{fmt2(inv.total||0)}</td>
+                    <td style={{padding:"8px 10px",fontFamily:"'DM Mono',monospace",textAlign:"right",fontWeight:600,color:dayColor}}>{fmt2(inv.balance)}</td>
+                    <td style={{padding:"8px 10px",textAlign:"right",fontWeight:700,color:dayColor}}>{inv.daysOverdue}j</td>
+                    <td style={{padding:"8px 10px",textAlign:"right",color:t.textMuted,fontSize:10}}>{lastSent||'—'}</td>
+                    <td style={{padding:"8px 6px",textAlign:"right"}}>
+                      <button onClick={()=>sendReminder(inv,'reminder')} disabled={isSending} style={{padding:"3px 9px",borderRadius:5,border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.08)",color:"#c4b5fd",cursor:isSending?"default":"pointer",fontSize:10,fontWeight:600,opacity:isSending?0.5:1,whiteSpace:"nowrap"}}>
+                        {isSending?"...":"📧 Rappel"}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div style={{fontSize:10,color:t.textDim}}>{T.reseauGraceNote||(()=>`Délai de grâce : ${gracePeriod} jour${gracePeriod!==1?'s':''} après la date de facturation. Configurable dans Config → Redevances.`)()}</div>
     </div>
   );
 }
@@ -8785,7 +8957,7 @@ export default function App(){
   const [locations,setLocations]=useState([]);
   const [posCredentials,setPosCredentials]=useState({});
   const [activeLocationId,setActiveLocationId]=useState("all");
-  const [royaltyConfig,setRoyaltyConfig]=useState({type:'percent',structure:'fixed',rate:6,adRate:2,frequency:'monthly',categoryId:null,produitId:null,tranches:[{from:0,to:50000,rate:6},{from:50000,to:null,rate:5}]});
+  const [royaltyConfig,setRoyaltyConfig]=useState({type:'percent',structure:'fixed',rate:6,adRate:2,frequency:'monthly',categoryId:null,produitId:null,tranches:[{from:0,to:50000,rate:6},{from:50000,to:null,rate:5}],gracePeriod:15,reminderEmail:''});
   const [perfTargets,setPerfTargets]=useState({fpMax:35,labMax:35,netMinPct:0,revMin:0});
   const [alertConfig,setAlertConfig]=useState(DEFAULT_ALERT_CONFIG);
   const DEFAULT_PAYROLL_CONTRIBUTIONS=[
@@ -9037,6 +9209,50 @@ export default function App(){
     return()=>clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[loading]);
+
+  // Auto royalty payment reminders (Franchise, 10s delay) — 7/14/30 days overdue
+  useEffect(()=>{
+    if(loading||appMode!=='franchiseur'||!canUse('autoGenerateRoyaltyInvoices'))return;
+    if(!apiConfig?.resendKey)return;
+    const timer=setTimeout(async()=>{
+      try{
+        const gracePeriod=royaltyConfig?.gracePeriod??15;
+        const todayStr=new Date().toISOString().slice(0,10);
+        const remRaw=await window.api.storage.get('balanceiq-royalty-reminders').catch(()=>null);
+        const sent=remRaw?.value?JSON.parse(remRaw.value):{};
+        let changed=false;
+        const overdueInvs=(facFactures||[])
+          .filter(f=>f.tags?.includes('redevance')&&(f.statut==='Envoyée'||f.statut==='Payée partiellement'));
+        for(const inv of overdueInvs){
+          const invDate=new Date((inv.date||todayStr)+'T12:00:00');
+          const dueDate=new Date(invDate);dueDate.setDate(invDate.getDate()+gracePeriod);
+          const daysOverdue=Math.max(0,Math.floor((new Date()-dueDate)/(1000*60*60*24)));
+          if(daysOverdue<=0)continue;
+          const client=(facClients||[]).find(c=>c.id===inv.clientId);
+          const to=client?.email||'';
+          if(!to)continue;
+          const invSent=sent[inv.id]||{};
+          for(const threshold of[7,14,30]){
+            if(daysOverdue<threshold)break;
+            if(invSent[threshold])continue; // already sent this threshold
+            const locName=(locations||[]).find(l=>l.clientId===inv.clientId)?.nom||client?.entreprise||'Votre succursale';
+            const invoiceRef=inv.numero||inv.id?.slice(-6);
+            const balance=(inv.total||0)-(inv.paidAmount||0);
+            const html=`<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px"><h2 style="color:#7c3aed">Rappel de paiement — Redevances</h2><p>Bonjour,</p><p>Cet avis automatique concerne la facture de redevances <strong>#${invoiceRef}</strong> pour <strong>${locName}</strong>, en souffrance depuis <strong>${daysOverdue} jour${daysOverdue>1?'s':''}</strong>.</p><table style="width:100%;border-collapse:collapse;margin:16px 0"><tr style="background:#f5f3ff"><td style="padding:8px 12px;font-weight:600">Facture</td><td style="padding:8px 12px">#${invoiceRef}</td></tr><tr><td style="padding:8px 12px;font-weight:600">Montant dû</td><td style="padding:8px 12px;color:#7c3aed;font-weight:700">$${balance.toFixed(2)}</td></tr><tr style="background:#f5f3ff"><td style="padding:8px 12px;font-weight:600">Jours en retard</td><td style="padding:8px 12px;color:#dc2626;font-weight:700">${daysOverdue} jour${daysOverdue>1?'s':''}</td></tr></table><p>Veuillez procéder au paiement dans les plus brefs délais.</p><p style="color:#6b7280;font-size:13px">Ce rappel a été généré automatiquement par BalanceIQ.</p></div>`;
+            const cc=royaltyConfig?.reminderEmail?[royaltyConfig.reminderEmail]:[];
+            try{
+              await window.api.email.sendResend({apiKey:apiConfig.resendKey,from:apiConfig.resendFrom||'noreply@balanceiq.ca',to,subject:`Rappel ${threshold}j — Redevances #${invoiceRef}`,html,cc,attachments:[]});
+              sent[inv.id]={...invSent,[threshold]:todayStr};
+              changed=true;
+            }catch(_){}
+          }
+        }
+        if(changed)await window.api.storage.set('balanceiq-royalty-reminders',JSON.stringify(sent)).catch(()=>{});
+      }catch(_){}
+    },10000);
+    return()=>clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[loading,appMode]);
 
   useEffect(()=>{
     if(window.api?.updater){
