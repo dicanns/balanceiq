@@ -1596,9 +1596,9 @@ function avArr(arr){if(!arr||arr.length===0)return null;return arr.reduce((a,b)=
 const WIN_LABELS=["Début→14h","14h→17h","17h→19h","19h→20h"];
 
 // ── SECTION HEADER (used by EncaisseTab) ──
-function SH({label,children}){
+function SH({label,children,tip}){
   const t=useT();
-  return(<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}><span style={{fontSize:13,fontWeight:700,marginBottom:8,display:"block",color:t.text}}>{label}</span>{children}</div>);
+  return(<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:11}}><div style={{fontSize:13,fontWeight:700,marginBottom:8,display:"flex",alignItems:"center",gap:4,color:t.text}}>{label}{tip&&<SectionTip text={tip}/>}</div>{children}</div>);
 }
 
 // ── ENCAISSE TAB ──
@@ -1718,7 +1718,7 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
     </div>
 
     {/* S1: Solde d'ouverture */}
-    <SH label={T.encOpening}>
+    <SH label={T.encOpening} tip={T.encTipOpening}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 0"}}>
         {enc.openingOverride!=null
           ?(<><span style={{fontSize:11,color:t.textSub}}>{T.encOpening} (manuel)</span>
@@ -1744,7 +1744,7 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
     </SH>
 
     {/* S2: Entrées de cash */}
-    <SH label={T.encInflows}>
+    <SH label={T.encInflows} tip={T.encTipInflows}>
       <div style={{padding:"5px 0",borderBottom:`1px solid ${t.divider}`}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <span style={{fontSize:11,color:t.textSub}}>{T.encSalesCash} <span style={{fontSize:9,color:t.textDim}}>{T.encAutoFromReg}</span></span>
@@ -1766,7 +1766,7 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
     </SH>
 
     {/* S3: Dépôts à la banque */}
-    <SH label={T.encDeposits}>
+    <SH label={T.encDeposits} tip={T.encTipDeposits}>
       <div style={{padding:"5px 0",borderBottom:`1px solid ${t.divider}`}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <span style={{fontSize:11,color:t.textSub}}>{T.encCreditDeposit} <span style={{fontSize:9,color:t.textDim}}>{T.encAutoFromReg}</span></span>
@@ -1789,7 +1789,7 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
     </SH>
 
     {/* S4: Sorties de cash */}
-    <SH label={T.encOutflows}>
+    <SH label={T.encOutflows} tip={T.encTipOutflows}>
       {enc.sorties.map(s=>(<div key={s.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 0",borderBottom:`1px solid ${t.divider}`}}>
         <div>
           <span style={{fontSize:11,color:t.textSub}}>{s.description||"—"}</span>
@@ -1812,7 +1812,7 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
     </SH>
 
     {/* S5: Comptage physique */}
-    <SH label={T.encPhysical}>
+    <SH label={T.encPhysical} tip={T.encTipPhysical}>
       {encaisseConfig.cashLocations.map(loc=>(<F key={loc.id} label={locName(loc)} value={enc.physicalCount[loc.id]??null} onChange={v=>updEnc("physicalCount",{...enc.physicalCount,[loc.id]:v})} wide/>))}
       {dr.physEntered&&(<div style={{display:"flex",justifyContent:"space-between",padding:"5px 0",marginTop:4,borderTop:`1px solid ${t.dividerStrong}`}}>
         <span style={{fontSize:12,fontWeight:700,color:t.text}}>{T.encPhysTotal}</span>
@@ -1822,7 +1822,7 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
 
     {/* S6: Réconciliation */}
     <div style={{background:dr.physEntered?(dr.balanced?t.reconBalBg:t.reconErrBg):t.reconNeutralBg,border:`1px solid ${dr.physEntered?(dr.balanced?t.reconBalBorder:t.reconErrBorder):t.reconNeutralBorder}`,borderRadius:9,padding:11}}>
-      <span style={{fontSize:13,fontWeight:700,marginBottom:8,display:"block",color:t.text}}>{T.encReconciliation}</span>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:8,display:"flex",alignItems:"center",gap:4,color:t.text}}>{T.encReconciliation}<SectionTip text={T.encTipRecon}/></div>
       <ReconLine label={T.encOpening} value={dr.opening??0}/>
       <ReconLine label={T.encSalesCash} value={dr.cashVentes}/>
       {dr.autreEntreesTotal>0&&<ReconLine label={T.encOtherInflows} value={dr.autreEntreesTotal}/>}
