@@ -12,7 +12,7 @@ import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./confi
 import { buildFlashReportHTML } from "./services/flashReport.js";
 import * as XLSX from "xlsx";
 import { logCreate, logUpdate, logVoid, logCorrection, isFinancialField, promptCorrectionReason } from "./services/auditLogger.js";
-import { initCloudSync, signIn as cloudSignIn, signUp as cloudSignUp, signOut as cloudSignOut, schedulePush, onSyncStatus, onPlanChange, refreshPlan, getCloudOrgId, getCloudParentOrgId, getMyLinkedLocations } from "./services/cloudSync.js";
+import { initCloudSync, signIn as cloudSignIn, signUp as cloudSignUp, signOut as cloudSignOut, schedulePush, onSyncStatus, onPlanChange, refreshPlan, getCloudOrgId, getCloudParentOrgId, getMyLinkedLocations, getLastSyncedAt } from "./services/cloudSync.js";
 import { supabase as _supabaseClient } from "./services/supabase.js";
 import { initTelemetry, getTelemetryConsent, setTelemetryConsent, trackEvent } from "./services/telemetry.js";
 import { POS_CONFIG, POS_COMING_SOON } from "./config/posConfig.js";
@@ -249,9 +249,11 @@ const Pill=({ok,label,warn})=>{
   return(<span style={{display:"inline-flex",alignItems:"center",gap:3,padding:"2px 7px",borderRadius:14,fontSize:9.5,fontWeight:600,background:warn?t.warnBg:ok?"rgba(34,197,94,0.1)":"rgba(239,68,68,0.1)",color:warn?t.warnText:ok?"#16a34a":"#dc2626"}}><span style={{width:4,height:4,borderRadius:"50%",background:warn?t.warnText:ok?"#22c55e":"#ef4444"}}/>{label}</span>);
 };
 
-const MC=({label,value,sub,accent})=>{
+const MC=({label,value,sub,accent,delta})=>{
   const t=useT();
-  return(<div style={{background:t.section,border:`1px solid ${t.sectionBorder}`,borderRadius:8,padding:"9px 13px",display:"flex",flexDirection:"column",gap:1,minWidth:100,flex:"1 1 100px"}}><span style={{fontSize:8.5,color:t.textMuted,textTransform:"uppercase",letterSpacing:0.8,fontWeight:600}}>{label}</span><span style={{fontSize:18,fontWeight:700,color:accent||t.text,fontFamily:"'DM Mono',monospace"}}>{value}</span>{sub&&<span style={{fontSize:9.5,color:t.textMuted}}>{sub}</span>}</div>);
+  // delta: number (percentage, e.g. 8.2 = +8.2%) or null
+  const deltaEl=delta!=null?(()=>{const up=delta>=0;const abs=Math.abs(delta);return(<span style={{fontSize:9,fontWeight:700,color:up?"#22c55e":"#ef4444",fontFamily:"'DM Mono',monospace",marginTop:1}}>{up?"▲":"▼"}{abs.toFixed(1)}%</span>);})():null;
+  return(<div style={{background:t.section,border:`1px solid ${t.sectionBorder}`,borderRadius:8,padding:"9px 13px",display:"flex",flexDirection:"column",gap:1,minWidth:100,flex:"1 1 100px"}}><span style={{fontSize:8.5,color:t.textMuted,textTransform:"uppercase",letterSpacing:0.8,fontWeight:600}}>{label}</span><span style={{fontSize:18,fontWeight:700,color:accent||t.text,fontFamily:"'DM Mono',monospace"}}>{value}</span>{sub&&<span style={{fontSize:9.5,color:t.textMuted}}>{sub}</span>}{deltaEl}</div>);
 };
 
 const CompBar=({label,current,previous,unit="$"})=>{
@@ -8983,6 +8985,10 @@ export default function App(){
   const [lang,setLang]=useState("fr");
   const [cloudUser,setCloudUser]=useState(null); // {email, plan} or null
   const [syncStatus,setSyncStatus]=useState(null); // 'synced'|'syncing'|'offline'|'error'|null
+  const [isOnline,setIsOnline]=useState(typeof navigator!=="undefined"?navigator.onLine:true);
+  const [lastSyncedAt,setLastSyncedAt]=useState(null); // ISO string of last successful sync
+  const [syncFlash,setSyncFlash]=useState(false); // 3-second green "Synchronisé" badge
+  const [onboardingDone,setOnboardingDone]=useState(true); // false = show wizard on first launch
   const [myLinkedLocations,setMyLinkedLocations]=useState([]); // MUO: [{location_id, location_name, ...}]
   const [activeMUOLocationId,setActiveMUOLocationId]=useState(null); // currently selected MUO location
   const [checklistTemplates,setChecklistTemplates]=useState([]); // [{id,title_fr,title_en,required,frequency,category,active}]
@@ -9061,6 +9067,8 @@ export default function App(){
     try{const rLock=await window.api.storage.get("balanceiq-lock");if(rLock?.value){const lc=JSON.parse(rLock.value);setLockConfig(lc);if(lc.enabled&&lc.pin)setAppLocked(true);}}catch(e){}
     try{const rLang=await window.api.storage.get("balanceiq-lang");if(rLang?.value==="en"||rLang?.value==="fr")setLang(rLang.value);}catch(e){}
     try{const rTour=await window.api.storage.get("balanceiq-tour-complete");if(!rTour?.value)setTourActive(true);}catch(e){setTourActive(true);}
+    // Onboarding: only show on fresh install (no existing data key)
+    try{const rOB=await window.api.storage.get("balanceiq-onboarding");if(!rOB?.value){const rData=await window.api.storage.get("dicann-v7");if(!rData?.value)setOnboardingDone(false);}}catch(e){}
     try{const rTips=await window.api.storage.get("balanceiq-section-tooltips");if(rTips?.value==="0")setShowSectionTooltips(false);}catch(e){}
     try{const rBanners=await window.api.storage.get("balanceiq-dismissed-banners");if(rBanners?.value)setDismissedBanners(new Set(JSON.parse(rBanners.value)));}catch(e){}
     try{const r10=await window.api.storage.get("dicann-company-info");if(r10?.value)setCompanyInfo(prev=>({...DEFAULT_COMPANY_INFO,...JSON.parse(r10.value)}))}catch(e){}
@@ -9403,6 +9411,31 @@ export default function App(){
   const handleCloudSignUp=useCallback(async(creds)=>{await cloudSignUp(creds);/* trigger creates org/user server-side; user must confirm email then sign in */},[]);
   const handleCloudSignOut=useCallback(async()=>{await cloudSignOut();setCloudUser(null);setSyncStatus(null);setMyLinkedLocations([]);setActiveMUOLocationId(null);},[]);
 
+  // ── ONLINE/OFFLINE DETECTION ──────────────────────────────────────────────
+  useEffect(()=>{
+    const goOnline=()=>setIsOnline(true);
+    const goOffline=()=>setIsOnline(false);
+    window.addEventListener('online',goOnline);
+    window.addEventListener('offline',goOffline);
+    return()=>{window.removeEventListener('online',goOnline);window.removeEventListener('offline',goOffline);};
+  },[]);
+
+  // ── SYNC FLASH + LAST-SYNCED TIMESTAMP ────────────────────────────────────
+  useEffect(()=>{
+    if(syncStatus==='synced'){
+      setLastSyncedAt(getLastSyncedAt());
+      setSyncFlash(true);
+      const t=setTimeout(()=>setSyncFlash(false),3000);
+      return()=>clearTimeout(t);
+    }
+  },[syncStatus]);
+
+  // ── SYSTEM TRAY: update tooltip with today's sales ────────────────────────
+  useEffect(()=>{
+    if(!window.api?.tray?.updateSales)return;
+    if(today.venteNet>0){window.api.tray.updateSales({sales:fmt(today.venteNet),date:selectedDate}).catch(()=>{});}
+  },[today.venteNet,selectedDate]);
+
   const toggleChecklistEntry=useCallback(async(templateId,completed,completedBy='')=>{
     const entry={template_id:templateId,date:selectedDate,completed:completed?1:0,completed_by:completedBy||null,completed_at:completed?new Date().toISOString():null,notes:null};
     try{await window.api.checklist.saveEntry(entry);}catch(_){}
@@ -9696,6 +9729,13 @@ export default function App(){
 
   const displayGas=raw.gas!=null&&raw.gas!==""?raw.gas:lastGas?.price??null;
   const dow=d.getDay();const mOff=(dow+6)%7;let wkC=0;for(let i=0;i<=(dow===0?6:dow-1);i++){const wd=new Date(d);wd.setDate(d.getDate()-mOff+i);wkC+=computeDay(dk(wd)).venteNet}
+  // Last-week same-day for delta comparison
+  const lastWeekDate=(()=>{const lw=new Date(d);lw.setDate(d.getDate()-7);return dk(lw);})();
+  const lastWeekDay=computeDay(lastWeekDate);
+  const salesDelta=lastWeekDay.venteNet>0?((today.venteNet-lastWeekDay.venteNet)/lastWeekDay.venteNet*100):null;
+  const wkLastStart=(()=>{const lw=new Date(d);lw.setDate(d.getDate()-7);const lwd=lw.getDay();const lmOff=(lwd+6)%7;return{d:lw,off:lmOff};})();
+  let wkCLast=0;for(let i=0;i<=(wkLastStart.d.getDay()===0?6:wkLastStart.d.getDay()-1);i++){const wd=new Date(wkLastStart.d);wd.setDate(wkLastStart.d.getDate()-wkLastStart.off+i);wkCLast+=computeDay(dk(wd)).venteNet;}
+  const wkDelta=wkCLast>0?((wkC-wkCLast)/wkCLast*100):null;
   let mtdTotal=0,mtdDays=0;{const[sy,sm,sd]=selectedDate.split("-");const sdi=parseInt(sd);for(let day=1;day<=sdi;day++){const k=`${sy}-${sm}-${String(day).padStart(2,"0")}`;const cd=computeDay(k);if(cd.venteNet>0){mtdTotal+=cd.venteNet;mtdDays++;}}}
   const hasL=Object.keys(liveData[selectedDate]||{}).length>0;
   const togC=i=>setCollapseMap(p=>({...p,[`${selectedDate}-${i}`]:!p[`${selectedDate}-${i}`]}));
@@ -9803,6 +9843,10 @@ export default function App(){
 
   if(loading)return(<div style={{minHeight:"100vh",background:DARK.bg,display:"flex",alignItems:"center",justifyContent:"center",color:"#4a4e5e",fontFamily:"'Outfit',sans-serif"}}>{T.loading}</div>);
   if(appLocked)return(<PinLockScreen lockConfig={lockConfig} onUnlock={()=>setAppLocked(false)} saveLockConfig={saveLockConfig}/>);
+  if(!onboardingDone){
+    const OnboardingWizard=React.lazy(()=>import('./components/OnboardingWizard.jsx'));
+    return(<React.Suspense fallback={<div style={{minHeight:"100vh",background:DARK.bg}}/>}><OnboardingWizard lang={lang} roster={roster} saveRoster={saveRoster} companyInfo={companyInfo} saveCompanyInfo={info=>{setCompanyInfo(info);window.api.storage.set("dicann-company-info",JSON.stringify(info)).catch(()=>{});}} expenseItems={expenseItems} saveExpItems={items=>{setExpenseItems(items);window.api.storage.set("dicann-pl-expense-items",JSON.stringify(items)).catch(()=>{});}} onComplete={async()=>{const v=JSON.stringify({completedAt:new Date().toISOString()});await window.api.storage.set("balanceiq-onboarding",v).catch(()=>{});await window.api.storage.set("balanceiq-tour-complete","1").catch(()=>{});setTourActive(false);setOnboardingDone(true);}}/></React.Suspense>);
+  }
   if(!appMode)return(<WelcomeScreen onSelect={saveAppMode} T={T}/>);
 
   return(
@@ -9892,7 +9936,9 @@ export default function App(){
             </div>
             <div style={{display:"flex",alignItems:"center",gap:6}}>
               {saving&&<span style={{fontSize:9,color:"#f97316",fontFamily:"'DM Mono',monospace"}}>sauvegarde...</span>}
-              {cloudUser&&syncStatus&&(()=>{const sc=syncStatus==="synced"?"#22c55e":syncStatus==="syncing"?"#f97316":"#ef4444";const si=syncStatus==="synced"?"✓":syncStatus==="syncing"?"⟳":"✗";return<span title={cloudUser.email} style={{fontSize:11,color:sc,fontWeight:700,cursor:"default",display:"flex",alignItems:"center",gap:2}}><span style={{display:"inline-block",animation:syncStatus==="syncing"?"biq-spin 1.2s linear infinite":"none"}}>☁</span>{si}</span>;})()}
+              {!isOnline&&<span style={{fontSize:10,fontWeight:700,color:"#ef4444",background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:4,padding:"1px 6px"}}>{lang==="en"?"Offline":"Hors ligne"}</span>}
+              {syncFlash&&<span style={{fontSize:10,fontWeight:700,color:"#22c55e",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.3)",borderRadius:4,padding:"1px 6px"}}>✓ {lang==="en"?"Synced":"Synchronisé"}</span>}
+              {cloudUser&&syncStatus&&!syncFlash&&(()=>{const sc=syncStatus==="synced"?"#22c55e":syncStatus==="syncing"?"#f97316":"#ef4444";const si=syncStatus==="synced"?"✓":syncStatus==="syncing"?"⟳":"✗";const lastSyncLabel=(()=>{if(!lastSyncedAt)return null;const diff=(Date.now()-new Date(lastSyncedAt))/1000;if(diff<60)return null;if(diff<3600)return lang==="en"?`${Math.floor(diff/60)}min ago`:`il y a ${Math.floor(diff/60)}min`;return lang==="en"?`${Math.floor(diff/3600)}h ago`:`il y a ${Math.floor(diff/3600)}h`;})();return<span title={`${cloudUser.email}${lastSyncLabel?` — ${lastSyncLabel}`:""}`} style={{fontSize:11,color:sc,fontWeight:700,cursor:"default",display:"flex",alignItems:"center",gap:2}}><span style={{display:"inline-block",animation:syncStatus==="syncing"?"biq-spin 1.2s linear infinite":"none"}}>☁</span>{si}{lastSyncLabel&&<span style={{fontSize:9,color:t.textMuted,fontWeight:400,marginLeft:1}}>{lastSyncLabel}</span>}</span>;})()}
               {(()=>{const connectedPOS=Object.entries(posCredentials).find(([,v])=>v?.connected);if(!connectedPOS)return null;const posName=connectedPOS[0];const dot=<span style={{display:"inline-block",width:6,height:6,borderRadius:"50%",background:"#22c55e",marginLeft:2}}/>;return<span title={`POS: ${posName}`} style={{fontSize:11,color:t.textSub,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:1}} onClick={()=>{setActiveTab("config");setConfigSubTab("integrations");}}>📡{dot}</span>})()}
               {hasL&&<Pill ok label={T.entryMode}/>}
               <button onClick={()=>{saveAppMode(null)}} title="Changer de mode" style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textMuted,fontSize:10,padding:"3px 8px",cursor:"pointer",fontWeight:600}}>
@@ -9997,10 +10043,10 @@ export default function App(){
               </div>
             )}
             <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-              <MC label={T.dailyNetSales} value={fmt(today.venteNet)} accent={t.posColor}/>
+              <MC label={T.dailyNetSales} value={fmt(today.venteNet)} accent={t.posColor} delta={salesDelta}/>
               <MC label={T.dailyGross} value={fmt(today.total)} accent="#f97316"/>
               <MC label={T.dailyPerDozen} value={today.moyenne?fmt(today.moyenne):"—"} accent="#7c3aed"/>
-              <MC label={T.dailyWeekCumul} value={fmt(wkC)}/>
+              <MC label={T.dailyWeekCumul} value={fmt(wkC)} delta={wkDelta}/>
               <MC label={T.dailyMonthCumul} value={fmt(mtdTotal)} sub={T.dailyDaysAbbr(mtdDays)}/>
               {today.labourPct!=null&&<MC label={T.dailyLabourCard} value={`${today.labourPct.toFixed(1)}%`} sub={fmt(today.labourCost)} accent={today.labourPct>35?"#ef4444":today.labourPct>28?t.warnText:"#22c55e"}/>}
               <div style={{background:t.section,border:`1px solid ${t.sectionBorder}`,borderRadius:8,padding:"9px 13px",display:"flex",flexDirection:"column",gap:1,minWidth:100,flex:"0 0 auto",cursor:"pointer"}} onClick={()=>setActiveTab("encaisse")}>
