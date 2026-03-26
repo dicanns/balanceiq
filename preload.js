@@ -154,6 +154,9 @@ contextBridge.exposeInMainWorld('api', {
       save:     (session) => ipcRenderer.invoke('tipPool:session:save', session),
     },
   },
+  tray: {
+    updateSales: (data) => ipcRenderer.invoke('tray:updateSales', data),
+  },
   eco: {
     items: {
       getAll: ()       => ipcRenderer.invoke('eco:items:getAll'),
