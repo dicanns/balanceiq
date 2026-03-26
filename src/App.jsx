@@ -6286,7 +6286,7 @@ function RedevancesConfig({royaltyConfig,saveRoyaltyConfig,facCategories,facProd
             <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.frcStructure}</div>
             <select value={cfg.structure} onChange={e=>setCfg(p=>({...p,structure:e.target.value}))} style={{...inp,height:28}}>
               <option value="fixed">{T.frcFlatRate}</option>
-              <option value="progressive">Échelle progressive</option>
+              <option value="progressive">{T.frcProgressive}</option>
             </select>
           </div>
           <div>
@@ -6325,7 +6325,7 @@ function RedevancesConfig({royaltyConfig,saveRoyaltyConfig,facCategories,facProd
         </div>
         {cfg.structure==="progressive"&&(
           <div>
-            <div style={{fontSize:11,fontWeight:600,color:t.text,marginBottom:6}}>Tranches progressives</div>
+            <div style={{fontSize:11,fontWeight:600,color:t.text,marginBottom:6}}>{T.frcProgressiveTiers}</div>
             {(cfg.tranches||[]).map((tr,i)=>(
               <div key={i} style={{display:"flex",gap:6,alignItems:"center",marginBottom:4}}>
                 <input type="number" placeholder="De ($)" value={tr.from||0} onChange={e=>{const ts=[...cfg.tranches];ts[i]={...ts[i],from:parseFloat(e.target.value)||0};setCfg(p=>({...p,tranches:ts}))}} style={{...inp,width:90}}/>
@@ -6336,7 +6336,7 @@ function RedevancesConfig({royaltyConfig,saveRoyaltyConfig,facCategories,facProd
                 <button onClick={()=>{const ts=cfg.tranches.filter((_,j)=>j!==i);setCfg(p=>({...p,tranches:ts}))}} style={{padding:"2px 8px",borderRadius:4,border:"1px solid rgba(239,68,68,0.3)",background:"none",color:"#ef4444",cursor:"pointer",fontSize:10}}>✕</button>
               </div>
             ))}
-            <button onClick={()=>setCfg(p=>({...p,tranches:[...(p.tranches||[]),{from:0,to:null,rate:6}]}))} style={{marginTop:4,padding:"3px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textSub,cursor:"pointer",fontSize:10}}>+ Ajouter une tranche</button>
+            <button onClick={()=>setCfg(p=>({...p,tranches:[...(p.tranches||[]),{from:0,to:null,rate:6}]}))} style={{marginTop:4,padding:"3px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textSub,cursor:"pointer",fontSize:10}}>{T.frcAddTranche}</button>
           </div>
         )}
         {/* Hidden advanced option — stepped flat rate */}
@@ -6422,7 +6422,7 @@ function MarqueBlancheConfig({whiteLabelConfig,saveWhiteLabel}){
         {cfg.enabled&&(<>
           <div>
             <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Nom de la franchise (remplace "BalanceIQ" sur les documents)</div>
-            <input value={cfg.franchiseName||""} onChange={e=>setCfg(p=>({...p,franchiseName:e.target.value}))} style={inp} placeholder="Ex: Dic Ann's Franchises Inc."/>
+            <input value={cfg.franchiseName||""} onChange={e=>setCfg(p=>({...p,franchiseName:e.target.value}))} style={inp} placeholder="Ex: My Franchise Network Inc."/>
           </div>
           <div>
             <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Couleur d'accent (remplace l'orange BalanceIQ sur les documents)</div>
@@ -6433,7 +6433,7 @@ function MarqueBlancheConfig({whiteLabelConfig,saveWhiteLabel}){
           </div>
           <div>
             <div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>Pied de page personnalisé</div>
-            <input value={cfg.footer||""} onChange={e=>setCfg(p=>({...p,footer:e.target.value}))} style={inp} placeholder="Ex: Dic Ann's Franchises Inc. · Siège social · Laval, QC"/>
+            <input value={cfg.footer||""} onChange={e=>setCfg(p=>({...p,footer:e.target.value}))} style={inp} placeholder="Ex: My Franchise Network Inc. · Head Office · Montreal, QC"/>
           </div>
         </>)}
         <button onClick={()=>saveWhiteLabel(cfg)} style={{alignSelf:"flex-start",padding:"6px 16px",borderRadius:7,border:"1px solid rgba(167,139,250,0.3)",background:"rgba(167,139,250,0.1)",color:"#c4b5fd",cursor:"pointer",fontWeight:600,fontSize:11}}>{T.save}</button>
