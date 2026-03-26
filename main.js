@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, net, dialog, shell, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, net, dialog, shell, nativeImage, Tray, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -43,6 +43,7 @@ const BACKUP_KEEP_DAYS = 30;
 
 // Module-level window reference (needed for pos:oauth-result events)
 let mainWindow = null;
+let biqTray = null;
 
 // POS secrets — main process only, never sent to renderer
 const POS_SECRETS = {
@@ -763,6 +764,24 @@ function createWindow() {
   } else {
     win.loadFile(path.join(__dirname, 'dist', 'index.html'));
   }
+
+  // ── SYSTEM TRAY ──────────────────────────────────────────────────────────
+  try {
+    const trayIconPath = path.join(__dirname, 'resources', 'tray-icon.png');
+    let trayIcon;
+    if (fs.existsSync(trayIconPath)) {
+      trayIcon = nativeImage.createFromPath(trayIconPath).resize({ width: 16, height: 16 });
+      if (process.platform === 'darwin') trayIcon.setTemplateImage(true);
+    } else {
+      trayIcon = nativeImage.createEmpty();
+    }
+    biqTray = new Tray(trayIcon);
+    biqTray.setToolTip('BalanceIQ');
+    // Double-click restores window (Windows behaviour)
+    biqTray.on('double-click', () => { win.show(); win.focus(); });
+  } catch (_e) {
+    // Tray is non-critical — continue without it if icon is missing
+  }
 }
 
 // IPC handler — trigger update download + install
@@ -772,6 +791,10 @@ ipcMain.handle('updater:downloadAndInstall', () => {
 
 ipcMain.handle('shell:openExternal', (_event, url) => {
   return shell.openExternal(url);
+});
+
+ipcMain.handle('tray:updateSales', (_event, { sales, date }) => {
+  if (biqTray) biqTray.setToolTip(`BalanceIQ — ${date}: ${sales}`);
 });
 
 // ── POS INTEGRATION IPC ────────────────────────────────────────────────────
@@ -1262,5 +1285,6 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  if (biqTray) { biqTray.destroy(); biqTray = null; }
   if (process.platform !== 'darwin') app.quit();
 });
