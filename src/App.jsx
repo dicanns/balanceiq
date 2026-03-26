@@ -9,6 +9,7 @@ const EcocontributionTabLazy   = lazy(() => import('./components/Ecocontribution
 const TipPoolModal      = lazy(() => import('./components/TipPoolModal.jsx'));
 import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./config/features.js";
+import { calcRoyaltyFull } from "./utils/calculations.js";
 import { buildFlashReportHTML } from "./services/flashReport.js";
 import * as XLSX from "xlsx";
 import { logCreate, logUpdate, logVoid, logCorrection, isFinancialField, promptCorrectionReason } from "./services/auditLogger.js";
@@ -6957,12 +6958,9 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
       const sales=Object.entries(data).filter(([k])=>k.startsWith(genPeriod)).reduce((sum,[,v])=>{
         const cashes=v.cashes||[];return sum+cashes.reduce((s,c)=>{if(c.float!=null&&c.deposits!=null&&c.finalCash!=null)return s+(c.interac||0)+(c.livraisons||0)+(c.deposits||0)+(c.finalCash||0)-(c.float||0);return s;},0);
       },0);
-      const rate=(loc.royaltyOverride&&loc.royaltyRate!=null)?loc.royaltyRate:royaltyConfig.rate;
-      const adRate=(loc.royaltyOverride&&loc.adRate!=null)?loc.adRate:royaltyConfig.adRate;
-      const royalty=sales*rate/100;
-      const ad=sales*adRate/100;
+      const royCalc=calcRoyaltyFull(sales,loc,royaltyConfig);
       const client=facClients.find(c=>c.id===loc.clientId);
-      preview.push({loc,sales,rate,adRate,royalty,ad,total:royalty+ad,client,checked:true});
+      preview.push({loc,sales,rate:royCalc.rate,adRate:royCalc.adRate,royalty:royCalc.royalty,ad:royCalc.ad,total:royCalc.total,client,checked:true});
     }
     setGenPreview(preview);
     setGenLoading(false);

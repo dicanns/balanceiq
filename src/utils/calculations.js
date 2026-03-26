@@ -246,3 +246,163 @@ export function calcEncaisseVariance(physicalCount, soldeCalcule) {
 export function isEncaisseBalanced(variance) {
   return Math.abs(variance) <= 2;
 }
+
+// ── ENCAISSE RUNNING CHAIN ────────────────────────────────────────────────────
+// Processes an ordered array of daily encaisse entries, carrying closing → opening.
+// Each entry: { cashVentes, autresEntrees, depots, sorties, physicalCount, openingOverride }
+export function computeEncaisseChain(days) {
+  let prevClosing = null;
+  return days.map((day) => {
+    const opening = day.openingOverride != null ? day.openingOverride : (prevClosing ?? 0);
+    const calculated = r2(
+      opening +
+      (day.cashVentes || 0) +
+      (day.autresEntrees || 0) -
+      (day.depots || 0) -
+      (day.sorties || 0)
+    );
+    const closing = day.physicalCount != null ? day.physicalCount : calculated;
+    prevClosing = closing;
+    return { ...day, opening, calculated, closing };
+  });
+}
+
+// ── INVOICE BALANCE (AR) ──────────────────────────────────────────────────────
+export function calcInvoiceBalance(invoiceTotal, payments) {
+  const totalPaid = r2((payments || []).reduce((s, p) => s + (p.montant || 0), 0));
+  return r2(Math.max(0, invoiceTotal - totalPaid));
+}
+
+export function calcTotalOutstanding(invoices) {
+  return r2(invoices.reduce((s, inv) => s + calcInvoiceBalance(inv.total, inv.paiements), 0));
+}
+
+// ── STEPPED ROYALTY ───────────────────────────────────────────────────────────
+// Given monthly sales and a paliers array [{minVentes, rate}], returns the applicable rate.
+// The palier with the highest minVentes that is still ≤ sales wins.
+export function calcSteppedRoyaltyRate(sales, paliers) {
+  if (!paliers || paliers.length === 0) return 0;
+  const sorted = [...paliers].sort((a, b) => b.minVentes - a.minVentes);
+  const match  = sorted.find((p) => (sales || 0) >= (p.minVentes || 0));
+  return match ? (match.rate || 0) : (sorted[sorted.length - 1].rate || 0);
+}
+
+// Full royalty calc supporting flat and stepped structures + location-level override.
+export function calcRoyaltyFull(sales, loc, royaltyConfig) {
+  let rate;
+  if (loc && loc.royaltyOverride && loc.royaltyRate != null) {
+    rate = loc.royaltyRate;
+  } else if (royaltyConfig.structure === 'paliers' && royaltyConfig.paliersMensuels?.length) {
+    rate = calcSteppedRoyaltyRate(sales, royaltyConfig.paliersMensuels);
+  } else {
+    rate = royaltyConfig.rate || 0;
+  }
+  const adRate = (loc && loc.royaltyOverride && loc.adRate != null)
+    ? loc.adRate
+    : (royaltyConfig.adRate || 0);
+  const royalty = r2((sales || 0) * rate / 100);
+  const ad      = r2((sales || 0) * adRate / 100);
+  return { rate, adRate, royalty, ad, total: r2(royalty + ad) };
+}
+
+// ── ANOMALY DETECTION ─────────────────────────────────────────────────────────
+export function calcAnomalyPct(actual, average) {
+  if (!average || average <= 0) return null;
+  return ((actual - average) / average) * 100;
+}
+
+export function isAnomaly(pct, threshold = 25) {
+  return pct != null && Math.abs(pct) > threshold;
+}
+
+// ── DOW PROFILING ─────────────────────────────────────────────────────────────
+// Builds average sales per day-of-week from historical data.
+// salesData: [{ dow: 0-6, venteNet: number }]
+export function buildDOWProfiles(salesData) {
+  const profiles = Array.from({ length: 7 }, () => ({ n: 0, totalSales: 0, avgSales: 0 }));
+  (salesData || []).forEach(({ dow, venteNet }) => {
+    if (venteNet > 0 && dow >= 0 && dow <= 6) {
+      profiles[dow].n++;
+      profiles[dow].totalSales += venteNet;
+    }
+  });
+  profiles.forEach((p) => {
+    if (p.n > 0) p.avgSales = r2(p.totalSales / p.n);
+  });
+  return profiles;
+}
+
+// ── FORECAST PREDICTION ENGINE ────────────────────────────────────────────────
+// Weighted DOW base: recent weeks weighted 4-3-2-1 (most recent = highest weight)
+export function calcForecastBase(salesHistory, targetDOW) {
+  const dowSales = (salesHistory || [])
+    .filter((s) => s.dow === targetDOW && s.quantity_sold > 0)
+    .sort((a, b) => b.date.localeCompare(a.date)); // newest first
+
+  if (!dowSales.length) return { base: 0, confidence: 'base', dataPoints: 0 };
+
+  let weightedSum = 0, totalWeight = 0;
+  dowSales.forEach((s, i) => {
+    const wk     = i + 1;
+    const weight = wk <= 1 ? 4 : wk <= 2 ? 3 : wk <= 3 ? 2 : 1;
+    const qty    = s.stockout ? (s.quantity_sold * 1.12) : s.quantity_sold;
+    weightedSum += qty * weight;
+    totalWeight += weight;
+  });
+
+  const base       = totalWeight > 0 ? weightedSum / totalWeight : 0;
+  const n          = dowSales.length;
+  const confidence = n < 2 ? 'base' : n < 4 ? 'low' : n < 8 ? 'medium' : 'high';
+  return { base, confidence, dataPoints: n };
+}
+
+// Weather factor: temp sensitivity + condition penalty
+export function calcWeatherFactor(tempMax, weatherCode, sensitivity = 0) {
+  let factor = 0;
+  if (tempMax < 5)                       factor += (sensitivity || 0) * -0.15;
+  else if (tempMax >= 15 && tempMax < 25) factor += (sensitivity || 0) *  0.10;
+  else if (tempMax >= 25)                factor += (sensitivity || 0) *  0.20;
+
+  const isRainy = (weatherCode >= 61 && weatherCode <= 67) || (weatherCode >= 80 && weatherCode <= 82);
+  const isSnowy = weatherCode >= 71 && weatherCode <= 77;
+  if (isRainy) factor -= 0.05;
+  if (isSnowy) factor -= 0.10;
+  return factor;
+}
+
+// Final prediction: base × (1+weather) × (1+trend) × wasteFactor
+export function calcForecastPrediction(base, weatherFactor, trendFactor = 0, wasteFactor = 1) {
+  return Math.max(0, Math.round(base * (1 + weatherFactor) * (1 + trendFactor) * wasteFactor));
+}
+
+// ── DATE UTILITIES ────────────────────────────────────────────────────────────
+export const QC_HOL = {
+  '01-01': "Jour de l'An",
+  '03-29': 'Vendredi saint',
+  '04-01': 'Lundi de Pâques',
+  '05-20': 'Journée nationale des patriotes',
+  '06-24': 'Fête nationale du Québec',
+  '07-01': 'Fête du Canada',
+  '09-02': 'Fête du Travail',
+  '10-14': "Action de grâce",
+  '12-25': 'Noël',
+  '12-26': 'Lendemain de Noël',
+};
+
+// Date object → "YYYY-MM-DD" string
+export function formatDateKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+// "YYYY-MM-DD" → previous day's "YYYY-MM-DD"
+export function prevDateKey(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00');
+  d.setDate(d.getDate() - 1);
+  return formatDateKey(d);
+}
+
+// Date object → Quebec holiday name or null
+export function getQCHoliday(date) {
+  const key = `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  return QC_HOL[key] || null;
+}
