@@ -4,7 +4,8 @@ const fs = require('fs');
 const os = require('os');
 const { autoUpdater } = require('electron-updater');
 const Sentry = require('@sentry/electron/main');
-require('dotenv').config();
+// Load .env in development only (not available in packaged builds)
+if (!app.isPackaged) { try { require('dotenv').config(); } catch(_) {} }
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN || '',
