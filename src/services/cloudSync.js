@@ -146,6 +146,15 @@ export async function signOut() {
   setStatus(null);
 }
 
+// ── PASSWORD RESET ─────────────────────────────────────────────────────────
+export async function requestPasswordReset(email) {
+  if (!supabase) throw new Error('Cloud sync not configured.');
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: 'https://balanceiq.ca/reset-password',
+  });
+  if (error) throw error;
+}
+
 // ── PUSH DATA ──────────────────────────────────────────────────────────────
 export function schedulePush(key, value) {
   if (!_session || !_orgId || !_locationId) return;

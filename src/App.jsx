@@ -13,7 +13,7 @@ import { calcRoyaltyFull } from "./utils/calculations.js";
 import { buildFlashReportHTML } from "./services/flashReport.js";
 import * as XLSX from "xlsx";
 import { logCreate, logUpdate, logVoid, logCorrection, isFinancialField, promptCorrectionReason } from "./services/auditLogger.js";
-import { initCloudSync, signIn as cloudSignIn, signUp as cloudSignUp, signOut as cloudSignOut, schedulePush, onSyncStatus, onPlanChange, refreshPlan, getCloudOrgId, getCloudParentOrgId, getMyLinkedLocations, getLastSyncedAt } from "./services/cloudSync.js";
+import { initCloudSync, signIn as cloudSignIn, signUp as cloudSignUp, signOut as cloudSignOut, requestPasswordReset, schedulePush, onSyncStatus, onPlanChange, refreshPlan, getCloudOrgId, getCloudParentOrgId, getMyLinkedLocations, getLastSyncedAt } from "./services/cloudSync.js";
 import { supabase as _supabaseClient } from "./services/supabase.js";
 import { initTelemetry, getTelemetryConsent, setTelemetryConsent, trackEvent } from "./services/telemetry.js";
 import { POS_CONFIG, POS_COMING_SOON } from "./config/posConfig.js";
@@ -8154,8 +8154,8 @@ function AuditSection(){
 }
 
 // ── CLOUD ACCOUNT SECTION ──
-function CloudAccountSection({cloudUser,syncStatus,onSignIn,onSignUp,onSignOut,t,T}){
-  const [mode,setMode]=useState("idle"); // idle | signin | signup
+function CloudAccountSection({cloudUser,syncStatus,onSignIn,onSignUp,onSignOut,onResetPassword,t,T}){
+  const [mode,setMode]=useState("idle"); // idle | signin | signup | forgot
   const [form,setForm]=useState({email:"",password:"",fullName:"",orgName:""});
   const [loading,setLoading]=useState(false);
   const [msg,setMsg]=useState(null); // {ok:bool, text:str}
@@ -8175,6 +8175,16 @@ function CloudAccountSection({cloudUser,syncStatus,onSignIn,onSignUp,onSignOut,t
       // Switch to sign-in mode and show confirmation message
       setMode("signin");
       setMsg({ok:true,text:T.cfgCloudEmailConf});
+    }
+    catch(e){setMsg({ok:false,text:e.message||T.cfgCloudAuthError});}
+    finally{setLoading(false);}
+  };
+  const doForgotPassword=async()=>{
+    if(!form.email)return;
+    setLoading(true);setMsg(null);
+    try{
+      await onResetPassword(form.email);
+      setMsg({ok:true,text:T.cfgCloudResetSent});
     }
     catch(e){setMsg({ok:false,text:e.message||T.cfgCloudAuthError});}
     finally{setLoading(false);}
@@ -8212,6 +8222,18 @@ function CloudAccountSection({cloudUser,syncStatus,onSignIn,onSignUp,onSignOut,t
               <div style={{display:"flex",gap:6,marginTop:4}}>
                 <button onClick={doSignIn} disabled={loading||!form.email||!form.password} style={{padding:"5px 14px",borderRadius:6,border:"none",background:loading||!form.email||!form.password?"rgba(255,255,255,0.05)":"linear-gradient(135deg,#f97316,#ea580c)",color:loading||!form.email||!form.password?t.textDim:"#fff",cursor:loading?"default":"pointer",fontWeight:700,fontSize:11}}>{loading?T.cfgCloudLoading:T.cfgCloudSignIn}</button>
                 <button onClick={()=>setMode("idle")} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>{T.cancel}</button>
+              </div>
+              <button onClick={()=>{setMode("forgot");setMsg(null);}} style={{marginTop:8,padding:0,border:"none",background:"none",color:t.textDim,cursor:"pointer",fontSize:10.5,textDecoration:"underline"}}>{T.cfgCloudForgotPassword}</button>
+            </div>)
+          :mode==="forgot"
+          ?(<div>
+              <div style={{fontSize:11.5,fontWeight:700,color:"#f97316",marginBottom:8}}>{T.cfgCloudForgotPassword}</div>
+              <div style={{fontSize:10.5,color:t.textMuted,marginBottom:8}}>{T.cfgCloudForgotHint}</div>
+              <input style={inp} placeholder={T.cfgCloudEmail} type="email" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} autoFocus onKeyDown={e=>e.key==="Enter"&&doForgotPassword()}/>
+              {msg&&<div style={{fontSize:10.5,color:msg.ok?"#22c55e":"#ef4444",marginBottom:6}}>{msg.text}</div>}
+              <div style={{display:"flex",gap:6,marginTop:4}}>
+                <button onClick={doForgotPassword} disabled={loading||!form.email||!!msg?.ok} style={{padding:"5px 14px",borderRadius:6,border:"none",background:loading||!form.email||!!msg?.ok?"rgba(255,255,255,0.05)":"linear-gradient(135deg,#f97316,#ea580c)",color:loading||!form.email||!!msg?.ok?t.textDim:"#fff",cursor:loading||!!msg?.ok?"default":"pointer",fontWeight:700,fontSize:11}}>{loading?T.cfgCloudResetSending:T.cfgCloudSendReset}</button>
+                <button onClick={()=>{setMode("signin");setMsg(null);}} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>{T.cfgCloudBackToSignIn}</button>
               </div>
             </div>)
           :(<div>
@@ -9407,6 +9429,7 @@ export default function App(){
   const saveInvConfig=useCallback(cfg=>{setInvConfig(cfg);const v=JSON.stringify(cfg);window.api.storage.set("dicann-inv-config",v).catch(()=>{});schedulePush("dicann-inv-config",v);},[]);
   const handleCloudSignIn=useCallback(async(creds)=>{const res=await cloudSignIn(creds);setCloudUser({email:res.session.user.email,plan:res.plan});setMyLinkedLocations(getMyLinkedLocations());if(res.plan!=='free'){setPlan(res.plan);setActivePlan(res.plan);}},[]);
   const handleCloudSignUp=useCallback(async(creds)=>{await cloudSignUp(creds);/* trigger creates org/user server-side; user must confirm email then sign in */},[]);
+  const handleCloudResetPassword=useCallback(async(email)=>{await requestPasswordReset(email);},[]);
   const handleCloudSignOut=useCallback(async()=>{await cloudSignOut();setCloudUser(null);setSyncStatus(null);setMyLinkedLocations([]);setActiveMUOLocationId(null);},[]);
 
   // ── ONLINE/OFFLINE DETECTION ──────────────────────────────────────────────
@@ -10967,7 +10990,7 @@ export default function App(){
               </div>
             </CfgCard>
             {/* ── CLOUD ACCOUNT + SUBSCRIPTION (grouped) ── */}
-            <CloudAccountSection cloudUser={cloudUser} syncStatus={syncStatus} onSignIn={handleCloudSignIn} onSignUp={handleCloudSignUp} onSignOut={handleCloudSignOut} t={t} T={T}/>
+            <CloudAccountSection cloudUser={cloudUser} syncStatus={syncStatus} onSignIn={handleCloudSignIn} onSignUp={handleCloudSignUp} onSignOut={handleCloudSignOut} onResetPassword={handleCloudResetPassword} t={t} T={T}/>
             <SubscriptionSection cloudUser={cloudUser} activePlan={activePlan} orgId={getCloudOrgId()} onPlanRefreshed={p=>{setPlan(p);setActivePlan(p);}} t={t} T={T}/>
             {/* ── JOIN FRANCHISE NETWORK (restaurant/franchisee mode only) ── */}
             {appMode!=="franchiseur"&&<JoinNetworkCard cloudUser={cloudUser} franchiseeOrgId={getCloudOrgId()} t={t} T={T}/>}

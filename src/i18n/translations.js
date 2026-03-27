@@ -1049,6 +1049,13 @@ export const FR = {
   cfgCloudLoading:  "Connexion...",
   cfgCloudEmailConf:"Vérifiez votre courriel pour confirmer votre compte.",
   cfgCloudAuthError:"Courriel ou mot de passe incorrect.",
+  cfgCloudForgotPassword:"Mot de passe oublié ?",
+  cfgCloudSendReset:     "Envoyer le lien",
+  cfgCloudResetSending:  "Envoi...",
+  cfgCloudResetSent:     "Un lien de réinitialisation a été envoyé à votre courriel.",
+  cfgCloudNewPassword:   "Nouveau mot de passe",
+  cfgCloudForgotHint:    "Entrez votre courriel et nous vous enverrons un lien pour réinitialiser votre mot de passe.",
+  cfgCloudBackToSignIn:  "Retour à la connexion",
 
   // ── CONFIG — SUBSCRIPTION ──
   subTitle:         "💳 Votre abonnement",
@@ -2806,6 +2813,13 @@ export const EN = {
   cfgCloudLoading:  "Connecting...",
   cfgCloudEmailConf:"Check your email to confirm your account.",
   cfgCloudAuthError:"Incorrect email or password.",
+  cfgCloudForgotPassword:"Forgot your password?",
+  cfgCloudSendReset:     "Send reset link",
+  cfgCloudResetSending:  "Sending...",
+  cfgCloudResetSent:     "A reset link has been sent to your email.",
+  cfgCloudNewPassword:   "New password",
+  cfgCloudForgotHint:    "Enter your email and we'll send you a link to reset your password.",
+  cfgCloudBackToSignIn:  "Back to sign in",
 
   // ── CONFIG — SUBSCRIPTION ──
   subTitle:         "💳 Your Subscription",
