@@ -106,6 +106,16 @@ function getDb() {
         created_at TEXT DEFAULT (datetime('now','localtime'))
       );
 
+      CREATE TABLE IF NOT EXISTS forecast_imports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        filename TEXT NOT NULL,
+        target_date TEXT NOT NULL,
+        imported_at TEXT DEFAULT (datetime('now','localtime')),
+        record_count INTEGER,
+        replaced INTEGER DEFAULT 0,
+        replaced_by INTEGER
+      );
+
       CREATE TABLE IF NOT EXISTS forecast_weather (
         date TEXT PRIMARY KEY,
         temp_max REAL,
@@ -465,6 +475,27 @@ function forecastSalesDeleteForDate(date) {
   return true;
 }
 
+// ── FORECAST: Import log ──
+function forecastImportsGetAll() {
+  return getDb().prepare('SELECT * FROM forecast_imports ORDER BY imported_at DESC').all();
+}
+function forecastImportLog(record) {
+  const info = getDb().prepare(
+    'INSERT INTO forecast_imports (filename, target_date, record_count, replaced) VALUES (?, ?, ?, ?)'
+  ).run(record.filename, record.target_date, record.record_count, record.replaced ? 1 : 0);
+  return info.lastInsertRowid;
+}
+function forecastImportDelete(id) {
+  getDb().prepare('DELETE FROM forecast_imports WHERE id = ?').run(id);
+  return true;
+}
+function forecastImportMarkReplaced(targetDate, replacedById) {
+  getDb().prepare(
+    'UPDATE forecast_imports SET replaced = 1, replaced_by = ? WHERE target_date = ? AND replaced = 0 AND id != ?'
+  ).run(replacedById, targetDate, replacedById);
+  return true;
+}
+
 // ── FORECAST: Weather ──
 function forecastWeatherGetRange(dateFrom, dateTo) {
   return getDb().prepare('SELECT * FROM forecast_weather WHERE date >= ? AND date <= ?').all(dateFrom, dateTo);
@@ -787,6 +818,7 @@ module.exports = {
   snapshotSave, snapshotGetByDate, snapshotGetLatest, snapshotListDates,
   forecastProductsGetAll, forecastProductUpsert,
   forecastSalesGetForDate, forecastSalesGetForProduct, forecastSalesGetRange, forecastSalesUpsert, forecastSalesDeleteForDate,
+  forecastImportsGetAll, forecastImportLog, forecastImportDelete, forecastImportMarkReplaced,
   forecastWeatherGetRange, forecastWeatherUpsert,
   forecastCsvMappingsGetAll, forecastCsvMappingSave,
   learnedPatternsGetAll, learnedPatternUpsert,

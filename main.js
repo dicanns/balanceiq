@@ -17,6 +17,7 @@ const {
   snapshotSave, snapshotGetByDate, snapshotGetLatest, snapshotListDates,
   forecastProductsGetAll, forecastProductUpsert,
   forecastSalesGetForDate, forecastSalesGetForProduct, forecastSalesGetRange, forecastSalesUpsert, forecastSalesDeleteForDate,
+  forecastImportsGetAll, forecastImportLog, forecastImportDelete, forecastImportMarkReplaced,
   forecastWeatherGetRange, forecastWeatherUpsert,
   forecastCsvMappingsGetAll, forecastCsvMappingSave,
   learnedPatternsGetAll, learnedPatternUpsert,
@@ -1120,6 +1121,11 @@ ipcMain.handle('forecast:sales:getForProduct', (_e, productId, limit) => forecas
 ipcMain.handle('forecast:sales:getRange', (_e, from, to) => forecastSalesGetRange(from, to));
 ipcMain.handle('forecast:sales:upsert', (_e, record) => forecastSalesUpsert(record));
 ipcMain.handle('forecast:sales:deleteForDate', (_e, date) => forecastSalesDeleteForDate(date));
+
+ipcMain.handle('forecast:imports:getAll',        ()               => forecastImportsGetAll());
+ipcMain.handle('forecast:imports:log',           (_e, record)     => forecastImportLog(record));
+ipcMain.handle('forecast:imports:delete',        (_e, id)         => forecastImportDelete(id));
+ipcMain.handle('forecast:imports:markReplaced',  (_e, date, byId) => forecastImportMarkReplaced(date, byId));
 
 ipcMain.handle('forecast:weather:getRange', (_e, from, to) => forecastWeatherGetRange(from, to));
 ipcMain.handle('forecast:weather:upsert', (_e, record) => forecastWeatherUpsert(record));

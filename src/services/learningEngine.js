@@ -240,6 +240,145 @@ async function learnTrends(products, allSales, lang) {
   return insights;
 }
 
+// ── Gas Price Correlations ─────────────────────────────────────────────────
+
+function gasToLevel(price) {
+  if (price < 1.60) return 'low';
+  if (price < 1.80) return 'mid';
+  if (price < 2.00) return 'high';
+  return 'very_high';
+}
+
+async function learnGasPriceCorrelations(products, allSales, dailyData, lang) {
+  const insights = [];
+  // Build gas price map by date
+  const gasMap = {};
+  for (const day of dailyData) {
+    if (day.date && day.gas != null && day.gas !== '') {
+      gasMap[day.date] = parseFloat(day.gas);
+    }
+  }
+  const gasDates = Object.keys(gasMap);
+  if (gasDates.length < 10) return insights; // not enough gas data
+  const allGasPrices = Object.values(gasMap);
+  const overallGasAvg = safeAvg(allGasPrices);
+
+  for (const product of products) {
+    if (!product.active) continue;
+    const sales = allSales.filter(s => s.product_id === product.id && gasMap[s.date] != null);
+    if (sales.length < 14) continue;
+    const overallAvg = safeAvg(sales.map(s => s.quantity_sold));
+    if (overallAvg === 0) continue;
+
+    // Group by gas price level
+    const byLevel = { low: [], mid: [], high: [], very_high: [] };
+    for (const s of sales) {
+      const price = gasMap[s.date];
+      if (price == null) continue;
+      byLevel[gasToLevel(price)].push(s.quantity_sold);
+    }
+    for (const [level, arr] of Object.entries(byLevel)) {
+      if (arr.length < 3) continue;
+      const avg = safeAvg(arr);
+      const pctChange = safePct(avg, overallAvg);
+      await window.api.forecast.patterns.upsert({
+        id: uid(), pattern_type: 'gas_price_correlation', entity: product.id, key: level,
+        value: JSON.stringify({ avg_sales: avg, pct_change_vs_baseline: pctChange, sample_count: arr.length }),
+        confidence: arr.length < 4 ? 0.3 : arr.length < 8 ? 0.5 : 0.7,
+        sample_size: arr.length,
+      });
+    }
+    // Insight: if high gas price has significant negative correlation
+    const highArr = [...(byLevel.high || []), ...(byLevel.very_high || [])];
+    if (highArr.length >= 4) {
+      const highAvg = safeAvg(highArr);
+      const pct = safePct(highAvg, overallAvg);
+      if (pct < -0.07) {
+        const pctStr = Math.abs(Math.round(pct * 100));
+        // Use threshold of last high gas price if available
+        const highPrices = gasDates.filter(d => gasMap[d] >= 1.80).map(d => gasMap[d]);
+        const threshStr = highPrices.length > 0 ? safeAvg(highPrices).toFixed(2) : '1.80';
+        insights.push({
+          id: uid(), type: `gas_price_${product.id}`, entity: product.id,
+          message_fr: `⛽ Quand le prix de l'essence dépasse ${threshStr}$/L, les ventes de ${product.name} baissent en moyenne de ${pctStr}%.`,
+          message_en: `⛽ When gas prices exceed $${threshStr}/L, ${product.name} sales drop an average of ${pctStr}%.`,
+          severity: 'suggestion', financial_impact: null,
+        });
+      } else if (pct > 0.07) {
+        const pctStr = Math.round(pct * 100);
+        insights.push({
+          id: uid(), type: `gas_price_${product.id}`, entity: product.id,
+          message_fr: `⛽ Les ventes de ${product.name} augmentent de ${pctStr}% quand le prix de l'essence est élevé. Tendance inattendue à surveiller.`,
+          message_en: `⛽ ${product.name} sales increase ${pctStr}% when gas prices are high. Unexpected trend worth watching.`,
+          severity: 'suggestion', financial_impact: null,
+        });
+      }
+    }
+  }
+  return insights;
+}
+
+// ── Event Patterns ─────────────────────────────────────────────────────────
+
+function normalizeEvent(str) {
+  return str?.toLowerCase().trim().replace(/\s+/g, ' ') || '';
+}
+
+async function learnEventPatterns(products, allSales, dailyData, lang) {
+  const insights = [];
+  // Build event map by date
+  const eventMap = {};
+  for (const day of dailyData) {
+    const ev = normalizeEvent(day.events);
+    if (day.date && ev) eventMap[day.date] = ev;
+  }
+  if (Object.keys(eventMap).length === 0) return insights;
+
+  // Group dates by event name
+  const eventDates = {};
+  for (const [date, ev] of Object.entries(eventMap)) {
+    if (!eventDates[ev]) eventDates[ev] = [];
+    eventDates[ev].push(date);
+  }
+
+  for (const product of products) {
+    if (!product.active) continue;
+    const sales = allSales.filter(s => s.product_id === product.id);
+    if (sales.length < 4) continue;
+    const overallAvg = safeAvg(sales.map(s => s.quantity_sold));
+    if (overallAvg === 0) continue;
+
+    for (const [ev, dates] of Object.entries(eventDates)) {
+      if (dates.length < 2) continue;
+      const eventSales = sales.filter(s => dates.includes(s.date));
+      if (eventSales.length < 2) continue;
+      const eventAvg = safeAvg(eventSales.map(s => s.quantity_sold));
+      const pct = safePct(eventAvg, overallAvg);
+      const conf = eventSales.length < 3 ? 0.3 : eventSales.length < 5 ? 0.5 : 0.7;
+      await window.api.forecast.patterns.upsert({
+        id: uid(), pattern_type: 'event_pattern', entity: product.id,
+        key: ev,
+        value: JSON.stringify({ avg_sales: eventAvg, pct_change_vs_baseline: pct, occurrences: eventSales.length }),
+        confidence: conf, sample_size: eventSales.length,
+      });
+      if (Math.abs(pct) >= 0.15 && eventSales.length >= 2) {
+        const pctStr = Math.round(Math.abs(pct) * 100);
+        const evDisplay = ev.charAt(0).toUpperCase() + ev.slice(1);
+        const dirFr = pct > 0 ? 'augmenté' : 'baissé';
+        const dirEn = pct > 0 ? 'increased' : 'dropped';
+        insights.push({
+          id: uid(), type: `event_${product.id}_${ev.replace(/\s+/g,'_').substring(0,30)}`,
+          entity: product.id,
+          message_fr: `🎯 Lors des ${eventSales.length} derniers "${evDisplay}", les ventes de ${product.name} ont ${dirFr} de ${pctStr}% en moyenne.`,
+          message_en: `🎯 During the last ${eventSales.length} "${evDisplay}" events, ${product.name} sales ${dirEn} by ${pctStr}% on average.`,
+          severity: 'suggestion', financial_impact: null,
+        });
+      }
+    }
+  }
+  return insights;
+}
+
 // ── Cross-Product Substitution ─────────────────────────────────────────────
 
 async function learnCrossProductPatterns(products, allSales, lang) {
@@ -353,6 +492,8 @@ export async function runLearningEngine({ products, allSales, weatherMap, dailyD
     () => learnTrends(products, allSales, lang),
     () => learnCrossProductPatterns(products, allSales, lang),
     () => learnCashierPatterns(dailyData, lang),
+    () => learnGasPriceCorrelations(products, allSales, dailyData, lang),
+    () => learnEventPatterns(products, allSales, dailyData, lang),
     () => { trackPredictionAccuracy(products, allSales, existingAccuracy); return []; },
   ];
 
