@@ -154,7 +154,7 @@ const DEFAULT_GL_ACCOUNTS={
 };
 const BLANK_CASH={cashierId:"",posVentes:null,posTPS:null,posTVQ:null,posLivraisons:null,float:null,interac:null,livraisons:null,deposits:null,finalCash:null,pmtVisa:null,pmtMastercard:null,pmtDebit:null,pmtAmex:null,pmtOther:null,pmtTips:null,pmtGiftCard:null};
 const BLANK_EMP={name:"",hours:null,wage:null};
-const BLANK_DAY={cashes:[{...BLANK_CASH}],employees:[],hamEnd:null,hamReceived:null,hamStartOverride:null,hotEnd:null,hotReceived:null,hotStartOverride:null,weather:"",tempC:null,gas:null,notes:"",events:""};
+const BLANK_DAY={cashes:[{...BLANK_CASH}],employees:[],hamEnd:null,hamReceived:null,hamStartOverride:null,hotEnd:null,hotReceived:null,hotStartOverride:null,weather:"",tempC:null,gas:null,notes:"",events:"",eventRecurring:false};
 // OWNER_EMAIL removed — use apiConfig.reportEmail (configurable in Settings → Application)
 const DAILY_FIELD_LABELS={posVentes:"Ventes POS",posTPS:"TPS POS",posTVQ:"TVQ POS",posLivraisons:"Livraisons POS",float:"Float",interac:"Interac",livraisons:"Livraisons caisse",deposits:"Dépôts",finalCash:"Cash final",hamEnd:"Hamburgers — fin",hotEnd:"Hot dogs — fin",hamReceived:"Hamburgers — reçus",hotReceived:"Hot dogs — reçus"};
 const WMO_FR=code=>{if(code===0)return"Ensoleillé";if(code<=2)return"Peu nuageux";if(code===3)return"Couvert";if(code<=48)return"Brouillard";if(code<=55)return"Bruine";if(code<=65)return"Pluie";if(code<=75)return"Neige";if(code<=82)return"Averses";if(code<=86)return"Averses de neige";if(code<=99)return"Orageux";return"Variable"};
@@ -10382,7 +10382,13 @@ export default function App(){
                       <button onClick={checkGasPrice} disabled={gasCheckLoading} style={{marginTop:3,fontSize:9.5,padding:"3px 8px",borderRadius:4,border:"1px solid rgba(56,189,248,0.2)",background:"rgba(56,189,248,0.06)",color:"#38bdf8",cursor:gasCheckLoading?"default":"pointer",fontWeight:600,width:"100%",textAlign:"center",opacity:gasCheckLoading?0.65:1}}>{gasCheckLoading?T.gasVerifying:T.extFetchGas}</button>
                       {gasCheckMsg&&<div style={{fontSize:9.5,marginTop:2,padding:"1px 4px",color:gasCheckMsg.ok?"#16a34a":"#f97316"}}>{gasCheckMsg.text}</div>}
                     </div>
-                    <F label={T.extEvent} value={raw.events} onChange={v=>upd(selectedDate,"events",v)} type="text" placeholder="Festival..." wide/>
+                    <div>
+                      <F label={T.extEvent} value={raw.events} onChange={v=>upd(selectedDate,"events",v)} type="text" placeholder={T.extEventPlaceholder||"Saint-Jean-Baptiste, Festival, Ramadan..."} wide/>
+                      {raw.events&&<label style={{display:"flex",alignItems:"center",gap:5,marginTop:3,cursor:"pointer",fontSize:10,opacity:0.7}}>
+                        <input type="checkbox" checked={!!raw.eventRecurring} onChange={e=>upd(selectedDate,"eventRecurring",e.target.checked)} style={{accentColor:"#f97316",cursor:"pointer"}}/>
+                        {T.extEventRecurring||"Événement annuel récurrent"}
+                      </label>}
+                    </div>
                   </div>
                 </div>
               </div>

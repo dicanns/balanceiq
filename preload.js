@@ -87,6 +87,12 @@ contextBridge.exposeInMainWorld('api', {
       getAll: ()        => ipcRenderer.invoke('forecast:csvMappings:getAll'),
       save:   (mapping) => ipcRenderer.invoke('forecast:csvMappings:save', mapping),
     },
+    imports: {
+      getAll:       ()              => ipcRenderer.invoke('forecast:imports:getAll'),
+      log:          (record)        => ipcRenderer.invoke('forecast:imports:log', record),
+      delete:       (id)            => ipcRenderer.invoke('forecast:imports:delete', id),
+      markReplaced: (date, byId)    => ipcRenderer.invoke('forecast:imports:markReplaced', date, byId),
+    },
     patterns: {
       getAll: () => ipcRenderer.invoke('forecast:patterns:getAll'),
       upsert: (p) => ipcRenderer.invoke('forecast:patterns:upsert', p),

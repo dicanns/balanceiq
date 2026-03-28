@@ -100,7 +100,7 @@ function conditionToIcon(cond) { return WEATHER_ICONS[cond] || '☁️'; }
 
 // ── Prediction Engine ─────────────────────────────────────────────────────────
 
-function computePrediction(productId, dateStr, allSales, weatherMap, product, learnedPatterns = []) {
+function computePrediction(productId, dateStr, allSales, weatherMap, product, learnedPatterns = [], currentGasPrice = null, todayEvent = null) {
   const targetDow = new Date(dateStr + 'T12:00:00').getDay();
   const dayName = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'][targetDow];
 
@@ -172,6 +172,22 @@ function computePrediction(productId, dateStr, allSales, weatherMap, product, le
   const trend = getLP('trend', productId, 'current');
   if (trend && trend.confidence >= 0.4) trendFactor = (trend.pct_change||0) * 0.5;
 
+  // 3b. GAS PRICE
+  let gasFactor = 0;
+  if (currentGasPrice != null) {
+    const gasLevel = currentGasPrice < 1.60 ? 'low' : currentGasPrice < 1.80 ? 'mid' : currentGasPrice < 2.00 ? 'high' : 'very_high';
+    const gasP = getLP('gas_price_correlation', productId, gasLevel);
+    if (gasP && gasP.confidence >= 0.4) gasFactor = (gasP.pct_change_vs_baseline || 0) * 0.5;
+  }
+
+  // 3c. EVENT
+  let eventFactor = 0;
+  if (todayEvent) {
+    const evKey = todayEvent.toLowerCase().trim().replace(/\s+/g, ' ');
+    const evP = getLP('event_pattern', productId, evKey);
+    if (evP && evP.confidence >= 0.3) eventFactor = (evP.pct_change_vs_baseline || 0);
+  }
+
   // 4. WASTE — reduce prediction if this day has chronic waste
   let wasteFactor = 1;
   const wasteP = getLP('waste_pattern', productId, dayName);
@@ -184,8 +200,8 @@ function computePrediction(productId, dateStr, allSales, weatherMap, product, le
     if (rate >= 0.3) baseAvg = Math.max(baseAvg, baseAvg + stockoutP.estimated_unmet_demand);
   }
 
-  const prediction = Math.max(0, Math.round(baseAvg * (1+weatherFactor) * (1+trendFactor) * wasteFactor));
-  return { prediction, confidence, dataPoints, baseAvg: Math.round(baseAvg), weatherFactor, trendFactor };
+  const prediction = Math.max(0, Math.round(baseAvg * (1+weatherFactor) * (1+trendFactor) * (1+gasFactor) * (1+eventFactor) * wasteFactor));
+  return { prediction, confidence, dataPoints, baseAvg: Math.round(baseAvg), weatherFactor, trendFactor, gasFactor, eventFactor };
 }
 
 function computeAlerts(products, allSales, T, lang) {
@@ -876,13 +892,22 @@ function CSVImportView({ products, onImported, savedFormats, onSaveFormat, T, t,
   const [savedMsg, setSavedMsg] = useState('');
   const [loadedFormat, setLoadedFormat] = useState('');
   const [result, setResult] = useState(null);
+  const [filename, setFilename] = useState('');
+  const [importHistory, setImportHistory] = useState([]);
+  const [duplicateWarning, setDuplicateWarning] = useState(null); // {dates, toImport, newProds}
 
   const productNames = new Set(products.map(p=>p.name.toLowerCase()));
   const inp = { background:t.inputBg, border:`1px solid ${t.inputBorder}`, borderRadius:5, color:'inherit', fontSize:12, padding:'5px 8px', outline:'none', fontFamily:"'Outfit',sans-serif" };
 
+  const loadHistory = async () => {
+    try { setImportHistory(await window.api.forecast.imports.getAll()); } catch {}
+  };
+  useEffect(() => { loadHistory(); }, []);
+
   const handleFile = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    setFilename(file.name);
     try {
       const data = await file.arrayBuffer();
       const wb = XLSX.read(data, { type:'array' });
@@ -923,18 +948,13 @@ function CSVImportView({ products, onImported, savedFormats, onSaveFormat, T, t,
     else setStep('preview');
   };
 
-  const handleImport = async () => {
+  // Build the toImport array from current state (no DB writes yet)
+  const buildImportData = () => {
     const toAdd = unknownProds.filter(u=>u.action==='add');
-    const newProds = [];
-    for (const u of toAdd) {
-      const p = { id:uuid(), name:u.name, category:'', base_quantity:0, shelf_life_days:1, weather_sensitivity:0, active:1, notes:'' };
-      await window.api.forecast.products.upsert(p);
-      newProds.push(p);
-    }
+    const newProds = toAdd.map(u => ({ id:uuid(), name:u.name, category:'', base_quantity:0, shelf_life_days:1, weather_sensitivity:0, active:1, notes:'' }));
     const allProducts = [...products, ...newProds];
     const prodByName = {};
     allProducts.forEach(p => { prodByName[p.name.toLowerCase()] = p; });
-
     const toImport = [];
     rows.forEach(row => {
       const name = String(row[columns.indexOf(mapping.prod)]||'').trim();
@@ -948,11 +968,59 @@ function CSVImportView({ products, onImported, savedFormats, onSaveFormat, T, t,
       const remaining = mapping.remaining ? parseInt(row[columns.indexOf(mapping.remaining)]) : null;
       toImport.push({ id:uuid(), product_id:prod.id, date:parsedDate, quantity_sold:sold, quantity_made:isNaN(made)?null:made, quantity_remaining:isNaN(remaining)?null:remaining, stockout:0, source:'csv' });
     });
+    return { toImport, newProds };
+  };
 
+  const handleImportClick = async () => {
+    const { toImport, newProds } = buildImportData();
+    // Check for duplicate dates
+    const uniqueDates = [...new Set(toImport.map(r => r.date))];
+    const duplicateDates = [];
+    for (const date of uniqueDates) {
+      const existing = await window.api.forecast.sales.getForDate(date);
+      if (existing.length > 0) duplicateDates.push(date);
+    }
+    if (duplicateDates.length > 0) {
+      setDuplicateWarning({ dates: duplicateDates, toImport, newProds });
+    } else {
+      await doImport(toImport, newProds, false);
+    }
+  };
+
+  const doImport = async (toImport, newProds, replaced) => {
+    // Save new products first
+    for (const p of newProds) await window.api.forecast.products.upsert(p);
+    // Save sales records
     for (const rec of toImport) await window.api.forecast.sales.upsert(rec);
+    // Determine target_date string for log
+    const uniqueDates = [...new Set(toImport.map(r => r.date))].sort();
+    const targetDate = uniqueDates.length === 0 ? importDate
+      : uniqueDates.length === 1 ? uniqueDates[0]
+      : `${uniqueDates[0]} – ${uniqueDates[uniqueDates.length-1]}`;
+    // Log import
+    const logId = await window.api.forecast.imports.log({
+      filename: filename || 'import',
+      target_date: targetDate,
+      record_count: toImport.length,
+      replaced: replaced ? 1 : 0,
+    });
+    // Mark previous imports for same dates as replaced
+    if (replaced) {
+      for (const date of uniqueDates) {
+        await window.api.forecast.imports.markReplaced(date, logId);
+      }
+    }
+    setDuplicateWarning(null);
     setResult(toImport.length);
     setStep('done');
     onImported(toImport, newProds);
+    loadHistory();
+  };
+
+  const handleDeleteImport = async (id) => {
+    if (!window.confirm(T.prevImportDeleteConfirm)) return;
+    await window.api.forecast.imports.delete(id);
+    loadHistory();
   };
 
   const handleSaveFormat = async () => {
@@ -1013,6 +1081,35 @@ function CSVImportView({ products, onImported, savedFormats, onSaveFormat, T, t,
             {T.prevImportBtn}
             <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFile} style={{display:'none'}}/>
           </label>
+          {importHistory.length > 0 && (
+            <div style={{marginTop:16}}>
+              <div style={{fontSize:11,fontWeight:700,opacity:0.6,marginBottom:8,textTransform:'uppercase',letterSpacing:0.5}}>{T.prevImportHistory}</div>
+              <div style={{border:`1px solid ${t.cardBorder}`,borderRadius:7,overflow:'hidden'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+                  <thead>
+                    <tr style={{background:t.section}}>
+                      {[T.prevImportColFilename,T.prevImportColTargetDate,T.prevImportColTimestamp,T.prevImportColRecords,''].map((h,i)=>(
+                        <th key={i} style={{padding:'6px 10px',textAlign:'left',fontWeight:600,opacity:0.7,borderBottom:`1px solid ${t.cardBorder}`}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importHistory.map((row,i)=>(
+                      <tr key={row.id} style={{borderBottom:i<importHistory.length-1?`1px solid ${t.cardBorder}`:'none',opacity:row.replaced?0.45:1}}>
+                        <td style={{padding:'6px 10px',maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={row.filename}>{row.filename}</td>
+                        <td style={{padding:'6px 10px',whiteSpace:'nowrap'}}>{row.target_date}</td>
+                        <td style={{padding:'6px 10px',whiteSpace:'nowrap',opacity:0.7}}>{row.imported_at ? row.imported_at.substring(0,16).replace('T',' ') : ''}</td>
+                        <td style={{padding:'6px 10px',textAlign:'center'}}>{row.record_count ?? '—'}</td>
+                        <td style={{padding:'6px 10px',textAlign:'right'}}>
+                          <button onClick={()=>handleDeleteImport(row.id)} style={{padding:'2px 7px',borderRadius:4,border:`1px solid ${t.cardBorder}`,background:'transparent',color:'#ef4444',cursor:'pointer',fontSize:11,lineHeight:1}}>✕</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1090,9 +1187,19 @@ function CSVImportView({ products, onImported, savedFormats, onSaveFormat, T, t,
               </tbody>
             </table>
           </div>
+          {duplicateWarning && (
+            <div style={{background:'rgba(249,115,22,0.1)',border:'1px solid rgba(249,115,22,0.3)',borderRadius:7,padding:'10px 12px',marginBottom:12}}>
+              <div style={{fontSize:12,fontWeight:600,color:'#f97316',marginBottom:6}}>⚠️ {T.prevImportDuplicateTitle}</div>
+              <div style={{fontSize:11,marginBottom:10}}>{T.prevImportDuplicateMsg(duplicateWarning.dates.join(', '))}</div>
+              <div style={{display:'flex',gap:8}}>
+                <button onClick={()=>doImport(duplicateWarning.toImport,duplicateWarning.newProds,true)} style={{padding:'5px 12px',borderRadius:5,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:11,fontWeight:600}}>{T.prevImportReplace}</button>
+                <button onClick={()=>setDuplicateWarning(null)} style={{padding:'5px 12px',borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:11}}>{T.prevImportCancel}</button>
+              </div>
+            </div>
+          )}
           <div style={{display:'flex',gap:8}}>
             <button onClick={()=>setStep('map')} style={{padding:'7px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:12}}>{T.prevImportCancel}</button>
-            <button onClick={handleImport} style={{padding:'7px 14px',borderRadius:6,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:12,fontWeight:600}}>{T.prevImportConfirm}</button>
+            <button onClick={handleImportClick} style={{padding:'7px 14px',borderRadius:6,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:12,fontWeight:600}}>{T.prevImportConfirm}</button>
           </div>
         </div>
       )}
@@ -1450,7 +1557,7 @@ function ItemDetailView({ product, allSales, weatherMap, onBack, onBackToAI, onU
 
 // ── Production List View ──────────────────────────────────────────────────────
 
-function ProductionListView({ products, allSales, weatherMap, learnedPatterns = [], T, t, lang }) {
+function ProductionListView({ products, allSales, weatherMap, learnedPatterns = [], T, t, lang, lastGasPrice = null, eventsByDate = {} }) {
   const [range, setRange] = useState('3');
   const [customStart, setCustomStart] = useState(toDateStr(new Date()));
   const [customEnd, setCustomEnd] = useState(addDays(toDateStr(new Date()), 2));
@@ -1504,7 +1611,7 @@ function ProductionListView({ products, allSales, weatherMap, learnedPatterns = 
         // Daily products
         const dailyPreds = [];
         dates.forEach(date => {
-          const r = computePrediction(p.id, date, allSales, weatherMap, p, learnedPatterns);
+          const r = computePrediction(p.id, date, allSales, weatherMap, p, learnedPatterns, lastGasPrice, eventsByDate[date] || null);
           const onHand = parseInt(stockOverrides[p.id] || 0);
           const toMake = Math.max(0, r.prediction - (date === dates[0] ? onHand : 0));
           list.push({ product: p, date, forecast: r.prediction, onHand: date===dates[0]?onHand:0, toMake, type:'daily', weatherFactor: r.weatherFactor });
@@ -1535,7 +1642,7 @@ function ProductionListView({ products, allSales, weatherMap, learnedPatterns = 
         // Batch products
         let totalPred = 0;
         dates.forEach(date => {
-          const r = computePrediction(p.id, date, allSales, weatherMap, p, learnedPatterns);
+          const r = computePrediction(p.id, date, allSales, weatherMap, p, learnedPatterns, lastGasPrice, eventsByDate[date] || null);
           totalPred += r.prediction;
           if (r.weatherFactor !== 0 && p.weather_sensitivity !== 0) {
             const w = weatherMap[date];
@@ -1801,6 +1908,7 @@ function ProductionListView({ products, allSales, weatherMap, learnedPatterns = 
 export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T, t, lang, onInsightCountChange }) {
   const [products, setProducts] = useState([]);
   const [allSales, setAllSales] = useState([]);
+  const [dailyData, setDailyData] = useState([]); // [{date, gas, events, ...}] from dicann-v7
   const [weatherMap, setWeatherMap] = useState({}); // {date: {temp_max, weather_code, source}}
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [weatherError, setWeatherError] = useState(null);
@@ -1833,6 +1941,7 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
       await loadPatterns();
       await loadInsights();
       await loadAccuracy();
+      loadDailyData();
     };
     init();
   }, []);
@@ -1854,6 +1963,28 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
     setSalesByDate(byDate);
     return sales || [];
   }, []);
+
+  const loadDailyData = async () => {
+    try {
+      const raw = await window.api.storage.get('dicann-v7');
+      if (!raw) return;
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      const arr = Object.entries(parsed)
+        .filter(([k]) => /^\d{4}-\d{2}-\d{2}$/.test(k))
+        .map(([date, d]) => ({ date, gas: d.gas ?? null, events: d.events || '' }))
+        .sort((a,b) => a.date.localeCompare(b.date));
+      setDailyData(arr);
+    } catch {}
+  };
+
+  // Derived: last known gas price (for applying to future predictions)
+  const lastGasPriceKnown = useMemo(() => {
+    for (let i = dailyData.length - 1; i >= 0; i--) {
+      const g = parseFloat(dailyData[i].gas);
+      if (!isNaN(g) && g > 0) return g;
+    }
+    return null;
+  }, [dailyData]);
 
   const loadPatterns = useCallback(async () => {
     const data = await window.api.forecast.patterns.getAll().catch(()=>[]);
@@ -1922,7 +2053,7 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
     // Trigger learning engine after sales are saved
     try {
       const { triggerLearning } = await import('../services/learningEngine.js');
-      triggerLearning({ products, allSales: updatedSales, weatherMap, dailyData: [], lang });
+      triggerLearning({ products, allSales: updatedSales, weatherMap, dailyData, lang });
       setTimeout(() => { loadPatterns(); loadInsights(); loadAccuracy(); }, 11000);
     } catch(e) { console.error('[LearningEngine] trigger:', e); }
   };
@@ -1952,16 +2083,22 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
   const activeProducts = useMemo(() => products.filter(p=>p.active), [products]);
 
   // Compute predictions for current week
+  const eventsByDate = useMemo(() => {
+    const m = {};
+    dailyData.forEach(d => { if (d.events) m[d.date] = d.events; });
+    return m;
+  }, [dailyData]);
+
   const predictions = useMemo(() => {
     const result = {};
     activeProducts.forEach(p => {
       result[p.id] = {};
       weekDates.forEach(date => {
-        result[p.id][date] = computePrediction(p.id, date, allSales, weatherMap, p, learnedPatterns);
+        result[p.id][date] = computePrediction(p.id, date, allSales, weatherMap, p, learnedPatterns, lastGasPriceKnown, eventsByDate[date] || null);
       });
     });
     return result;
-  }, [activeProducts, weekDates, allSales, weatherMap, learnedPatterns]);
+  }, [activeProducts, weekDates, allSales, weatherMap, learnedPatterns, lastGasPriceKnown, eventsByDate]);
 
   // Last week actuals
   const lastWeekActuals = useMemo(() => {
@@ -2464,7 +2601,7 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
 
       {/* PRODUCTION LIST VIEW */}
       {subView==='production' && (
-        <ProductionListView products={products} allSales={allSales} weatherMap={weatherMap} learnedPatterns={learnedPatterns} T={T} t={t} lang={lang}/>
+        <ProductionListView products={products} allSales={allSales} weatherMap={weatherMap} learnedPatterns={learnedPatterns} T={T} t={t} lang={lang} lastGasPrice={lastGasPriceKnown} eventsByDate={eventsByDate}/>
       )}
 
       {/* PRODUCTS VIEW */}
