@@ -5,6 +5,13 @@ Each entry includes what changed, why, and exactly how to roll it back if needed
 
 ---
 
+## v1.22.6 — March 31, 2026
+
+### Fixed
+- **SQLite crash on launch (NODE_MODULE_VERSION mismatch)** — CI builds were packaging `better-sqlite3.node` compiled for system Node.js instead of Electron 31's ABI (NMV 125 vs 141). Added `npx @electron/rebuild -f -w better-sqlite3` to both Mac and Windows CI jobs before `electron-builder`. This fixes the "Impossible d'initialiser la base de données SQLite" crash that affected released builds.
+
+---
+
 ## v1.22.5 — March 31, 2026
 
 ### Fixed
