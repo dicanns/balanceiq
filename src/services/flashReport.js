@@ -9,6 +9,8 @@ const fmtCAD = (n) =>
 
 const fmtPct = (n) => (n != null ? `${n.toFixed(1)}%` : '—');
 
+const escapeHtml = (s) => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#x27;');
+
 const arrow = (val, ref) => {
   if (val == null || ref == null || ref === 0) return '';
   const diff = ((val - ref) / ref) * 100;
@@ -169,7 +171,7 @@ export function buildFlashReportHTML(data, lang = 'fr', isPro = false) {
   }
 
   const locationHtml = locationName
-    ? `<div style="font-size:11px;color:#9ca3af;margin-top:2px">${locationName}</div>`
+    ? `<div style="font-size:11px;color:#9ca3af;margin-top:2px">${escapeHtml(locationName)}</div>`
     : '';
 
   return `<!DOCTYPE html>

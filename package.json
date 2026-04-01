@@ -1,6 +1,6 @@
 {
   "name": "balanceiq",
-  "version": "1.22.4",
+  "version": "1.22.5",
   "description": "L'intelligence derrière vos chiffres.",
   "main": "main.js",
   "scripts": {
@@ -17,7 +17,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test --project=electron",
-    "stress-test": "bash scripts/stress-test.sh"
+    "stress-test": "bash scripts/stress-test.sh",
+    "test:chaos": "npm rebuild better-sqlite3 --quiet && vitest run src/__tests__/chaos/userBehavior.test.js"
   },
   "dependencies": {
     "@sentry/electron": "^7.10.0",
