@@ -389,13 +389,60 @@ function auditQuery({ module, action, recordType, recordId, dateFrom, dateTo, li
   return getDb().prepare(sql).all(...params);
 }
 
+// Maximum byte length for a kv_store value (10 MB). Guards against runaway payloads
+// from bugs or malicious input writing unbounded data into SQLite.
+const KV_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+
+// Maximum length for individual text fields stored inside JSON values.
+// Enforced at write time so no single field can bloat the DB.
+const FIELD_MAX_LEN = 500;
+
+// Clamp free-text fields inside a parsed object to FIELD_MAX_LEN characters.
+// Only touches known free-text keys; numeric and date fields are left alone.
+const FREE_TEXT_KEYS = new Set([
+  'notes', 'note', 'nom', 'name', 'prénom', 'reason', 'description',
+  'adresse', 'address', 'ville', 'city', 'telephone', 'email', 'courriel',
+  'companyName', 'nomEntreprise', 'footerText', 'defaultNotes',
+  'whiteLabelName', 'cashierName', 'caissierNom',
+]);
+
+function clampFreeTextFields(obj) {
+  if (typeof obj !== 'object' || obj === null) return obj;
+  if (Array.isArray(obj)) return obj.map(clampFreeTextFields);
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (typeof v === 'string' && FREE_TEXT_KEYS.has(k) && v.length > FIELD_MAX_LEN) {
+      out[k] = v.slice(0, FIELD_MAX_LEN);
+    } else if (typeof v === 'object' && v !== null) {
+      out[k] = clampFreeTextFields(v);
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
 function storageGet(key) {
   const row = getDb().prepare('SELECT value FROM kv_store WHERE key = ?').get(key);
   return row ? { key, value: row.value } : null;
 }
 
 function storageSet(key, value) {
-  getDb().prepare('INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)').run(key, value);
+  if (typeof value !== 'string') {
+    throw new TypeError(`storageSet: value must be a JSON string, got ${typeof value}`);
+  }
+  if (Buffer.byteLength(value, 'utf8') > KV_MAX_BYTES) {
+    throw new RangeError(`storageSet: value for key "${key}" exceeds ${KV_MAX_BYTES / 1024 / 1024} MB limit`);
+  }
+  // Clamp free-text fields to prevent unbounded string storage
+  let sanitised = value;
+  try {
+    const parsed = JSON.parse(value);
+    sanitised = JSON.stringify(clampFreeTextFields(parsed));
+  } catch {
+    // Not JSON (e.g. raw string values) — store as-is, size already checked above
+  }
+  getDb().prepare('INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)').run(key, sanitised);
   return true;
 }
 

@@ -5,6 +5,10 @@
 
 const r2 = (n) => Math.round((n ?? 0) * 100) / 100;
 
+// Safe numeric coercion: parseFloat handles string inputs; falls back to 0 for NaN/null/undefined.
+// Unlike `x || 0`, this correctly coerces '42' → 42 without leaving truthy strings as-is.
+const n = (x) => { const v = parseFloat(x); return Number.isFinite(v) ? v : 0; };
+
 // ── TAX ──────────────────────────────────────────────────────────────────────
 export function calcTPS(amount) {
   return r2((amount || 0) * 0.05);
@@ -19,7 +23,7 @@ export function calcTaxTotal(amount) {
 // ── CASH REGISTER RECONCILIATION ─────────────────────────────────────────────
 // Manual total = interac + finalCash + deposits (what was physically collected)
 export function calcManualTotal(interac, finalCash, deposits) {
-  return r2((interac || 0) + (finalCash || 0) + (deposits || 0));
+  return r2(n(interac) + n(finalCash) + n(deposits));
 }
 
 // POS total including taxes (gross ring)
@@ -60,7 +64,7 @@ export function calcInventoryUsed(start, received, end) {
 
 // ── LABOUR ───────────────────────────────────────────────────────────────────
 export function calcLabourCost(employees) {
-  return r2(employees.reduce((s, e) => s + (e.hours || 0) * (e.wage || 0), 0));
+  return r2(employees.reduce((s, e) => s + n(e.hours) * n(e.wage), 0));
 }
 
 export function calcLabourPct(labourCost, netSales) {
@@ -94,7 +98,7 @@ export function calcNetProfitPct(netProfit, revenue) {
 
 // ── INVOICE LINE TOTALS ───────────────────────────────────────────────────────
 export function calcInvoiceLine(quantite, prixUnitaire, remise = 0) {
-  return r2((quantite || 0) * (prixUnitaire || 0) * (1 - (remise || 0) / 100));
+  return r2(n(quantite) * n(prixUnitaire) * (1 - n(remise) / 100));
 }
 
 export function calcInvoiceTotals(lignes) {
