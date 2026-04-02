@@ -14,7 +14,8 @@ Deno.serve(async (req) => {
   }
 
   // No code — show a simple error page
-  const error = url.searchParams.get('error_description') || url.searchParams.get('error') || 'Unknown error';
+  const rawError = url.searchParams.get('error_description') || url.searchParams.get('error') || 'Unknown error';
+  const error = rawError.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
   return new Response(
     `<!DOCTYPE html><html><head><meta charset="utf-8"><title>BalanceIQ</title>
     <style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0c0e14;color:#e8e8ec;}
