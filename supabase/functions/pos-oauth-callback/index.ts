@@ -3,13 +3,13 @@
 Deno.serve(async (req) => {
   const url = new URL(req.url);
   const code  = url.searchParams.get('code');
-  const state = url.searchParams.get('state'); // posType passed via state param
-  const posType = state || 'square';
+  const state = url.searchParams.get('state'); // format: posType:nonce (e.g. square:uuid)
+  const posType = state ? state.split(':')[0] : 'square';
 
   if (code) {
     return new Response(null, {
       status: 302,
-      headers: { 'Location': `balanceiq://oauth/${posType}?code=${encodeURIComponent(code)}` },
+      headers: { 'Location': `balanceiq://oauth/${posType}?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state || '')}` },
     });
   }
 

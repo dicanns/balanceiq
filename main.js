@@ -156,7 +156,7 @@ async function exchangePosOAuthCode(posType, code, shopDomain) {
   return { error: 'Unknown POS type' };
 }
 
-// Handle OAuth deep link callback (balanceiq://oauth/{posType}?code=xxx)
+// Handle OAuth deep link callback (balanceiq://oauth/{posType}?code=xxx&state=posType:nonce)
 async function handlePosOAuthCallback(url) {
   try {
     const parsed = new URL(url);
@@ -167,6 +167,16 @@ async function handlePosOAuthCallback(url) {
     const pos  = rawPos || posType || parsed.host;
     const code = parsed.searchParams.get('code');
     if (!pos || !code) return;
+
+    // Verify the state nonce to prevent CSRF
+    const returnedState = parsed.searchParams.get('state') || '';
+    const [, returnedNonce] = returnedState.split(':');
+    const expectedNonce = _pendingOAuthNonce[pos];
+    delete _pendingOAuthNonce[pos]; // consume nonce regardless
+    if (!expectedNonce || returnedNonce !== expectedNonce) {
+      mainWindow?.webContents.send('pos:oauth-result', { posType: pos, error: 'OAuth state mismatch — possible CSRF. Please try connecting again.' });
+      return;
+    }
 
     const result = await exchangePosOAuthCode(pos, code, shopDomain);
     if (result.error) {
@@ -805,21 +815,29 @@ ipcMain.handle('pos:getCredentials', () => getPosCredentialsMeta());
 
 const OAUTH_CALLBACK_URL = 'https://etiwnesxjypdwhxqnqqq.supabase.co/functions/v1/pos-oauth-callback';
 
+// Pending OAuth nonces — keyed by posType. Cleared after use or on new flow start.
+const _pendingOAuthNonce = {};
+
 ipcMain.handle('pos:startOAuth', async (_event, posType, shopDomain) => {
   const isDev = !app.isPackaged;
+  // Generate a random nonce to bind this OAuth flow to this session
+  const nonce = crypto.randomUUID();
+  _pendingOAuthNonce[posType] = nonce;
+  const state = `${posType}:${nonce}`;
+
   let authUrl;
   if (posType === 'square') {
     const appId = isDev ? 'sandbox-sq0idb-vKGF3m-aVqnfr2d9YPC9cA' : 'sq0idp-8_k0M7m_P8VYYIYZbbF_nA';
     const base  = isDev ? 'https://connect.squareupsandbox.com' : 'https://connect.squareup.com';
-    const p = new URLSearchParams({ client_id: appId, scope: 'PAYMENTS_READ ORDERS_READ MERCHANT_PROFILE_READ', redirect_uri: OAUTH_CALLBACK_URL, state: 'square' });
+    const p = new URLSearchParams({ client_id: appId, scope: 'PAYMENTS_READ ORDERS_READ MERCHANT_PROFILE_READ', redirect_uri: OAUTH_CALLBACK_URL, state });
     authUrl = `${base}/oauth2/authorize?${p}`;
   } else if (posType === 'clover') {
     const base = isDev ? 'https://sandbox.dev.clover.com' : 'https://www.clover.com';
-    const p = new URLSearchParams({ client_id: '5GTA1NCXTO5YY', redirect_uri: OAUTH_CALLBACK_URL, state: 'clover' });
+    const p = new URLSearchParams({ client_id: '5GTA1NCXTO5YY', redirect_uri: OAUTH_CALLBACK_URL, state });
     authUrl = `${base}/oauth/authorize?${p}`;
   } else if (posType === 'shopify' && shopDomain) {
     const shop = shopDomain.replace(/^https?:\/\//, '').replace(/\/$/, '');
-    const p = new URLSearchParams({ client_id: 'a728cf71c0b64c5d7e0694567a085d0d', scope: 'read_orders,read_products', redirect_uri: OAUTH_CALLBACK_URL, state: 'shopify' });
+    const p = new URLSearchParams({ client_id: 'a728cf71c0b64c5d7e0694567a085d0d', scope: 'read_orders,read_products', redirect_uri: OAUTH_CALLBACK_URL, state });
     authUrl = `https://${shop}/admin/oauth/authorize?${p}`;
   }
   if (authUrl) shell.openExternal(authUrl);
