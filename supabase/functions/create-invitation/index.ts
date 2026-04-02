@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import Stripe from 'https://esm.sh/stripe@14';
+import { getOrgForUser } from '../_shared/getOrgForUser.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -43,6 +44,14 @@ serve(async (req) => {
     const { franchisorOrgId, locationId, locationName } = await req.json();
     if (!franchisorOrgId || !locationId || !locationName) {
       return ok({ error: 'missing_params', message: 'Missing franchisorOrgId, locationId or locationName.' });
+    }
+
+    const serverOrgId = await getOrgForUser(supabaseAdmin, user.id);
+    if (!serverOrgId || serverOrgId !== franchisorOrgId) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Verify caller belongs to this org, has franchise plan, and has an active Stripe subscription
