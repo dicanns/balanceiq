@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import Stripe from 'https://esm.sh/stripe@14';
+import { getOrgForUser } from '../_shared/getOrgForUser.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
   apiVersion: '2024-04-10',
@@ -43,6 +44,13 @@ serve(async (req) => {
     if (!priceId || !orgId) {
       return new Response(JSON.stringify({ error: 'Missing priceId or orgId' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const serverOrgId = await getOrgForUser(supabaseAdmin, user.id);
+    if (!serverOrgId || serverOrgId !== orgId) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
