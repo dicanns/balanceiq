@@ -34,6 +34,20 @@ serve(async (req) => {
       return ok({ error: 'missing_params', message: 'Missing inviteCode or franchiseeOrgId.' });
     }
 
+    // Verify the authenticated user actually belongs to the claimed franchiseeOrgId
+    const { data: userRecord } = await supabaseAdmin
+      .from('users')
+      .select('org_id')
+      .eq('id', user.id)
+      .single();
+
+    if (!userRecord || userRecord.org_id !== franchiseeOrgId) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // Look up the invitation
     const { data: invite } = await supabaseAdmin
       .from('franchise_invitations')
