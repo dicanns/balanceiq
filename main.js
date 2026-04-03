@@ -1115,7 +1115,11 @@ ipcMain.handle('delivery:openPortal', (_event, platform) => {
 ipcMain.handle('docs:download', async (_event, { url, filename }) => {
   try {
     const downloadsDir = app.getPath('downloads');
-    const destPath = path.join(downloadsDir, filename);
+    const safeName = path.basename(filename);
+    if (!safeName || safeName === '.' || safeName === '..') {
+      return { error: 'Invalid filename' };
+    }
+    const destPath = path.join(downloadsDir, safeName);
     const response = await new Promise((resolve, reject) => {
       const req = net.request({ method: 'GET', url });
       const chunks = [];
