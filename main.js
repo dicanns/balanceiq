@@ -1167,11 +1167,32 @@ ipcMain.handle('docs:download', async (_event, { url, filename }) => {
       req.end();
     });
     fs.writeFileSync(destPath, response);
-    shell.openPath(destPath);
-    return { ok: true, path: destPath };
+    // Do NOT auto-open: download-and-open is effectively download-and-execute.
+    // Return the path and folder so the renderer can show a notification with
+    // explicit "Open" / "Show in folder" buttons (user's choice).
+    return { ok: true, path: destPath, folder: downloadsDir };
   } catch(e) {
     return { error: e.message };
   }
+});
+
+ipcMain.handle('file:openDownloaded', async (_event, filePath) => {
+  // Verify the file is actually inside the downloads directory (defense in depth).
+  const downloadsDir = app.getPath('downloads');
+  const resolved = path.resolve(filePath);
+  if (!resolved.startsWith(downloadsDir + path.sep) && resolved !== downloadsDir) {
+    throw new Error('Cannot open files outside downloads directory');
+  }
+  return shell.openPath(resolved);
+});
+
+ipcMain.handle('file:showInFolder', (_event, filePath) => {
+  const downloadsDir = app.getPath('downloads');
+  const resolved = path.resolve(filePath);
+  if (!resolved.startsWith(downloadsDir + path.sep) && resolved !== downloadsDir) {
+    throw new Error('Cannot show files outside downloads directory');
+  }
+  shell.showItemInFolder(resolved);
 });
 
 // ── FORECAST IPC ──

@@ -66,7 +66,9 @@ contextBridge.exposeInMainWorld('api', {
     onPlanRefresh: (cb) => ipcRenderer.on('subscription:planRefresh', () => cb()),
   },
   docs: {
-    download: (opts) => ipcRenderer.invoke('docs:download', opts),
+    download:       (opts)     => ipcRenderer.invoke('docs:download', opts),
+    openDownloaded: (filePath) => ipcRenderer.invoke('file:openDownloaded', filePath),
+    showInFolder:   (filePath) => ipcRenderer.invoke('file:showInFolder', filePath),
   },
   forecast: {
     products: {
