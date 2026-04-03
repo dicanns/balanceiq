@@ -9468,18 +9468,21 @@ export default function App(){
         }catch(_){}
       });
     }
-    // Install ping + telemetry init — anonymous, works for all users (free + paid)
+    // Install ping — only if user has already consented to telemetry.
+    // For new users who haven't seen the prompt yet, the upsert fires after they accept.
     setTimeout(async()=>{
       try{
         const deviceId=await window.api.audit.deviceId();
-        const {supabase}=await import('./services/supabase.js');
-        await supabase.from('installs').upsert({
-          device_id:deviceId,
-          platform:navigator.platform||'unknown',
-          version:appVersion,
-          last_seen_at:new Date().toISOString(),
-        },{onConflict:'device_id'});
         await initTelemetry(deviceId);
+        if(getTelemetryConsent()==='opted_in'){
+          const {supabase}=await import('./services/supabase.js');
+          await supabase.from('installs').upsert({
+            device_id:deviceId,
+            platform:navigator.platform||'unknown',
+            version:appVersion,
+            last_seen_at:new Date().toISOString(),
+          },{onConflict:'device_id'});
+        }
       }catch(_){}
     },2000);
     // After cloud sync has had time to run, check telemetry consent + fire app_opened
@@ -10264,7 +10267,7 @@ export default function App(){
             <p style={{fontSize:12,lineHeight:1.65,color:t.textSub,margin:"0 0 20px"}}>{T.telemetryBody}</p>
             <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
               <button onClick={async()=>{await setTelemetryConsent('opted_out');setShowTelemetryPrompt(false);}} style={{padding:"7px 16px",borderRadius:7,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textMuted,cursor:"pointer",fontWeight:600,fontSize:12}}>{T.telemetryDecline}</button>
-              <button onClick={async()=>{await setTelemetryConsent('opted_in');setShowTelemetryPrompt(false);trackEvent('app_opened',{mode:appMode||'unknown'});}} style={{padding:"7px 16px",borderRadius:7,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12}}>{T.telemetryAccept}</button>
+              <button onClick={async()=>{await setTelemetryConsent('opted_in');setShowTelemetryPrompt(false);trackEvent('app_opened',{mode:appMode||'unknown'});try{const deviceId=await window.api.audit.deviceId();const {supabase}=await import('./services/supabase.js');await supabase.from('installs').upsert({device_id:deviceId,platform:navigator.platform||'unknown',version:appVersion,last_seen_at:new Date().toISOString()},{onConflict:'device_id'});}catch(_){}}} style={{padding:"7px 16px",borderRadius:7,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12}}>{T.telemetryAccept}</button>
             </div>
           </div>
         </div>

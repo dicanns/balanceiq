@@ -21,7 +21,7 @@ de suivi et d'analytique.
 - Météo et prix de l'essence automatiques
 - Journal d'audit immuable
 - Génération PDF, courriel, export CSV/Excel
-- Fonctionne hors-ligne — toutes les données restent sur votre ordinateur
+- Fonctionne hors-ligne — les données opérationnelles sont stockées localement. Les fonctionnalités cloud optionnelles (sync, IA, OCR, POS) envoient des données sur des serveurs canadiens uniquement si vous les activez. La télémétrie est optionnelle.
 - Mac (.dmg) et Windows (.exe)
 - Bilingue : Français / English
 
@@ -51,7 +51,7 @@ tracking, reconciliation, and analytics.
 - Weather and gas price auto-fill
 - Immutable audit trail
 - PDF generation, email, CSV/Excel export
-- Works offline — all data stays on your computer
+- Works offline — operational data is stored locally on your computer. Optional cloud features (sync, AI, OCR, POS) send data to Canadian servers only when you enable them. Telemetry is opt-in.
 - Mac (.dmg) and Windows (.exe)
 - Bilingual: Français / English
 
