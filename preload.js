@@ -163,6 +163,21 @@ contextBridge.exposeInMainWorld('api', {
   tray: {
     updateSales: (data) => ipcRenderer.invoke('tray:updateSales', data),
   },
+  posScan: {
+    selectFile: ()          => ipcRenderer.invoke('posScan:selectFile'),
+    runOCR:    (b64)        => ipcRenderer.invoke('posScan:ocr', b64),
+    templates: {
+      getAll:        ()     => ipcRenderer.invoke('posScan:templates:getAll'),
+      save:          (tpl)  => ipcRenderer.invoke('posScan:templates:save', tpl),
+      delete:        (id)   => ipcRenderer.invoke('posScan:templates:delete', id),
+      markUploaded:  (id)   => ipcRenderer.invoke('posScan:templates:markUploaded', id),
+    },
+    history: {
+      save:         (entry) => ipcRenderer.invoke('posScan:history:save', entry),
+      getRecent:    (limit) => ipcRenderer.invoke('posScan:history:getRecent', limit),
+      getForDate:   (date)  => ipcRenderer.invoke('posScan:history:getForDate', date),
+    },
+  },
   eco: {
     items: {
       getAll: ()       => ipcRenderer.invoke('eco:items:getAll'),

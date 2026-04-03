@@ -324,6 +324,36 @@ function getDb() {
       notes TEXT DEFAULT '',
       UNIQUE(year, packaging_item_id, location_id)
     )`).run();
+    // ── POS Report Scan ─────────────────────────────────────────────────────
+    db.prepare(`CREATE TABLE IF NOT EXISTS pos_scan_templates (
+      id TEXT PRIMARY KEY,
+      pos_system TEXT NOT NULL,
+      pos_version TEXT DEFAULT '',
+      language TEXT DEFAULT 'fr',
+      patterns TEXT NOT NULL,
+      metadata TEXT DEFAULT '{}',
+      is_community INTEGER DEFAULT 0,
+      uploaded INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime'))
+    )`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_pos_tpl_system ON pos_scan_templates(pos_system)`).run();
+
+    db.prepare(`CREATE TABLE IF NOT EXISTS pos_scan_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date_key TEXT NOT NULL,
+      caisse_index INTEGER DEFAULT 0,
+      template_id TEXT,
+      raw_text TEXT,
+      extracted_values TEXT DEFAULT '{}',
+      applied_values TEXT DEFAULT '{}',
+      corrections_made INTEGER DEFAULT 0,
+      scan_source TEXT DEFAULT 'file',
+      ocr_engine TEXT DEFAULT 'tesseract',
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    )`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_pos_hist_date ON pos_scan_history(date_key)`).run();
+
     // Seed 2025 PFP rates on first run
     const ecoRateCount = db.prepare('SELECT COUNT(*) as cnt FROM eco_rates WHERE year=2025').get();
     if (ecoRateCount.cnt === 0) {
@@ -859,6 +889,42 @@ function ecoUsageDelete(year, packaging_item_id, location_id) {
   return true;
 }
 
+// ── POS Scan Templates ───────────────────────────────────────────────────────
+function posScanTemplatesGetAll() {
+  return getDb().prepare('SELECT * FROM pos_scan_templates ORDER BY pos_system, created_at').all();
+}
+function posScanTemplateSave(tpl) {
+  const db = getDb();
+  if (tpl.id) {
+    const existing = db.prepare('SELECT id FROM pos_scan_templates WHERE id=?').get(tpl.id);
+    if (existing) {
+      db.prepare(`UPDATE pos_scan_templates SET pos_system=@pos_system, pos_version=@pos_version, language=@language, patterns=@patterns, metadata=@metadata, is_community=@is_community, uploaded=@uploaded, updated_at=datetime('now','localtime') WHERE id=@id`).run(tpl);
+      return tpl.id;
+    }
+  }
+  db.prepare(`INSERT INTO pos_scan_templates (id,pos_system,pos_version,language,patterns,metadata,is_community,uploaded) VALUES (@id,@pos_system,@pos_version,@language,@patterns,@metadata,@is_community,@uploaded)`).run(tpl);
+  return tpl.id;
+}
+function posScanTemplateDelete(id) {
+  getDb().prepare('DELETE FROM pos_scan_templates WHERE id=?').run(id);
+  return true;
+}
+function posScanTemplateMarkUploaded(id) {
+  getDb().prepare("UPDATE pos_scan_templates SET uploaded=1, updated_at=datetime('now','localtime') WHERE id=?").run(id);
+  return true;
+}
+
+// ── POS Scan History ─────────────────────────────────────────────────────────
+function posScanHistorySave(entry) {
+  return getDb().prepare(`INSERT INTO pos_scan_history (date_key,caisse_index,template_id,raw_text,extracted_values,applied_values,corrections_made,scan_source,ocr_engine) VALUES (@date_key,@caisse_index,@template_id,@raw_text,@extracted_values,@applied_values,@corrections_made,@scan_source,@ocr_engine)`).run(entry).lastInsertRowid;
+}
+function posScanHistoryGetRecent(limit = 30) {
+  return getDb().prepare('SELECT id,date_key,caisse_index,template_id,extracted_values,applied_values,corrections_made,scan_source,ocr_engine,created_at FROM pos_scan_history ORDER BY created_at DESC LIMIT ?').all(limit);
+}
+function posScanHistoryGetForDate(dateKey) {
+  return getDb().prepare('SELECT * FROM pos_scan_history WHERE date_key=? ORDER BY created_at DESC').all(dateKey);
+}
+
 module.exports = {
   storageGet, storageSet, storageGetAll,
   auditInsert, auditQuery, getDeviceId,
@@ -886,4 +952,6 @@ module.exports = {
   ecoConfigGet, ecoConfigSave,
   ecoRatesGetForYear, ecoRateUpsert,
   ecoUsageGetForYear, ecoUsageUpsert, ecoUsageDelete,
+  posScanTemplatesGetAll, posScanTemplateSave, posScanTemplateDelete, posScanTemplateMarkUploaded,
+  posScanHistorySave, posScanHistoryGetRecent, posScanHistoryGetForDate,
 };
