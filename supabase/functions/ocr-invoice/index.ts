@@ -146,10 +146,7 @@ serve(async (req) => {
       return ok({ error: 'limit_reached', scansUsed: currentCount, scansLimit: OCR_MONTHLY_LIMIT }, corsHeaders);
     }
 
-    // Increment counter
-    await supabaseAdmin
-      .from('ocr_usage')
-      .upsert({ org_id: orgId, month, count: currentCount + 1 }, { onConflict: 'org_id,month' });
+    // Do NOT increment quota yet — only charge on success.
 
     // Decide which API key pays for the Anthropic call
     const apiKey = ownApiKey || Deno.env.get('ANTHROPIC_API_KEY');
@@ -182,8 +179,14 @@ serve(async (req) => {
     if (!claudeRes.ok) {
       const errBody = await claudeRes.text();
       console.error('Claude API error:', claudeRes.status, errBody);
+      // API failed — do NOT increment quota
       return ok({ error: 'claude_error', message: `Erreur Anthropic (${claudeRes.status}): ${errBody.slice(0, 200)}` }, corsHeaders);
     }
+
+    // Increment quota only after a successful API response
+    await supabaseAdmin
+      .from('ocr_usage')
+      .upsert({ org_id: orgId, month, count: currentCount + 1 }, { onConflict: 'org_id,month' });
 
     const claudeData = await claudeRes.json();
     const text = claudeData.content?.[0]?.text || '{}';
