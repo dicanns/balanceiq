@@ -1264,6 +1264,15 @@ export const FR = {
   closeStatusWarnings:   "🔒 Fermé · Écarts",
   closeStatusEditedAfter:"Modifié après fermeture",
   closeStatus7DaysLabel: "7 derniers jours",
+
+  // ── TODAY-AT-A-GLANCE ──
+  glanceTitle:       "Résumé du jour",
+  glanceUnbalanced:  "Caisses non équilibrées (3 derniers jours)",
+  glanceCashPos:     "Position encaisse",
+  glancePlInvoices:  "Factures fournisseurs ce mois",
+  glanceStart:       "Commencer",
+  glanceConfigLabel: "Résumé du jour au démarrage",
+  glanceConfigHint:  "Affiche un aperçu rapide au lancement de l'application.",
   unclosedDaysWarn: n=>`⚠️ ${n} jour${n>1?"s":""} non fermé${n>1?"s":""} cette semaine`,
   verifyCaisses:    "Vérifier les caisses",
   posVentes:        "Ventes",
@@ -3113,6 +3122,15 @@ export const EN = {
   closeStatusWarnings:   "🔒 Closed · Variances",
   closeStatusEditedAfter:"Edited after close",
   closeStatus7DaysLabel: "Last 7 days",
+
+  // ── TODAY-AT-A-GLANCE ──
+  glanceTitle:       "Today at a Glance",
+  glanceUnbalanced:  "Unbalanced registers (last 3 days)",
+  glanceCashPos:     "Cash position",
+  glancePlInvoices:  "Supplier invoices this month",
+  glanceStart:       "Let's go",
+  glanceConfigLabel: "Show daily summary at startup",
+  glanceConfigHint:  "Displays a quick overview when the app launches.",
   unclosedDaysWarn: n=>`⚠️ ${n} day${n>1?"s":""} not closed out this week`,
   verifyCaisses:    "Check registers",
   posVentes:        "Sales",
