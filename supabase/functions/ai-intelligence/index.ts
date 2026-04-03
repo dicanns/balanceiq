@@ -183,16 +183,12 @@ serve(async (req) => {
       .eq('month', month)
       .single();
 
-    let usageCount = usageRow?.count || 0;
+    const usageCount = usageRow?.count || 0;
     if (usageCount >= usageLimit) {
       return ok({ error: 'limit_reached', usageCount, usageLimit }, corsHeaders);
     }
 
-    await supabaseAdmin
-      .from('ai_usage')
-      .upsert({ org_id: orgId, month, count: usageCount + 1 }, { onConflict: 'org_id,month' });
-
-    usageCount++;
+    // Do NOT increment quota yet — only charge on success.
 
     // Decide which API key pays for the Anthropic call
     const apiKey = ownApiKey || Deno.env.get('ANTHROPIC_API_KEY');
@@ -223,13 +219,19 @@ serve(async (req) => {
     if (!claudeRes.ok) {
       const errBody = await claudeRes.text();
       console.error('Claude API error:', claudeRes.status, errBody);
+      // API failed — do NOT increment quota
       return ok({ error: 'claude_error', message: `Anthropic error (${claudeRes.status}): ${errBody.slice(0, 200)}` }, corsHeaders);
     }
 
     const claudeData = await claudeRes.json();
     const text = claudeData.content?.[0]?.text || '';
 
-    return ok({ text, usageCount, usageLimit, usedOwnKey: !!ownApiKey }, corsHeaders);
+    // Increment quota only after a successful API response
+    await supabaseAdmin
+      .from('ai_usage')
+      .upsert({ org_id: orgId, month, count: usageCount + 1 }, { onConflict: 'org_id,month' });
+
+    return ok({ text, usageCount: usageCount + 1, usageLimit, usedOwnKey: !!ownApiKey }, corsHeaders);
 
   } catch (err) {
     console.error('ai-intelligence error:', err);
