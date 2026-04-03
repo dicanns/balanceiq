@@ -9696,6 +9696,19 @@ export default function App(){
   },[today.venteNet,selectedDate]);
   const isClosed=!!closedDays[selectedDate];
 
+  // ── Close Status (state machine) ──────────────────────────────────────────
+  // not_started | in_progress | closed_clean | closed_with_warnings
+  const getCloseStatus=React.useCallback((dateKey)=>{
+    const rec=closedDays[dateKey];
+    if(rec){return rec.allBal===false?'closed_with_warnings':'closed_clean';}
+    const cd=computeDay(dateKey);
+    if(!cd.anyData)return'not_started';
+    return'in_progress';
+  },[closedDays,computeDay]);
+  const closeStatus=getCloseStatus(selectedDate);
+  // Flag if a "clean" close was re-opened by edits that broke balance
+  const editedAfterClose=isClosed&&closedDays[selectedDate]?.allBal===true&&!today.allBal;
+
   // Count unclosed days this week that have data
   const unclosedThisWeek=useMemo(()=>{
     const today_=new Date();today_.setHours(0,0,0,0);
@@ -9715,18 +9728,20 @@ export default function App(){
     const key=selectedDate;
     const closedAt=new Date().toISOString();
     const dayData=liveDataRef.current[key];
+    const cd=computeDay(key); // capture balance state at close time
     // Save immutable snapshot
     if(dayData&&Object.keys(dayData).length>0){
       window.api.snapshot.save(key,dayData).catch(()=>{});
     }
-    // Persist closed state
-    const next={...closedDays,[key]:{closedAt}};
+    // Persist closed state — record allBal so close status is stable after edits
+    const closeStatus=cd.allBal?'closed_clean':'closed_with_warnings';
+    const next={...closedDays,[key]:{closedAt,allBal:cd.allBal,closeStatus}};
     setClosedDays(next);
     window.api.storage.set("balanceiq-closed-days",JSON.stringify(next)).catch(()=>{});
     // Audit log
     logUpdate('daily','jour',key,'fermeture',null,closedAt);
     setShowCloseConfirm(false);
-  },[selectedDate,closedDays]);
+  },[selectedDate,closedDays,computeDay]);
 
   // Load checklist entries for the selected date (fills gaps not covered by range load)
   useEffect(()=>{
@@ -10095,7 +10110,7 @@ export default function App(){
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <button onClick={()=>{const n=new Date(d);n.setDate(n.getDate()-1);setSelectedDate(dk(n))}} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.text,padding:"3px 8px",cursor:"pointer",fontSize:13}}>←</button>
                 <div>
-                  <div style={{fontSize:15,fontWeight:700,textTransform:"capitalize",color:t.text,display:"flex",alignItems:"center",gap:6}}>{fmtD(d,T)}{isDayComplete&&<span style={{fontSize:9.5,fontWeight:700,color:"#16a34a",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:10,padding:"1px 7px",lineHeight:1.6}}>✓ {T.statusDayComplete}</span>}{isClosed&&<span style={{fontSize:9.5,fontWeight:700,color:"#f59e0b",background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.25)",borderRadius:10,padding:"1px 7px",lineHeight:1.6}}>{T.closeDayBadge}</span>}</div>
+                  <div style={{fontSize:15,fontWeight:700,textTransform:"capitalize",color:t.text,display:"flex",alignItems:"center",gap:6}}>{fmtD(d,T)}{isDayComplete&&<span style={{fontSize:9.5,fontWeight:700,color:"#16a34a",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:10,padding:"1px 7px",lineHeight:1.6}}>✓ {T.statusDayComplete}</span>}{(()=>{if(closeStatus==='closed_clean')return<span style={{fontSize:9.5,fontWeight:700,color:"#16a34a",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:10,padding:"1px 7px",lineHeight:1.6}}>{T.closeStatusClean}</span>;if(closeStatus==='closed_with_warnings')return<span style={{fontSize:9.5,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",border:"1px solid rgba(249,115,22,0.25)",borderRadius:10,padding:"1px 7px",lineHeight:1.6}}>{T.closeStatusWarnings}</span>;if(closeStatus==='in_progress')return<span style={{fontSize:9.5,fontWeight:600,color:t.textMuted,background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:10,padding:"1px 7px",lineHeight:1.6}}>{T.closeStatusInProgress}</span>;return null;})()}{editedAfterClose&&<span style={{fontSize:9,fontWeight:700,color:"#f59e0b",background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.25)",borderRadius:10,padding:"1px 6px",lineHeight:1.6}}>⚠ {T.closeStatusEditedAfter}</span>}</div>
                   <div style={{display:"flex",gap:3,marginTop:1,flexWrap:"wrap"}}>
                     {holiday&&<span style={{fontSize:9,background:t.warnBg,color:t.warnText,padding:"1px 5px",borderRadius:8,fontWeight:600}}>{holiday}</span>}
                     {today.weather&&<span style={{fontSize:9,background:"rgba(56,189,248,0.07)",color:"#38bdf8",padding:"1px 5px",borderRadius:8}}>{xlateWeather(today.weather,T)}{today.tempC!=null?` ${today.tempC}°C`:""}</span>}
@@ -10131,6 +10146,18 @@ export default function App(){
                 {T.unclosedDaysWarn(unclosedThisWeek)}
               </div>
             )}
+            {/* ── 7-day close status dots ── */}
+            {(()=>{
+              const dots=[];const base=new Date(selectedDate+"T12:00:00");
+              for(let i=6;i>=0;i--){const dd=new Date(base);dd.setDate(base.getDate()-i);const k=dk(dd);const s=getCloseStatus(k);const dotColor=s==='closed_clean'?'#16a34a':s==='closed_with_warnings'?'#f97316':s==='in_progress'?'#f59e0b':'#374151';const isToday=k===selectedDate;dots.push(<div key={k} onClick={()=>setSelectedDate(k)} title={`${T.days[dd.getDay()]} ${k} — ${T['closeStatus'+s.split('_').map((w,i)=>i===0?w:w[0].toUpperCase()+w.slice(1)).join('')]||s}`} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,cursor:"pointer",opacity:isToday?1:0.7}}>
+                <div style={{width:9,height:9,borderRadius:"50%",background:dotColor,boxShadow:isToday?`0 0 0 2px rgba(249,115,22,0.6)`:undefined,transition:"all 0.1s"}}/>
+                <span style={{fontSize:7.5,color:t.textDim,fontWeight:isToday?700:400}}>{T.days[dd.getDay()].slice(0,1)}</span>
+              </div>));}
+              return(<div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 6px",borderRadius:6,background:t.section,border:`1px solid ${t.sectionBorder}`,width:"fit-content"}}>
+                <span style={{fontSize:8,color:t.textDim,marginRight:2,fontWeight:600,textTransform:"uppercase",letterSpacing:0.6}}>{T.closeStatus7DaysLabel}</span>
+                {dots}
+              </div>);
+            })()}
             <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
               <MC label={T.dailyNetSales} value={fmt(today.venteNet)} accent={t.posColor} delta={salesDelta}/>
               <MC label={T.dailyGross} value={fmt(today.total)} accent="#f97316"/>
@@ -10234,6 +10261,7 @@ export default function App(){
                 <div style={{background:"#1a1d27",border:"1px solid #374151",borderRadius:12,padding:"28px 32px",width:440,maxWidth:"90vw",boxShadow:"0 20px 60px rgba(0,0,0,0.6)"}}>
                   <h3 style={{margin:"0 0 8px",color:"#16a34a",fontSize:"1rem",fontWeight:700}}>{T.closeDayTitle}</h3>
                   {checklistUncheckedRequired>0&&<div style={{margin:"0 0 12px",padding:"8px 12px",borderRadius:7,background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.3)",fontSize:12,color:"#f59e0b",fontWeight:600}}>{typeof T.checklistWarnRequired==='function'?T.checklistWarnRequired(checklistUncheckedRequired):T.checklistWarnRequired}</div>}
+                  {!today.allBal&&today.anyData&&<div style={{margin:"0 0 12px",padding:"8px 12px",borderRadius:7,background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",fontSize:12,color:"#ef4444",fontWeight:600}}>{T.closeDayBodyWarn}</div>}
                   <p style={{margin:"0 0 20px",color:"#9ca3af",fontSize:"0.875rem",lineHeight:1.6}}>{T.closeDayBody}</p>
                   <div style={{display:"flex",justifyContent:"flex-end",gap:10}}>
                     <button onClick={()=>setShowCloseConfirm(false)} style={{padding:"8px 18px",borderRadius:8,border:"1px solid #374151",background:"transparent",color:"#9ca3af",fontSize:"0.875rem",cursor:"pointer"}}>{T.closeDayCancel}</button>
