@@ -4,12 +4,18 @@ import { getOrgForUser } from '../_shared/getOrgForUser.ts';
 
 const AI_LIMITS: Record<string, number> = { pro: 50, franchise: 200 };
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const ALLOWED_ORIGINS = ['https://balanceiq.ca', 'http://localhost:5173'];
 
-function ok(body: Record<string, unknown>) {
+function getCorsHeaders(req: Request) {
+  const origin = req.headers.get('Origin') || '';
+  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  };
+}
+
+function ok(body: Record<string, unknown>, corsHeaders: Record<string, string>) {
   return new Response(JSON.stringify(body), {
     status: 200,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -114,6 +120,8 @@ ${salesLines}`;
 }
 
 serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req);
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -122,82 +130,80 @@ serve(async (req) => {
     const { queryType, contextData, orgId, ownApiKey, lang } = await req.json();
 
     if (!queryType || !contextData) {
-      return ok({ error: 'missing_params', message: 'Missing queryType or contextData.' });
+      return ok({ error: 'missing_params', message: 'Missing queryType or contextData.' }, corsHeaders);
     }
 
-    let apiKey = ownApiKey || null;
-    let usageCount = 0;
-    let usageLimit = 50;
-
-    if (!apiKey) {
-      const authHeader = req.headers.get('Authorization');
-      if (!authHeader) {
-        return ok({ error: 'no_auth', message: 'Sign-in required. Log in via Settings → Application.' });
-      }
-
-      const supabaseAdmin = createClient(
-        Deno.env.get('SUPABASE_URL')!,
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-      );
-
-      const token = authHeader.replace('Bearer ', '');
-      const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
-      if (authError || !user) {
-        return ok({ error: 'no_auth', message: 'Session expired. Please sign in again.' });
-      }
-
-      if (!orgId) {
-        return ok({ error: 'no_org', message: 'Organization not found.' });
-      }
-
-      const serverOrgId = await getOrgForUser(supabaseAdmin, user.id);
-      if (!serverOrgId || serverOrgId !== orgId) {
-        return new Response(JSON.stringify({ error: 'Forbidden' }), {
-          status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
-      const { data: orgRow } = await supabaseAdmin
-        .from('organizations')
-        .select('plan')
-        .eq('id', orgId)
-        .single();
-
-      const plan = orgRow?.plan || 'free';
-      if (plan !== 'pro' && plan !== 'franchise') {
-        return ok({ error: 'upgrade_required', message: 'AI analysis requires a Pro plan.' });
-      }
-
-      usageLimit = AI_LIMITS[plan] ?? 50;
-
-      const month = new Date().toISOString().slice(0, 7);
-      const { data: usageRow } = await supabaseAdmin
-        .from('ai_usage')
-        .select('count')
-        .eq('org_id', orgId)
-        .eq('month', month)
-        .single();
-
-      usageCount = usageRow?.count || 0;
-      if (usageCount >= usageLimit) {
-        return ok({ error: 'limit_reached', usageCount, usageLimit });
-      }
-
-      await supabaseAdmin
-        .from('ai_usage')
-        .upsert({ org_id: orgId, month, count: usageCount + 1 }, { onConflict: 'org_id,month' });
-
-      usageCount++;
-      apiKey = Deno.env.get('ANTHROPIC_API_KEY')!;
+    // Always authenticate — ownApiKey only controls which key pays for the Anthropic call,
+    // never whether the user is authorized to use this endpoint.
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return ok({ error: 'no_auth', message: 'Sign-in required. Log in via Settings → Application.' }, corsHeaders);
     }
 
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    );
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !user) {
+      return ok({ error: 'no_auth', message: 'Session expired. Please sign in again.' }, corsHeaders);
+    }
+
+    if (!orgId) {
+      return ok({ error: 'no_org', message: 'Organization not found.' }, corsHeaders);
+    }
+
+    const serverOrgId = await getOrgForUser(supabaseAdmin, user.id);
+    if (!serverOrgId || serverOrgId !== orgId) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { data: orgRow } = await supabaseAdmin
+      .from('organizations')
+      .select('plan')
+      .eq('id', orgId)
+      .single();
+
+    const plan = orgRow?.plan || 'free';
+    if (plan !== 'pro' && plan !== 'franchise') {
+      return ok({ error: 'upgrade_required', message: 'AI analysis requires a Pro plan.' }, corsHeaders);
+    }
+
+    const usageLimit = AI_LIMITS[plan] ?? 50;
+
+    const month = new Date().toISOString().slice(0, 7);
+    const { data: usageRow } = await supabaseAdmin
+      .from('ai_usage')
+      .select('count')
+      .eq('org_id', orgId)
+      .eq('month', month)
+      .single();
+
+    let usageCount = usageRow?.count || 0;
+    if (usageCount >= usageLimit) {
+      return ok({ error: 'limit_reached', usageCount, usageLimit }, corsHeaders);
+    }
+
+    await supabaseAdmin
+      .from('ai_usage')
+      .upsert({ org_id: orgId, month, count: usageCount + 1 }, { onConflict: 'org_id,month' });
+
+    usageCount++;
+
+    // Decide which API key pays for the Anthropic call
+    const apiKey = ownApiKey || Deno.env.get('ANTHROPIC_API_KEY');
+
     if (!apiKey) {
-      return ok({ error: 'no_key', message: 'ANTHROPIC_API_KEY secret is not set.' });
+      return ok({ error: 'no_key', message: 'ANTHROPIC_API_KEY secret is not set.' }, corsHeaders);
     }
 
     const prompt = buildPrompt(queryType, contextData, lang || 'fr');
     if (!prompt) {
-      return ok({ error: 'invalid_type', message: `Unknown queryType: ${queryType}` });
+      return ok({ error: 'invalid_type', message: `Unknown queryType: ${queryType}` }, corsHeaders);
     }
 
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
@@ -217,16 +223,17 @@ serve(async (req) => {
     if (!claudeRes.ok) {
       const errBody = await claudeRes.text();
       console.error('Claude API error:', claudeRes.status, errBody);
-      return ok({ error: 'claude_error', message: `Anthropic error (${claudeRes.status}): ${errBody.slice(0, 200)}` });
+      return ok({ error: 'claude_error', message: `Anthropic error (${claudeRes.status}): ${errBody.slice(0, 200)}` }, corsHeaders);
     }
 
     const claudeData = await claudeRes.json();
     const text = claudeData.content?.[0]?.text || '';
 
-    return ok({ text, usageCount, usageLimit, usedOwnKey: !!ownApiKey });
+    return ok({ text, usageCount, usageLimit, usedOwnKey: !!ownApiKey }, corsHeaders);
 
   } catch (err) {
     console.error('ai-intelligence error:', err);
-    return ok({ error: 'unexpected', message: String(err) });
+    const corsHeaders = getCorsHeaders(req);
+    return ok({ error: 'unexpected', message: String(err) }, corsHeaders);
   }
 });
