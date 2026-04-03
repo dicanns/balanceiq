@@ -178,6 +178,10 @@ contextBridge.exposeInMainWorld('api', {
       getForDate:   (date)  => ipcRenderer.invoke('posScan:history:getForDate', date),
     },
   },
+  upgradePrompt: {
+    getDismissedAt: (key) => ipcRenderer.invoke('upgradePrompt:getDismissedAt', key),
+    dismiss:        (key) => ipcRenderer.invoke('upgradePrompt:dismiss', key),
+  },
   eco: {
     items: {
       getAll: ()       => ipcRenderer.invoke('eco:items:getAll'),

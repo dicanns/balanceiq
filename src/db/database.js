@@ -19,8 +19,16 @@ const MIGRATIONS = [
       // This entry just stamps the version on new and existing databases.
     },
   },
-  // Future migrations added here in order, e.g.:
-  // { version: 2, description: '...', up: (db) => { db.prepare('CREATE TABLE ...').run(); } },
+  {
+    version: 2,
+    description: 'Upgrade prompt dismissals table (Item 2 — outcome-based prompts)',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS upgrade_prompt_dismissals (
+        prompt_key TEXT PRIMARY KEY,
+        dismissed_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+      )`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -973,6 +981,21 @@ function posScanHistoryGetForDate(dateKey) {
   return getDb().prepare('SELECT * FROM pos_scan_history WHERE date_key=? ORDER BY created_at DESC').all(dateKey);
 }
 
+// ── Upgrade Prompt Dismissals ──────────────────────────────────────────────
+// Returns the ISO timestamp when the prompt was last dismissed, or null.
+function upgradePromptGetDismissedAt(key) {
+  const row = getDb().prepare('SELECT dismissed_at FROM upgrade_prompt_dismissals WHERE prompt_key = ?').get(key);
+  return row ? row.dismissed_at : null;
+}
+
+// Records a dismissal (upsert — replaces any previous timestamp).
+function upgradePromptDismiss(key) {
+  getDb().prepare(
+    "INSERT OR REPLACE INTO upgrade_prompt_dismissals (prompt_key, dismissed_at) VALUES (?, datetime('now','localtime'))"
+  ).run(key);
+  return true;
+}
+
 module.exports = {
   storageGet, storageSet, storageGetAll,
   auditInsert, auditQuery, getDeviceId,
@@ -1002,4 +1025,5 @@ module.exports = {
   ecoUsageGetForYear, ecoUsageUpsert, ecoUsageDelete,
   posScanTemplatesGetAll, posScanTemplateSave, posScanTemplateDelete, posScanTemplateMarkUploaded,
   posScanHistorySave, posScanHistoryGetRecent, posScanHistoryGetForDate,
+  upgradePromptGetDismissedAt, upgradePromptDismiss,
 };

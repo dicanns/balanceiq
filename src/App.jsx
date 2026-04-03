@@ -393,6 +393,8 @@ function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,ro
               return rows.length>0?<div style={{marginTop:2}}>{rows}</div>:null;
             })()}
           </div>
+          {cash.posVentes>0&&<UpgradeHint promptKey="pos_scan_hint" message={T.upgPromptPosScanHint} icon="📷" t={t}/>}
+          {!canUse('posIntegration')&&cash.posVentes>0&&<UpgradeHint promptKey="pos_api_integration" message={T.upgPromptPosApi} icon="🔗" t={t}/>}
         </div>
         <div>
           <div style={{fontSize:9.5,color:"#f97316",fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,marginBottom:4}}><span style={{width:8,height:8,borderRadius:2,background:"#f97316",display:"inline-block",marginRight:4}}/> {T.dailySectionCount}</div>
@@ -891,6 +893,39 @@ function BillEntry({label,baseKey,plData,updPL,accent="249,115,22"}){
       <div style={{fontSize:9,color:t.textDim,marginTop:3}}>Tous les montants avant taxes (HT)</div>
     </div>)}
   </div>);
+}
+
+// ── UPGRADE HINT BANNER ──
+// Self-contained dismissable hint shown at intent moments.
+// Re-appears after 7 days. Stores dismissal in SQLite via IPC.
+const UPGRADE_HINT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+function UpgradeHint({promptKey, message, icon='✨', t: theme}){
+  const [visible,setVisible]=useState(false);
+  const tRef=React.useRef(theme);
+  tRef.current=theme;
+  useEffect(()=>{
+    let cancelled=false;
+    window.api.upgradePrompt.getDismissedAt(promptKey).then(ts=>{
+      if(cancelled)return;
+      if(!ts){setVisible(true);return;}
+      const age=Date.now()-new Date(ts).getTime();
+      if(age>=UPGRADE_HINT_TTL_MS)setVisible(true);
+    });
+    return()=>{cancelled=true;};
+  },[promptKey]);
+  if(!visible)return null;
+  const tt=tRef.current||{};
+  const dismiss=async()=>{
+    setVisible(false);
+    await window.api.upgradePrompt.dismiss(promptKey);
+  };
+  return(
+    <div style={{display:"flex",alignItems:"flex-start",gap:7,padding:"7px 9px",borderRadius:6,marginTop:7,background:"rgba(249,115,22,0.05)",border:"1px solid rgba(249,115,22,0.18)"}}>
+      <span style={{fontSize:12,flexShrink:0,marginTop:1}}>{icon}</span>
+      <span style={{flex:1,fontSize:10.5,color:tt.textSub||"#6b7280",lineHeight:1.45}}>{message}</span>
+      <button onClick={dismiss} title="Ignorer" style={{background:"none",border:"none",color:tt.textMuted||"#9ca3af",cursor:"pointer",fontSize:11,padding:"0 2px",flexShrink:0,lineHeight:1}}>✕</button>
+    </div>
+  );
 }
 
 // ── PDF PREVIEW ──
@@ -1523,6 +1558,8 @@ function MonthlyPL({computeDay,suppliers,liveData,platforms,expenseItems,glAccou
           {setActiveTab&&<button onClick={()=>setActiveTab("settings")} style={{fontSize:10,padding:"3px 9px",borderRadius:5,border:"1px solid rgba(249,115,22,0.35)",background:"rgba(249,115,22,0.1)",color:"#f97316",cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>{T.supplierEmptyBtn}</button>}
         </div>}
         <div style={{marginTop:6,paddingTop:6,borderTop:`1px solid rgba(249,115,22,0.15)`}}><RR label={T.plTotalFP} value={fpT} accent="#f97316" bold/>{revenue>0&&<RR label={T.plFPPct} value={`${fpP.toFixed(1)}%`} unit="" accent={fpP>35?"#ef4444":fpP>30?t.warnText:"#22c55e"}/>}</div>
+        {!canUse('ocrScanning')&&<UpgradeHint promptKey="pl_invoice_scan" message={T.upgPromptInvoiceScan} icon="📷" t={t}/>}
+        {!canUse('ocrScanning')&&<UpgradeHint promptKey="pl_recipe_costing" message={T.upgPromptRecipeCosting} icon="📊" t={t}/>}
       </Sec>
       <Sec title={T.plOpExp} color="129,140,248" tip={T.tipOpExp} action={
         canUse('ocrScanning')
@@ -5371,6 +5408,7 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
         <span style={{fontSize:12,textTransform:"capitalize",color:t.text}}>{a.day} {a.date}</span>
         <div style={{display:"flex",gap:8,alignItems:"center"}}><span style={{fontSize:11,color:t.textMuted}}>{T.intelAnomalyAvg} {fmt(a.avg)}</span><span style={{fontSize:11,color:t.textSub}}>→</span><span style={{fontSize:12,fontWeight:600,fontFamily:"'DM Mono',monospace",color:t.text}}>{fmt(a.venteNet)}</span><span style={{fontSize:11,fontWeight:700,color:a.pct>0?"#22c55e":"#ef4444",fontFamily:"'DM Mono',monospace"}}>{a.pct>0?"+":""}{a.pct.toFixed(0)}%</span></div>
       </div>)):(<div style={{fontSize:12,color:t.textMuted,textAlign:"center",padding:8}}>{T.intelAnomalyEmpty}</div>)}
+      {anomalies.length>0&&!canUse('aiAnalysis')&&<UpgradeHint promptKey="intel_ai_anomalies" message={T.upgPromptAiAnomalies} icon="🤖" t={t}/>}
     </ICard>
     <CashierVarianceCard cashierVariances={cashierVariances} T={T} t={t}/>
 
@@ -11055,6 +11093,7 @@ export default function App(){
               </div>
             </CfgCard>
             {/* ── CLOUD ACCOUNT + SUBSCRIPTION (grouped) ── */}
+            {!canUse('cloudSync')&&!cloudUser&&<UpgradeHint promptKey="config_cloud_sync" message={T.upgPromptCloudSync} icon="☁️" t={t}/>}
             <CloudAccountSection cloudUser={cloudUser} syncStatus={syncStatus} onSignIn={handleCloudSignIn} onSignUp={handleCloudSignUp} onSignOut={handleCloudSignOut} onResetPassword={handleCloudResetPassword} t={t} T={T}/>
             <SubscriptionSection cloudUser={cloudUser} activePlan={activePlan} orgId={getCloudOrgId()} onPlanRefreshed={p=>{setPlan(p);setActivePlan(p);}} t={t} T={T}/>
             {/* ── JOIN FRANCHISE NETWORK (restaurant/franchisee mode only) ── */}

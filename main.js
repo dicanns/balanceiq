@@ -40,6 +40,7 @@ const {
   ecoUsageGetForYear, ecoUsageUpsert, ecoUsageDelete,
   posScanTemplatesGetAll, posScanTemplateSave, posScanTemplateDelete, posScanTemplateMarkUploaded,
   posScanHistorySave, posScanHistoryGetRecent, posScanHistoryGetForDate,
+  upgradePromptGetDismissedAt, upgradePromptDismiss,
 } = require('./src/db/database.js');
 
 const BACKUP_DIR = () => path.join(app.getPath('userData'), 'Backups');
@@ -1350,6 +1351,10 @@ ipcMain.handle('posScan:templates:markUploaded', (_e, id) => posScanTemplateMark
 ipcMain.handle('posScan:history:save', (_e, entry) => posScanHistorySave(entry));
 ipcMain.handle('posScan:history:getRecent', (_e, limit) => posScanHistoryGetRecent(limit));
 ipcMain.handle('posScan:history:getForDate', (_e, dateKey) => posScanHistoryGetForDate(dateKey));
+
+// ── Upgrade Prompt Dismissals ──────────────────────────────────────────────
+ipcMain.handle('upgradePrompt:getDismissedAt', (_e, key) => upgradePromptGetDismissedAt(key));
+ipcMain.handle('upgradePrompt:dismiss',        (_e, key) => upgradePromptDismiss(key));
 
 app.on('window-all-closed', () => {
   if (biqTray) { biqTray.destroy(); biqTray = null; }

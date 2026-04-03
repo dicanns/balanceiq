@@ -1642,6 +1642,14 @@ export const FR = {
   scanSupplementTesseract: "Compléter les champs manquants avec la reconnaissance locale",
   scanCloseHistory:    "Fermer",
   scanNotSignedIn:     "Connexion requise pour partager. Connectez-vous dans Config → Application.",
+
+  // ── UPGRADE PROMPTS (outcome-based, dismissable) ──
+  upgPromptInvoiceScan:   "Scanner cette facture remplirait vos entrées automatiquement. Avec Pro, une photo devient une facture postée en 30 secondes.",
+  upgPromptPosScanHint:   "Votre rapport POS contient déjà ces chiffres. Scannez-le pour éviter la saisie manuelle.",
+  upgPromptAiAnomalies:   "BalanceIQ a détecté des tendances inhabituelles cette semaine. L'IA Pro explique ce qui les cause et quoi faire.",
+  upgPromptCloudSync:     "Accédez à vos données depuis n'importe quel ordinateur. Pro synchronise automatiquement.",
+  upgPromptRecipeCosting: "Vos coûts d'ingrédients ont changé ce mois. Pro suit l'impact sur la marge de chaque élément de menu.",
+  upgPromptPosApi:        "Votre PDV a déjà les ventes d'aujourd'hui. Pro se connecte directement pour éviter la saisie manuelle.",
   scanUploadingTemplate:"Partage du format en cours…",
   scanUploadError:     "Erreur lors du partage — format enregistré localement seulement.",
 
@@ -3476,6 +3484,14 @@ export const EN = {
   scanSupplementTesseract: "Fill missing fields with local recognition",
   scanCloseHistory:    "Close",
   scanNotSignedIn:     "Sign-in required to share. Sign in via Settings → Application.",
+
+  // ── UPGRADE PROMPTS (outcome-based, dismissable) ──
+  upgPromptInvoiceScan:   "Scanning this invoice would auto-fill your entries. With Pro, a photo becomes a posted invoice in 30 seconds.",
+  upgPromptPosScanHint:   "Your POS report has these numbers already. Scan it and skip the typing.",
+  upgPromptAiAnomalies:   "BalanceIQ noticed unusual patterns this week. Pro's AI explains what's driving them and what to do about it.",
+  upgPromptCloudSync:     "Access your data from any computer. Pro syncs automatically.",
+  upgPromptRecipeCosting: "Your ingredient costs changed this month. Pro tracks how that affects each menu item's margin.",
+  upgPromptPosApi:        "Your POS has today's sales already. Pro connects directly so you skip manual entry.",
   scanUploadingTemplate:"Sharing format…",
   scanUploadError:     "Share error — format saved locally only.",
 
