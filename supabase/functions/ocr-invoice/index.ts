@@ -4,14 +4,20 @@ import { getOrgForUser } from '../_shared/getOrgForUser.ts';
 
 const OCR_MONTHLY_LIMIT = 100;
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const ALLOWED_ORIGINS = ['https://balanceiq.ca', 'http://localhost:5173'];
+
+function getCorsHeaders(req: Request) {
+  const origin = req.headers.get('Origin') || '';
+  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  };
+}
 
 // Always return 200 so supabase.functions.invoke() passes data through to the client.
 // Use data.error field for business-logic errors.
-function ok(body: Record<string, unknown>) {
+function ok(body: Record<string, unknown>, corsHeaders: Record<string, string>) {
   return new Response(JSON.stringify(body), {
     status: 200,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -66,6 +72,8 @@ STEP 7 — Return ONLY this JSON, no explanation:
 All numeric values must be plain numbers (no $ signs, no commas). lineItems must be an array (empty [] if no items readable). Return ONLY the JSON.`;
 
 serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req);
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -74,82 +82,80 @@ serve(async (req) => {
     const { imageBase64, imageType, orgId, ownApiKey } = await req.json();
 
     if (!imageBase64 || !imageType) {
-      return ok({ error: 'missing_params', message: 'Missing imageBase64 or imageType.' });
+      return ok({ error: 'missing_params', message: 'Missing imageBase64 or imageType.' }, corsHeaders);
     }
 
     // Validate image size (max ~10MB base64 ≈ 7.5MB file — client resizes before sending)
     if (imageBase64.length > 14_000_000) {
-      return ok({ error: 'too_large', message: 'Image too large. Max 10 MB.' });
+      return ok({ error: 'too_large', message: 'Image too large. Max 10 MB.' }, corsHeaders);
     }
 
-    let apiKey = ownApiKey || null;
-
-    if (!apiKey) {
-      // Authenticate and check plan + usage
-      const authHeader = req.headers.get('Authorization');
-      if (!authHeader) {
-        return ok({ error: 'no_auth', message: 'Sign-in required. Log in via Settings → Application.' });
-      }
-
-      const supabaseAdmin = createClient(
-        Deno.env.get('SUPABASE_URL')!,
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-      );
-
-      // Verify JWT
-      const token = authHeader.replace('Bearer ', '');
-      const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
-      if (authError || !user) {
-        return ok({ error: 'no_auth', message: 'Session expired. Please sign in again.' });
-      }
-
-      if (!orgId) {
-        return ok({ error: 'no_org', message: 'Organization not found.' });
-      }
-
-      const serverOrgId = await getOrgForUser(supabaseAdmin, user.id);
-      if (!serverOrgId || serverOrgId !== orgId) {
-        return new Response(JSON.stringify({ error: 'Forbidden' }), {
-          status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
-      // Check org plan
-      const { data: orgRow } = await supabaseAdmin
-        .from('organizations')
-        .select('plan')
-        .eq('id', orgId)
-        .single();
-
-      const plan = orgRow?.plan || 'free';
-      if (plan !== 'pro' && plan !== 'franchise') {
-        return ok({ error: 'upgrade_required', message: 'AI scanning requires a Pro plan.' });
-      }
-
-      // Check and increment usage
-      const month = new Date().toISOString().slice(0, 7); // YYYY-MM
-      const { data: usageRow } = await supabaseAdmin
-        .from('ocr_usage')
-        .select('count')
-        .eq('org_id', orgId)
-        .eq('month', month)
-        .single();
-
-      const currentCount = usageRow?.count || 0;
-      if (currentCount >= OCR_MONTHLY_LIMIT) {
-        return ok({ error: 'limit_reached', scansUsed: currentCount, scansLimit: OCR_MONTHLY_LIMIT });
-      }
-
-      // Increment counter
-      await supabaseAdmin
-        .from('ocr_usage')
-        .upsert({ org_id: orgId, month, count: currentCount + 1 }, { onConflict: 'org_id,month' });
-
-      apiKey = Deno.env.get('ANTHROPIC_API_KEY')!;
+    // Always authenticate — ownApiKey only controls which key pays for the Anthropic call,
+    // never whether the user is authorized to use this endpoint.
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return ok({ error: 'no_auth', message: 'Sign-in required. Log in via Settings → Application.' }, corsHeaders);
     }
 
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    );
+
+    // Verify JWT
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !user) {
+      return ok({ error: 'no_auth', message: 'Session expired. Please sign in again.' }, corsHeaders);
+    }
+
+    if (!orgId) {
+      return ok({ error: 'no_org', message: 'Organization not found.' }, corsHeaders);
+    }
+
+    const serverOrgId = await getOrgForUser(supabaseAdmin, user.id);
+    if (!serverOrgId || serverOrgId !== orgId) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Check org plan
+    const { data: orgRow } = await supabaseAdmin
+      .from('organizations')
+      .select('plan')
+      .eq('id', orgId)
+      .single();
+
+    const plan = orgRow?.plan || 'free';
+    if (plan !== 'pro' && plan !== 'franchise') {
+      return ok({ error: 'upgrade_required', message: 'AI scanning requires a Pro plan.' }, corsHeaders);
+    }
+
+    // Check and increment usage
+    const month = new Date().toISOString().slice(0, 7); // YYYY-MM
+    const { data: usageRow } = await supabaseAdmin
+      .from('ocr_usage')
+      .select('count')
+      .eq('org_id', orgId)
+      .eq('month', month)
+      .single();
+
+    const currentCount = usageRow?.count || 0;
+    if (currentCount >= OCR_MONTHLY_LIMIT) {
+      return ok({ error: 'limit_reached', scansUsed: currentCount, scansLimit: OCR_MONTHLY_LIMIT }, corsHeaders);
+    }
+
+    // Increment counter
+    await supabaseAdmin
+      .from('ocr_usage')
+      .upsert({ org_id: orgId, month, count: currentCount + 1 }, { onConflict: 'org_id,month' });
+
+    // Decide which API key pays for the Anthropic call
+    const apiKey = ownApiKey || Deno.env.get('ANTHROPIC_API_KEY');
+
     if (!apiKey) {
-      return ok({ error: 'no_key', message: 'ANTHROPIC_API_KEY secret is not set in Supabase Edge Function settings.' });
+      return ok({ error: 'no_key', message: 'ANTHROPIC_API_KEY secret is not set in Supabase Edge Function settings.' }, corsHeaders);
     }
 
     // Call Claude Haiku 4.5 vision
@@ -176,7 +182,7 @@ serve(async (req) => {
     if (!claudeRes.ok) {
       const errBody = await claudeRes.text();
       console.error('Claude API error:', claudeRes.status, errBody);
-      return ok({ error: 'claude_error', message: `Erreur Anthropic (${claudeRes.status}): ${errBody.slice(0, 200)}` });
+      return ok({ error: 'claude_error', message: `Erreur Anthropic (${claudeRes.status}): ${errBody.slice(0, 200)}` }, corsHeaders);
     }
 
     const claudeData = await claudeRes.json();
@@ -190,10 +196,11 @@ serve(async (req) => {
       try { parsed = match ? JSON.parse(match[0]) : {}; } catch { parsed = {}; }
     }
 
-    return ok({ ...parsed, usedOwnKey: !!ownApiKey });
+    return ok({ ...parsed, usedOwnKey: !!ownApiKey }, corsHeaders);
 
   } catch (err) {
     console.error('ocr-invoice error:', err);
-    return ok({ error: 'unexpected', message: String(err) });
+    const corsHeaders = getCorsHeaders(req);
+    return ok({ error: 'unexpected', message: String(err) }, corsHeaders);
   }
 });
