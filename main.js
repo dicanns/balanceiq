@@ -48,6 +48,35 @@ const {
 const BACKUP_DIR = () => path.join(app.getPath('userData'), 'Backups');
 const BACKUP_KEEP_DAYS = 30;
 
+// ── URL SAFETY ────────────────────────────────────────────────────────────────
+const ALLOWED_URL_SCHEMES = ['https:'];
+const ALLOWED_URL_DOMAINS = [
+  'balanceiq.ca',
+  'www.balanceiq.ca',
+  'github.com',
+  'supabase.com',
+  'stripe.com',
+  'anthropic.com',
+  'claude.ai',
+  'doordash.com',
+  'www.doordash.com',
+  'merchants.ubereats.com',
+  'restaurants.skipthedishes.com',
+  'open-meteo.com',
+];
+
+function isUrlSafe(urlString) {
+  try {
+    const parsed = new URL(urlString);
+    if (!ALLOWED_URL_SCHEMES.includes(parsed.protocol)) return false;
+    const domain = parsed.hostname;
+    return ALLOWED_URL_DOMAINS.some(d => domain === d || domain.endsWith('.' + d));
+  } catch {
+    return false;
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Module-level window reference (needed for pos:oauth-result events)
 let mainWindow = null;
 let biqTray = null;
@@ -807,8 +836,14 @@ ipcMain.handle('updater:downloadAndInstall', () => {
 });
 
 ipcMain.handle('shell:openExternal', (_event, url) => {
+  if (!isUrlSafe(url)) {
+    console.warn('Blocked unsafe external URL:', url);
+    return Promise.resolve();
+  }
   return shell.openExternal(url);
 });
+
+ipcMain.handle('url:validate', (_event, url) => isUrlSafe(url));
 
 ipcMain.handle('tray:updateSales', (_event, { sales, date }) => {
   if (biqTray) biqTray.setToolTip(`BalanceIQ — ${date}: ${sales}`);

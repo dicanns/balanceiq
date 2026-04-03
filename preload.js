@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('api', {
   },
   shell: {
     openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+    validateUrl:  (url) => ipcRenderer.invoke('url:validate', url),
   },
   pos: {
     getCredentials:   ()                          => ipcRenderer.invoke('pos:getCredentials'),

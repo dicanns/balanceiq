@@ -20,6 +20,13 @@ import { initTelemetry, getTelemetryConsent, setTelemetryConsent, trackEvent } f
 import { POS_CONFIG, POS_COMING_SOON } from "./config/posConfig.js";
 import { FR, EN } from "./i18n/translations.js";
 
+// ── URL SAFETY (renderer-side) ───────────────────────────────────────────────
+// Mirrors the allowlist in main.js. Used to gate app-message URLs before render.
+const _SAFE_URL_SCHEMES = ['https:'];
+const _SAFE_URL_DOMAINS = ['balanceiq.ca','www.balanceiq.ca','github.com','supabase.com','stripe.com','anthropic.com','claude.ai'];
+function isUrlSafe(u){try{const p=new URL(u);if(!_SAFE_URL_SCHEMES.includes(p.protocol))return false;const d=p.hostname;return _SAFE_URL_DOMAINS.some(x=>d===x||d.endsWith('.'+x));}catch{return false;}}
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ── HTML INJECTION GUARD ─────────────────────────────────────────────────────
 // Applied to all user-data interpolations in PDF/print HTML builders.
 // Prevents stored XSS from user-entered text (names, notes, descriptions) when
@@ -10345,7 +10352,7 @@ export default function App(){
           const c=colors[m.type]||colors.info;
           return(<div key={m.id} style={{background:c.bg,borderBottom:`1px solid ${c.border}`,padding:"7px 15px",display:"flex",alignItems:"center",justifyContent:"center",gap:12}}>
             <span style={{fontSize:12,color:c.text,fontWeight:600}}>{m.message}</span>
-            {m.url&&<button onClick={()=>window.api.shell.openExternal(m.url)} style={{padding:"2px 10px",borderRadius:5,border:`1px solid ${c.border}`,background:"none",color:c.text,cursor:"pointer",fontWeight:700,fontSize:11}}>{m.url_label||"En savoir plus"}</button>}
+            {m.url&&isUrlSafe(m.url)&&<button onClick={()=>window.api.shell.openExternal(m.url)} style={{padding:"2px 10px",borderRadius:5,border:`1px solid ${c.border}`,background:"none",color:c.text,cursor:"pointer",fontWeight:700,fontSize:11}}>{m.url_label||"En savoir plus"}</button>}
             <button onClick={()=>{const d=JSON.parse(localStorage.getItem('balanceiq-dismissed-msgs')||'[]');localStorage.setItem('balanceiq-dismissed-msgs',JSON.stringify([...d,m.id]));setAppMessages(prev=>prev.filter(x=>x.id!==m.id));}} style={{padding:"2px 8px",borderRadius:5,border:`1px solid ${c.border}`,background:"none",color:c.text,cursor:"pointer",fontSize:10,opacity:0.7}}>✕</button>
           </div>);
         })}
