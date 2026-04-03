@@ -1309,6 +1309,13 @@ export const FR = {
   // ── P&L TAB — EXTRA ──
   plNetSales:       "Ventes nettes",
 
+  // ── VENDOR PRICE INTELLIGENCE ──
+  priceIntelTitle:    (name) => `📈 Variation de prix — ${name}`,
+  priceIntelBody:     (pct, last, cur) => `Cette facture est ${pct}% plus élevée que la précédente (${last} → ${cur}).`,
+  priceIntelTrend:    "Historique récent",
+  priceIntelThresholdLabel: "Seuil d'alerte prix fournisseur",
+  priceIntelThresholdHint:  "Alerte si une facture dépasse ce % vs la précédente. Défaut: 5%.",
+
   // ── ENCAISSE TAB — EXTRA ──
   encModify:        "Modifier",
   encAmount:        "Montant",
@@ -3187,6 +3194,13 @@ export const EN = {
 
   // ── P&L TAB — EXTRA ──
   plNetSales:       "Net Sales",
+
+  // ── VENDOR PRICE INTELLIGENCE ──
+  priceIntelTitle:    (name) => `📈 Price Change — ${name}`,
+  priceIntelBody:     (pct, last, cur) => `This invoice is ${pct}% higher than the previous one (${last} → ${cur}).`,
+  priceIntelTrend:    "Recent history",
+  priceIntelThresholdLabel: "Supplier price alert threshold",
+  priceIntelThresholdHint:  "Alert when an invoice exceeds this % vs the previous one. Default: 5%.",
 
   // ── ENCAISSE TAB — EXTRA ──
   encModify:        "Edit",

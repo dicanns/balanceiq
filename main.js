@@ -42,6 +42,7 @@ const {
   posScanHistorySave, posScanHistoryGetRecent, posScanHistoryGetForDate,
   upgradePromptGetDismissedAt, upgradePromptDismiss,
   onboardingGetAll, onboardingMarkDone, onboardingReset,
+  plInvoiceHistoryRecord, plInvoiceHistoryGetLast, plInvoiceHistoryGetRecent,
 } = require('./src/db/database.js');
 
 const BACKUP_DIR = () => path.join(app.getPath('userData'), 'Backups');
@@ -1361,6 +1362,11 @@ ipcMain.handle('upgradePrompt:dismiss',        (_e, key) => upgradePromptDismiss
 ipcMain.handle('onboarding:getAll',   ()         => onboardingGetAll());
 ipcMain.handle('onboarding:markDone', (_e, key)  => onboardingMarkDone(key));
 ipcMain.handle('onboarding:reset',    ()         => onboardingReset());
+
+// ── P&L Invoice History (Vendor Price Intelligence) ────────────────────────
+ipcMain.handle('plPriceIntel:record',    (_e, r)              => plInvoiceHistoryRecord(r));
+ipcMain.handle('plPriceIntel:getLast',   (_e, key, excludeId) => plInvoiceHistoryGetLast(key, excludeId));
+ipcMain.handle('plPriceIntel:getRecent', (_e, key, limit)     => plInvoiceHistoryGetRecent(key, limit));
 
 app.on('window-all-closed', () => {
   if (biqTray) { biqTray.destroy(); biqTray = null; }

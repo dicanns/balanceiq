@@ -40,6 +40,25 @@ const MIGRATIONS = [
       )`).run();
     },
   },
+  {
+    version: 4,
+    description: 'P&L supplier invoice history for vendor price intelligence (Item 6)',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS pl_invoice_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        supplier_key TEXT NOT NULL,
+        supplier_name TEXT NOT NULL,
+        amount REAL NOT NULL,
+        bill_date TEXT DEFAULT '',
+        note TEXT DEFAULT '',
+        month_key TEXT NOT NULL,
+        bill_id TEXT NOT NULL UNIQUE,
+        recorded_at TEXT DEFAULT (datetime('now','localtime'))
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_pl_inv_hist_key
+        ON pl_invoice_history(supplier_key, recorded_at DESC)`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -1007,6 +1026,30 @@ function onboardingReset() {
   return true;
 }
 
+// ── P&L Invoice History (Vendor Price Intelligence) ───────────────────────
+// Records a bill entry so we can compare invoice amounts across time.
+function plInvoiceHistoryRecord(record) {
+  // record: {supplier_key, supplier_name, amount, bill_date, note, month_key, bill_id}
+  getDb().prepare(
+    `INSERT OR IGNORE INTO pl_invoice_history
+      (supplier_key, supplier_name, amount, bill_date, note, month_key, bill_id)
+      VALUES (@supplier_key, @supplier_name, @amount, @bill_date, @note, @month_key, @bill_id)`
+  ).run(record);
+  return true;
+}
+// Returns the most recent recorded bill for a supplier_key (excluding current bill_id).
+function plInvoiceHistoryGetLast(supplierKey, excludeBillId) {
+  return getDb().prepare(
+    `SELECT * FROM pl_invoice_history WHERE supplier_key=? AND bill_id!=? ORDER BY recorded_at DESC LIMIT 1`
+  ).get(supplierKey, excludeBillId || '') || null;
+}
+// Returns the last N bills for a supplier_key (most recent first).
+function plInvoiceHistoryGetRecent(supplierKey, limit) {
+  return getDb().prepare(
+    `SELECT * FROM pl_invoice_history WHERE supplier_key=? ORDER BY recorded_at DESC LIMIT ?`
+  ).all(supplierKey, limit || 5);
+}
+
 // ── Upgrade Prompt Dismissals ──────────────────────────────────────────────
 // Returns the ISO timestamp when the prompt was last dismissed, or null.
 function upgradePromptGetDismissedAt(key) {
@@ -1053,4 +1096,5 @@ module.exports = {
   posScanHistorySave, posScanHistoryGetRecent, posScanHistoryGetForDate,
   upgradePromptGetDismissedAt, upgradePromptDismiss,
   onboardingGetAll, onboardingMarkDone, onboardingReset,
+  plInvoiceHistoryRecord, plInvoiceHistoryGetLast, plInvoiceHistoryGetRecent,
 };
