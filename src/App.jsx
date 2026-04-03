@@ -928,6 +928,109 @@ function UpgradeHint({promptKey, message, icon='✨', t: theme}){
   );
 }
 
+// ── TODAY-AT-A-GLANCE CARD ──
+function GlanceCard({liveData,computeDay,closedDays,getCloseStatus,encaisseData,encaisseConfig,lang,T,t,onDismiss,setActiveTab}){
+  const fr=lang==='fr';
+  const yesterday=dk(new Date(new Date().getTime()-86400000));
+  const ydCd=computeDay(yesterday);
+  const ydStatus=getCloseStatus(yesterday);
+  const weekAgoD=new Date(yesterday+"T12:00:00");weekAgoD.setDate(weekAgoD.getDate()-7);
+  const weekAgo=dk(weekAgoD);
+  const weekAgoCd=computeDay(weekAgo);
+  const ydDelta=(ydCd.venteNet>0&&weekAgoCd.venteNet>0)?Math.round((ydCd.venteNet/weekAgoCd.venteNet-1)*100):null;
+  // Unbalanced caisses last 3 days
+  const unbalDays=[];
+  for(let i=1;i<=3;i++){const k=dk(new Date(new Date().getTime()-i*86400000));const cd=computeDay(k);if(cd.anyData&&!cd.allBal)unbalDays.push(k);}
+  // Encaisse yesterday (cash position)
+  const [ydEncPos,setYdEncPos]=useState(null);
+  const [plCount,setPlCount]=useState(null);
+  useEffect(()=>{
+    // Compute yesterday encaisse closing balance
+    try{
+      const locs=encaisseConfig.cashLocations||[];
+      const dates=Object.keys(encaisseData).filter(k=>!k.startsWith("_")&&k<=yesterday).sort();
+      const allDates=[...new Set([...dates,yesterday])].sort();
+      let prevClosing=null;
+      for(const dt of allDates){
+        const enc={openingOverride:null,autreEntrees:[],deposits:[],sorties:[],physicalCount:{},carryForwardMode:"calculated",...(encaisseData[dt]||{})};
+        const opening=enc.openingOverride!=null?enc.openingOverride:(prevClosing??null);
+        const cDay=liveData[dt];let cashVentes=0;
+        if(cDay?.cashes)cDay.cashes.forEach(c=>{if(c.finalCash!=null&&c.float!=null)cashVentes+=(c.finalCash-c.float);});
+        const autreEntreesTotal=enc.autreEntrees.reduce((s,e)=>s+(e.montant||0),0);
+        const depositsTotal=enc.deposits.reduce((s,d)=>s+(d.montant||0),0);
+        const sortiesTotal=enc.sorties.reduce((s,s2)=>s+(s2.montant||0),0);
+        const calculated=(opening||0)+cashVentes+autreEntreesTotal-depositsTotal-sortiesTotal;
+        const carryMode=enc.carryForwardMode||"calculated";
+        const pEntered=locs.some(loc=>enc.physicalCount[loc.id]!=null);
+        const physTotal=locs.reduce((s,loc)=>s+((enc.physicalCount[loc.id])||0),0);
+        const closing=carryMode==="physical"&&pEntered?physTotal:calculated;
+        prevClosing=closing;
+      }
+      if(prevClosing!==null&&prevClosing!==0)setYdEncPos(prevClosing);
+    }catch(_){}
+    // Count P&L invoices this month
+    const month=new Date().toISOString().slice(0,7);
+    window.api.storage.get(`dicann-pl-${month}`).then(r=>{
+      if(!r?.value){setPlCount(0);return;}
+      try{const pl=JSON.parse(r.value);let c=0;Object.keys(pl).forEach(k=>{if(k.endsWith('_bills')&&Array.isArray(pl[k]))c+=pl[k].length;});setPlCount(c);}catch(_){setPlCount(0);}
+    }).catch(()=>setPlCount(0));
+  },[]);// eslint-disable-line react-hooks/exhaustive-deps
+  const statusColor={'closed_clean':'#16a34a','closed_with_warnings':'#f97316','in_progress':'#f59e0b','not_started':t.textMuted};
+  const statusLabel={'closed_clean':T.closeStatusClean,'closed_with_warnings':T.closeStatusWarnings,'in_progress':T.closeStatusInProgress,'not_started':T.closeStatusNotStarted};
+  const fmt=n=>(n??0).toLocaleString(fr?'fr-CA':'en-CA',{style:'currency',currency:'CAD',maximumFractionDigits:0});
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9997,padding:20}}>
+      <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:14,padding:"24px 28px",maxWidth:460,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+          <div style={{width:36,height:30,borderRadius:6,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,color:"#fff"}}>BIQ</div>
+          <span style={{fontSize:15,fontWeight:700,color:t.text}}>{T.glanceTitle}</span>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:9}}>
+          {/* Yesterday close status + sales */}
+          <div style={{padding:"10px 12px",borderRadius:8,background:t.section,border:`1px solid ${t.sectionBorder}`}}>
+            <div style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textTransform:"uppercase",letterSpacing:0.6,marginBottom:5}}>{fr?"Hier":"Yesterday"}</div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:11,color:statusColor[ydStatus]||t.textMuted,fontWeight:600}}>{statusLabel[ydStatus]||ydStatus}</span>
+              <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                <span style={{fontSize:13,fontWeight:700,fontFamily:"'DM Mono',monospace",color:t.text}}>{ydCd.venteNet>0?fmt(ydCd.venteNet):"—"}</span>
+                {ydDelta!==null&&<span style={{fontSize:11,fontWeight:700,color:ydDelta>=0?"#22c55e":"#ef4444"}}>{ydDelta>=0?"+":""}{ydDelta}%</span>}
+              </div>
+            </div>
+            {ydDelta!==null&&<div style={{fontSize:9.5,color:t.textDim,marginTop:2}}>{fr?"vs même jour la semaine dernière":"vs same weekday last week"}</div>}
+          </div>
+          {/* Unbalanced caisses */}
+          {unbalDays.length>0&&(
+            <div style={{padding:"9px 12px",borderRadius:8,background:"rgba(239,68,68,0.07)",border:"1px solid rgba(239,68,68,0.2)"}}>
+              <div style={{fontSize:10.5,fontWeight:600,color:"#ef4444",marginBottom:3}}>⚠ {T.glanceUnbalanced}</div>
+              {unbalDays.map(k=><div key={k} style={{fontSize:10,color:t.textSub}}>{k}</div>)}
+            </div>
+          )}
+          {/* Cash position + invoice count */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            {ydEncPos!==null&&(
+              <div style={{padding:"8px 11px",borderRadius:7,background:t.section,border:`1px solid ${t.sectionBorder}`}}>
+                <div style={{fontSize:9,color:t.textMuted,fontWeight:600,textTransform:"uppercase",letterSpacing:0.5,marginBottom:3}}>{T.glanceCashPos}</div>
+                <span style={{fontSize:13,fontWeight:700,fontFamily:"'DM Mono',monospace",color:ydEncPos>=0?"#22c55e":"#ef4444"}}>{fmt(ydEncPos)}</span>
+              </div>
+            )}
+            {plCount!==null&&(
+              <div style={{padding:"8px 11px",borderRadius:7,background:t.section,border:`1px solid ${t.sectionBorder}`}}>
+                <div style={{fontSize:9,color:t.textMuted,fontWeight:600,textTransform:"uppercase",letterSpacing:0.5,marginBottom:3}}>{T.glancePlInvoices}</div>
+                <span style={{fontSize:13,fontWeight:700,fontFamily:"'DM Mono',monospace",color:t.text}}>{plCount}</span>
+              </div>
+            )}
+          </div>
+        </div>
+        <div style={{display:"flex",justifyContent:"flex-end",marginTop:18}}>
+          <button onClick={()=>{onDismiss();setActiveTab("daily");}} style={{padding:"9px 24px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+            {T.glanceStart}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── PDF PREVIEW ──
 // Uses a custom DOM event so any component can open the in-app preview modal
 function openPDF(html){
@@ -9055,6 +9158,7 @@ export default function App(){
   const [lastSyncedAt,setLastSyncedAt]=useState(null); // ISO string of last successful sync
   const [syncFlash,setSyncFlash]=useState(false); // 3-second green "Synchronisé" badge
   const [onboardingDone,setOnboardingDone]=useState(true); // false = show wizard on first launch
+  const [glanceDismissedDate,setGlanceDismissedDate]=useState(null); // 'YYYY-MM-DD' — skip glance card if same day
   const [myLinkedLocations,setMyLinkedLocations]=useState([]); // MUO: [{location_id, location_name, ...}]
   const [activeMUOLocationId,setActiveMUOLocationId]=useState(null); // currently selected MUO location
   const [checklistTemplates,setChecklistTemplates]=useState([]); // [{id,title_fr,title_en,required,frequency,category,active}]
@@ -9136,6 +9240,7 @@ export default function App(){
     try{const rTour=await window.api.storage.get("balanceiq-tour-complete");if(!rTour?.value)setTourActive(true);}catch(e){setTourActive(true);}
     // Onboarding: only show on fresh install (no existing data key)
     try{const rOB=await window.api.storage.get("balanceiq-onboarding");if(!rOB?.value){const rData=await window.api.storage.get("dicann-v7");if(!rData?.value)setOnboardingDone(false);}}catch(e){}
+    try{const rGl=await window.api.storage.get("balanceiq-glance-date");if(rGl?.value)setGlanceDismissedDate(rGl.value);}catch(e){}
     try{const rTips=await window.api.storage.get("balanceiq-section-tooltips");if(rTips?.value==="0")setShowSectionTooltips(false);}catch(e){}
     try{const rBanners=await window.api.storage.get("balanceiq-dismissed-banners");if(rBanners?.value)setDismissedBanners(new Set(JSON.parse(rBanners.value)));}catch(e){}
     try{const r10=await window.api.storage.get("dicann-company-info");if(r10?.value)setCompanyInfo(prev=>({...DEFAULT_COMPANY_INFO,...JSON.parse(r10.value)}))}catch(e){}
@@ -9709,6 +9814,14 @@ export default function App(){
   // Flag if a "clean" close was re-opened by edits that broke balance
   const editedAfterClose=isClosed&&closedDays[selectedDate]?.allBal===true&&!today.allBal;
 
+  // ── Today-at-a-Glance ─────────────────────────────────────────────────────
+  const todayKey=dk(new Date());
+  const showGlance=apiConfig.glanceEnabled!==false&&glanceDismissedDate!==todayKey&&!loading&&onboardingDone&&!!appMode&&Object.keys(liveData).length>0;
+  const dismissGlance=useCallback(()=>{
+    setGlanceDismissedDate(todayKey);
+    window.api.storage.set("balanceiq-glance-date",todayKey).catch(()=>{});
+  },[todayKey]);
+
   // Count unclosed days this week that have data
   const unclosedThisWeek=useMemo(()=>{
     const today_=new Date();today_.setHours(0,0,0,0);
@@ -9970,6 +10083,7 @@ export default function App(){
       />}
       {pdfPreview&&<PDFPreviewModal html={pdfPreview} onClose={()=>setPdfPreview(null)}/>}
       {flashReport&&<FlashReportPopup data={flashReport} lang={lang} t={t} onClose={()=>setFlashReport(null)}/>}
+      {showGlance&&<GlanceCard liveData={liveData} computeDay={computeDay} closedDays={closedDays} getCloseStatus={getCloseStatus} encaisseData={encaisseData} encaisseConfig={encaisseConfig} lang={lang} T={T} t={t} onDismiss={dismissGlance} setActiveTab={setActiveTab}/>}
       {showTelemetryPrompt&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:9998,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:14,padding:"24px 28px",maxWidth:420,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
@@ -11138,6 +11252,14 @@ export default function App(){
             <CfgCard id="sectionTooltips" title={T.showTooltipsLabel} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
               <div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{T.showTooltipsDesc}</div>
               <button onClick={async()=>{const v=!showSectionTooltips;setShowSectionTooltips(v);await window.api.storage.set("balanceiq-section-tooltips",v?"1":"0");}} style={{padding:"5px 18px",borderRadius:20,border:`1px solid ${showSectionTooltips?"#f97316":t.cardBorder}`,background:showSectionTooltips?"rgba(249,115,22,0.15)":t.section,color:showSectionTooltips?"#f97316":t.textSub,cursor:"pointer",fontWeight:700,fontSize:12,transition:"all 0.15s"}}>{showSectionTooltips?T.showTooltipsOn:T.showTooltipsOff}</button>
+            </CfgCard>
+            {/* ── TODAY-AT-A-GLANCE TOGGLE ── */}
+            <CfgCard id="glanceCard" title={`📋 ${T.glanceConfigLabel}`} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{T.glanceConfigHint}</div>
+              <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                <button onClick={()=>{const v=apiConfig.glanceEnabled===false;const nc={...apiConfig,glanceEnabled:v};setApiConfig(nc);saveApiCfg(nc);}} style={{padding:"5px 18px",borderRadius:20,border:`1px solid ${apiConfig.glanceEnabled!==false?"#f97316":t.cardBorder}`,background:apiConfig.glanceEnabled!==false?"rgba(249,115,22,0.15)":t.section,color:apiConfig.glanceEnabled!==false?"#f97316":t.textSub,cursor:"pointer",fontWeight:700,fontSize:12,transition:"all 0.15s"}}>{apiConfig.glanceEnabled!==false?T.prevToggleOn:T.prevToggleOff}</button>
+                {apiConfig.glanceEnabled!==false&&glanceDismissedDate===todayKey&&<button onClick={()=>{setGlanceDismissedDate(null);window.api.storage.set("balanceiq-glance-date","").catch(()=>{});}} style={{padding:"5px 14px",borderRadius:20,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>{lang==='fr'?'Afficher maintenant':'Show now'}</button>}
+              </div>
             </CfgCard>
             {/* ── KPI SETTINGS ── */}
             <CfgCard id="kpiSettings" title={`📊 ${T.kpiPanelTitle}`} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
