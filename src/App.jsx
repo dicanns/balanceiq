@@ -10432,7 +10432,7 @@ export default function App(){
               for(let i=6;i>=0;i--){const dd=new Date(base);dd.setDate(base.getDate()-i);const k=dk(dd);const s=getCloseStatus(k);const dotColor=s==='closed_clean'?'#16a34a':s==='closed_with_warnings'?'#f97316':s==='in_progress'?'#f59e0b':'#374151';const isToday=k===selectedDate;dots.push(<div key={k} onClick={()=>setSelectedDate(k)} title={`${T.days[dd.getDay()]} ${k} — ${T['closeStatus'+s.split('_').map((w,i)=>i===0?w:w[0].toUpperCase()+w.slice(1)).join('')]||s}`} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,cursor:"pointer",opacity:isToday?1:0.7}}>
                 <div style={{width:9,height:9,borderRadius:"50%",background:dotColor,boxShadow:isToday?`0 0 0 2px rgba(249,115,22,0.6)`:undefined,transition:"all 0.1s"}}/>
                 <span style={{fontSize:7.5,color:t.textDim,fontWeight:isToday?700:400}}>{T.days[dd.getDay()].slice(0,1)}</span>
-              </div>));}
+              </div>);}
               return(<div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 6px",borderRadius:6,background:t.section,border:`1px solid ${t.sectionBorder}`,width:"fit-content"}}>
                 <span style={{fontSize:8,color:t.textDim,marginRight:2,fontWeight:600,textTransform:"uppercase",letterSpacing:0.6}}>{T.closeStatus7DaysLabel}</span>
                 {dots}

@@ -24,7 +24,7 @@ const MIGRATIONS = [
     description: 'Upgrade prompt dismissals table (Item 2 — outcome-based prompts)',
     up: (database) => {
       database.prepare(`CREATE TABLE IF NOT EXISTS upgrade_prompt_dismissals (
-        prompt_key TEXT PRIMARY KEY,
+        prompt_key TEXT NOT NULL PRIMARY KEY,
         dismissed_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
       )`).run();
     },
@@ -1040,13 +1040,14 @@ function plInvoiceHistoryRecord(record) {
 // Returns the most recent recorded bill for a supplier_key (excluding current bill_id).
 function plInvoiceHistoryGetLast(supplierKey, excludeBillId) {
   return getDb().prepare(
-    `SELECT * FROM pl_invoice_history WHERE supplier_key=? AND bill_id!=? ORDER BY recorded_at DESC LIMIT 1`
+    `SELECT * FROM pl_invoice_history WHERE supplier_key=? AND bill_id!=?
+     ORDER BY recorded_at DESC, id DESC LIMIT 1`
   ).get(supplierKey, excludeBillId || '') || null;
 }
 // Returns the last N bills for a supplier_key (most recent first).
 function plInvoiceHistoryGetRecent(supplierKey, limit) {
   return getDb().prepare(
-    `SELECT * FROM pl_invoice_history WHERE supplier_key=? ORDER BY recorded_at DESC LIMIT ?`
+    `SELECT * FROM pl_invoice_history WHERE supplier_key=? ORDER BY recorded_at DESC, id DESC LIMIT ?`
   ).all(supplierKey, limit || 5);
 }
 
