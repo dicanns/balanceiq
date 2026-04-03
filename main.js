@@ -49,28 +49,41 @@ const BACKUP_DIR = () => path.join(app.getPath('userData'), 'Backups');
 const BACKUP_KEEP_DAYS = 30;
 
 // ── URL SAFETY ────────────────────────────────────────────────────────────────
+// Exact-match allowlist only — no suffix/wildcard matching.
+// To allow a new subdomain, add it explicitly.
 const ALLOWED_URL_SCHEMES = ['https:'];
 const ALLOWED_URL_DOMAINS = [
+  // BalanceIQ properties
   'balanceiq.ca',
   'www.balanceiq.ca',
+
+  // GitHub (releases, repo links)
   'github.com',
-  'supabase.com',
-  'stripe.com',
-  'anthropic.com',
-  'claude.ai',
-  'doordash.com',
+
+  // Supabase — ONLY our specific project, not the whole supabase.com platform.
+  // Suffix matching would allow any attacker-controlled *.supabase.co project.
+  'etiwnesxjypdwhxqnqqq.supabase.co',
+
+  // Stripe — billing portal and checkout only (not stripe.com broadly)
+  'checkout.stripe.com',
+  'billing.stripe.com',
+
+  // Anthropic — API key setup and docs
+  'console.anthropic.com',
+  'docs.anthropic.com',
+
+  // Delivery portals
   'www.doordash.com',
   'merchants.ubereats.com',
   'restaurants.skipthedishes.com',
-  'open-meteo.com',
 ];
 
 function isUrlSafe(urlString) {
   try {
     const parsed = new URL(urlString);
     if (!ALLOWED_URL_SCHEMES.includes(parsed.protocol)) return false;
-    const domain = parsed.hostname;
-    return ALLOWED_URL_DOMAINS.some(d => domain === d || domain.endsWith('.' + d));
+    // Exact match only — no endsWith/suffix matching.
+    return ALLOWED_URL_DOMAINS.includes(parsed.hostname);
   } catch {
     return false;
   }
