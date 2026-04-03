@@ -8093,6 +8093,8 @@ function PinLockConfig({lockConfig,saveLockConfig}){
         </div>
       </div>
 
+      <div style={{fontSize:11,color:t.textMuted,marginTop:8,lineHeight:1.5}}>{T.pinSecurityNote}</div>
+
       {success&&<div style={{fontSize:12,color:"#22c55e",marginBottom:8}}>{success}</div>}
 
       {mode==="setup"&&(
