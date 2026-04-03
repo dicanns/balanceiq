@@ -1355,6 +1355,11 @@ app.whenReady().then(() => {
       req.setTimeout(10000, () => { req.destroy(); reject(new Error('timeout')); });
     });
 
+    // SECURITY NOTE: Update check trusts GitHub's release API and asset URLs.
+    // The packaged app is code-signed (macOS) but there is no hash-pinned update
+    // manifest or in-app signature verification. This is a known trust gap.
+    // TODO: Implement signed update manifest when user base justifies the
+    // infrastructure (see codex-review/codex_roadmap_LATER_2026-04-01.md).
     const checkForUpdate = async () => {
       try {
         const release = await fetchLatestVersion();
