@@ -47,6 +47,7 @@ export default function DocumentsTab({ isFranchisor, orgId, cloudUser, T, t, onU
   const [annPosting, setAnnPosting] = useState(false);
   const [addingFolder, setAddingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
+  const [downloadNotif, setDownloadNotif] = useState(null); // { filename, filePath, folder }
   const fileInputRef = useRef(null);
 
   const loadData = useCallback(async () => {
@@ -147,7 +148,10 @@ export default function DocumentsTab({ isFranchisor, orgId, cloudUser, T, t, onU
       const token = await getToken();
       const result = await callEdgeFn({ action: 'get_signed_url', storagePath: doc.storage_path }, token);
       if (result.error) throw new Error(result.error);
-      await window.api.docs.download({ url: result.url, filename: doc.filename });
+      const dlResult = await window.api.docs.download({ url: result.url, filename: doc.filename });
+      if (dlResult?.ok) {
+        setDownloadNotif({ filename: doc.filename, filePath: dlResult.path, folder: dlResult.folder });
+      }
     } catch (e) {
       alert('Erreur: ' + e.message);
     }
@@ -250,6 +254,31 @@ export default function DocumentsTab({ isFranchisor, orgId, cloudUser, T, t, onU
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Download notification — user must explicitly choose to open */}
+      {downloadNotif && (
+        <div style={{ padding: '10px 14px', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 16 }}>✅</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 600 }}>{T.docDownloaded}: {downloadNotif.filename}</div>
+            <div style={{ fontSize: 10, opacity: 0.6 }}>{T.docSavedTo}: {downloadNotif.folder}</div>
+          </div>
+          <button
+            onClick={() => { window.api.docs.openDownloaded(downloadNotif.filePath); setDownloadNotif(null); }}
+            style={{ padding: '4px 10px', borderRadius: 5, border: '1px solid rgba(255,255,255,0.2)', background: 'transparent', color: 'inherit', fontSize: 11, cursor: 'pointer' }}>
+            {T.docOpen}
+          </button>
+          <button
+            onClick={() => { window.api.docs.showInFolder(downloadNotif.filePath); setDownloadNotif(null); }}
+            style={{ padding: '4px 10px', borderRadius: 5, border: '1px solid rgba(255,255,255,0.2)', background: 'transparent', color: 'inherit', fontSize: 11, cursor: 'pointer' }}>
+            {T.docShowInFolder}
+          </button>
+          <button
+            onClick={() => setDownloadNotif(null)}
+            style={{ padding: '2px 7px', borderRadius: 4, border: 'none', background: 'transparent', opacity: 0.4, cursor: 'pointer', fontSize: 13, color: 'inherit' }}
+            aria-label="Fermer">×</button>
+        </div>
+      )}
+
       {/* Documents section */}
       <div style={{ display: 'flex', gap: 16, minHeight: 300 }}>
         {/* Folder panel */}
