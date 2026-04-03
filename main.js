@@ -41,6 +41,7 @@ const {
   posScanTemplatesGetAll, posScanTemplateSave, posScanTemplateDelete, posScanTemplateMarkUploaded,
   posScanHistorySave, posScanHistoryGetRecent, posScanHistoryGetForDate,
   upgradePromptGetDismissedAt, upgradePromptDismiss,
+  onboardingGetAll, onboardingMarkDone, onboardingReset,
 } = require('./src/db/database.js');
 
 const BACKUP_DIR = () => path.join(app.getPath('userData'), 'Backups');
@@ -1355,6 +1356,11 @@ ipcMain.handle('posScan:history:getForDate', (_e, dateKey) => posScanHistoryGetF
 // ── Upgrade Prompt Dismissals ──────────────────────────────────────────────
 ipcMain.handle('upgradePrompt:getDismissedAt', (_e, key) => upgradePromptGetDismissedAt(key));
 ipcMain.handle('upgradePrompt:dismiss',        (_e, key) => upgradePromptDismiss(key));
+
+// ── Onboarding Checklist ──────────────────────────────────────────────────
+ipcMain.handle('onboarding:getAll',   ()         => onboardingGetAll());
+ipcMain.handle('onboarding:markDone', (_e, key)  => onboardingMarkDone(key));
+ipcMain.handle('onboarding:reset',    ()         => onboardingReset());
 
 app.on('window-all-closed', () => {
   if (biqTray) { biqTray.destroy(); biqTray = null; }

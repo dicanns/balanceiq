@@ -1031,6 +1031,79 @@ function GlanceCard({liveData,computeDay,closedDays,getCloseStatus,encaisseData,
   );
 }
 
+// ── ONBOARDING CHECKLIST OVERLAY ──
+const OB_ITEMS=['ob1','ob2','ob3','ob4','ob5','ob6'];
+function OnboardingChecklist({progress,setProgress,lang,T,t,companyInfo,liveData,suppliers,onComplete,onClose,setActiveTab,setConfigSubTab}){
+  const fr=lang==='fr';
+  // Auto-detect completion from existing data
+  const isAutoComplete=(key)=>{
+    if(key==='ob1')return!!(companyInfo?.nom&&companyInfo.nom.trim()&&companyInfo?.ville&&companyInfo.ville.trim());
+    if(key==='ob3')return Object.keys(liveData).length>0;
+    if(key==='ob4')return suppliers.length>0;
+    return false;
+  };
+  const isDone=(key)=>!!(progress[key]?.completed)||isAutoComplete(key);
+  const doneCount=OB_ITEMS.filter(isDone).length;
+  const allDone=doneCount===OB_ITEMS.length;
+  const markDone=async(key)=>{
+    if(isDone(key))return;
+    const entry={completed:true,completedAt:new Date().toISOString()};
+    setProgress(prev=>({...prev,[key]:entry}));
+    window.api.onboarding.markDone(key).catch(()=>{});
+  };
+  const items=[
+    {key:'ob1',label:T.obItem1Label,hint:T.obItem1Hint,icon:'🏪',action:()=>{setActiveTab("config");setConfigSubTab&&setConfigSubTab("application");}},
+    {key:'ob2',label:T.obItem2Label,hint:T.obItem2Hint,icon:'💰',action:()=>setActiveTab("daily")},
+    {key:'ob3',label:T.obItem3Label,hint:T.obItem3Hint,icon:'📋',action:()=>setActiveTab("daily")},
+    {key:'ob4',label:T.obItem4Label,hint:T.obItem4Hint,icon:'🏭',action:()=>{setActiveTab("config");setConfigSubTab&&setConfigSubTab("finances");}},
+    {key:'ob5',label:T.obItem5Label,hint:T.obItem5Hint,icon:'🧾',action:()=>setActiveTab("monthly")},
+    {key:'ob6',label:T.obItem6Label,hint:T.obItem6Hint,icon:'🧠',action:async()=>{await markDone('ob6');setActiveTab("intelligence");}},
+  ];
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9996,padding:20}}>
+      <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:14,padding:"24px 28px",maxWidth:460,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div style={{width:36,height:30,borderRadius:6,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,color:"#fff"}}>BIQ</div>
+            <span style={{fontSize:15,fontWeight:700,color:t.text}}>{T.obTitle}</span>
+          </div>
+          <button onClick={onClose} style={{background:"none",border:"none",color:t.textMuted,cursor:"pointer",fontSize:15,padding:2}}>✕</button>
+        </div>
+        {!allDone&&<p style={{fontSize:11.5,color:t.textMuted,margin:"6px 0 14px"}}>{T.obSubtitle}</p>}
+        {/* Progress bar */}
+        <div style={{height:4,background:t.section,borderRadius:2,marginBottom:14,overflow:"hidden"}}>
+          <div style={{height:"100%",borderRadius:2,background:"linear-gradient(90deg,#f97316,#ea580c)",width:`${(doneCount/6)*100}%`,transition:"width 0.3s"}}/>
+        </div>
+        {allDone?(
+          <div style={{textAlign:"center",padding:"16px 0"}}>
+            <div style={{fontSize:28,marginBottom:8}}>🎉</div>
+            <div style={{fontSize:14,fontWeight:700,color:t.text,marginBottom:10}}>{T.obCongrats}</div>
+            <button onClick={()=>{onComplete();setActiveTab("daily");}} style={{padding:"9px 28px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>{T.obCongratsBtn}</button>
+          </div>
+        ):(
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {items.map(item=>{
+              const done=isDone(item.key);
+              return(
+                <div key={item.key} onClick={async()=>{await markDone(item.key);item.action();onClose();}} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:8,background:done?"rgba(34,197,94,0.05)":t.section,border:`1px solid ${done?"rgba(34,197,94,0.2)":t.sectionBorder}`,cursor:"pointer",transition:"all 0.1s"}}>
+                  <div style={{width:20,height:20,borderRadius:"50%",background:done?"#16a34a":"rgba(107,114,128,0.2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    {done?<span style={{fontSize:11,color:"#fff"}}>✓</span>:<span style={{fontSize:10}}>{item.icon}</span>}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12,fontWeight:600,color:done?t.textMuted:t.text,textDecoration:done?"line-through":"none"}}>{item.label}</div>
+                    <div style={{fontSize:10.5,color:t.textDim,marginTop:1}}>{item.hint}</div>
+                  </div>
+                  {!done&&<span style={{fontSize:11,color:t.textDim,flexShrink:0}}>→</span>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── PDF PREVIEW ──
 // Uses a custom DOM event so any component can open the in-app preview modal
 function openPDF(html){
@@ -9159,6 +9232,8 @@ export default function App(){
   const [syncFlash,setSyncFlash]=useState(false); // 3-second green "Synchronisé" badge
   const [onboardingDone,setOnboardingDone]=useState(true); // false = show wizard on first launch
   const [glanceDismissedDate,setGlanceDismissedDate]=useState(null); // 'YYYY-MM-DD' — skip glance card if same day
+  const [obProgress,setObProgress]=useState({}); // {[itemKey]: {completed, completed_at}}
+  const [showObChecklist,setShowObChecklist]=useState(false); // force-show from Config
   const [myLinkedLocations,setMyLinkedLocations]=useState([]); // MUO: [{location_id, location_name, ...}]
   const [activeMUOLocationId,setActiveMUOLocationId]=useState(null); // currently selected MUO location
   const [checklistTemplates,setChecklistTemplates]=useState([]); // [{id,title_fr,title_en,required,frequency,category,active}]
@@ -9241,6 +9316,7 @@ export default function App(){
     // Onboarding: only show on fresh install (no existing data key)
     try{const rOB=await window.api.storage.get("balanceiq-onboarding");if(!rOB?.value){const rData=await window.api.storage.get("dicann-v7");if(!rData?.value)setOnboardingDone(false);}}catch(e){}
     try{const rGl=await window.api.storage.get("balanceiq-glance-date");if(rGl?.value)setGlanceDismissedDate(rGl.value);}catch(e){}
+    try{if(window.api?.onboarding){const rows=await window.api.onboarding.getAll();const map={};rows.forEach(r=>{map[r.item_key]={completed:!!r.completed,completedAt:r.completed_at};});setObProgress(map);}}catch(e){}
     try{const rTips=await window.api.storage.get("balanceiq-section-tooltips");if(rTips?.value==="0")setShowSectionTooltips(false);}catch(e){}
     try{const rBanners=await window.api.storage.get("balanceiq-dismissed-banners");if(rBanners?.value)setDismissedBanners(new Set(JSON.parse(rBanners.value)));}catch(e){}
     try{const r10=await window.api.storage.get("dicann-company-info");if(r10?.value)setCompanyInfo(prev=>({...DEFAULT_COMPANY_INFO,...JSON.parse(r10.value)}))}catch(e){}
@@ -9814,6 +9890,24 @@ export default function App(){
   // Flag if a "clean" close was re-opened by edits that broke balance
   const editedAfterClose=isClosed&&closedDays[selectedDate]?.allBal===true&&!today.allBal;
 
+  // ── Onboarding Checklist ────────────────────────────────────────────────
+  const obIsAutoComplete=React.useCallback((key)=>{
+    if(key==='ob1')return!!(companyInfo?.nom?.trim()&&companyInfo?.ville?.trim());
+    if(key==='ob3')return Object.keys(liveData).length>0;
+    if(key==='ob4')return suppliers.length>0;
+    return false;
+  },[companyInfo,liveData,suppliers]);
+  const obDone=OB_ITEMS.filter(k=>!!(obProgress[k]?.completed)||obIsAutoComplete(k)).length;
+  const obAllDone=obDone===OB_ITEMS.length;
+  // Auto-show once per session when not all items are complete
+  const obAutoShownRef=React.useRef(false);
+  useEffect(()=>{
+    if(!obAutoShownRef.current&&onboardingDone&&!obAllDone&&!loading&&!!appMode){
+      obAutoShownRef.current=true;
+      setShowObChecklist(true);
+    }
+  },[onboardingDone,obAllDone,loading,appMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Today-at-a-Glance ─────────────────────────────────────────────────────
   const todayKey=dk(new Date());
   const showGlance=apiConfig.glanceEnabled!==false&&glanceDismissedDate!==todayKey&&!loading&&onboardingDone&&!!appMode&&Object.keys(liveData).length>0;
@@ -10084,6 +10178,7 @@ export default function App(){
       {pdfPreview&&<PDFPreviewModal html={pdfPreview} onClose={()=>setPdfPreview(null)}/>}
       {flashReport&&<FlashReportPopup data={flashReport} lang={lang} t={t} onClose={()=>setFlashReport(null)}/>}
       {showGlance&&<GlanceCard liveData={liveData} computeDay={computeDay} closedDays={closedDays} getCloseStatus={getCloseStatus} encaisseData={encaisseData} encaisseConfig={encaisseConfig} lang={lang} T={T} t={t} onDismiss={dismissGlance} setActiveTab={setActiveTab}/>}
+      {showObChecklist&&<OnboardingChecklist progress={obProgress} setProgress={setObProgress} lang={lang} T={T} t={t} companyInfo={companyInfo} liveData={liveData} suppliers={suppliers} onComplete={()=>setShowObChecklist(false)} onClose={()=>setShowObChecklist(false)} setActiveTab={setActiveTab} setConfigSubTab={setConfigSubTab}/>}
       {showTelemetryPrompt&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:9998,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:14,padding:"24px 28px",maxWidth:420,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
@@ -10159,6 +10254,9 @@ export default function App(){
               {cloudUser&&syncStatus&&!syncFlash&&(()=>{const sc=syncStatus==="synced"?"#22c55e":syncStatus==="syncing"?"#f97316":"#ef4444";const si=syncStatus==="synced"?"✓":syncStatus==="syncing"?"⟳":"✗";const lastSyncLabel=(()=>{if(!lastSyncedAt)return null;const diff=(Date.now()-new Date(lastSyncedAt))/1000;if(diff<60)return null;if(diff<3600)return lang==="en"?`${Math.floor(diff/60)}min ago`:`il y a ${Math.floor(diff/60)}min`;return lang==="en"?`${Math.floor(diff/3600)}h ago`:`il y a ${Math.floor(diff/3600)}h`;})();return<span title={`${cloudUser.email}${lastSyncLabel?` — ${lastSyncLabel}`:""}`} style={{fontSize:11,color:sc,fontWeight:700,cursor:"default",display:"flex",alignItems:"center",gap:2}}><span style={{display:"inline-block",animation:syncStatus==="syncing"?"biq-spin 1.2s linear infinite":"none"}}>☁</span>{si}{lastSyncLabel&&<span style={{fontSize:9,color:t.textMuted,fontWeight:400,marginLeft:1}}>{lastSyncLabel}</span>}</span>;})()}
               {(()=>{const connectedPOS=Object.entries(posCredentials).find(([,v])=>v?.connected);if(!connectedPOS)return null;const posName=connectedPOS[0];const dot=<span style={{display:"inline-block",width:6,height:6,borderRadius:"50%",background:"#22c55e",marginLeft:2}}/>;return<span title={`POS: ${posName}`} style={{fontSize:11,color:t.textSub,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:1}} onClick={()=>{setActiveTab("config");setConfigSubTab("integrations");}}>📡{dot}</span>})()}
               {hasL&&<Pill ok label={T.entryMode}/>}
+              {!obAllDone&&!!appMode&&!loading&&<button onClick={()=>setShowObChecklist(true)} title={lang==='fr'?'Ouvrir le guide de démarrage':'Open getting started guide'} style={{background:"rgba(249,115,22,0.08)",border:"1px solid rgba(249,115,22,0.25)",borderRadius:5,color:"#f97316",fontSize:10,padding:"3px 8px",cursor:"pointer",fontWeight:700,letterSpacing:0.1}}>
+                🚀 {lang==='fr'?`Démarrage: ${obDone}/${OB_ITEMS.length}`:`Setup: ${obDone}/${OB_ITEMS.length}`}
+              </button>}
               <button onClick={()=>{saveAppMode(null)}} title="Changer de mode" style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textMuted,fontSize:10,padding:"3px 8px",cursor:"pointer",fontWeight:600}}>
                 ⇄ {T.modeToggle}
               </button>
@@ -11259,6 +11357,21 @@ export default function App(){
               <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
                 <button onClick={()=>{const v=apiConfig.glanceEnabled===false;const nc={...apiConfig,glanceEnabled:v};setApiConfig(nc);saveApiCfg(nc);}} style={{padding:"5px 18px",borderRadius:20,border:`1px solid ${apiConfig.glanceEnabled!==false?"#f97316":t.cardBorder}`,background:apiConfig.glanceEnabled!==false?"rgba(249,115,22,0.15)":t.section,color:apiConfig.glanceEnabled!==false?"#f97316":t.textSub,cursor:"pointer",fontWeight:700,fontSize:12,transition:"all 0.15s"}}>{apiConfig.glanceEnabled!==false?T.prevToggleOn:T.prevToggleOff}</button>
                 {apiConfig.glanceEnabled!==false&&glanceDismissedDate===todayKey&&<button onClick={()=>{setGlanceDismissedDate(null);window.api.storage.set("balanceiq-glance-date","").catch(()=>{});}} style={{padding:"5px 14px",borderRadius:20,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>{lang==='fr'?'Afficher maintenant':'Show now'}</button>}
+              </div>
+            </CfgCard>
+            {/* ── ONBOARDING GUIDE ── */}
+            <CfgCard id="onboardingCard" title={`🚀 ${lang==='fr'?'Guide de démarrage':'Getting Started Guide'}`} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>
+                {lang==='fr'?`Progression: ${obDone}/${OB_ITEMS.length} étapes complétées.`:`Progress: ${obDone}/${OB_ITEMS.length} steps completed.`}
+              </div>
+              <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                <button onClick={()=>setShowObChecklist(true)} style={{padding:"5px 14px",borderRadius:20,border:"1px solid rgba(249,115,22,0.35)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontSize:11,fontWeight:700}}>
+                  {lang==='fr'?'Reprendre le guide':'Resume guide'}
+                </button>
+                {obAllDone&&<span style={{fontSize:11,color:"#22c55e",fontWeight:700}}>✓ {lang==='fr'?'Terminé!':'Done!'}</span>}
+                <button onClick={async()=>{await window.api.onboarding.reset();setObProgress({});}} style={{padding:"5px 14px",borderRadius:20,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textMuted,cursor:"pointer",fontSize:11}}>
+                  {T.obResetBtn}
+                </button>
               </div>
             </CfgCard>
             {/* ── KPI SETTINGS ── */}

@@ -182,6 +182,11 @@ contextBridge.exposeInMainWorld('api', {
     getDismissedAt: (key) => ipcRenderer.invoke('upgradePrompt:getDismissedAt', key),
     dismiss:        (key) => ipcRenderer.invoke('upgradePrompt:dismiss', key),
   },
+  onboarding: {
+    getAll:   ()    => ipcRenderer.invoke('onboarding:getAll'),
+    markDone: (key) => ipcRenderer.invoke('onboarding:markDone', key),
+    reset:    ()    => ipcRenderer.invoke('onboarding:reset'),
+  },
   eco: {
     items: {
       getAll: ()       => ipcRenderer.invoke('eco:items:getAll'),

@@ -29,6 +29,17 @@ const MIGRATIONS = [
       )`).run();
     },
   },
+  {
+    version: 3,
+    description: 'Onboarding checklist progress table (Item 5)',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS onboarding_progress (
+        item_key TEXT PRIMARY KEY,
+        completed INTEGER DEFAULT 0,
+        completed_at TEXT
+      )`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -981,6 +992,21 @@ function posScanHistoryGetForDate(dateKey) {
   return getDb().prepare('SELECT * FROM pos_scan_history WHERE date_key=? ORDER BY created_at DESC').all(dateKey);
 }
 
+// ── Onboarding Checklist ───────────────────────────────────────────────────
+function onboardingGetAll() {
+  return getDb().prepare('SELECT item_key, completed, completed_at FROM onboarding_progress').all();
+}
+function onboardingMarkDone(itemKey) {
+  getDb().prepare(
+    "INSERT OR REPLACE INTO onboarding_progress (item_key, completed, completed_at) VALUES (?, 1, datetime('now','localtime'))"
+  ).run(itemKey);
+  return true;
+}
+function onboardingReset() {
+  getDb().prepare('DELETE FROM onboarding_progress').run();
+  return true;
+}
+
 // ── Upgrade Prompt Dismissals ──────────────────────────────────────────────
 // Returns the ISO timestamp when the prompt was last dismissed, or null.
 function upgradePromptGetDismissedAt(key) {
@@ -1026,4 +1052,5 @@ module.exports = {
   posScanTemplatesGetAll, posScanTemplateSave, posScanTemplateDelete, posScanTemplateMarkUploaded,
   posScanHistorySave, posScanHistoryGetRecent, posScanHistoryGetForDate,
   upgradePromptGetDismissedAt, upgradePromptDismiss,
+  onboardingGetAll, onboardingMarkDone, onboardingReset,
 };

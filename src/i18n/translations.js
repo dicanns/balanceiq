@@ -1266,6 +1266,27 @@ export const FR = {
   closeStatus7DaysLabel: "7 derniers jours",
 
   // ── TODAY-AT-A-GLANCE ──
+  // ── ONBOARDING CHECKLIST ──
+  obTitle:           "Mise en route",
+  obSubtitle:        "Complétez ces étapes pour bien démarrer avec BalanceIQ.",
+  obCongrats:        "Vous êtes prêt ! BalanceIQ est configuré.",
+  obCongratsBtn:     "Commencer",
+  obProgressLabel:   "Mise en route",
+  obResetBtn:        "Réinitialiser le guide",
+  obItem1Label:      "Configurer votre restaurant",
+  obItem1Hint:       "Nom du restaurant et ville dans Config",
+  obItem2Label:      "Ajouter votre première caisse",
+  obItem2Hint:       "Allez dans l'onglet Quotidien",
+  obItem3Label:      "Saisir les ventes d'aujourd'hui",
+  obItem3Hint:       "Saisie manuelle ou scan rapport POS",
+  obItem4Label:      "Ajouter un fournisseur",
+  obItem4Hint:       "Config → Finances → Fournisseurs",
+  obItem5Label:      "Saisir une facture fournisseur",
+  obItem5Hint:       "Onglet Mensuel → Coûts et dépenses",
+  obItem6Label:      "Consulter l'onglet Intelligence",
+  obItem6Hint:       "Analyses et tendances de vos ventes",
+
+  // ── TODAY-AT-A-GLANCE ──
   glanceTitle:       "Résumé du jour",
   glanceUnbalanced:  "Caisses non équilibrées (3 derniers jours)",
   glanceCashPos:     "Position encaisse",
@@ -3122,6 +3143,27 @@ export const EN = {
   closeStatusWarnings:   "🔒 Closed · Variances",
   closeStatusEditedAfter:"Edited after close",
   closeStatus7DaysLabel: "Last 7 days",
+
+  // ── TODAY-AT-A-GLANCE ──
+  // ── ONBOARDING CHECKLIST ──
+  obTitle:           "Getting Started",
+  obSubtitle:        "Complete these steps to set up BalanceIQ.",
+  obCongrats:        "You're all set! BalanceIQ is configured.",
+  obCongratsBtn:     "Get started",
+  obProgressLabel:   "Getting started",
+  obResetBtn:        "Reset guide",
+  obItem1Label:      "Set up your restaurant",
+  obItem1Hint:       "Restaurant name and city in Settings",
+  obItem2Label:      "Add your first register",
+  obItem2Hint:       "Go to the Daily tab",
+  obItem3Label:      "Enter today's sales",
+  obItem3Hint:       "Manual entry or scan POS report",
+  obItem4Label:      "Add a supplier",
+  obItem4Hint:       "Settings → Finances → Suppliers",
+  obItem5Label:      "Enter a supplier invoice",
+  obItem5Hint:       "Monthly tab → Costs & expenses",
+  obItem6Label:      "Check the Intelligence tab",
+  obItem6Hint:       "Analytics and sales trends",
 
   // ── TODAY-AT-A-GLANCE ──
   glanceTitle:       "Today at a Glance",
