@@ -826,7 +826,7 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
 }
 
 // ── BILL ENTRY (accumulating bills for P&L) ──
-function BillEntry({label,baseKey,plData,updPL,accent="249,115,22"}){
+function BillEntry({label,baseKey,plData,updPL,accent="249,115,22",onBillAdded}){
   const T=useL();
   const t=useT();
   const [open,setOpen]=useState(false);
@@ -841,6 +841,7 @@ function BillEntry({label,baseKey,plData,updPL,accent="249,115,22"}){
     const bill={id:Date.now().toString(),date:newDate,amount:amt,note:newNote.trim()};
     updPL(`${baseKey}_bills`,[...bills,bill]);
     logCreate('pl','facture_fournisseur',bill.id,bill);
+    onBillAdded?.(bill,baseKey);
     setNewAmt('');setNewNote('');
   };
   const removeBill=async id=>{
@@ -924,6 +925,41 @@ function UpgradeHint({promptKey, message, icon='✨', t: theme}){
       <span style={{fontSize:12,flexShrink:0,marginTop:1}}>{icon}</span>
       <span style={{flex:1,fontSize:10.5,color:tt.textSub||"#6b7280",lineHeight:1.45}}>{message}</span>
       <button onClick={dismiss} title="Ignorer" style={{background:"none",border:"none",color:tt.textMuted||"#9ca3af",cursor:"pointer",fontSize:11,padding:"0 2px",flexShrink:0,lineHeight:1}}>✕</button>
+    </div>
+  );
+}
+
+// ── PRICE INTELLIGENCE ALERT ──
+// Shows after a bill is added if the invoice amount is up by >threshold%.
+function PriceIntelAlert({alert,history,T,t,onDismiss}){
+  const [expanded,setExpanded]=useState(false);
+  const cur=fmt(alert.bill.amount);
+  const last=fmt(alert.lastBill.amount);
+  return(
+    <div style={{padding:"8px 10px",borderRadius:7,marginTop:7,background:"rgba(234,179,8,0.07)",border:"1px solid rgba(234,179,8,0.28)"}}>
+      <div style={{display:"flex",alignItems:"flex-start",gap:7}}>
+        <span style={{fontSize:13,flexShrink:0,marginTop:1}}>📈</span>
+        <div style={{flex:1}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#ca8a04",marginBottom:2}}>{T.priceIntelTitle(alert.supplierName)}</div>
+          <div style={{fontSize:10.5,color:t.textSub,lineHeight:1.45}}>{T.priceIntelBody(alert.pct,last,cur)}</div>
+          {history.length>1&&(
+            <button onClick={()=>setExpanded(e=>!e)} style={{fontSize:9.5,color:"#ca8a04",background:"none",border:"none",cursor:"pointer",padding:"3px 0 0",textDecoration:"underline",display:"block"}}>
+              {T.priceIntelTrend} {expanded?"▲":"▼"}
+            </button>
+          )}
+          {expanded&&history.length>0&&(
+            <div style={{marginTop:4,display:"flex",flexDirection:"column",gap:2}}>
+              {history.map((h,i)=>(
+                <div key={h.id} style={{display:"flex",justifyContent:"space-between",fontSize:9.5,color:i===0?t.text:t.textMuted}}>
+                  <span>{h.bill_date||h.month_key}</span>
+                  <span style={{fontFamily:"'DM Mono',monospace",fontWeight:i===0?700:400}}>{fmt(h.amount)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <button onClick={onDismiss} title="Ignorer" style={{background:"none",border:"none",color:t.textMuted,cursor:"pointer",fontSize:11,padding:"0 2px",flexShrink:0,lineHeight:1}}>✕</button>
+      </div>
     </div>
   );
 }
@@ -1575,6 +1611,34 @@ function MonthlyPL({computeDay,suppliers,liveData,platforms,expenseItems,glAccou
   const [plData,setPlData]=useState({});const [saved,setSaved]=useState(false);const [loaded,setLoaded]=useState(false);const saveRef=useRef(null);
   const [revTouched,setRevTouched]=useState(false);
   const [showOCRModal,setShowOCRModal]=useState(null); // null | 'fp' | 'exp'
+  const [priceAlerts,setPriceAlerts]=useState([]); // [{supplierKey,supplierName,bill,lastBill,pct,history,dismissed}]
+  const [priceAlertHistory,setPriceAlertHistory]=useState({}); // {supplierKey: [rows]}
+  const priceThreshold=parseFloat(apiConfig?.priceIntelThreshold)||5;
+
+  const handleBillAdded=useCallback(async(bill,baseKey)=>{
+    // Only track supplier bills (not pettyCash)
+    if(!baseKey.startsWith('sup_'))return;
+    const sup=suppliers.find(s=>`sup_${s.id}`===baseKey);
+    const supName=sup?.name||baseKey;
+    // Record to history
+    await window.api.plPriceIntel.record({
+      supplier_key:baseKey,supplier_name:supName,
+      amount:bill.amount,bill_date:bill.date||'',
+      note:bill.note||'',month_key:month,bill_id:bill.id
+    });
+    // Compare against last bill
+    const lastBill=await window.api.plPriceIntel.getLast(baseKey,bill.id);
+    if(!lastBill)return;
+    const pct=((bill.amount-lastBill.amount)/lastBill.amount)*100;
+    if(pct<priceThreshold)return;
+    // Load recent history for trend
+    const history=await window.api.plPriceIntel.getRecent(baseKey,5);
+    setPriceAlerts(prev=>{
+      const filtered=prev.filter(a=>a.supplierKey!==baseKey);
+      return[{supplierKey:baseKey,supplierName:supName,bill,lastBill,pct:Math.round(pct*10)/10,dismissed:false},...filtered];
+    });
+    setPriceAlertHistory(prev=>({...prev,[baseKey]:history}));
+  },[suppliers,month,priceThreshold]);
 
   useEffect(()=>{setLoaded(false);setSaved(false);(async()=>{try{const r=await window.api.storage.get(`dicann-pl-${month}`);if(r?.value)setPlData(JSON.parse(r.value));else setPlData({})}catch(e){setPlData({})}setLoaded(true)})()},[month]);
 
@@ -1728,12 +1792,16 @@ function MonthlyPL({computeDay,suppliers,liveData,platforms,expenseItems,glAccou
           :<button title={T.upgradeToPro} style={{fontSize:10,padding:'2px 8px',borderRadius:4,border:'1px solid rgba(107,114,128,0.15)',background:'none',color:'#9ca3af',cursor:'default',whiteSpace:'nowrap'}}>📷 <span style={{fontSize:8,color:'#f97316',fontWeight:700}}>Pro</span></button>
       }>
         <BillEntry label={T.plPettyCashFP} baseKey="pettyCashFP" plData={plData} updPL={updPL} accent="249,115,22"/>
-        {suppliers.map(s=>(<BillEntry key={s.id} label={s.name} baseKey={`sup_${s.id}`} plData={plData} updPL={updPL} accent="249,115,22"/>))}
+        {suppliers.map(s=>(<BillEntry key={s.id} label={s.name} baseKey={`sup_${s.id}`} plData={plData} updPL={updPL} accent="249,115,22" onBillAdded={handleBillAdded}/>))}
         {suppliers.length===0&&<div style={{margin:"6px 0",padding:"8px 10px",borderRadius:6,background:"rgba(249,115,22,0.06)",border:"1px dashed rgba(249,115,22,0.25)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}>
           <span style={{fontSize:11,color:"rgba(249,115,22,0.85)"}}>{T.supplierEmptyHint}</span>
           {setActiveTab&&<button onClick={()=>setActiveTab("settings")} style={{fontSize:10,padding:"3px 9px",borderRadius:5,border:"1px solid rgba(249,115,22,0.35)",background:"rgba(249,115,22,0.1)",color:"#f97316",cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>{T.supplierEmptyBtn}</button>}
         </div>}
         <div style={{marginTop:6,paddingTop:6,borderTop:`1px solid rgba(249,115,22,0.15)`}}><RR label={T.plTotalFP} value={fpT} accent="#f97316" bold/>{revenue>0&&<RR label={T.plFPPct} value={`${fpP.toFixed(1)}%`} unit="" accent={fpP>35?"#ef4444":fpP>30?t.warnText:"#22c55e"}/>}</div>
+        {/* Price Intelligence Alerts */}
+        {priceAlerts.filter(a=>!a.dismissed).map(alert=>(
+          <PriceIntelAlert key={alert.supplierKey} alert={alert} history={priceAlertHistory[alert.supplierKey]||[]} T={T} t={t} onDismiss={()=>setPriceAlerts(prev=>prev.map(a=>a.supplierKey===alert.supplierKey?{...a,dismissed:true}:a))}/>
+        ))}
         {!canUse('ocrScanning')&&<UpgradeHint promptKey="pl_invoice_scan" message={T.upgPromptInvoiceScan} icon="📷" t={t}/>}
         {!canUse('ocrScanning')&&<UpgradeHint promptKey="pl_recipe_costing" message={T.upgPromptRecipeCosting} icon="📊" t={t}/>}
       </Sec>
@@ -10963,6 +11031,17 @@ export default function App(){
               </div>))}
               <div style={{display:"flex",gap:6,marginTop:4}}>
                 <input placeholder={T.cfgNewSupplier} onKeyDown={e=>{if(e.key==="Enter"&&e.target.value.trim()){const ns=[...suppliers,{id:Date.now().toString(),name:e.target.value.trim()}];setSuppliers(ns);saveSup(ns);e.target.value=""}}} style={{...inputStyle,flex:1}}/>
+              </div>
+            </CfgCard>
+            {/* ── PRICE INTEL THRESHOLD ── */}
+            <CfgCard id="priceIntelConfig" title={`📈 ${T.priceIntelThresholdLabel}`} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>
+              <div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{T.priceIntelThresholdHint}</div>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <input type="number" min="1" max="100" step="1"
+                  value={apiConfig.priceIntelThreshold??5}
+                  onChange={e=>{const v=parseFloat(e.target.value)||5;setApiConfig(c=>({...c,priceIntelThreshold:v}));saveApiCfg({...apiConfig,priceIntelThreshold:v});}}
+                  style={{...inputStyle,width:64,textAlign:"right"}}/>
+                <span style={{fontSize:12,color:t.textSub}}>%</span>
               </div>
             </CfgCard>
             <CfgCard id="expenseItems" title={T.cfgExpenseItems} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>

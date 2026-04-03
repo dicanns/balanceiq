@@ -187,6 +187,11 @@ contextBridge.exposeInMainWorld('api', {
     markDone: (key) => ipcRenderer.invoke('onboarding:markDone', key),
     reset:    ()    => ipcRenderer.invoke('onboarding:reset'),
   },
+  plPriceIntel: {
+    record:    (r)              => ipcRenderer.invoke('plPriceIntel:record', r),
+    getLast:   (key, excludeId) => ipcRenderer.invoke('plPriceIntel:getLast', key, excludeId),
+    getRecent: (key, limit)     => ipcRenderer.invoke('plPriceIntel:getRecent', key, limit),
+  },
   eco: {
     items: {
       getAll: ()       => ipcRenderer.invoke('eco:items:getAll'),
