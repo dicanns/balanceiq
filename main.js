@@ -38,6 +38,8 @@ const {
   ecoConfigGet, ecoConfigSave,
   ecoRatesGetForYear, ecoRateUpsert,
   ecoUsageGetForYear, ecoUsageUpsert, ecoUsageDelete,
+  posScanTemplatesGetAll, posScanTemplateSave, posScanTemplateDelete, posScanTemplateMarkUploaded,
+  posScanHistorySave, posScanHistoryGetRecent, posScanHistoryGetForDate,
 } = require('./src/db/database.js');
 
 const BACKUP_DIR = () => path.join(app.getPath('userData'), 'Backups');
@@ -1308,6 +1310,46 @@ app.whenReady().then(() => {
     });
   }
 });
+
+// ── POS Report Scan ──────────────────────────────────────────────────────────
+// Tesseract OCR worker (created once, reused across IPC calls)
+let _ocrWorker = null;
+ipcMain.handle('posScan:ocr', async (_e, base64PNG) => {
+  if (!_ocrWorker) {
+    const { createWorker } = require('tesseract.js');
+    _ocrWorker = await createWorker(['fra', 'eng']);
+  }
+  const buf = Buffer.from(base64PNG, 'base64');
+  const { data: { text } } = await _ocrWorker.recognize(buf);
+  return text;
+});
+
+ipcMain.handle('posScan:selectFile', async () => {
+  const result = await dialog.showOpenDialog({
+    title: 'Sélectionner un rapport POS',
+    filters: [
+      { name: 'Rapports POS', extensions: ['pdf', 'png', 'jpg', 'jpeg'] },
+    ],
+    properties: ['openFile'],
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+  const filePath = result.filePaths[0];
+  const ext = path.extname(filePath).toLowerCase().replace('.', '');
+  const mimeMap = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg' };
+  const mimeType = mimeMap[ext] || 'application/octet-stream';
+  const fileBuffer = fs.readFileSync(filePath);
+  const base64 = fileBuffer.toString('base64');
+  return { base64, mimeType, fileName: path.basename(filePath) };
+});
+
+ipcMain.handle('posScan:templates:getAll', () => posScanTemplatesGetAll());
+ipcMain.handle('posScan:templates:save', (_e, tpl) => posScanTemplateSave(tpl));
+ipcMain.handle('posScan:templates:delete', (_e, id) => posScanTemplateDelete(id));
+ipcMain.handle('posScan:templates:markUploaded', (_e, id) => posScanTemplateMarkUploaded(id));
+
+ipcMain.handle('posScan:history:save', (_e, entry) => posScanHistorySave(entry));
+ipcMain.handle('posScan:history:getRecent', (_e, limit) => posScanHistoryGetRecent(limit));
+ipcMain.handle('posScan:history:getForDate', (_e, dateKey) => posScanHistoryGetForDate(dateKey));
 
 app.on('window-all-closed', () => {
   if (biqTray) { biqTray.destroy(); biqTray = null; }

@@ -7,6 +7,7 @@ const RecettesTabLazy          = lazy(() => import('./components/RecettesTab.jsx
 const WasteTabLazy             = lazy(() => import('./components/WasteTab.jsx'));
 const EcocontributionTabLazy   = lazy(() => import('./components/EcocontributionTab.jsx'));
 const TipPoolModal      = lazy(() => import('./components/TipPoolModal.jsx'));
+const POSScanModal      = lazy(() => import('./components/POSScanModal.jsx'));
 import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./config/features.js";
 import { calcRoyaltyFull } from "./utils/calculations.js";
@@ -286,7 +287,7 @@ function ReconLine({label,value,negative,bold,accent,borderTop}){
 }
 
 // ── CASH BLOCK ──
-function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,roster,posAdvancedConfig}){
+function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,roster,posAdvancedConfig,onScan}){
   const T=useL();
   const t=useT();
   // POS total = Sales + GST + QST (deliveries are SUBSET of sales, already included)
@@ -334,6 +335,7 @@ function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,ro
         <div>
           <div style={{fontSize:9.5,color:t.posColor,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,marginBottom:4}}><span style={{width:8,height:8,borderRadius:2,background:t.posColor,display:"inline-block",marginRight:4}}/> {T.dailyLecturePOS}</div>
           <div style={{background:`rgba(${t.posRgb},0.05)`,borderRadius:7,padding:8,border:`1px solid rgba(${t.posRgb},0.12)`}}>
+            {onScan&&<div style={{marginBottom:7,paddingBottom:7,borderBottom:`1px solid rgba(${t.posRgb},0.12)`}}><button onClick={onScan} style={{width:"100%",background:"transparent",border:`1px solid rgba(${t.posRgb},0.25)`,borderRadius:5,color:t.posColor,fontSize:10.5,fontWeight:600,padding:"5px 8px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}><span style={{fontSize:12}}>📷</span>{T.scanButton}</button><div style={{fontSize:9,color:t.textMuted,textAlign:"center",marginTop:3}}>{T.scanHelper}</div></div>}
             <F label={T.dailySalesTax} value={cash.posVentes} onChange={v=>onChange({...cash,posVentes:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+1} warn={cash.posVentes!=null&&cash.posVentes<0?T.warnNegativeAmount:cash.posVentes!=null&&cash.posVentes>15000?T.warnHighAmount:null}/>
             <F label={T.dailyGST} value={cash.posTPS} onChange={v=>onChange({...cash,posTPS:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+2} warn={cash.posTPS!=null&&cash.posTPS<0?T.warnNegativeAmount:null}/>
             <F label={T.dailyQST} value={cash.posTVQ} onChange={v=>onChange({...cash,posTVQ:v})} prefix="$" accent={t.posRgb} tabIndex={index*20+3} warn={cash.posTVQ!=null&&cash.posTVQ<0?T.warnNegativeAmount:null}/>
@@ -9052,6 +9054,7 @@ export default function App(){
   const [closedDays,setClosedDays]=useState({});// {[dateKey]: {closedAt: ISO string}}
   const [showCloseConfirm,setShowCloseConfirm]=useState(false);
   const [showTipPool,setShowTipPool]=useState(false);
+  const [posScanOpen,setPosScanOpen]=useState(null); // null | { caisseIndex: number }
   const [flashTestStatus,setFlashTestStatus]=useState(null); // null | 'sending' | {ok} | {err}
   const [flashReport,setFlashReport]=useState(null); // null | {date, venteNet, total, wtdSales, wtdDays, closedCount, totalRegs, isClosed, labourCost, labourPct, cashes}
   useEffect(()=>{const h=e=>setPdfPreview(e.detail.html);window.addEventListener('biq:pdf-preview',h);return()=>window.removeEventListener('biq:pdf-preview',h);},[]);
@@ -9117,6 +9120,26 @@ export default function App(){
     setLoading(false);
     // Load auto-backup info after a short delay (backup runs at t+3s)
     setTimeout(async()=>{try{const info=await window.api.backup.getInfo();setBackupInfo(info)}catch(_){}},4000);
+    // Download approved community POS scan templates (silent, background, all users)
+    setTimeout(async()=>{
+      try{
+        if(!navigator.onLine)return;
+        const {SUPABASE_URL,SUPABASE_ANON_KEY}=await import('./services/supabase.js');
+        const res=await fetch(`${SUPABASE_URL}/rest/v1/pos_scan_community_templates?approved=eq.true&select=id,pos_system,pos_version,language,patterns,metadata`,{headers:{'apikey':SUPABASE_ANON_KEY,'Accept':'application/json'}});
+        if(!res.ok)return;
+        const rows=await res.json();
+        if(!Array.isArray(rows)||rows.length===0)return;
+        for(const row of rows){
+          await window.api.posScan.templates.save({
+            id:row.id,pos_system:row.pos_system,pos_version:row.pos_version||'',
+            language:row.language||'fr',
+            patterns:typeof row.patterns==='string'?row.patterns:JSON.stringify(row.patterns),
+            metadata:typeof row.metadata==='string'?row.metadata:JSON.stringify(row.metadata||{}),
+            is_community:1,uploaded:0,
+          });
+        }
+      }catch(_){}
+    },8000);
     // Load checklist templates + last 31 days of entries for compliance stats
     try{
       const tmpl=await window.api.checklist.getTemplates();
@@ -10120,7 +10143,7 @@ export default function App(){
                 </div>
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {cashes.map((c,i)=>(<CashBlock key={`${selectedDate}-${i}-${cashes.length}`} cash={c} index={i} onChange={c=>updCash(selectedDate,i,c)} onRemove={()=>rmCash(selectedDate,i)} canRemove={cashes.length>1} collapsed={!!collapseMap[`${selectedDate}-${i}`]} onToggle={()=>togC(i)} roster={roster} posAdvancedConfig={posAdvancedConfig}/>))}
+                {cashes.map((c,i)=>(<CashBlock key={`${selectedDate}-${i}-${cashes.length}`} cash={c} index={i} onChange={c=>updCash(selectedDate,i,c)} onRemove={()=>rmCash(selectedDate,i)} canRemove={cashes.length>1} collapsed={!!collapseMap[`${selectedDate}-${i}`]} onToggle={()=>togC(i)} roster={roster} posAdvancedConfig={posAdvancedConfig} onScan={()=>setPosScanOpen({caisseIndex:i})}/>))}
               </div>
             </div>
 
@@ -10186,6 +10209,36 @@ export default function App(){
             {showTipPool&&(
               <Suspense fallback={null}>
                 <TipPoolModal lang={lang} date={selectedDate} dailyEmployees={emps||[]} staffRoster={empRoster||[]} onClose={()=>setShowTipPool(false)}/>
+              </Suspense>
+            )}
+            {/* POS Scan Modal */}
+            {posScanOpen&&(
+              <Suspense fallback={null}>
+                <POSScanModal
+                  isOpen={true}
+                  onClose={()=>setPosScanOpen(null)}
+                  onApply={(vals)=>{
+                    const ci=posScanOpen.caisseIndex;
+                    const cur=cashes[ci]||{};
+                    const upd={...cur};
+                    if(vals.ventes_avant_taxes!=null)upd.posVentes=vals.ventes_avant_taxes;
+                    if(vals.tps!=null)upd.posTPS=vals.tps;
+                    if(vals.tvq!=null)upd.posTVQ=vals.tvq;
+                    if(vals.livraisons!=null)upd.posLivraisons=vals.livraisons;
+                    if(vals.interac!=null)upd.interac=vals.interac;
+                    if(vals.especes!=null)upd.finalCash=vals.especes;
+                    if(vals.nb_transactions!=null)upd.posTransactionCount=vals.nb_transactions;
+                    updCash(selectedDate,ci,upd);
+                    setPosScanOpen(null);
+                  }}
+                  caisseIndex={posScanOpen.caisseIndex}
+                  date={selectedDate}
+                  T={T}
+                  t={t}
+                  apiConfig={apiConfig}
+                  cloudUser={cloudUser}
+                  canUseCloud={canUse('posScanCloud')}
+                />
               </Suspense>
             )}
 
