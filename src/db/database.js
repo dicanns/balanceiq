@@ -5,6 +5,51 @@ const crypto = require('crypto');
 
 let db;
 
+// ── Schema Migration System ──────────────────────────────────────────────────
+// Each entry runs exactly once, in version order.
+// Version 1 = baseline covering all tables through v1.23.0.
+// New tables for Items 2–6 and beyond go here as new migrations — never as
+// raw CREATE TABLE calls scattered through getDb().
+const MIGRATIONS = [
+  {
+    version: 1,
+    description: 'Baseline schema — all tables through v1.23.0 (POS scan module)',
+    up: (_db) => {
+      // All tables already exist via CREATE TABLE IF NOT EXISTS in getDb().
+      // This entry just stamps the version on new and existing databases.
+    },
+  },
+  // Future migrations added here in order, e.g.:
+  // { version: 2, description: '...', up: (db) => { db.prepare('CREATE TABLE ...').run(); } },
+];
+
+// Runs all pending migrations in ascending version order.
+// If any migration fails the error is re-thrown — the app must not start
+// with a partially-migrated schema.
+function runMigrations(database) {
+  const currentVersion = database.pragma('user_version', { simple: true });
+  const pending = MIGRATIONS
+    .filter(m => m.version > currentVersion)
+    .sort((a, b) => a.version - b.version);
+
+  if (pending.length === 0) return;
+
+  for (const migration of pending) {
+    console.log(`[DB] Running migration v${migration.version}: ${migration.description}`);
+    try {
+      database.transaction(() => {
+        migration.up(database);
+        database.pragma(`user_version = ${migration.version}`);
+      })();
+      console.log(`[DB] Migration v${migration.version} complete.`);
+    } catch (err) {
+      const msg = `[DB] Migration v${migration.version} FAILED: ${err.message}`;
+      console.error(msg);
+      throw new Error(msg);
+    }
+  }
+}
+
 function getDb() {
   if (!db) {
     const dbPath = path.join(app.getPath('userData'), 'balanceiq.db');
@@ -363,6 +408,9 @@ function getDb() {
        ['polystyrene_pvc_pla',3391.42,50],['aluminum',444.57,0],['printed_matter',737.12,0]
       ].forEach(([cat,rate,malus])=>ins2025.run(2025,cat,rate,malus));
     }
+
+    // Run pending schema migrations (sequential, version-ordered, transactional)
+    runMigrations(db);
   }
   return db;
 }
