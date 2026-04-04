@@ -241,10 +241,12 @@ function buildDailyEntry(dateStr, preset, carry, options = {}) {
     const interac = r2(grossAmt * sr(varSeed + 1, 0.52, 0.64));
     const cashExpected = r2(grossAmt - interac);
     const float = 200;
-    let variance = r2(sr(varSeed + 2, -0.50, 0.50));
+    // Negative bias: cashier is typically short $5-18, occasionally slightly over
+    let variance = r2(sr(varSeed + 2, -18, 4));
     if (cashierId === 'demo-cashier-lucas' && dow === 5) variance = r2(sr(varSeed + 99, -12, -8));
     if (isBig45Short && cashierId === c1.id) variance = -45.00;
-    const finalCash = r2(float + cashExpected + variance);
+    // finalCash = net cash collected (NOT including starting float — float stays in till)
+    const finalCash = r2(cashExpected + variance);
     return { cashierId, posVentes: r2(sales), posTPS: tps(sales), posTVQ: tvq(sales),
       posLivraisons: 0, float, interac, livraisons: 0, deposits: 0, finalCash };
   }
@@ -1191,7 +1193,16 @@ export async function loadDemoData(lang = 'fr', presetKey = 'qsr') {
     apiConfig.weatherLng = preset.weatherCoords.lon;
     apiConfig.weatherCity = preset.weatherCoords.city;
     await api.storage.set('dicann-api-config', JSON.stringify(apiConfig));
-    await api.storage.set('balanceiq-previsions-enabled', JSON.stringify(true));
+    await api.storage.set('balanceiq-previsions-enabled', '1');
+
+    // Reset inv config so ham/hot items are always present for forecast to work
+    const invItems = preset.hasInventory
+      ? [
+          {id:'ham',nom:'Hamburger',unite:'douzaines',seuil:5,intraDayEnabled:true,intraDayTimes:[14,17,19,20]},
+          {id:'hot',nom:'Hot Dog',unite:'douzaines',seuil:3,intraDayEnabled:true,intraDayTimes:[14,17,19,20]},
+        ]
+      : [];
+    await api.storage.set('dicann-inv-config', JSON.stringify({enabled: preset.hasInventory, items: invItems}));
 
     return { success: true, message: lang === 'en' ? 'Demo data loaded successfully.' : 'Données démo chargées avec succès.' };
   } catch (err) {
