@@ -5764,20 +5764,20 @@ export default function App(){
     window.api.storage.set("balanceiq-glance-date",todayKey).catch(()=>{});
   },[todayKey]);
 
-  // Count unclosed days this week that have data
+  // List unclosed past days this week that have data
   const unclosedThisWeek=useMemo(()=>{
     const today_=new Date();today_.setHours(0,0,0,0);
     const dow=today_.getDay();const mon=new Date(today_);mon.setDate(today_.getDate()-((dow+6)%7));
-    let count=0;
+    const list=[];
     for(let i=0;i<7;i++){
       const dd=new Date(mon);dd.setDate(mon.getDate()+i);
       if(dd>=today_)break;// don't count today or future
       const key=dk(dd);
       const cd=computeDay(key);
-      if(cd.anyData&&!closedDays[key])count++;
+      if(cd.anyData&&!closedDays[key])list.push({key,dayLetter:T.days[dd.getDay()].slice(0,2)});
     }
-    return count;
-  },[computeDay,closedDays]);
+    return list;
+  },[computeDay,closedDays,T]);
 
   const closeDay=useCallback(async()=>{
     const key=selectedDate;
@@ -6090,11 +6090,11 @@ export default function App(){
           {activeTab==="reseau"&&<ReseauTab locations={locations} facFactures={facFactures} facCreditNotes={facCreditNotes} facClients={facClients} royaltyConfig={royaltyConfig} facCategories={facCategories} facProduits={facProduits} saveFacFactures={saveFacFactures} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} apiConfig={apiConfig} perfTargets={perfTargets} payrollConfig={payrollConfig} cloudUser={cloudUser} alertConfig={alertConfig} orgId={getCloudOrgId()} onUnreadDocsChange={setUnreadDocsCount}/>}
 
           {/* DAILY TAB */}
-          {activeTab==="daily"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>{unclosedThisWeek>0&&(<div style={{background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.3)",borderRadius:7,padding:"7px 12px",fontSize:12,color:"#f59e0b",fontWeight:600}}>{T.unclosedDaysWarn(unclosedThisWeek)}</div>)}
+          {activeTab==="daily"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>{unclosedThisWeek.length>0&&(<div style={{background:"rgba(239,68,68,0.07)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:7,padding:"7px 12px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}><span style={{fontSize:12,color:"#ef4444",fontWeight:700}}>⚠ {T.unclosedDaysWarn(unclosedThisWeek.length)}</span><span style={{display:"flex",gap:4,flexWrap:"wrap"}}>{unclosedThisWeek.map(d=>(<button key={d.key} onClick={()=>setSelectedDate(d.key)} style={{fontSize:10,padding:"1px 7px",borderRadius:10,border:"1px solid rgba(239,68,68,0.35)",background:"rgba(239,68,68,0.1)",color:"#ef4444",cursor:"pointer",fontWeight:600}}>{d.dayLetter}</button>))}</span></div>)}
             {/* ── 7-day close status dots ── */}
             {(()=>{
-              const dots=[];const base=new Date(selectedDate+"T12:00:00");
-              for(let i=6;i>=0;i--){const dd=new Date(base);dd.setDate(base.getDate()-i);const k=dk(dd);const s=getCloseStatus(k);const dotColor=s==='closed_clean'?'#16a34a':s==='closed_with_warnings'?'#f97316':s==='in_progress'?'#f59e0b':'#374151';const isToday=k===selectedDate;dots.push(<div key={k} onClick={()=>setSelectedDate(k)} title={`${T.days[dd.getDay()]} ${k} — ${T['closeStatus'+s.split('_').map((w,i)=>i===0?w:w[0].toUpperCase()+w.slice(1)).join('')]||s}`} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,cursor:"pointer",opacity:isToday?1:0.7}}><div style={{width:9,height:9,borderRadius:"50%",background:dotColor,boxShadow:isToday?`0 0 0 2px rgba(249,115,22,0.6)`:undefined,transition:"all 0.1s"}}/><span style={{fontSize:7.5,color:t.textDim,fontWeight:isToday?700:400}}>{T.days[dd.getDay()].slice(0,1)}</span></div>);}
+              const dots=[];const base=new Date(selectedDate+"T12:00:00");const todayKey=dk(new Date());
+              for(let i=6;i>=0;i--){const dd=new Date(base);dd.setDate(base.getDate()-i);const k=dk(dd);const s=getCloseStatus(k);const isPast=k<todayKey;const needsAction=isPast&&s==='in_progress';const dotColor=s==='closed_clean'?'#22c55e':s==='closed_with_warnings'?'#f97316':needsAction?'#ef4444':s==='in_progress'?'#f59e0b':isPast?'#4b5563':'#374151';const dotSize=needsAction?11:9;const isToday=k===selectedDate;dots.push(<div key={k} onClick={()=>setSelectedDate(k)} title={`${T.days[dd.getDay()]} ${k} — ${T['closeStatus'+s.split('_').map((w,ii)=>ii===0?w:w[0].toUpperCase()+w.slice(1)).join('')]||s}`} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,cursor:"pointer",opacity:isToday?1:0.75}}><div style={{width:dotSize,height:dotSize,borderRadius:"50%",background:dotColor,boxShadow:isToday?`0 0 0 2px rgba(249,115,22,0.6)`:needsAction?`0 0 0 2px rgba(239,68,68,0.25)`:undefined,transition:"all 0.1s"}}/><span style={{fontSize:7.5,color:needsAction?'#ef4444':t.textDim,fontWeight:isToday||needsAction?700:400}}>{T.days[dd.getDay()].slice(0,1)}</span></div>);}
               return(<div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 6px",borderRadius:6,background:t.section,border:`1px solid ${t.sectionBorder}`,width:"fit-content"}}><span style={{fontSize:8,color:t.textDim,marginRight:2,fontWeight:600,textTransform:"uppercase",letterSpacing:0.6}}>{T.closeStatus7DaysLabel}</span>{dots}</div>);
             })()}<div style={{display:"flex",gap:5,flexWrap:"wrap"}}><MC label={T.dailyNetSales} value={fmt(today.venteNet)} accent={t.posColor} delta={salesDelta}/><MC label={T.dailyGross} value={fmt(today.total)} accent="#f97316"/><MC label={T.dailyPerDozen} value={today.moyenne?fmt(today.moyenne):"—"} accent="#7c3aed"/><MC label={T.dailyWeekCumul} value={fmt(wkC)} delta={wkDelta}/><MC label={T.dailyMonthCumul} value={fmt(mtdTotal)} sub={T.dailyDaysAbbr(mtdDays)}/>{today.labourPct!=null&&<MC label={T.dailyLabourCard} value={`${today.labourPct.toFixed(1)}%`} sub={fmt(today.labourCost)} accent={today.labourPct>35?"#ef4444":today.labourPct>28?t.warnText:"#22c55e"}/>}<div style={{background:t.section,border:`1px solid ${t.sectionBorder}`,borderRadius:8,padding:"9px 13px",display:"flex",flexDirection:"column",gap:1,minWidth:100,flex:"0 0 auto",cursor:"pointer"}} onClick={()=>setActiveTab("encaisse")}><span style={{fontSize:8.5,color:t.textMuted,textTransform:"uppercase",letterSpacing:0.8,fontWeight:600}}>{T.dailyEncaisseCard}</span><span style={{fontSize:18,fontWeight:700,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:encaisseStatus==="balanced"?"#22c55e":encaisseStatus==="error"?"#ef4444":encaisseStatus==="pending"?"#f97316":t.textDim}}>{encaisseStatus==="balanced"?"":encaisseStatus==="error"?"":encaisseStatus==="pending"?"⏳":"—"}</span><span style={{fontSize:9.5,color:t.textMuted}}>{encaisseStatus==="balanced"?T.statusBalanced:encaisseStatus==="error"?T.statusVariance:encaisseStatus==="pending"?T.statusPending:T.statusNotEntered}</span></div></div><div><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7,flexWrap:"wrap",gap:4}}><span style={{fontSize:13.5,fontWeight:700,color:t.text}}>{T.dailyCaisses}</span><div style={{display:"flex",alignItems:"center",gap:6}}>{canUse('posIntegration')&&(()=>{const connectedPOS=Object.entries(posCredentials).find(([,v])=>v?.connected);if(!connectedPOS)return null;const [posType,posCred]=connectedPOS;return(<button onClick={async()=>{
                     if(posImporting)return;
