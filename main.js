@@ -1624,8 +1624,15 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
   } catch (_) {}
 
   // ── P&L monthly bills — search all dicann-pl-* keys ──
+  // Build supplier display-name lookup (key → name) from apiConfig
   results.plBills = [];
   try {
+    const apiCfgRaw = readKVObj('dicann-api-config');
+    const supplierNameMap = {};
+    (Array.isArray(apiCfgRaw.suppliers) ? apiCfgRaw.suppliers : []).forEach(s => {
+      if (s.key) supplierNameMap[s.key] = s.name || s.key;
+    });
+
     const plRows = storageGetByPrefix('dicann-pl-');
     const plMatches = [];
     for (const row of plRows) {
@@ -1633,24 +1640,19 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
       try {
         const plData = JSON.parse(row.value);
         const month = row.key.replace('dicann-pl-', '');
-        // Each supplier key stores its bills at `${supplierKey}_bills`
         for (const [k, v] of Object.entries(plData)) {
           if (!k.endsWith('_bills') || !Array.isArray(v)) continue;
           const supplierKey = k.replace('_bills', '');
+          const displayName = supplierNameMap[supplierKey] || supplierKey;
+          const supplierMatches = matchStr(displayName) || matchStr(supplierKey);
           for (const bill of v) {
-            if (matchStr(bill.note) || matchStr(supplierKey)) {
-              plMatches.push({ type: 'pl_bill', month, supplierKey, note: bill.note || '', amount: bill.amount || 0, date: bill.date || month });
+            const amtStr = bill.amount != null ? String(Number(bill.amount).toFixed(2)) : '';
+            const billMatches = matchStr(bill.note) || matchStr(amtStr) ||
+              (isNumericSearch && bill.amount != null && Math.abs(bill.amount - numQ) < 0.02);
+            if (supplierMatches || billMatches) {
+              plMatches.push({ type: 'pl_bill', month, supplierKey, supplierName: displayName, note: bill.note || '', amount: bill.amount || 0, date: bill.date || month });
               if (plMatches.length >= limit) break;
             }
-          }
-          if (plMatches.length >= limit) break;
-        }
-        // Also match on supplier keys directly (without _bills suffix)
-        for (const [k, v] of Object.entries(plData)) {
-          if (k.endsWith('_bills') || k.startsWith('_') || typeof v !== 'number') continue;
-          if (matchStr(k)) {
-            plMatches.push({ type: 'pl_supplier', month, supplierKey: k, amount: v });
-            if (plMatches.length >= limit) break;
           }
           if (plMatches.length >= limit) break;
         }

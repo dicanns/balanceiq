@@ -305,8 +305,8 @@ export default function GlobalSearch({ isOpen, onClose, onNavigate, lang = 'fr',
 
     // P&L bills
     (results.plBills || []).forEach(b => {
-      const label = b.supplierKey || '';
-      const sub = b.note ? `${b.note}${b.amount ? ' · ' + fmt(b.amount) : ''}` : (b.amount ? fmt(b.amount) : b.month);
+      const label = b.supplierName || b.supplierKey || '';
+      const sub = [b.note, b.amount ? fmt(b.amount) : null, b.month].filter(Boolean).join(' · ');
       items.push({ _type: 'pl_bill', _icon: '📄', _label: label, _sub: sub, _hint: 'P&L', _key: `plb-${b.month}-${b.supplierKey}-${b.date}`, ...b });
     });
 
@@ -347,8 +347,9 @@ export default function GlobalSearch({ isOpen, onClose, onNavigate, lang = 'fr',
       return { _type: 'daily_entry', _icon: '📋', _label: d.date, _sub: label, _hint: T ? 'Daily' : 'Quotidien', _key: `de-${d.date}-${d.reason}`, ...d };
     });
     const plBills = (results.plBills || []).map(b => {
-      const sub = b.note ? `${b.note}${b.amount ? ' · ' + fmt(b.amount) : ''}` : (b.amount ? fmt(b.amount) : b.month);
-      return { _type: 'pl_bill', _icon: '📄', _label: b.supplierKey || '', _sub: sub, _hint: 'P&L', _key: `plb-${b.month}-${b.supplierKey}-${b.date}`, ...b };
+      const label = b.supplierName || b.supplierKey || '';
+      const sub = [b.note, b.amount ? fmt(b.amount) : null, b.month].filter(Boolean).join(' · ');
+      return { _type: 'pl_bill', _icon: '📄', _label: label, _sub: sub, _hint: 'P&L', _key: `plb-${b.month}-${b.supplierKey}-${b.date}`, ...b };
     });
     const encaisseEntries = (results.encaisseEntries || []).map(e => {
       const label = e.type === 'encaisse_sortie' ? e.category : (T ? 'Note' : 'Note');
