@@ -322,6 +322,33 @@ export default function GlobalSearch({ isOpen, onClose, onNavigate, lang = 'fr',
       items.push({ _type: 'platform', _icon: '🛵', _label: p.name, _sub: null, _hint: T ? 'Deliveries' : 'Livraisons', _key: `plt-${p.id}`, ...p });
     });
 
+    // Facturation products catalog
+    (results.facProducts || []).forEach(p => {
+      items.push({ _type: 'fac_product', _icon: '📦', _label: p.description, _sub: p.code || null, _hint: T ? 'Invoicing' : 'Facturation', _key: `facprod-${p.id}`, ...p });
+    });
+
+    // Facturation categories
+    (results.facCategories || []).forEach(c => {
+      items.push({ _type: 'fac_category', _icon: '🏷️', _label: c.nom, _sub: null, _hint: T ? 'Invoicing' : 'Facturation', _key: `faccat-${c.id}`, ...c });
+    });
+
+    // Recurring invoice templates
+    (results.recurrents || []).forEach(r => {
+      items.push({ _type: 'recurrent', _icon: '🔁', _label: r.description || r.clientName || '', _sub: r.clientName || null, _hint: T ? 'Invoicing' : 'Facturation', _key: `rec-${r.clientId}`, ...r });
+    });
+
+    // Franchise locations
+    (results.locations || []).forEach(l => {
+      items.push({ _type: 'location', _icon: '📍', _label: l.nom || l.name || '', _sub: [l.adresse, l.ville].filter(Boolean).join(', ') || null, _hint: T ? 'Network' : 'Réseau', _key: `loc-${l.id}`, ...l });
+    });
+
+    // Waste entries
+    (results.wasteEntries || []).forEach(w => {
+      const label = w.ingredientName || w.category || '';
+      const sub = [w.reason, w.date].filter(Boolean).join(' · ');
+      items.push({ _type: 'waste_entry', _icon: '♻️', _label: label, _sub: sub || null, _hint: T ? 'Waste' : 'Gaspillage', _key: `we-${w.id}`, ...w });
+    });
+
     // Navigation
     getNavResults(q, lang).forEach(n => {
       items.push({ _type: 'nav', _icon: n.icon, _label: T ? n.labelEn : n.label, _hint: null, _key: n.id, ...n });
@@ -357,8 +384,13 @@ export default function GlobalSearch({ isOpen, onClose, onNavigate, lang = 'fr',
       return { _type: 'encaisse_entry', _icon: '💵', _label: label, _sub: sub, _hint: T ? 'Cash Position' : 'Encaisse', _key: `enc-${e.date}-${e.type}`, ...e };
     });
     const platforms = (results.platforms || []).map(p => ({ _type: 'platform', _icon: '🛵', _label: p.name, _sub: null, _hint: T ? 'Deliveries' : 'Livraisons', _key: `plt-${p.id}`, ...p }));
+    const facProducts = (results.facProducts || []).map(p => ({ _type: 'fac_product', _icon: '📦', _label: p.description, _sub: p.code || null, _hint: T ? 'Invoicing' : 'Facturation', _key: `facprod-${p.id}`, ...p }));
+    const facCategories = (results.facCategories || []).map(c => ({ _type: 'fac_category', _icon: '🏷️', _label: c.nom, _sub: null, _hint: T ? 'Invoicing' : 'Facturation', _key: `faccat-${c.id}`, ...c }));
+    const recurrents = (results.recurrents || []).map(r => ({ _type: 'recurrent', _icon: '🔁', _label: r.description || r.clientName || '', _sub: r.clientName || null, _hint: T ? 'Invoicing' : 'Facturation', _key: `rec-${r.clientId}`, ...r }));
+    const locations = (results.locations || []).map(l => ({ _type: 'location', _icon: '📍', _label: l.nom || l.name || '', _sub: [l.adresse, l.ville].filter(Boolean).join(', ') || null, _hint: T ? 'Network' : 'Réseau', _key: `loc-${l.id}`, ...l }));
+    const wasteEntries = (results.wasteEntries || []).map(w => ({ _type: 'waste_entry', _icon: '♻️', _label: w.ingredientName || w.category || '', _sub: [w.reason, w.date].filter(Boolean).join(' · ') || null, _hint: T ? 'Waste' : 'Gaspillage', _key: `we-${w.id}`, ...w }));
     const nav = getNavResults(q, lang).map(n => ({ ...n, _type: 'nav', _icon: n.icon, _label: T ? n.labelEn : n.label, _hint: null, _key: n.id }));
-    return { actions, clients, invoices, suppliers, employees, ingredients, dailyTotals, dailyEntries, plBills, encaisseEntries, platforms, nav };
+    return { actions, clients, invoices, suppliers, employees, ingredients, dailyTotals, dailyEntries, plBills, encaisseEntries, platforms, facProducts, facCategories, recurrents, locations, wasteEntries, nav };
   }, [results, query, lang, T]);
 
   // Scroll selected item into view
@@ -434,6 +466,17 @@ export default function GlobalSearch({ isOpen, onClose, onNavigate, lang = 'fr',
       case 'platform':
         onNavigate('livraisons', {});
         break;
+      case 'fac_product':
+      case 'fac_category':
+      case 'recurrent':
+        onNavigate('facturation', {});
+        break;
+      case 'location':
+        onNavigate('reseau', {});
+        break;
+      case 'waste_entry':
+        onNavigate('waste', {});
+        break;
       default:
         if (item.tab) onNavigate(item.tab, {});
     }
@@ -448,7 +491,7 @@ export default function GlobalSearch({ isOpen, onClose, onNavigate, lang = 'fr',
   // Compute index offsets per group for keyboard nav mapping
   let offset = 0;
   const offsets = {};
-  for (const key of ['actions', 'clients', 'invoices', 'suppliers', 'employees', 'ingredients', 'dailyTotals', 'dailyEntries', 'plBills', 'encaisseEntries', 'platforms', 'nav']) {
+  for (const key of ['actions', 'clients', 'invoices', 'suppliers', 'employees', 'ingredients', 'dailyTotals', 'dailyEntries', 'plBills', 'encaisseEntries', 'platforms', 'facProducts', 'facCategories', 'recurrents', 'locations', 'wasteEntries', 'nav']) {
     offsets[key] = offset;
     offset += (groups[key] || []).length;
   }
@@ -522,6 +565,11 @@ export default function GlobalSearch({ isOpen, onClose, onNavigate, lang = 'fr',
               <ResultGroup label={T ? 'P&L' : 'P&L'} items={groups.plBills} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.plBills} query={query} styles={styles} />
               <ResultGroup label={T ? 'CASH POSITION' : 'ENCAISSE'} items={groups.encaisseEntries} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.encaisseEntries} query={query} styles={styles} />
               <ResultGroup label={T ? 'DELIVERY PLATFORMS' : 'PLATEFORMES'} items={groups.platforms} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.platforms} query={query} styles={styles} />
+              <ResultGroup label={T ? 'PRODUCTS' : 'PRODUITS'} items={groups.facProducts} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.facProducts} query={query} styles={styles} />
+              <ResultGroup label={T ? 'CATEGORIES' : 'CATÉGORIES'} items={groups.facCategories} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.facCategories} query={query} styles={styles} />
+              <ResultGroup label={T ? 'RECURRING' : 'RÉCURRENTS'} items={groups.recurrents} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.recurrents} query={query} styles={styles} />
+              <ResultGroup label={T ? 'LOCATIONS' : 'SUCCURSALES'} items={groups.locations} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.locations} query={query} styles={styles} />
+              <ResultGroup label={T ? 'WASTE' : 'GASPILLAGE'} items={groups.wasteEntries} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.wasteEntries} query={query} styles={styles} />
               <ResultGroup label={T ? 'NAVIGATION' : 'NAVIGATION'} items={groups.nav} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.nav} query={query} styles={styles} />
             </>
           )}

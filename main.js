@@ -45,6 +45,7 @@ const {
   onboardingGetAll, onboardingMarkDone, onboardingReset,
   plInvoiceHistoryRecord, plInvoiceHistoryGetLast, plInvoiceHistoryGetRecent,
   searchIngredients, searchForecastProducts, searchHistoryGet, searchHistorySave,
+  searchWasteEntries,
   storageGetByPrefix,
 } = require('./src/db/database.js');
 
@@ -1450,8 +1451,7 @@ ipcMain.handle('plPriceIntel:record',    (_e, r)              => plInvoiceHistor
 ipcMain.handle('plPriceIntel:getLast',   (_e, key, excludeId) => plInvoiceHistoryGetLast(key, excludeId));
 ipcMain.handle('plPriceIntel:getRecent', (_e, key, limit)     => plInvoiceHistoryGetRecent(key, limit));
 
-// ── Global Search ─────────────────────────────────────────────────────────────
-// Queries kv_store JSON + FTS5 SQLite indexes and returns grouped results.
+// ── Global Search — covers every data source in the app ───────────────────────
 ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
   if (!query || query.trim().length === 0) {
     return { results: {}, history: searchHistoryGet(5) };
@@ -1510,6 +1510,7 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
     .filter(f => {
       const cl = clients.find(c => c.id === f.clientId);
       return matchStr(f.numero) || matchStr(f.referenceClient) || matchStr(cl?.entreprise) ||
+        (f.lignes || []).some(l => matchStr(l.description)) ||
         (isNumericSearch && Math.abs((f.total || 0) - numQ) < 1);
     })
     .slice(0, limit)
@@ -1630,6 +1631,11 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
     suppliersV2.forEach(s => {
       if (s.id) supplierNameMap[`sup_${s.id}`] = s.name || s.id;
     });
+    // Also map expense items: P&L key = "exp_${item.id}", labels from dicann-pl-expense-items
+    const expenseItems = readKV('dicann-pl-expense-items');
+    expenseItems.forEach(item => {
+      if (item.id) supplierNameMap[`exp_${item.id}`] = item.label || item.name || item.id;
+    });
 
     const plRows = storageGetByPrefix('dicann-pl-');
     const plMatches = [];
@@ -1659,7 +1665,8 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
     results.plBills = plMatches.slice(0, limit);
   } catch (_) {}
 
-  // ── Encaisse entries — sorties + notes (dicann-encaisse) ──
+  // ── Encaisse — sorties, autreEntrees, notes (dicann-encaisse) ──
+  // Fix: sorties use field `categorie` (French) not `category`
   results.encaisseEntries = [];
   try {
     const encRaw = storageGet('dicann-encaisse');
@@ -1668,16 +1675,25 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
       const matches = [];
       for (const [date, dayObj] of Object.entries(encData || {})) {
         if (date.startsWith('_')) continue;
-        // Search notes
+        let matched = false;
         if (dayObj.notes && String(dayObj.notes).toLowerCase().includes(q)) {
           matches.push({ type: 'encaisse_note', date, preview: String(dayObj.notes).substring(0, 80) });
+          matched = true;
         }
-        // Search sortie categories and notes
-        const sorties = Array.isArray(dayObj.sorties) ? dayObj.sorties : [];
-        for (const s of sorties) {
-          if (matchStr(s.category) || matchStr(s.note) || matchStr(s.description)) {
-            matches.push({ type: 'encaisse_sortie', date, category: s.category || '', amount: s.montant || 0 });
-            break; // one match per day
+        if (!matched) {
+          for (const s of (Array.isArray(dayObj.sorties) ? dayObj.sorties : [])) {
+            if (matchStr(s.categorie) || matchStr(s.description) || matchStr(s.note)) {
+              matches.push({ type: 'encaisse_sortie', date, category: s.categorie || s.description || '', amount: s.montant || 0 });
+              matched = true; break;
+            }
+          }
+        }
+        if (!matched) {
+          for (const e of (Array.isArray(dayObj.autreEntrees) ? dayObj.autreEntrees : [])) {
+            if (matchStr(e.description)) {
+              matches.push({ type: 'encaisse_entree', date, description: e.description || '', amount: e.montant || 0 });
+              matched = true; break;
+            }
           }
         }
         if (matches.length >= limit) break;
@@ -1698,19 +1714,51 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
     }
   } catch (_) {}
 
-  // ── Encaisse categories (dicann-encaisse-config) ──
-  results.encaisseCategories = [];
+  // ── Facturation products catalog (dicann-fac-produits) ──
+  results.facProducts = readKV('dicann-fac-produits')
+    .filter(p => p.actif !== false && (matchStr(p.description) || matchStr(p.code) || matchStr(p.notes)))
+    .slice(0, limit)
+    .map(p => ({ id: p.id, code: p.code || '', description: p.description || '', prix: p.prixUnitaire || 0 }));
+
+  // ── Facturation categories (dicann-fac-categories) ──
+  results.facCategories = readKV('dicann-fac-categories')
+    .filter(c => c.actif !== false && matchStr(c.nom))
+    .slice(0, limit)
+    .map(c => ({ id: c.id, nom: c.nom || '' }));
+
+  // ── Recurring invoice templates (dicann-fac-recurrents) ──
+  results.recurrents = [];
   try {
-    const encCfgRaw = storageGet('dicann-encaisse-config');
-    if (encCfgRaw?.value) {
-      const cfg = JSON.parse(encCfgRaw.value);
-      const cats = Array.isArray(cfg.sortieCategories) ? cfg.sortieCategories : [];
-      results.encaisseCategories = cats
-        .filter(c => matchStr(c.name))
-        .slice(0, 3)
-        .map(c => ({ id: c.id, name: c.name }));
-    }
+    const recurrents = readKV('dicann-fac-recurrents');
+    const clients = readKV('dicann-fac-clients');
+    results.recurrents = recurrents
+      .filter(r => {
+        if (!r.actif) return false;
+        if (matchStr(r.description)) return true;
+        const cl = clients.find(c => c.id === r.clientId);
+        if (matchStr(cl?.entreprise)) return true;
+        return (r.lignes || []).some(l => matchStr(l.description));
+      })
+      .slice(0, limit)
+      .map(r => {
+        const cl = clients.find(c => c.id === r.clientId);
+        return { id: r.clientId, description: r.description || '', clientName: cl?.entreprise || '', frequence: r.frequence || '' };
+      });
   } catch (_) {}
+
+  // ── Franchise locations (balanceiq-locations) ──
+  results.locations = readKV('balanceiq-locations')
+    .filter(l => matchStr(l.nom) || matchStr(l.name) || matchStr(l.adresse) || matchStr(l.ville))
+    .slice(0, limit)
+    .map(l => ({ id: l.id, nom: l.nom || l.name || '', ville: l.ville || '' }));
+
+  // ── Waste entries (SQLite waste_entries table) ──
+  results.wasteEntries = searchWasteEntries(q, limit).map(w => ({
+    id: w.id, date: w.date,
+    ingredientName: w.name_fr || w.name_en || '',
+    category: w.category || '', reason: w.reason || '',
+    notes: w.notes || '', dollarValue: w.dollar_value || 0,
+  }));
 
   return { results, history: [] };
 });

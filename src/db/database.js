@@ -976,6 +976,22 @@ function tipPoolSessionSave(session) {
   return true;
 }
 
+function searchWasteEntries(query, limit = 5) {
+  try {
+    const q = `%${query.toLowerCase()}%`;
+    return getDb().prepare(`
+      SELECT w.id, w.date, w.category, w.reason, w.notes, w.quantity, w.unit, w.dollar_value,
+             i.name_fr, i.name_en
+      FROM waste_entries w
+      LEFT JOIN ingredients i ON i.id = w.ingredient_id
+      WHERE lower(w.reason) LIKE ? OR lower(w.notes) LIKE ? OR lower(w.category) LIKE ?
+         OR lower(i.name_fr) LIKE ? OR lower(i.name_en) LIKE ?
+      ORDER BY w.date DESC
+      LIMIT ?
+    `).all(q, q, q, q, q, limit);
+  } catch (_) { return []; }
+}
+
 // ── Food Waste ──
 function wasteGetRange(dateFrom, dateTo) {
   return getDb().prepare('SELECT * FROM waste_entries WHERE date>=? AND date<=? ORDER BY date DESC, id DESC').all(dateFrom, dateTo);
@@ -1238,4 +1254,5 @@ module.exports = {
   onboardingGetAll, onboardingMarkDone, onboardingReset,
   plInvoiceHistoryRecord, plInvoiceHistoryGetLast, plInvoiceHistoryGetRecent,
   searchIngredients, searchForecastProducts, searchHistoryGet, searchHistorySave,
+  searchWasteEntries,
 };
