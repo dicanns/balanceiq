@@ -1452,7 +1452,14 @@ ipcMain.handle('plPriceIntel:getRecent', (_e, key, limit)     => plInvoiceHistor
 // Routes Supabase HTTP calls through Electron's net module (main process) to
 // bypass renderer window.fetch "Invalid value" validation in Electron 31.
 ipcMain.handle('supabase:fetch', async (_e, { url, method, headers, body }) => {
-  const opts = { method: method || 'GET', headers: headers || {} };
+  // Strip CR/LF from all header values — net.fetch enforces strict RFC 7230
+  // validation that rejects headers containing newline characters (which can
+  // be present in long env-var tokens due to copy-paste line wrapping).
+  const cleanHeaders = {};
+  for (const [k, v] of Object.entries(headers || {})) {
+    cleanHeaders[k] = String(v).replace(/[\r\n]/g, '');
+  }
+  const opts = { method: method || 'GET', headers: cleanHeaders };
   if (body != null) opts.body = body;
   const res = await net.fetch(url, opts);
   const text = await res.text();

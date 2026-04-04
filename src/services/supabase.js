@@ -1,7 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 
-export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
-export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+// Trim whitespace/newlines — env vars can have hidden line breaks if the key
+// was copied with wrapping, which causes net.fetch header validation to fail.
+export const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+export const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').replace(/\s/g, '');
 
 // Route all Supabase HTTP calls through Electron's net module in the main
 // process to bypass Electron 31 renderer window.fetch "Invalid value" errors.
