@@ -175,7 +175,7 @@ const DAILY_FIELD_LABELS={posVentes:"Ventes POS",posTPS:"TPS POS",posTVQ:"TVQ PO
 const WMO_FR=code=>{if(code===0)return"Ensoleillé";if(code<=2)return"Peu nuageux";if(code===3)return"Couvert";if(code<=48)return"Brouillard";if(code<=55)return"Bruine";if(code<=65)return"Pluie";if(code<=75)return"Neige";if(code<=82)return"Averses";if(code<=86)return"Averses de neige";if(code<=99)return"Orageux";return"Variable"};
 const WMO_DESC=(code,T_)=>{const k=code===0?"wSunny":code<=2?"wPartlyCloudy":code===3?"wOvercast":code<=48?"wFog":code<=55?"wDrizzle":code<=65?"wRain":code<=75?"wSnow":code<=82?"wShowers":code<=86?"wSnowShowers":code<=99?"wThunderstorm":"wVariable";return T_?.[k]||WMO_FR(code);};
 // Maps stored FR weather strings to the active-language equivalent at display time
-const xlateWeather=(str,T_)=>{if(!str||!T_)return str;const map={"Ensoleillé":"wSunny","Peu nuageux":"wPartlyCloudy","Couvert":"wOvercast","Brouillard":"wFog","Bruine":"wDrizzle","Pluie":"wRain","Neige":"wSnow","Averses":"wShowers","Averses de neige":"wSnowShowers","Orageux":"wThunderstorm","Variable":"wVariable"};return T_[map[str]]||str;};
+const xlateWeather=(str,T_)=>{if(!str||!T_)return str;const map={"Ensoleillé":"wSunny","Peu nuageux":"wPartlyCloudy","Partiellement nuageux":"wPartlyCloudy","Nuageux":"wOvercast","Couvert":"wOvercast","Brouillard":"wFog","Bruine":"wDrizzle","Pluie légère":"wDrizzle","Pluie":"wRain","Neige légère":"wSnow","Neige":"wSnow","Poudrerie":"wSnow","Averses":"wShowers","Averses de neige":"wSnowShowers","Orageux":"wThunderstorm","Tempête":"wThunderstorm","Variable":"wVariable"};return T_[map[str]]||str;};
 
 function genDemo(){const data={};const base=new Date(2024,0,1);for(let i=0;i<366;i++){const d=new Date(base);d.setDate(d.getDate()+i);const dow=d.getDay(),isWe=dow===0||dow===6;const total=Math.max(800,Math.round((isWe?2800:1900)+Math.sin((d.getMonth()/12)*Math.PI)*400+(Math.random()-0.5)*600));data[dk(d)]={venteNet:total,hamUsed:Math.round((18+Math.random()*12)*(0.7+Math.random()*0.25)),hotUsed:Math.round((12+Math.random()*8)*(0.7+Math.random()*0.25))}}return data}
 
@@ -3145,7 +3145,8 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
  if(tRaw.tempC!=null){if(tRaw.tempC<5){salesAdj-=salesBase*0.08;hamAdj-=hamBase*0.08;hotAdj-=hotBase*0.08;}else if(tRaw.tempC>24){salesAdj+=salesBase*0.08;hamAdj+=hamBase*0.08;hotAdj+=hotBase*0.08;}}
  const tHol=getHol(tomorrow);
  if(tHol){salesAdj+=salesBase*0.12;hamAdj+=hamBase*0.12;hotAdj+=hotBase*0.12;}
- const factors=[];if(wCat!=="inconnu"&&wCat!=="autre")factors.push(wCat);if(tRaw.tempC!=null)factors.push(`${tRaw.tempC}°C`);if(tHol)factors.push(tHol);
+ const wCatLabel={neige:T.wSnow,pluie:T.wRain,nuageux:T.wOvercast,ensoleillé:T.wSunny}[wCat]||wCat;
+ const factors=[];if(wCat!=="inconnu"&&wCat!=="autre")factors.push(wCatLabel);if(tRaw.tempC!=null)factors.push(`${tRaw.tempC}°C`);if(tHol)factors.push(tHol);
  return{day:T.days[tDow],hamQty:Math.round(hamBase+hamAdj)+3,hotQty:Math.round(hotBase+hotAdj)+2,salesEst:Math.round(salesBase+salesAdj),factors,n:tProfile.n,hasContext:wCat!=="inconnu"||tRaw.tempC!=null||!!tHol};
  },[d,dowProfiles,getLR,T]);
 
