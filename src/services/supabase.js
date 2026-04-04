@@ -3,18 +3,23 @@ import { createClient } from '@supabase/supabase-js';
 export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-// Electron-safe fetch: Electron 31 throws "Invalid value" when fetch init
-// options contain empty or unsupported values for enum fields.
-// Strip ALL enum-type fields unconditionally — Supabase uses Bearer tokens
-// (not credentials/cookies), CORS/mode is handled by Electron automatically,
-// and cache/redirect/referrer are irrelevant for API calls.
-const FETCH_STRIP_KEYS = ['referrerPolicy','referrer','mode','cache','credentials','redirect','priority','duplex'];
-const safeFetch = (url, init = {}) => {
-  const opts = { ...init };
-  for (const k of FETCH_STRIP_KEYS) {
-    delete opts[k];
+// Route all Supabase HTTP calls through Electron's net module in the main
+// process to bypass Electron 31 renderer window.fetch "Invalid value" errors.
+const netFetch = async (url, init = {}) => {
+  const headers = {};
+  if (init.headers instanceof Headers) {
+    init.headers.forEach((v, k) => { headers[k] = v; });
+  } else if (init.headers && typeof init.headers === 'object') {
+    Object.assign(headers, init.headers);
   }
-  return window.fetch(url, opts);
+  const method = init.method || 'GET';
+  const body = (method !== 'GET' && method !== 'HEAD' && init.body != null) ? init.body : null;
+  const result = await window.api.supabaseFetch({ url: url.toString(), method, headers, body });
+  return new Response(result.body, {
+    status: result.status,
+    statusText: result.statusText,
+    headers: result.headers,
+  });
 };
 
 // Guard: createClient throws if URL is empty (env vars not set in dev)
@@ -25,6 +30,6 @@ export const supabase = SUPABASE_URL
         autoRefreshToken: true,
         storage: typeof window !== 'undefined' ? window.localStorage : undefined,
       },
-      global: { fetch: safeFetch },
+      global: { fetch: netFetch },
     })
   : null;
