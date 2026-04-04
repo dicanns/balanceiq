@@ -10,25 +10,14 @@ function PrevTip({ text, children, align = 'center' }) {
   const arrowHPos = align === 'left' ? { left: 10, transform: 'none' } : align === 'right' ? { right: 10, left: 'auto', transform: 'none' } : { left: '50%', transform: 'translateX(-50%)' };
   return (
     <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
-      onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
+      onMouseEnter={() =>setShow(true)} onMouseLeave={() => setShow(false)}>
       {children}
-      {show && (
-        <span style={{ position: 'absolute', bottom: 'calc(100% + 6px)', ...hPos, background: '#1a1d27', color: '#e5e7eb', fontSize: 11, padding: '8px 11px', borderRadius: 6, whiteSpace: 'normal', width: 260, lineHeight: 1.5, boxShadow: '0 4px 16px rgba(0,0,0,0.35)', zIndex: 99999, pointerEvents: 'none', border: '1px solid rgba(255,255,255,0.08)', textAlign: 'left', fontWeight: 400 }}>
-          {text}
-          <span style={{ position: 'absolute', top: '100%', ...arrowHPos, borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderTop: '5px solid #1a1d27', display: 'block', width: 0, height: 0 }} />
-        </span>
-      )}
-    </span>
-  );
+      {show && (<span style={{ position: 'absolute', bottom: 'calc(100% + 6px)', ...hPos, background: '#1a1d27', color: '#e5e7eb', fontSize: 11, padding: '8px 11px', borderRadius: 6, whiteSpace: 'normal', width: 260, lineHeight: 1.5, boxShadow: '0 4px 16px rgba(0,0,0,0.35)', zIndex: 99999, pointerEvents: 'none', border: '1px solid rgba(255,255,255,0.08)', textAlign: 'left', fontWeight: 400 }}>{text}<span style={{ position: 'absolute', top: '100%', ...arrowHPos, borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderTop: '5px solid #1a1d27', display: 'block', width: 0, height: 0 }} /></span>)}</span>);
 }
 
 // Small ⓘ icon helper
 function TipIcon({ text, align = 'center' }) {
-  return (
-    <PrevTip text={text} align={align}>
-      <span style={{ marginLeft: 4, fontSize: 11, color: '#9ca3af', cursor: 'help', lineHeight: 1, userSelect: 'none' }}>ⓘ</span>
-    </PrevTip>
-  );
+  return (<PrevTip text={text} align={align}><span style={{ marginLeft: 4, fontSize: 11, color: '#9ca3af', cursor: 'help', lineHeight: 1, userSelect: 'none' }}>ⓘ</span></PrevTip>);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -82,21 +71,21 @@ function getDayFullName(dow, lang) {
 }
 
 const WEATHER_ICONS = {
-  sunny: '☀️', cloudy: '☁️', rain: '🌧', snow: '🌨', storm: '⛈',
+  sunny: '', cloudy: '', rain: '', snow: '', storm: '',
 };
 
 function weatherCodeToCondition(code) {
   if (!code && code !== 0) return 'cloudy';
   if (code === 0 || code === 1) return 'sunny';
-  if (code <= 3) return 'cloudy';
-  if (code >= 51 && code <= 67) return 'rain';
-  if (code >= 71 && code <= 77) return 'snow';
-  if (code >= 80 && code <= 82) return 'rain';
+  if (code<= 3) return 'cloudy';
+  if (code >= 51 && code<= 67) return 'rain';
+  if (code >= 71 && code<= 77) return 'snow';
+  if (code >= 80 && code<= 82) return 'rain';
   if (code >= 95) return 'storm';
   return 'cloudy';
 }
 
-function conditionToIcon(cond) { return WEATHER_ICONS[cond] || '☁️'; }
+function conditionToIcon(cond) { return WEATHER_ICONS[cond] || ''; }
 
 // ── Prediction Engine ─────────────────────────────────────────────────────────
 
@@ -175,7 +164,7 @@ function computePrediction(productId, dateStr, allSales, weatherMap, product, le
   // 3b. GAS PRICE
   let gasFactor = 0;
   if (currentGasPrice != null) {
-    const gasLevel = currentGasPrice < 1.60 ? 'low' : currentGasPrice < 1.80 ? 'mid' : currentGasPrice < 2.00 ? 'high' : 'very_high';
+    const gasLevel = currentGasPrice< 1.60 ? 'low' : currentGasPrice < 1.80 ? 'mid' : currentGasPrice < 2.00 ? 'high' : 'very_high';
     const gasP = getLP('gas_price_correlation', productId, gasLevel);
     if (gasP && gasP.confidence >= 0.4) gasFactor = (gasP.pct_change_vs_baseline || 0) * 0.5;
   }
@@ -211,18 +200,18 @@ function computeAlerts(products, allSales, T, lang) {
 
   products.filter(p=>p.active).forEach(product => {
     const recent = allSales.filter(s => s.product_id === product.id && s.date >= cutoff);
-    if (recent.length < 4) return;
+    if (recent.length< 4) return;
 
     // Group by DOW
     const byDow = {};
-    recent.forEach(s => {
+    recent.forEach(s =>{
       const dow = new Date(s.date + 'T12:00:00').getDay();
       if (!byDow[dow]) byDow[dow] = [];
       byDow[dow].push(s);
     });
 
     Object.entries(byDow).forEach(([dow, sales]) => {
-      if (sales.length < 2) return;
+      if (sales.length< 2) return;
       const stockouts = sales.filter(s=>s.stockout).length;
       const withMade = sales.filter(s=>s.quantity_made!=null&&s.quantity_made>0);
       const avgWaste = withMade.length > 0
@@ -238,7 +227,7 @@ function computeAlerts(products, allSales, T, lang) {
         const avgMade = withMade.reduce((a,s)=>a+s.quantity_made,0)/withMade.length;
         const suggested = Math.round(avgSold * 1.05);
         alerts.overproduction.push({ product, dowName, wastePct: Math.round(avgWaste*100), avgMade:Math.round(avgMade), avgSold:Math.round(avgSold), suggested, type:'overproduction' });
-      } else if (stockouts === 0 && avgWaste < 0.10 && withMade.length >= 2) {
+      } else if (stockouts === 0 && avgWaste< 0.10 && withMade.length >= 2) {
         alerts.optimized.push({ product, type:'optimized' });
       }
     });
@@ -305,13 +294,13 @@ function ProductFormModal({ product, existingCategories, onSave, onClose, T, t, 
     ? [{v:1,label:'Every day',sub:'daily'},{v:2,label:'Every 2 days',sub:'~3-4×/wk'},{v:3,label:'Every 3 days',sub:'~2-3×/wk'},{v:7,label:'Weekly',sub:'1×/wk'}]
     : [{v:1,label:'Quotidien',sub:'chaque jour'},{v:2,label:'Tous les 2j',sub:'~3-4×/sem'},{v:3,label:'Tous les 3j',sub:'~2-3×/sem'},{v:7,label:'Hebdomadaire',sub:'1×/sem'}];
 
-  const freqHint = form.shelf_life_days <= 1
+  const freqHint = form.shelf_life_days<= 1
     ? (lang==='en' ? 'Appears in each daily production card' : 'Apparaît dans chaque carte journalière')
     : (lang==='en' ? `Batched — make once every ${form.shelf_life_days} days` : `En lot — produire une fois tous les ${form.shelf_life_days} jours`);
 
-  const isPreset = freqPresets.some(p => p.v === form.shelf_life_days);
+  const isPreset = freqPresets.some(p =>p.v === form.shelf_life_days);
 
-  const inp = { background:t.inputBg, border:`1px solid ${t.inputBorder}`, borderRadius:6, color:t.text, fontSize:13, padding:'8px 10px', outline:'none', width:'100%', boxSizing:'border-box', fontFamily:"'Outfit',sans-serif" };
+  const inp = { background:t.inputBg, border:`1px solid ${t.inputBorder}`, borderRadius:6, color:t.text, fontSize:13, padding:'8px 10px', outline:'none', width:'100%', boxSizing:'border-box', fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif" };
   const lbl = { fontSize:12, fontWeight:600, color:t.textSub, display:'block', marginBottom:4 };
 
   const handleSave = () => {
@@ -326,133 +315,37 @@ function ProductFormModal({ product, existingCategories, onSave, onClose, T, t, 
     });
   };
 
-  return (
-    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}>
-      <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:14,padding:28,width:460,maxWidth:'95vw',maxHeight:'90vh',overflowY:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.25)'}}>
-        <div style={{fontSize:15,fontWeight:700,color:t.text,marginBottom:20}}>{product ? T.prevProdEdit : T.prevProdNew}</div>
-
-        <div style={{display:'flex',flexDirection:'column',gap:16}}>
-          <div>
-            <label style={lbl}>{T.prevProdName} *</label>
-            <input style={inp} value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} autoFocus/>
-          </div>
-
-          <div>
-            <label style={lbl}>{T.prevProdCategory}</label>
-            {catMode
-              ? <div style={{display:'flex',gap:6}}>
-                  <input style={{...inp,flex:1}} value={newCat} onChange={e=>setNewCat(e.target.value)} placeholder={T.prevProdNewCategory} autoFocus/>
-                  <button onClick={()=>{setForm(f=>({...f,category:newCat.trim()}));setCatMode(false);}} style={{padding:'5px 10px',borderRadius:5,border:'none',background:'#f97316',color:'#fff',cursor:'pointer',fontSize:11,fontWeight:600}}>OK</button>
-                  <button onClick={()=>setCatMode(false)} style={{padding:'5px 8px',borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:'pointer',fontSize:11}}>✕</button>
-                </div>
-              : <div style={{display:'flex',gap:6}}>
-                  <select style={{...inp,flex:1}} value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))}>
-                    <option value="">{T.prevProdUncategorized}</option>
-                    {existingCategories.map(c=><option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <button onClick={()=>{setNewCat('');setCatMode(true);}} style={{padding:'5px 8px',borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:'pointer',fontSize:11,whiteSpace:'nowrap'}}>+</button>
-                </div>
-            }
-          </div>
-
-          <div>
-            <label style={lbl}>{T.prevProdBaseQty}</label>
-            <input
+  return (<div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}><div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:14,padding:28,width:460,maxWidth:'95vw',maxHeight:'90vh',overflowY:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.25)'}}><div style={{fontSize:15,fontWeight:700,color:t.text,marginBottom:20}}>{product ? T.prevProdEdit : T.prevProdNew}</div><div style={{display:'flex',flexDirection:'column',gap:16}}><div><label style={lbl}>{T.prevProdName} *</label><input style={inp} value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} autoFocus/></div><div><label style={lbl}>{T.prevProdCategory}</label>{catMode
+              ?<div style={{display:'flex',gap:6}}><input style={{...inp,flex:1}} value={newCat} onChange={e=>setNewCat(e.target.value)} placeholder={T.prevProdNewCategory} autoFocus/><button onClick={()=>{setForm(f=>({...f,category:newCat.trim()}));setCatMode(false);}} style={{padding:'5px 10px',borderRadius:5,border:'none',background:'#f97316',color:'#fff',cursor:'pointer',fontSize:11,fontWeight:600}}>OK</button><button onClick={()=>setCatMode(false)} style={{padding:'5px 8px',borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:'pointer',fontSize:11}}></button></div>:<div style={{display:'flex',gap:6}}><select style={{...inp,flex:1}} value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))}><option value="">{T.prevProdUncategorized}</option>{existingCategories.map(c=><option key={c} value={c}>{c}</option>)}</select><button onClick={()=>{setNewCat('');setCatMode(true);}} style={{padding:'5px 8px',borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:'pointer',fontSize:11,whiteSpace:'nowrap'}}>+</button></div>}</div><div><label style={lbl}>{T.prevProdBaseQty}</label><input
               type="number" min="0" style={{...inp, width:'50%'}}
               value={form.base_quantity}
-              onChange={e => setForm(f => ({...f, base_quantity: e.target.value}))}
+              onChange={e =>setForm(f => ({...f, base_quantity: e.target.value}))}
               onBlur={e => { const v = parseInt(e.target.value); setForm(f => ({...f, base_quantity: String(isNaN(v)||v<0?0:v)})); }}
-            />
-          </div>
-
-          {/* Cost & Price (optional) */}
-          <div>
-            <label style={lbl}>{lang==='en'?'Pricing & Cost (optional)':'Coût & Prix (optionnel)'}</label>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-              <div style={{position:'relative'}}>
-                <span style={{position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',fontSize:12,opacity:0.4}}>$</span>
-                <input type="number" min="0" step="0.01" style={{...inp,paddingLeft:18}}
+            /></div>{/* Cost & Price (optional) */}<div><label style={lbl}>{lang==='en'?'Pricing & Cost (optional)':'Coût & Prix (optionnel)'}</label><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}><div style={{position:'relative'}}><span style={{position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',fontSize:12,opacity:0.4}}>$</span><input type="number" min="0" step="0.01" style={{...inp,paddingLeft:18}}
                   value={form.unit_cost}
                   onChange={e=>setForm(f=>({...f,unit_cost:e.target.value}))}
                   onBlur={e=>{const v=parseFloat(e.target.value);setForm(f=>({...f,unit_cost:isNaN(v)||v<0?'':v.toFixed(2)}));}}
-                  placeholder={lang==='en'?'Cost per unit':'Coût/unité'}/>
-              </div>
-              <div style={{position:'relative'}}>
-                <span style={{position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',fontSize:12,opacity:0.4}}>$</span>
-                <input type="number" min="0" step="0.01" style={{...inp,paddingLeft:18}}
+                  placeholder={lang==='en'?'Cost per unit':'Coût/unité'}/></div><div style={{position:'relative'}}><span style={{position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',fontSize:12,opacity:0.4}}>$</span><input type="number" min="0" step="0.01" style={{...inp,paddingLeft:18}}
                   value={form.sell_price}
                   onChange={e=>setForm(f=>({...f,sell_price:e.target.value}))}
                   onBlur={e=>{const v=parseFloat(e.target.value);setForm(f=>({...f,sell_price:isNaN(v)||v<0?'':v.toFixed(2)}));}}
-                  placeholder={lang==='en'?'Sell price':'Prix de vente'}/>
-              </div>
-            </div>
-            {(() => {
+                  placeholder={lang==='en'?'Sell price':'Prix de vente'}/></div></div>{(() => {
               const cost=parseFloat(form.unit_cost),price=parseFloat(form.sell_price);
               if(isNaN(cost)||isNaN(price)||cost<=0||price<=0)return null;
               const margin=price-cost,pct=(margin/price)*100;
               const color=pct>50?'#22c55e':pct>30?'#f97316':'#ef4444';
-              return <div style={{fontSize:11,marginTop:4,color}}>{lang==='en'?'Margin':'Marge'}: ${margin.toFixed(2)} ({pct.toFixed(0)}%)</div>;
-            })()}
-          </div>
-
-          <div>
-            <label style={lbl}>{lang==='en' ? 'Production frequency' : 'Fréquence de production'}</label>
-            <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}}>
-              {freqPresets.map(({v,label,sub}) => {
+              return<div style={{fontSize:11,marginTop:4,color}}>{lang==='en'?'Margin':'Marge'}: ${margin.toFixed(2)} ({pct.toFixed(0)}%)</div>;
+            })()}</div><div><label style={lbl}>{lang==='en' ? 'Production frequency' : 'Fréquence de production'}</label><div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}}>{freqPresets.map(({v,label,sub}) => {
                 const active = form.shelf_life_days === v;
-                return (
-                  <button key={v} type="button" onClick={()=>setForm(f=>({...f,shelf_life_days:v}))}
-                    style={{padding:'7px 12px',borderRadius:8,border:`1px solid ${active?'#f97316':t.cardBorder}`,background:active?'rgba(249,115,22,0.15)':t.section,color:active?'#f97316':t.textSub,cursor:'pointer',textAlign:'center',lineHeight:1.3}}>
-                    <div style={{fontSize:12,fontWeight:600}}>{label}</div>
-                    <div style={{fontSize:10,opacity:0.65}}>{sub}</div>
-                  </button>
-                );
-              })}
-            </div>
-            <div style={{display:'flex',alignItems:'center',gap:8}}>
-              <span style={{fontSize:11,color:t.textSub,whiteSpace:'nowrap'}}>{lang==='en'?'Custom: every':'Autre: tous les'}</span>
-              <input
+                return (<button key={v} type="button" onClick={()=>setForm(f=>({...f,shelf_life_days:v}))}
+                    style={{padding:'7px 12px',borderRadius:8,border:`1px solid ${active?'#f97316':t.cardBorder}`,background:active?'rgba(249,115,22,0.15)':t.section,color:active?'#f97316':t.textSub,cursor:'pointer',textAlign:'center',lineHeight:1.3}}><div style={{fontSize:12,fontWeight:600}}>{label}</div><div style={{fontSize:10,opacity:0.65}}>{sub}</div></button>);
+              })}</div><div style={{display:'flex',alignItems:'center',gap:8}}><span style={{fontSize:11,color:t.textSub,whiteSpace:'nowrap'}}>{lang==='en'?'Custom: every':'Autre: tous les'}</span><input
                 type="number" min="1" max="30"
                 style={{...inp, width:64, padding:'5px 8px', fontSize:12}}
                 value={form.shelf_life_days}
-                onChange={e => { const v = parseInt(e.target.value); if (!isNaN(v) && v >= 1) setForm(f=>({...f,shelf_life_days:v})); }}
-              />
-              <span style={{fontSize:11,color:t.textSub}}>{lang==='en'?'day(s)':'jour(s)'}</span>
-            </div>
-            <div style={{fontSize:10,opacity:0.55,marginTop:6,color:form.shelf_life_days<=1?'#22c55e':'#f97316'}}>{freqHint}</div>
-          </div>
-
-          <div>
-            <label style={lbl}>{T.prevProdWeatherSens}</label>
-            <select style={inp} value={form.weather_sensitivity} onChange={e=>setForm(f=>({...f,weather_sensitivity:parseInt(e.target.value)}))}>
-              {ws.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </div>
-
-          {recipes.length > 0 && (
-            <div>
-              <label style={lbl}>🧪 {lang==='en'?'Linked recipe (for food cost calculation)':'Recette liée (calcul coût alimentaire)'}</label>
-              <select style={inp} value={form.recipe_id || ''} onChange={e=>setForm(f=>({...f,recipe_id:e.target.value||null}))}>
-                <option value="">{lang==='en'?'— No recipe linked —':'— Aucune recette liée —'}</option>
-                {recipes.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
-              </select>
-              {form.recipe_id && <div style={{fontSize:10,color:'#22c55e',marginTop:3}}>✓ {lang==='en'?'Recipe linked — food cost will be calculated in Intelligence tab':'Recette liée — coût alimentaire calculé dans l\'onglet Intelligence'}</div>}
-            </div>
-          )}
-
-          <div>
-            <label style={lbl}>{T.prevProdNotes}</label>
-            <textarea style={{...inp,minHeight:64,resize:'vertical'}} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))}/>
-          </div>
-        </div>
-
-        <div style={{display:'flex',justifyContent:'flex-end',gap:8,marginTop:22}}>
-          <button onClick={onClose} style={{padding:'8px 18px',borderRadius:7,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:'pointer',fontSize:13}}>{T.prevImportCancel}</button>
-          <button onClick={handleSave} style={{padding:'8px 18px',borderRadius:7,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:13,fontWeight:600}}>{T.prevProdSave}</button>
-        </div>
-      </div>
-    </div>
-  );
+                onChange={e =>{ const v = parseInt(e.target.value); if (!isNaN(v) && v >= 1) setForm(f=>({...f,shelf_life_days:v})); }}
+              /><span style={{fontSize:11,color:t.textSub}}>{lang==='en'?'day(s)':'jour(s)'}</span></div><div style={{fontSize:10,opacity:0.55,marginTop:6,color:form.shelf_life_days<=1?'#22c55e':'#f97316'}}>{freqHint}</div></div><div><label style={lbl}>{T.prevProdWeatherSens}</label><select style={inp} value={form.weather_sensitivity} onChange={e=>setForm(f=>({...f,weather_sensitivity:parseInt(e.target.value)}))}>
+              {ws.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></div>{recipes.length > 0 && (<div><label style={lbl}>{lang==='en'?'Linked recipe (for food cost calculation)':'Recette liée (calcul coût alimentaire)'}</label><select style={inp} value={form.recipe_id || ''} onChange={e=>setForm(f=>({...f,recipe_id:e.target.value||null}))}><option value="">{lang==='en'?'— No recipe linked —':'— Aucune recette liée —'}</option>{recipes.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select>{form.recipe_id &&<div style={{fontSize:10,color:'#22c55e',marginTop:3}}>{lang==='en'?'Recipe linked — food cost will be calculated in Intelligence tab':'Recette liée — coût alimentaire calculé dans l\'onglet Intelligence'}</div>}</div>)}<div><label style={lbl}>{T.prevProdNotes}</label><textarea style={{...inp,minHeight:64,resize:'vertical'}} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))}/></div></div><div style={{display:'flex',justifyContent:'flex-end',gap:8,marginTop:22}}><button onClick={onClose} style={{padding:'8px 18px',borderRadius:7,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:'pointer',fontSize:13}}>{T.prevImportCancel}</button><button onClick={handleSave} style={{padding:'8px 18px',borderRadius:7,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:13,fontWeight:600}}>{T.prevProdSave}</button></div></div></div>);
 }
 
 // ── Weather Override Modal ────────────────────────────────────────────────────
@@ -463,31 +356,9 @@ function WeatherOverrideModal({ date, existing, onSave, onClose, T, t, lang }) {
   const condOptions = ['sunny','cloudy','rain','snow','storm'];
   const condLabels = { sunny:T.prevCondSunny, cloudy:T.prevCondCloudy, rain:T.prevCondRain, snow:T.prevCondSnow, storm:T.prevCondStorm };
   const condCodes = { sunny:0, cloudy:2, rain:61, snow:71, storm:95 };
-  const inp = { background:t.inputBg, border:`1px solid ${t.inputBorder}`, borderRadius:5, color:t.text, fontSize:12, padding:'5px 8px', outline:'none', fontFamily:"'Outfit',sans-serif" };
+  const inp = { background:t.inputBg, border:`1px solid ${t.inputBorder}`, borderRadius:5, color:t.text, fontSize:12, padding:'5px 8px', outline:'none', fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif" };
 
-  return (
-    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1100,display:'flex',alignItems:'center',justifyContent:'center'}}>
-      <div style={{background:t.optionBg,border:`1px solid ${t.cardBorder}`,borderRadius:12,padding:20,width:280}}>
-        <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:12}}>{T.prevWeatherOverride} — {formatDateShort(date, lang)}</div>
-        <div style={{marginBottom:10}}>
-          <label style={{fontSize:11,color:t.textMuted,display:'block',marginBottom:3}}>{T.prevWeatherTemp}</label>
-          <input type="number" style={{...inp,width:'100%',boxSizing:'border-box'}} value={temp} onChange={e=>setTemp(parseFloat(e.target.value)||0)}/>
-        </div>
-        <div style={{marginBottom:14}}>
-          <label style={{fontSize:11,color:t.textMuted,display:'block',marginBottom:3}}>{T.prevWeatherCond}</label>
-          <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
-            {condOptions.map(c=>(
-              <button key={c} onClick={()=>setCond(c)} style={{padding:'4px 8px',borderRadius:12,border:`1px solid ${cond===c?'#f97316':t.cardBorder}`,background:cond===c?'rgba(249,115,22,0.15)':t.section,color:cond===c?'#f97316':t.textSub,cursor:'pointer',fontSize:11}}>{condLabels[c]}</button>
-            ))}
-          </div>
-        </div>
-        <div style={{display:'flex',justifyContent:'flex-end',gap:8}}>
-          <button onClick={onClose} style={{padding:'6px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:'pointer',fontSize:11}}>{T.prevImportCancel}</button>
-          <button onClick={()=>onSave({ date, temp_max:temp, temp_min:temp-5, precipitation:0, weather_code:condCodes[cond], source:'manual' })} style={{padding:'6px 14px',borderRadius:6,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:11,fontWeight:600}}>{T.prevProdSave}</button>
-        </div>
-      </div>
-    </div>
-  );
+  return (<div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1100,display:'flex',alignItems:'center',justifyContent:'center'}}><div style={{background:t.optionBg,border:`1px solid ${t.cardBorder}`,borderRadius:12,padding:20,width:280}}><div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:12}}>{T.prevWeatherOverride} — {formatDateShort(date, lang)}</div><div style={{marginBottom:10}}><label style={{fontSize:11,color:t.textMuted,display:'block',marginBottom:3}}>{T.prevWeatherTemp}</label><input type="number" style={{...inp,width:'100%',boxSizing:'border-box'}} value={temp} onChange={e=>setTemp(parseFloat(e.target.value)||0)}/></div><div style={{marginBottom:14}}><label style={{fontSize:11,color:t.textMuted,display:'block',marginBottom:3}}>{T.prevWeatherCond}</label><div style={{display:'flex',flexWrap:'wrap',gap:5}}>{condOptions.map(c=>(<button key={c} onClick={()=>setCond(c)} style={{padding:'4px 8px',borderRadius:12,border:`1px solid ${cond===c?'#f97316':t.cardBorder}`,background:cond===c?'rgba(249,115,22,0.15)':t.section,color:cond===c?'#f97316':t.textSub,cursor:'pointer',fontSize:11}}>{condLabels[c]}</button>))}</div></div><div style={{display:'flex',justifyContent:'flex-end',gap:8}}><button onClick={onClose} style={{padding:'6px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:'pointer',fontSize:11}}>{T.prevImportCancel}</button><button onClick={()=>onSave({ date, temp_max:temp, temp_min:temp-5, precipitation:0, weather_code:condCodes[cond], source:'manual' })} style={{padding:'6px 14px',borderRadius:6,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:11,fontWeight:600}}>{T.prevProdSave}</button></div></div></div>);
 }
 
 // ── Cell Detail Popover ───────────────────────────────────────────────────────
@@ -498,40 +369,8 @@ function CellDetailPopover({ product, dateStr, result, weatherMap, T, t, lang, o
   const confColors = { base:'#6b7280', low:'#ef4444', medium:'#f59e0b', high:'#22c55e' };
   const pct = v => `${v>0?'+':''}${Math.round(v*100)}%`;
 
-  return (
-    <div style={{position:'fixed',inset:0,zIndex:1200,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(0,0,0,0.35)'}} onClick={onClose}>
-      <div style={{background:t.optionBg,border:`1px solid ${t.cardBorder}`,borderRadius:12,padding:20,width:280,boxShadow:'0 12px 40px rgba(0,0,0,0.4)'}} onClick={e=>e.stopPropagation()}>
-        <div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:4}}>{T.prevCellDetail}{product.name}</div>
-        <div style={{fontSize:11,color:t.textMuted,marginBottom:12}}>{formatDateFull(dateStr, lang)}</div>
-        <div style={{fontSize:28,fontWeight:800,color:'#f97316',marginBottom:10,lineHeight:1}}>{result.prediction}</div>
-        <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:12}}>
-          <PrevTip text={lang==='en'?'Confidence level. High = 85%+ accuracy based on consistent patterns. Medium = learning, ~70% accurate. Low = fewer than 7 days of data. Below 60%, treat as a rough estimate.':'Niveau de confiance. Élevée = 85%+ de précision avec des patterns réguliers. Moyenne = en apprentissage, ~70%. Faible = moins de 7 jours de données. En dessous de 60%, c\'est une estimation approximative.'}>
-            <span style={{fontSize:10,fontWeight:700,color:confColors[result.confidence],background:`${confColors[result.confidence]}22`,border:`1px solid ${confColors[result.confidence]}44`,borderRadius:8,padding:'2px 8px',cursor:'help'}}>{confLabels[result.confidence]}</span>
-          </PrevTip>
-          <span style={{fontSize:11,color:t.textMuted}}>{T.prevDataPoints(result.dataPoints)}</span>
-        </div>
-        <div style={{borderTop:`1px solid ${t.cardBorder}`,paddingTop:10,fontSize:12,color:t.textSub,lineHeight:2}}>
-          <div style={{display:'flex',justifyContent:'space-between'}}>
-            <span style={{opacity:0.7}}>{T.prevWeightedAvg}</span>
-            <strong style={{color:t.text}}>{result.baseAvg}</strong>
-          </div>
-          {result.weatherFactor !== 0 && (
-            <div style={{display:'flex',justifyContent:'space-between'}}>
-              <span style={{opacity:0.7}}>{T.prevWeatherAdj}{w?` (${conditionToIcon(weatherCodeToCondition(w.weather_code))} ${Math.round(w.temp_max||0)}°C)`:''}</span>
-              <strong style={{color:result.weatherFactor>0?'#22c55e':'#ef4444'}}>{pct(result.weatherFactor)}</strong>
-            </div>
-          )}
-          {result.trendFactor !== 0 && (
-            <div style={{display:'flex',justifyContent:'space-between'}}>
-              <span style={{opacity:0.7}}>{T.prevTrendAdj}</span>
-              <strong style={{color:result.trendFactor>0?'#22c55e':'#ef4444'}}>{pct(result.trendFactor)}</strong>
-            </div>
-          )}
-        </div>
-        <button onClick={onClose} style={{marginTop:14,padding:'6px 0',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:'pointer',fontSize:11,width:'100%'}}>✕ {lang==='en'?'Close':'Fermer'}</button>
-      </div>
-    </div>
-  );
+  return (<div style={{position:'fixed',inset:0,zIndex:1200,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(0,0,0,0.35)'}} onClick={onClose}><div style={{background:t.optionBg,border:`1px solid ${t.cardBorder}`,borderRadius:12,padding:20,width:280,boxShadow:'0 12px 40px rgba(0,0,0,0.4)'}} onClick={e=>e.stopPropagation()}><div style={{fontSize:13,fontWeight:700,color:t.text,marginBottom:4}}>{T.prevCellDetail}{product.name}</div><div style={{fontSize:11,color:t.textMuted,marginBottom:12}}>{formatDateFull(dateStr, lang)}</div><div style={{fontSize:28,fontWeight:800,color:'#f97316',marginBottom:10,lineHeight:1}}>{result.prediction}</div><div style={{display:'flex',alignItems:'center',gap:6,marginBottom:12}}><PrevTip text={lang==='en'?'Confidence level. High = 85%+ accuracy based on consistent patterns. Medium = learning, ~70% accurate. Low = fewer than 7 days of data. Below 60%, treat as a rough estimate.':'Niveau de confiance. Élevée = 85%+ de précision avec des patterns réguliers. Moyenne = en apprentissage, ~70%. Faible = moins de 7 jours de données. En dessous de 60%, c\'est une estimation approximative.'}><span style={{fontSize:10,fontWeight:700,color:confColors[result.confidence],background:`${confColors[result.confidence]}22`,border:`1px solid ${confColors[result.confidence]}44`,borderRadius:8,padding:'2px 8px',cursor:'help'}}>{confLabels[result.confidence]}</span></PrevTip><span style={{fontSize:11,color:t.textMuted}}>{T.prevDataPoints(result.dataPoints)}</span></div><div style={{borderTop:`1px solid ${t.cardBorder}`,paddingTop:10,fontSize:12,color:t.textSub,lineHeight:2}}><div style={{display:'flex',justifyContent:'space-between'}}><span style={{opacity:0.7}}>{T.prevWeightedAvg}</span><strong style={{color:t.text}}>{result.baseAvg}</strong></div>{result.weatherFactor !== 0 && (<div style={{display:'flex',justifyContent:'space-between'}}><span style={{opacity:0.7}}>{T.prevWeatherAdj}{w?` (${conditionToIcon(weatherCodeToCondition(w.weather_code))} ${Math.round(w.temp_max||0)}°C)`:''}</span><strong style={{color:result.weatherFactor>0?'#22c55e':'#ef4444'}}>{pct(result.weatherFactor)}</strong></div>)}
+          {result.trendFactor !== 0 && (<div style={{display:'flex',justifyContent:'space-between'}}><span style={{opacity:0.7}}>{T.prevTrendAdj}</span><strong style={{color:result.trendFactor>0?'#22c55e':'#ef4444'}}>{pct(result.trendFactor)}</strong></div>)}</div><button onClick={onClose} style={{marginTop:14,padding:'6px 0',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:'pointer',fontSize:11,width:'100%'}}>{lang==='en'?'Close':'Fermer'}</button></div></div>);
 }
 
 // ── AI Analysis View (dedicated sub-tab) ─────────────────────────────────────
@@ -633,73 +472,20 @@ function AIAnalysisView({ canUse, allSales, products, weatherMap, weekDates, pre
   const inp = { background:t.inputBg, border:`1px solid ${t.inputBorder}`, borderRadius:5, color:t.text, fontSize:12, padding:'6px 8px', outline:'none' };
 
   if (locked) {
-    return (
-      <div style={{padding:'32px 24px',textAlign:'center'}}>
-        <div style={{fontSize:32,marginBottom:12}}>✨</div>
-        <div style={{fontSize:16,fontWeight:700,marginBottom:8}}>{lang==='en'?'AI Analysis — Pro Feature':'Analyse IA — Fonctionnalité Pro'}</div>
-        <div style={{fontSize:13,opacity:0.6,marginBottom:6,maxWidth:380,margin:'0 auto 16px'}}>
-          {lang==='en'
+    return (<div style={{padding:'32px 24px',textAlign:'center'}}><div style={{fontSize:32,marginBottom:12}}></div><div style={{fontSize:16,fontWeight:700,marginBottom:8}}>{lang==='en'?'AI Analysis — Pro Feature':'Analyse IA — Fonctionnalité Pro'}</div><div style={{fontSize:13,opacity:0.6,marginBottom:6,maxWidth:380,margin:'0 auto 16px'}}>{lang==='en'
             ? 'Get Claude AI to analyze your production patterns, identify waste risks, stockout alerts, and give specific weekly recommendations.'
-            : 'Faites analyser vos données de production par Claude AI — gaspillage, ruptures de stock, recommandations hebdomadaires spécifiques.'}
-        </div>
-        <div style={{fontSize:11,opacity:0.5,marginBottom:20}}>{lang==='en'?'Pro: 50 queries/month · Franchise: 200 queries/month · On-demand only':'Pro: 50 requêtes/mois · Franchise: 200 requêtes/mois · À la demande seulement'}</div>
-        <button onClick={()=>showUpgradePrompt&&showUpgradePrompt('aiAnalysis')}
+            : 'Faites analyser vos données de production par Claude AI — gaspillage, ruptures de stock, recommandations hebdomadaires spécifiques.'}</div><div style={{fontSize:11,opacity:0.5,marginBottom:20}}>{lang==='en'?'Pro: 50 queries/month · Franchise: 200 queries/month · On-demand only':'Pro: 50 requêtes/mois · Franchise: 200 requêtes/mois · À la demande seulement'}</div><button onClick={()=>showUpgradePrompt&&showUpgradePrompt('aiAnalysis')}
           style={{padding:'10px 24px',borderRadius:8,border:'none',background:'linear-gradient(135deg,#a78bfa,#7c3aed)',color:'#fff',cursor:'pointer',fontSize:13,fontWeight:700}}>
-          {lang==='en'?'Upgrade to Pro':'Passer au Pro'} ↑
-        </button>
-      </div>
-    );
+          {lang==='en'?'Upgrade to Pro':'Passer au Pro'} ↑</button></div>);
   }
 
-  return (
-    <div>
-      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:16,flexWrap:'wrap'}}>
-        <div style={{fontSize:11,fontWeight:700,color:'#a78bfa',textTransform:'uppercase',letterSpacing:1}}>{lang==='en'?'AI Analysis':'Analyse IA'}</div>
-        <span style={{fontSize:9,padding:'2px 6px',borderRadius:4,background:'rgba(167,139,250,0.15)',color:'#a78bfa',fontWeight:700}}>PRO</span>
-        {result?.usageCount != null && <span style={{fontSize:10,opacity:0.5,marginLeft:'auto'}}>{result.usageCount}/{result.usageLimit} {lang==='en'?'queries/mo':'requêtes/mois'}</span>}
-      </div>
-
-      <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap',alignItems:'center'}}>
-        {[['weekly', lang==='en'?'Weekly overview':'Vue hebdomadaire'], ['item', lang==='en'?'Product deep dive':'Analyse produit']].map(([v,l])=>(
-          <button key={v} onClick={()=>{setAnalysisType(v);setResult(null);}}
+  return (<div><div style={{display:'flex',alignItems:'center',gap:8,marginBottom:16,flexWrap:'wrap'}}><div style={{fontSize:11,fontWeight:700,color:'#a78bfa',textTransform:'uppercase',letterSpacing:1}}>{lang==='en'?'AI Analysis':'Analyse IA'}</div><span style={{fontSize:9,padding:'2px 6px',borderRadius:4,background:'rgba(167,139,250,0.15)',color:'#a78bfa',fontWeight:700}}>PRO</span>{result?.usageCount != null &&<span style={{fontSize:10,opacity:0.5,marginLeft:'auto'}}>{result.usageCount}/{result.usageLimit} {lang==='en'?'queries/mo':'requêtes/mois'}</span>}</div><div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap',alignItems:'center'}}>{[['weekly', lang==='en'?'Weekly overview':'Vue hebdomadaire'], ['item', lang==='en'?'Product deep dive':'Analyse produit']].map(([v,l])=>(<button key={v} onClick={()=>{setAnalysisType(v);setResult(null);}}
             style={{padding:'5px 14px',borderRadius:12,border:`1px solid ${analysisType===v?'#a78bfa':t.cardBorder}`,background:analysisType===v?'rgba(167,139,250,0.12)':t.section,color:analysisType===v?'#a78bfa':'inherit',cursor:'pointer',fontSize:11,fontWeight:600}}>
-            {l}
-          </button>
-        ))}
-        {analysisType === 'item' && (
-          <select style={{...inp,fontSize:11}} value={selectedProductId} onChange={e=>setSelectedProductId(e.target.value)}>
-            <option value="">{lang==='en'?'— Select product —':'— Choisir un produit —'}</option>
-            {products.filter(p=>p.active).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-        )}
-      </div>
+            {l}</button>))}
+        {analysisType === 'item' && (<select style={{...inp,fontSize:11}} value={selectedProductId} onChange={e=>setSelectedProductId(e.target.value)}><option value="">{lang==='en'?'— Select product —':'— Choisir un produit —'}</option>{products.filter(p=>p.active).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select>)}</div><button onClick={analyze} disabled={loading || (analysisType==='item'&&!selectedProductId)}
+        style={{padding:'9px 22px',borderRadius:8,border:'none',background:'linear-gradient(135deg,#a78bfa,#7c3aed)',color:'#fff',cursor:(loading||(analysisType==='item'&&!selectedProductId))?'not-allowed':'pointer',fontSize:13,fontWeight:700,opacity:(loading||(analysisType==='item'&&!selectedProductId))?0.6:1,marginBottom:16}}>{loading ? (lang==='en'?'Analyzing…':'Analyse en cours…') : (lang==='en'?'Analyze with Claude AI':'Analyser avec Claude AI')}</button>{result?.error && (<div style={{padding:'12px 16px',background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.2)',borderRadius:8,fontSize:12,color:'#fca5a5',marginBottom:12}}>{result.error}</div>)}
 
-      <button onClick={analyze} disabled={loading || (analysisType==='item'&&!selectedProductId)}
-        style={{padding:'9px 22px',borderRadius:8,border:'none',background:'linear-gradient(135deg,#a78bfa,#7c3aed)',color:'#fff',cursor:(loading||(analysisType==='item'&&!selectedProductId))?'not-allowed':'pointer',fontSize:13,fontWeight:700,opacity:(loading||(analysisType==='item'&&!selectedProductId))?0.6:1,marginBottom:16}}>
-        {loading ? (lang==='en'?'Analyzing…':'Analyse en cours…') : (lang==='en'?'✨ Analyze with Claude AI':'✨ Analyser avec Claude AI')}
-      </button>
-
-      {result?.error && (
-        <div style={{padding:'12px 16px',background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.2)',borderRadius:8,fontSize:12,color:'#fca5a5',marginBottom:12}}>
-          ⚠️ {result.error}
-        </div>
-      )}
-
-      {result?.text && (
-        <div style={{padding:'18px 20px',background:'rgba(167,139,250,0.06)',border:'1px solid rgba(167,139,250,0.2)',borderRadius:10,fontSize:13,lineHeight:1.75,whiteSpace:'pre-wrap',color:t.text}}>
-          <div style={{fontSize:11,fontWeight:700,color:'#a78bfa',marginBottom:12,display:'flex',alignItems:'center',gap:6}}>
-            ✨ {analysisType==='weekly'?(lang==='en'?'Weekly Production Analysis':'Analyse hebdomadaire de production'):(lang==='en'?`Product Analysis — ${products.find(p=>p.id===selectedProductId)?.name||''}`:` Analyse produit — ${products.find(p=>p.id===selectedProductId)?.name||''}`)}
-            <span style={{fontSize:9,padding:'1px 5px',borderRadius:3,background:'rgba(167,139,250,0.2)',color:'#c084fc'}}>Claude AI</span>
-          </div>
-          {result.text}
-        </div>
-      )}
-
-      <div style={{marginTop:20,fontSize:10,opacity:0.4,textAlign:'center'}}>
-        {lang==='en'?'Pro: 50 queries/month · Franchise: 200 queries/month · On-demand only — no surprise API costs':'Pro: 50 requêtes/mois · Franchise: 200 requêtes/mois · À la demande — aucun coût surprise'}
-      </div>
-    </div>
-  );
+      {result?.text && (<div style={{padding:'18px 20px',background:'rgba(167,139,250,0.06)',border:'1px solid rgba(167,139,250,0.2)',borderRadius:10,fontSize:13,lineHeight:1.75,whiteSpace:'pre-wrap',color:t.text}}><div style={{fontSize:11,fontWeight:700,color:'#a78bfa',marginBottom:12,display:'flex',alignItems:'center',gap:6}}>{analysisType==='weekly'?(lang==='en'?'Weekly Production Analysis':'Analyse hebdomadaire de production'):(lang==='en'?`Product Analysis — ${products.find(p=>p.id===selectedProductId)?.name||''}`:` Analyse produit — ${products.find(p=>p.id===selectedProductId)?.name||''}`)}<span style={{fontSize:9,padding:'1px 5px',borderRadius:3,background:'rgba(167,139,250,0.2)',color:'#c084fc'}}>Claude AI</span></div>{result.text}</div>)}<div style={{marginTop:20,fontSize:10,opacity:0.4,textAlign:'center'}}>{lang==='en'?'Pro: 50 queries/month · Franchise: 200 queries/month · On-demand only — no surprise API costs':'Pro: 50 requêtes/mois · Franchise: 200 requêtes/mois · À la demande — aucun coût surprise'}</div></div>);
 }
 
 // ── Products Sub-view ─────────────────────────────────────────────────────────
@@ -714,58 +500,22 @@ function ProductsView({ products, onSaveProduct, T, t, lang }) {
   const grouped = {};
   filtered.forEach(p => { const cat = p.category||''; if (!grouped[cat]) grouped[cat]=[]; grouped[cat].push(p); });
 
-  return (
-    <div>
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12,gap:8,flexWrap:'wrap'}}>
-        <div>
-          <div style={{fontSize:13,fontWeight:700,color:'inherit',display:'flex',alignItems:'center'}}>
-            {T.prevProdTitle}
-            <TipIcon text={lang==='en'?'These products are tracked daily. Add each item you regularly produce. The system tracks sales and starts predicting after 7 days of data.':'Ces produits sont suivis quotidiennement. Ajoutez chaque item que vous produisez régulièrement. Le système suit les ventes et commence à prédire après 7 jours de données.'} align="left"/>
-          </div>
-          <div style={{fontSize:11,opacity:0.6,marginTop:2}}>{T.prevProdDesc}</div>
-        </div>
-        <button onClick={()=>{setEditing(null);setShowForm(true);}} style={{padding:'7px 14px',borderRadius:7,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:12,fontWeight:600,whiteSpace:'nowrap'}}>{T.prevProdNew}</button>
-      </div>
-
-      {products.length > 3 && (
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder={T.prevProdSearch}
-          style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:6,color:'inherit',fontSize:12,padding:'6px 10px',outline:'none',width:'100%',boxSizing:'border-box',marginBottom:12,fontFamily:"'Outfit',sans-serif"}}/>
+  return (<div><div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12,gap:8,flexWrap:'wrap'}}><div><div style={{fontSize:13,fontWeight:700,color:'inherit',display:'flex',alignItems:'center'}}>{T.prevProdTitle}<TipIcon text={lang==='en'?'These products are tracked daily. Add each item you regularly produce. The system tracks sales and starts predicting after 7 days of data.':'Ces produits sont suivis quotidiennement. Ajoutez chaque item que vous produisez régulièrement. Le système suit les ventes et commence à prédire après 7 jours de données.'} align="left"/></div><div style={{fontSize:11,opacity:0.6,marginTop:2}}>{T.prevProdDesc}</div></div><button onClick={()=>{setEditing(null);setShowForm(true);}} style={{padding:'7px 14px',borderRadius:7,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:12,fontWeight:600,whiteSpace:'nowrap'}}>{T.prevProdNew}</button></div>{products.length > 3 && (<input value={search} onChange={e=>setSearch(e.target.value)} placeholder={T.prevProdSearch}
+          style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:6,color:'inherit',fontSize:12,padding:'6px 10px',outline:'none',width:'100%',boxSizing:'border-box',marginBottom:12,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}/>
       )}
 
-      {filtered.length === 0 && (
-        <div style={{textAlign:'center',padding:'30px 0',fontSize:12,opacity:0.5}}>{T.prevProdEmpty}</div>
-      )}
+      {filtered.length === 0 && (<div style={{textAlign:'center',padding:'30px 0',fontSize:12,opacity:0.5}}>{T.prevProdEmpty}</div>)}
 
-      {Object.entries(grouped).sort(([a],[b])=>a.localeCompare(b)).map(([cat, prods]) => (
-        <div key={cat} style={{marginBottom:14}}>
-          <div style={{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:0.5,marginBottom:6}}>{cat||T.prevProdUncategorized}</div>
-          {prods.map(p => (
-            <div key={p.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 10px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:7,marginBottom:4,opacity:p.active?1:0.5}}>
-              <div style={{flex:1,minWidth:0}}>
-                <span style={{fontSize:12,fontWeight:600,color:'inherit'}}>{p.name}</span>
-                <span style={{fontSize:10.5,opacity:0.55,marginLeft:10}}>base: {p.base_quantity} · {p.shelf_life_days}j</span>
-                {p.weather_sensitivity !== 0 && <span style={{fontSize:10,marginLeft:6,color:p.weather_sensitivity>0?'#f97316':'#60a5fa'}}>{p.weather_sensitivity>0?`+${p.weather_sensitivity}☀️`:`${p.weather_sensitivity}❄️`}</span>}
-              </div>
-              <div style={{display:'flex',gap:5}}>
-                <button onClick={()=>{setEditing(p);setShowForm(true);}} style={{padding:'3px 8px',borderRadius:4,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:10}}>{T.prevProdEdit}</button>
-                <button onClick={()=>onSaveProduct({...p,active:p.active?0:1})} style={{padding:'3px 8px',borderRadius:4,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:10}}>{p.active?T.prevProdDeactivate:T.prevProdActivate}</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      ))}
+      {Object.entries(grouped).sort(([a],[b])=>a.localeCompare(b)).map(([cat, prods]) => (<div key={cat} style={{marginBottom:14}}><div style={{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:0.5,marginBottom:6}}>{cat||T.prevProdUncategorized}</div>{prods.map(p => (<div key={p.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 10px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:7,marginBottom:4,opacity:p.active?1:0.5}}><div style={{flex:1,minWidth:0}}><span style={{fontSize:12,fontWeight:600,color:'inherit'}}>{p.name}</span><span style={{fontSize:10.5,opacity:0.55,marginLeft:10}}>base: {p.base_quantity} · {p.shelf_life_days}j</span>{p.weather_sensitivity !== 0 &&<span style={{fontSize:10,marginLeft:6,color:p.weather_sensitivity>0?'#f97316':'#60a5fa'}}>{p.weather_sensitivity>0?`+${p.weather_sensitivity}`:`${p.weather_sensitivity}`}</span>}</div><div style={{display:'flex',gap:5}}><button onClick={()=>{setEditing(p);setShowForm(true);}} style={{padding:'3px 8px',borderRadius:4,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:10}}>{T.prevProdEdit}</button><button onClick={()=>onSaveProduct({...p,active:p.active?0:1})} style={{padding:'3px 8px',borderRadius:4,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:10}}>{p.active?T.prevProdDeactivate:T.prevProdActivate}</button></div></div>))}</div>))}
 
-      {showForm && (
-        <ProductFormModal
+      {showForm && (<ProductFormModal
           product={editing}
           existingCategories={categories}
           onSave={p=>{ onSaveProduct(p); setShowForm(false); setEditing(null); }}
           onClose={()=>{setShowForm(false);setEditing(null);}}
           T={T} t={t} lang={lang}
         />
-      )}
-    </div>
-  );
+      )}</div>);
 }
 
 // ── Manual Entry View ─────────────────────────────────────────────────────────
@@ -824,59 +574,17 @@ function ManualEntryView({ products, selectedDate, setSelectedDate, salesByDate,
     setTimeout(() => setSaved(false), 2500);
   };
 
-  const inp = { background:t.inputBg, border:`1px solid ${t.inputBorder}`, borderRadius:4, color:'inherit', fontSize:12, padding:'4px 6px', outline:'none', width:70, textAlign:'center', fontFamily:"'DM Mono',monospace" };
+  const inp = { background:t.inputBg, border:`1px solid ${t.inputBorder}`, borderRadius:4, color:'inherit', fontSize:12, padding:'4px 6px', outline:'none', width:70, textAlign:'center', fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums" };
 
   if (activeProducts.length === 0) {
-    return <div style={{textAlign:'center',padding:'30px 0',fontSize:12,opacity:0.5}}>{T.prevManualNoProds}</div>;
+    return<div style={{textAlign:'center',padding:'30px 0',fontSize:12,opacity:0.5}}>{T.prevManualNoProds}</div>;
   }
 
-  return (
-    <div>
-      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14,flexWrap:'wrap'}}>
-        <div style={{fontSize:13,fontWeight:700,display:'flex',alignItems:'center',gap:2}}>
-          {T.prevManualTitle}<span style={{color:'#f97316'}}>{formatDateFull(selectedDate, lang)}</span>
-          <TipIcon text={lang==='en'?'Enter daily quantities sold for each product. To automate this import, connect your POS (Square, Clover, Shopify) in Config → Integrations. The more complete your data, the more accurate predictions will be.':'Entrez les quantités vendues chaque jour par produit. Pour automatiser, connectez votre POS (Square, Clover, Shopify) dans Config → Intégrations. Des données complètes = prédictions précises.'} align="left"/>
-        </div>
-        <input type="date" value={selectedDate} onChange={e=>setSelectedDate(e.target.value)}
-          style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:'inherit',fontSize:12,padding:'4px 8px',outline:'none',fontFamily:"'Outfit',sans-serif"}}/>
-      </div>
-
-      <div style={{overflowX:'auto'}}>
-        <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-          <thead>
-            <tr style={{borderBottom:`2px solid ${t.cardBorder}`}}>
-              <th style={{textAlign:'left',padding:'6px 8px',color:'inherit',fontWeight:600,fontSize:11}}>{T.prevColProduct}</th>
-              <th style={{textAlign:'center',padding:'6px 8px',color:'inherit',fontWeight:600,fontSize:11}}>{T.prevColMade}</th>
-              <th style={{textAlign:'center',padding:'6px 8px',color:'inherit',fontWeight:600,fontSize:11}}>{T.prevColSold}</th>
-              <th style={{textAlign:'center',padding:'6px 8px',color:'inherit',fontWeight:600,fontSize:11}}>{T.prevColRemaining}</th>
-              <th style={{textAlign:'center',padding:'6px 8px',color:'inherit',fontWeight:600,fontSize:11}}>{T.prevColStockout}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {activeProducts.map(p => {
+  return (<div><div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14,flexWrap:'wrap'}}><div style={{fontSize:13,fontWeight:700,display:'flex',alignItems:'center',gap:2}}>{T.prevManualTitle}<span style={{color:'#f97316'}}>{formatDateFull(selectedDate, lang)}</span><TipIcon text={lang==='en'?'Enter daily quantities sold for each product. To automate this import, connect your POS (Square, Clover, Shopify) in Config → Integrations. The more complete your data, the more accurate predictions will be.':'Entrez les quantités vendues chaque jour par produit. Pour automatiser, connectez votre POS (Square, Clover, Shopify) dans Config → Intégrations. Des données complètes = prédictions précises.'} align="left"/></div><input type="date" value={selectedDate} onChange={e=>setSelectedDate(e.target.value)}
+          style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:'inherit',fontSize:12,padding:'4px 8px',outline:'none',fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}/></div><div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}><thead><tr style={{borderBottom:`2px solid ${t.cardBorder}`}}><th style={{textAlign:'left',padding:'6px 8px',color:'inherit',fontWeight:600,fontSize:11}}>{T.prevColProduct}</th><th style={{textAlign:'center',padding:'6px 8px',color:'inherit',fontWeight:600,fontSize:11}}>{T.prevColMade}</th><th style={{textAlign:'center',padding:'6px 8px',color:'inherit',fontWeight:600,fontSize:11}}>{T.prevColSold}</th><th style={{textAlign:'center',padding:'6px 8px',color:'inherit',fontWeight:600,fontSize:11}}>{T.prevColRemaining}</th><th style={{textAlign:'center',padding:'6px 8px',color:'inherit',fontWeight:600,fontSize:11}}>{T.prevColStockout}</th></tr></thead><tbody>{activeProducts.map(p => {
               const row = rows[p.id] || { made:'', sold:'', remaining:'', stockout:0 };
-              return (
-                <tr key={p.id} style={{borderBottom:`1px solid ${t.cardBorder}`}}>
-                  <td style={{padding:'6px 8px',fontWeight:600}}>{p.name}{p.category&&<span style={{fontSize:10,opacity:0.5,marginLeft:6}}>{p.category}</span>}</td>
-                  <td style={{padding:'6px 8px',textAlign:'center'}}><input type="number" min="0" style={inp} value={row.made} onChange={e=>updateRow(p.id,'made',e.target.value)} placeholder="—"/></td>
-                  <td style={{padding:'6px 8px',textAlign:'center'}}><input type="number" min="0" style={{...inp,border:`1px solid ${row.sold!==''?'#f97316':t.inputBorder}`}} value={row.sold} onChange={e=>updateRow(p.id,'sold',e.target.value)} placeholder="0"/></td>
-                  <td style={{padding:'6px 8px',textAlign:'center'}}><input type="number" min="0" style={inp} value={row.remaining} onChange={e=>updateRow(p.id,'remaining',e.target.value)} placeholder="—"/></td>
-                  <td style={{padding:'6px 8px',textAlign:'center'}}>
-                    <input type="checkbox" checked={!!row.stockout} onChange={e=>updateRow(p.id,'stockout',e.target.checked?1:0)} style={{cursor:'pointer',accentColor:'#ef4444',width:14,height:14}}/>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      <div style={{display:'flex',justifyContent:'flex-end',marginTop:12,gap:8}}>
-        {saved && <span style={{fontSize:11,color:'#22c55e',alignSelf:'center'}}>{T.prevManualSaved}</span>}
-        <button onClick={handleSave} disabled={saving} style={{padding:'8px 20px',borderRadius:7,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:12,fontWeight:600,opacity:saving?0.6:1}}>{saving?'...' :T.prevManualSave}</button>
-      </div>
-    </div>
-  );
+              return (<tr key={p.id} style={{borderBottom:`1px solid ${t.cardBorder}`}}><td style={{padding:'6px 8px',fontWeight:600}}>{p.name}{p.category&&<span style={{fontSize:10,opacity:0.5,marginLeft:6}}>{p.category}</span>}</td><td style={{padding:'6px 8px',textAlign:'center'}}><input type="number" min="0" style={inp} value={row.made} onChange={e=>updateRow(p.id,'made',e.target.value)} placeholder="—"/></td><td style={{padding:'6px 8px',textAlign:'center'}}><input type="number" min="0" style={{...inp,border:`1px solid ${row.sold!==''?'#f97316':t.inputBorder}`}} value={row.sold} onChange={e=>updateRow(p.id,'sold',e.target.value)} placeholder="0"/></td><td style={{padding:'6px 8px',textAlign:'center'}}><input type="number" min="0" style={inp} value={row.remaining} onChange={e=>updateRow(p.id,'remaining',e.target.value)} placeholder="—"/></td><td style={{padding:'6px 8px',textAlign:'center'}}><input type="checkbox" checked={!!row.stockout} onChange={e=>updateRow(p.id,'stockout',e.target.checked?1:0)} style={{cursor:'pointer',accentColor:'#ef4444',width:14,height:14}}/></td></tr>);
+            })}</tbody></table></div><div style={{display:'flex',justifyContent:'flex-end',marginTop:12,gap:8}}>{saved &&<span style={{fontSize:11,color:'#22c55e',alignSelf:'center'}}>{T.prevManualSaved}</span>}<button onClick={handleSave} disabled={saving} style={{padding:'8px 20px',borderRadius:7,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:12,fontWeight:600,opacity:saving?0.6:1}}>{saving?'...' :T.prevManualSave}</button></div></div>);
 }
 
 // ── CSV Import View ───────────────────────────────────────────────────────────
@@ -897,7 +605,7 @@ function CSVImportView({ products, onImported, savedFormats, onSaveFormat, T, t,
   const [duplicateWarning, setDuplicateWarning] = useState(null); // {dates, toImport, newProds}
 
   const productNames = new Set(products.map(p=>p.name.toLowerCase()));
-  const inp = { background:t.inputBg, border:`1px solid ${t.inputBorder}`, borderRadius:5, color:'inherit', fontSize:12, padding:'5px 8px', outline:'none', fontFamily:"'Outfit',sans-serif" };
+  const inp = { background:t.inputBg, border:`1px solid ${t.inputBorder}`, borderRadius:5, color:'inherit', fontSize:12, padding:'5px 8px', outline:'none', fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif" };
 
   const loadHistory = async () => {
     try { setImportHistory(await window.api.forecast.imports.getAll()); } catch {}
@@ -1037,182 +745,20 @@ function CSVImportView({ products, onImported, savedFormats, onSaveFormat, T, t,
   const connectedPos = Object.entries(posIntegrations).find(([,cfg]) => cfg?.connected && cfg?.accessToken);
   const connectedPosName = connectedPos ? connectedPos[0] : null;
 
-  return (
-    <div>
-      <div style={{fontSize:13,fontWeight:700,marginBottom:12,display:'flex',alignItems:'center',gap:2}}>
-        {T.prevImportTitle}
-        <TipIcon text={lang==='en'?'Upload a CSV or Excel export from your POS (or any spreadsheet). Map columns once and save the format — future imports will use it automatically. Connect your POS in Config → Integrations to automate daily imports.':'Téléversez un CSV ou Excel exporté de votre POS (ou tout tableur). Mappez les colonnes une fois et sauvegardez le format — les imports futurs l\'utiliseront automatiquement. Connectez votre POS dans Config → Intégrations pour automatiser les imports.'} align="left"/>
-      </div>
+  return (<div><div style={{fontSize:13,fontWeight:700,marginBottom:12,display:'flex',alignItems:'center',gap:2}}>{T.prevImportTitle}<TipIcon text={lang==='en'?'Upload a CSV or Excel export from your POS (or any spreadsheet). Map columns once and save the format — future imports will use it automatically. Connect your POS in Config → Integrations to automate daily imports.':'Téléversez un CSV ou Excel exporté de votre POS (ou tout tableur). Mappez les colonnes une fois et sauvegardez le format — les imports futurs l\'utiliseront automatiquement. Connectez votre POS dans Config → Intégrations pour automatiser les imports.'} align="left"/></div>{/* POS Import section */}<div style={{marginBottom:14,padding:'10px 12px',background:t.section,borderRadius:7,border:`1px solid ${t.cardBorder}`}}><div style={{fontSize:11,fontWeight:700,marginBottom:6,opacity:0.8}}>POS</div>{!canUse('posIntegration') ? (<div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}><span style={{fontSize:11,opacity:0.6}}>{T.prevPOSProRequired}</span><button onClick={()=>showUpgradePrompt&&showUpgradePrompt('posIntegration')}
+              style={{padding:'3px 10px',borderRadius:12,border:'1px solid #f97316',color:'#f97316',background:'rgba(249,115,22,0.1)',cursor:'pointer',fontSize:10,fontWeight:600,whiteSpace:'nowrap'}}>Pro ↑</button></div>) : connectedPosName ? (<div style={{display:'flex',alignItems:'center',gap:8}}><span style={{fontSize:11,opacity:0.7}}>{connectedPosName}</span><button style={{padding:'5px 14px',borderRadius:6,border:'1px solid #3b82f6',background:'rgba(59,130,246,0.1)',color:'#3b82f6',cursor:'not-allowed',fontSize:11,fontWeight:600,opacity:0.7}}>{T.prevPOSImportBtn(connectedPosName)}</button><span style={{fontSize:10,opacity:0.5,fontStyle:'italic'}}>(item-level import — coming soon)</span></div>) : (<span style={{fontSize:11,opacity:0.5,fontStyle:'italic'}}>{T.prevPOSNoConn}</span>)}</div>{step === 'upload' && (<div>{savedFormats.length > 0 && (<div style={{marginBottom:10}}><label style={{fontSize:11,opacity:0.6,display:'block',marginBottom:4}}>{T.prevImportLoadFmt}</label><select style={{...inp,width:'100%',boxSizing:'border-box'}} value={loadedFormat} onChange={e=>setLoadedFormat(e.target.value)}><option value="">{T.prevImportNoFmt}</option>{savedFormats.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}</select></div>)}<label style={{display:'inline-block',padding:'9px 18px',borderRadius:7,background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:12,fontWeight:600}}>{T.prevImportBtn}<input type="file" accept=".csv,.xlsx,.xls" onChange={handleFile} style={{display:'none'}}/></label>{importHistory.length > 0 && (<div style={{marginTop:16}}><div style={{fontSize:11,fontWeight:700,opacity:0.6,marginBottom:8,textTransform:'uppercase',letterSpacing:0.5}}>{T.prevImportHistory}</div><div style={{border:`1px solid ${t.cardBorder}`,borderRadius:7,overflow:'hidden'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}><thead><tr style={{background:t.section}}>{[T.prevImportColFilename,T.prevImportColTargetDate,T.prevImportColTimestamp,T.prevImportColRecords,''].map((h,i)=>(<th key={i} style={{padding:'6px 10px',textAlign:'left',fontWeight:600,opacity:0.7,borderBottom:`1px solid ${t.cardBorder}`}}>{h}</th>))}</tr></thead><tbody>{importHistory.map((row,i)=>(<tr key={row.id} style={{borderBottom:i<importHistory.length-1?`1px solid ${t.cardBorder}`:'none',opacity:row.replaced?0.45:1}}><td style={{padding:'6px 10px',maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={row.filename}>{row.filename}</td><td style={{padding:'6px 10px',whiteSpace:'nowrap'}}>{row.target_date}</td><td style={{padding:'6px 10px',whiteSpace:'nowrap',opacity:0.7}}>{row.imported_at ? row.imported_at.substring(0,16).replace('T',' ') : ''}</td><td style={{padding:'6px 10px',textAlign:'center'}}>{row.record_count ?? '—'}</td><td style={{padding:'6px 10px',textAlign:'right'}}><button onClick={()=>handleDeleteImport(row.id)} style={{padding:'2px 7px',borderRadius:4,border:`1px solid ${t.cardBorder}`,background:'transparent',color:'#ef4444',cursor:'pointer',fontSize:11,lineHeight:1}}></button></td></tr>))}</tbody></table></div></div>)}</div>)}
 
-      {/* POS Import section */}
-      <div style={{marginBottom:14,padding:'10px 12px',background:t.section,borderRadius:7,border:`1px solid ${t.cardBorder}`}}>
-        <div style={{fontSize:11,fontWeight:700,marginBottom:6,opacity:0.8}}>📡 POS</div>
-        {!canUse('posIntegration') ? (
-          <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-            <span style={{fontSize:11,opacity:0.6}}>{T.prevPOSProRequired}</span>
-            <button onClick={()=>showUpgradePrompt&&showUpgradePrompt('posIntegration')}
-              style={{padding:'3px 10px',borderRadius:12,border:'1px solid #f97316',color:'#f97316',background:'rgba(249,115,22,0.1)',cursor:'pointer',fontSize:10,fontWeight:600,whiteSpace:'nowrap'}}>Pro ↑</button>
-          </div>
-        ) : connectedPosName ? (
-          <div style={{display:'flex',alignItems:'center',gap:8}}>
-            <span style={{fontSize:11,opacity:0.7}}>{connectedPosName}</span>
-            <button style={{padding:'5px 14px',borderRadius:6,border:'1px solid #3b82f6',background:'rgba(59,130,246,0.1)',color:'#3b82f6',cursor:'not-allowed',fontSize:11,fontWeight:600,opacity:0.7}}>
-              {T.prevPOSImportBtn(connectedPosName)}
-            </button>
-            <span style={{fontSize:10,opacity:0.5,fontStyle:'italic'}}>(item-level import — coming soon)</span>
-          </div>
-        ) : (
-          <span style={{fontSize:11,opacity:0.5,fontStyle:'italic'}}>{T.prevPOSNoConn}</span>
-        )}
-      </div>
+      {step === 'map' && (<div><div style={{fontSize:12,opacity:0.6,marginBottom:10}}>{T.prevImportMapDesc}</div>{[['prod',T.prevImportColProd,true],['sold',T.prevImportColSold,true],['date',T.prevImportColDate,false],['made',T.prevImportColMade,false],['remaining',T.prevImportColRem,false]].map(([key,label,required])=>(<div key={key} style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}><span style={{fontSize:11,width:180,flexShrink:0,opacity:0.8}}>{label}{required&&' *'}</span><select style={{...inp,flex:1}} value={mapping[key]} onChange={e=>setMapping(m=>({...m,[key]:e.target.value}))}>
+                {colOpts.map(c=><option key={c} value={c}>{c||'—'}</option>)}</select></div>))}
+          {!mapping.date && (<div style={{display:'flex',alignItems:'center',gap:8,marginTop:6,marginBottom:8}}><span style={{fontSize:11,width:180,opacity:0.8}}>{T.prevImportDatePrompt}</span><input type="date" value={importDate} onChange={e=>setImportDate(e.target.value)} style={{...inp,flex:1}}/></div>)}<div style={{borderTop:`1px solid ${t.cardBorder}`,marginTop:12,paddingTop:12}}><div style={{fontSize:11,opacity:0.6,marginBottom:6}}>{T.prevImportFormatName}</div><div style={{display:'flex',gap:6,marginBottom:10}}><input style={{...inp,flex:1}} value={formatName} onChange={e=>setFormatName(e.target.value)} placeholder="Mon format..."/><button onClick={handleSaveFormat} style={{padding:'5px 12px',borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:11,whiteSpace:'nowrap'}}>{T.prevImportSaveFormat}</button>{savedMsg&&<span style={{fontSize:11,color:'#22c55e',alignSelf:'center'}}>{savedMsg}</span>}</div></div><div style={{display:'flex',gap:8}}><button onClick={()=>setStep('upload')} style={{padding:'7px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:12}}>{T.prevImportCancel}</button><button onClick={handleConfirmMap} disabled={!mapping.prod||!mapping.sold} style={{padding:'7px 14px',borderRadius:6,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:12,fontWeight:600,opacity:(!mapping.prod||!mapping.sold)?0.5:1}}>{T.prevImportPreview}</button></div></div>)}
 
-      {step === 'upload' && (
-        <div>
-          {savedFormats.length > 0 && (
-            <div style={{marginBottom:10}}>
-              <label style={{fontSize:11,opacity:0.6,display:'block',marginBottom:4}}>{T.prevImportLoadFmt}</label>
-              <select style={{...inp,width:'100%',boxSizing:'border-box'}} value={loadedFormat} onChange={e=>setLoadedFormat(e.target.value)}>
-                <option value="">{T.prevImportNoFmt}</option>
-                {savedFormats.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}
-              </select>
-            </div>
-          )}
-          <label style={{display:'inline-block',padding:'9px 18px',borderRadius:7,background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:12,fontWeight:600}}>
-            {T.prevImportBtn}
-            <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFile} style={{display:'none'}}/>
-          </label>
-          {importHistory.length > 0 && (
-            <div style={{marginTop:16}}>
-              <div style={{fontSize:11,fontWeight:700,opacity:0.6,marginBottom:8,textTransform:'uppercase',letterSpacing:0.5}}>{T.prevImportHistory}</div>
-              <div style={{border:`1px solid ${t.cardBorder}`,borderRadius:7,overflow:'hidden'}}>
-                <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
-                  <thead>
-                    <tr style={{background:t.section}}>
-                      {[T.prevImportColFilename,T.prevImportColTargetDate,T.prevImportColTimestamp,T.prevImportColRecords,''].map((h,i)=>(
-                        <th key={i} style={{padding:'6px 10px',textAlign:'left',fontWeight:600,opacity:0.7,borderBottom:`1px solid ${t.cardBorder}`}}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {importHistory.map((row,i)=>(
-                      <tr key={row.id} style={{borderBottom:i<importHistory.length-1?`1px solid ${t.cardBorder}`:'none',opacity:row.replaced?0.45:1}}>
-                        <td style={{padding:'6px 10px',maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={row.filename}>{row.filename}</td>
-                        <td style={{padding:'6px 10px',whiteSpace:'nowrap'}}>{row.target_date}</td>
-                        <td style={{padding:'6px 10px',whiteSpace:'nowrap',opacity:0.7}}>{row.imported_at ? row.imported_at.substring(0,16).replace('T',' ') : ''}</td>
-                        <td style={{padding:'6px 10px',textAlign:'center'}}>{row.record_count ?? '—'}</td>
-                        <td style={{padding:'6px 10px',textAlign:'right'}}>
-                          <button onClick={()=>handleDeleteImport(row.id)} style={{padding:'2px 7px',borderRadius:4,border:`1px solid ${t.cardBorder}`,background:'transparent',color:'#ef4444',cursor:'pointer',fontSize:11,lineHeight:1}}>✕</button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {step === 'map' && (
-        <div>
-          <div style={{fontSize:12,opacity:0.6,marginBottom:10}}>{T.prevImportMapDesc}</div>
-          {[['prod',T.prevImportColProd,true],['sold',T.prevImportColSold,true],['date',T.prevImportColDate,false],['made',T.prevImportColMade,false],['remaining',T.prevImportColRem,false]].map(([key,label,required])=>(
-            <div key={key} style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
-              <span style={{fontSize:11,width:180,flexShrink:0,opacity:0.8}}>{label}{required&&' *'}</span>
-              <select style={{...inp,flex:1}} value={mapping[key]} onChange={e=>setMapping(m=>({...m,[key]:e.target.value}))}>
-                {colOpts.map(c=><option key={c} value={c}>{c||'—'}</option>)}
-              </select>
-            </div>
-          ))}
-          {!mapping.date && (
-            <div style={{display:'flex',alignItems:'center',gap:8,marginTop:6,marginBottom:8}}>
-              <span style={{fontSize:11,width:180,opacity:0.8}}>{T.prevImportDatePrompt}</span>
-              <input type="date" value={importDate} onChange={e=>setImportDate(e.target.value)} style={{...inp,flex:1}}/>
-            </div>
-          )}
-          <div style={{borderTop:`1px solid ${t.cardBorder}`,marginTop:12,paddingTop:12}}>
-            <div style={{fontSize:11,opacity:0.6,marginBottom:6}}>{T.prevImportFormatName}</div>
-            <div style={{display:'flex',gap:6,marginBottom:10}}>
-              <input style={{...inp,flex:1}} value={formatName} onChange={e=>setFormatName(e.target.value)} placeholder="Mon format..."/>
-              <button onClick={handleSaveFormat} style={{padding:'5px 12px',borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:11,whiteSpace:'nowrap'}}>{T.prevImportSaveFormat}</button>
-              {savedMsg&&<span style={{fontSize:11,color:'#22c55e',alignSelf:'center'}}>{savedMsg}</span>}
-            </div>
-          </div>
-          <div style={{display:'flex',gap:8}}>
-            <button onClick={()=>setStep('upload')} style={{padding:'7px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:12}}>{T.prevImportCancel}</button>
-            <button onClick={handleConfirmMap} disabled={!mapping.prod||!mapping.sold} style={{padding:'7px 14px',borderRadius:6,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:12,fontWeight:600,opacity:(!mapping.prod||!mapping.sold)?0.5:1}}>{T.prevImportPreview}</button>
-          </div>
-        </div>
-      )}
-
-      {step === 'unknown' && (
-        <div>
-          <div style={{fontSize:12,color:'#f59e0b',marginBottom:10,fontWeight:600}}>{T.prevImportNewProds(unknownProds.length)}</div>
-          {unknownProds.map((u,i)=>(
-            <div key={i} style={{display:'flex',alignItems:'center',gap:8,marginBottom:6,fontSize:12}}>
-              <span style={{flex:1,fontWeight:600}}>{u.name}</span>
-              {['add','ignore'].map(a=>(
-                <button key={a} onClick={()=>setUnknownProds(up=>up.map((x,j)=>j===i?{...x,action:a}:x))}
+      {step === 'unknown' && (<div><div style={{fontSize:12,color:'#f59e0b',marginBottom:10,fontWeight:600}}>{T.prevImportNewProds(unknownProds.length)}</div>{unknownProds.map((u,i)=>(<div key={i} style={{display:'flex',alignItems:'center',gap:8,marginBottom:6,fontSize:12}}><span style={{flex:1,fontWeight:600}}>{u.name}</span>{['add','ignore'].map(a=>(<button key={a} onClick={()=>setUnknownProds(up=>up.map((x,j)=>j===i?{...x,action:a}:x))}
                   style={{padding:'3px 10px',borderRadius:12,border:`1px solid ${u.action===a?'#f97316':t.cardBorder}`,background:u.action===a?'rgba(249,115,22,0.15)':t.section,color:u.action===a?'#f97316':'inherit',cursor:'pointer',fontSize:11}}>
-                  {a==='add'?T.prevImportAddCat:T.prevImportIgnore}
-                </button>
-              ))}
-            </div>
-          ))}
-          <div style={{display:'flex',gap:8,marginTop:12}}>
-            <button onClick={()=>setStep('map')} style={{padding:'7px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:12}}>{T.prevImportCancel}</button>
-            <button onClick={()=>setStep('preview')} style={{padding:'7px 14px',borderRadius:6,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:12,fontWeight:600}}>{T.prevImportConfirm}</button>
-          </div>
-        </div>
-      )}
+                  {a==='add'?T.prevImportAddCat:T.prevImportIgnore}</button>))}</div>))}<div style={{display:'flex',gap:8,marginTop:12}}><button onClick={()=>setStep('map')} style={{padding:'7px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:12}}>{T.prevImportCancel}</button><button onClick={()=>setStep('preview')} style={{padding:'7px 14px',borderRadius:6,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:12,fontWeight:600}}>{T.prevImportConfirm}</button></div></div>)}
 
-      {step === 'preview' && (
-        <div>
-          <div style={{fontSize:12,opacity:0.6,marginBottom:8}}>{T.prevImportPreview} ({rows.length} lignes)</div>
-          <div style={{maxHeight:220,overflowY:'auto',border:`1px solid ${t.cardBorder}`,borderRadius:6,marginBottom:12}}>
-            <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
-              <thead style={{position:'sticky',top:0,background:t.cardBg}}>
-                <tr>{[T.prevColProduct,T.prevColSold,T.prevColDate,T.prevColMade,T.prevColRemaining].map(h=><th key={h} style={{padding:'5px 8px',textAlign:'left',fontWeight:600,opacity:0.7,borderBottom:`1px solid ${t.cardBorder}`}}>{h}</th>)}</tr>
-              </thead>
-              <tbody>
-                {rows.slice(0,50).map((row,i)=>(
-                  <tr key={i} style={{borderBottom:`1px solid ${t.cardBorder}`}}>
-                    <td style={{padding:'4px 8px'}}>{String(row[columns.indexOf(mapping.prod)]||'')}</td>
-                    <td style={{padding:'4px 8px'}}>{String(row[columns.indexOf(mapping.sold)]||'')}</td>
-                    <td style={{padding:'4px 8px'}}>{mapping.date?String(row[columns.indexOf(mapping.date)]||''):importDate}</td>
-                    <td style={{padding:'4px 8px'}}>{mapping.made?String(row[columns.indexOf(mapping.made)]||''):'—'}</td>
-                    <td style={{padding:'4px 8px'}}>{mapping.remaining?String(row[columns.indexOf(mapping.remaining)]||''):'—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {duplicateWarning && (
-            <div style={{background:'rgba(249,115,22,0.1)',border:'1px solid rgba(249,115,22,0.3)',borderRadius:7,padding:'10px 12px',marginBottom:12}}>
-              <div style={{fontSize:12,fontWeight:600,color:'#f97316',marginBottom:6}}>⚠️ {T.prevImportDuplicateTitle}</div>
-              <div style={{fontSize:11,marginBottom:10}}>{T.prevImportDuplicateMsg(duplicateWarning.dates.join(', '))}</div>
-              <div style={{display:'flex',gap:8}}>
-                <button onClick={()=>doImport(duplicateWarning.toImport,duplicateWarning.newProds,true)} style={{padding:'5px 12px',borderRadius:5,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:11,fontWeight:600}}>{T.prevImportReplace}</button>
-                <button onClick={()=>setDuplicateWarning(null)} style={{padding:'5px 12px',borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:11}}>{T.prevImportCancel}</button>
-              </div>
-            </div>
-          )}
-          <div style={{display:'flex',gap:8}}>
-            <button onClick={()=>setStep('map')} style={{padding:'7px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:12}}>{T.prevImportCancel}</button>
-            <button onClick={handleImportClick} style={{padding:'7px 14px',borderRadius:6,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:12,fontWeight:600}}>{T.prevImportConfirm}</button>
-          </div>
-        </div>
-      )}
+      {step === 'preview' && (<div><div style={{fontSize:12,opacity:0.6,marginBottom:8}}>{T.prevImportPreview} ({rows.length} lignes)</div><div style={{maxHeight:220,overflowY:'auto',border:`1px solid ${t.cardBorder}`,borderRadius:6,marginBottom:12}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}><thead style={{position:'sticky',top:0,background:t.cardBg}}><tr>{[T.prevColProduct,T.prevColSold,T.prevColDate,T.prevColMade,T.prevColRemaining].map(h=><th key={h} style={{padding:'5px 8px',textAlign:'left',fontWeight:600,opacity:0.7,borderBottom:`1px solid ${t.cardBorder}`}}>{h}</th>)}</tr></thead><tbody>{rows.slice(0,50).map((row,i)=>(<tr key={i} style={{borderBottom:`1px solid ${t.cardBorder}`}}><td style={{padding:'4px 8px'}}>{String(row[columns.indexOf(mapping.prod)]||'')}</td><td style={{padding:'4px 8px'}}>{String(row[columns.indexOf(mapping.sold)]||'')}</td><td style={{padding:'4px 8px'}}>{mapping.date?String(row[columns.indexOf(mapping.date)]||''):importDate}</td><td style={{padding:'4px 8px'}}>{mapping.made?String(row[columns.indexOf(mapping.made)]||''):'—'}</td><td style={{padding:'4px 8px'}}>{mapping.remaining?String(row[columns.indexOf(mapping.remaining)]||''):'—'}</td></tr>))}</tbody></table></div>{duplicateWarning && (<div style={{background:'rgba(249,115,22,0.1)',border:'1px solid rgba(249,115,22,0.3)',borderRadius:7,padding:'10px 12px',marginBottom:12}}><div style={{fontSize:12,fontWeight:600,color:'#f97316',marginBottom:6}}>{T.prevImportDuplicateTitle}</div><div style={{fontSize:11,marginBottom:10}}>{T.prevImportDuplicateMsg(duplicateWarning.dates.join(', '))}</div><div style={{display:'flex',gap:8}}><button onClick={()=>doImport(duplicateWarning.toImport,duplicateWarning.newProds,true)} style={{padding:'5px 12px',borderRadius:5,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:11,fontWeight:600}}>{T.prevImportReplace}</button><button onClick={()=>setDuplicateWarning(null)} style={{padding:'5px 12px',borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:11}}>{T.prevImportCancel}</button></div></div>)}<div style={{display:'flex',gap:8}}><button onClick={()=>setStep('map')} style={{padding:'7px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:12}}>{T.prevImportCancel}</button><button onClick={handleImportClick} style={{padding:'7px 14px',borderRadius:6,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:12,fontWeight:600}}>{T.prevImportConfirm}</button></div></div>)}
 
-      {step === 'done' && (
-        <div style={{textAlign:'center',padding:'20px 0'}}>
-          <div style={{fontSize:24,marginBottom:8}}>✓</div>
-          <div style={{fontSize:13,fontWeight:700,color:'#22c55e',marginBottom:4}}>{T.prevImportImported(result)}</div>
-          <button onClick={()=>{setStep('upload');setRows([]);setColumns([]);setMapping({prod:'',sold:'',date:'',made:'',remaining:''});setResult(null);}} style={{marginTop:12,padding:'7px 18px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:12}}>{T.prevImportBtn}</button>
-        </div>
-      )}
-    </div>
-  );
+      {step === 'done' && (<div style={{textAlign:'center',padding:'20px 0'}}><div style={{fontSize:24,marginBottom:8}}></div><div style={{fontSize:13,fontWeight:700,color:'#22c55e',marginBottom:4}}>{T.prevImportImported(result)}</div><button onClick={()=>{setStep('upload');setRows([]);setColumns([]);setMapping({prod:'',sold:'',date:'',made:'',remaining:''});setResult(null);}} style={{marginTop:12,padding:'7px 18px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:12}}>{T.prevImportBtn}</button></div>)}</div>);
 }
 
 // ── Alerts View ───────────────────────────────────────────────────────────────
@@ -1221,47 +767,10 @@ function AlertsView({ products, allSales, T, lang }) {
   const alerts = useMemo(() => computeAlerts(products, allSales, T, lang), [products, allSales]);
   const total = alerts.stockout.length + alerts.overproduction.length;
 
-  return (
-    <div>
-      <div style={{fontSize:13,fontWeight:700,marginBottom:12,display:'flex',alignItems:'center',gap:2}}>
-        {T.prevSubAlerts}
-        <TipIcon text={lang==='en'?'Automatic observations from the learning engine, based on your actual data. Stockout alerts mean you ran out on a given day — the system will adjust the prediction upward. Overproduction alerts mean you consistently made too much.':'Observations automatiques du moteur d\'apprentissage. Les alertes de rupture indiquent que vous avez manqué de stock — le système ajuste la prédiction à la hausse. Les alertes de surproduction indiquent une production excessive récurrente.'} align="left"/>
-      </div>
-      {total === 0 && alerts.optimized.length === 0 && (
-        <div style={{textAlign:'center',padding:'24px 0',fontSize:12,opacity:0.5}}>{T.prevNoAlerts}</div>
-      )}
-      {alerts.stockout.length > 0 && (
-        <div style={{marginBottom:12}}>
-          <div style={{fontSize:11,fontWeight:700,color:'#ef4444',textTransform:'uppercase',letterSpacing:0.5,marginBottom:6}}>{T.prevAlertStockout}</div>
-          {alerts.stockout.map((a,i)=>(
-            <div key={i} style={{padding:'10px 12px',background:'rgba(239,68,68,0.06)',border:'1px solid rgba(239,68,68,0.2)',borderRadius:7,marginBottom:6,fontSize:12}}>
-              {T.prevAlertStockoutMsg(a.product.name, a.dowName, a.count, a.suggested)}
-            </div>
-          ))}
-        </div>
-      )}
-      {alerts.overproduction.length > 0 && (
-        <div style={{marginBottom:12}}>
-          <div style={{fontSize:11,fontWeight:700,color:'#f59e0b',textTransform:'uppercase',letterSpacing:0.5,marginBottom:6}}>{T.prevAlertOverprod}</div>
-          {alerts.overproduction.map((a,i)=>(
-            <div key={i} style={{padding:'10px 12px',background:'rgba(245,158,11,0.06)',border:'1px solid rgba(245,158,11,0.2)',borderRadius:7,marginBottom:6,fontSize:12}}>
-              {T.prevAlertOverprodMsg(a.product.name, a.dowName, a.wastePct, a.suggested)}
-            </div>
-          ))}
-        </div>
-      )}
-      {alerts.optimized.length > 0 && (
-        <div>
-          <div style={{fontSize:11,fontWeight:700,color:'#22c55e',textTransform:'uppercase',letterSpacing:0.5,marginBottom:6}}>{T.prevAlertOptimized}</div>
-          {alerts.optimized.map((a,i)=>(
-            <div key={i} style={{padding:'8px 12px',background:'rgba(34,197,94,0.06)',border:'1px solid rgba(34,197,94,0.2)',borderRadius:7,marginBottom:4,fontSize:12}}>
-              {T.prevAlertOptimizedMsg(a.product.name)}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+  return (<div><div style={{fontSize:13,fontWeight:700,marginBottom:12,display:'flex',alignItems:'center',gap:2}}>{T.prevSubAlerts}<TipIcon text={lang==='en'?'Automatic observations from the learning engine, based on your actual data. Stockout alerts mean you ran out on a given day — the system will adjust the prediction upward. Overproduction alerts mean you consistently made too much.':'Observations automatiques du moteur d\'apprentissage. Les alertes de rupture indiquent que vous avez manqué de stock — le système ajuste la prédiction à la hausse. Les alertes de surproduction indiquent une production excessive récurrente.'} align="left"/></div>{total === 0 && alerts.optimized.length === 0 && (<div style={{textAlign:'center',padding:'24px 0',fontSize:12,opacity:0.5}}>{T.prevNoAlerts}</div>)}
+      {alerts.stockout.length > 0 && (<div style={{marginBottom:12}}><div style={{fontSize:11,fontWeight:700,color:'#ef4444',textTransform:'uppercase',letterSpacing:0.5,marginBottom:6}}>{T.prevAlertStockout}</div>{alerts.stockout.map((a,i)=>(<div key={i} style={{padding:'10px 12px',background:'rgba(239,68,68,0.06)',border:'1px solid rgba(239,68,68,0.2)',borderRadius:7,marginBottom:6,fontSize:12}}>{T.prevAlertStockoutMsg(a.product.name, a.dowName, a.count, a.suggested)}</div>))}</div>)}
+      {alerts.overproduction.length > 0 && (<div style={{marginBottom:12}}><div style={{fontSize:11,fontWeight:700,color:'#f59e0b',textTransform:'uppercase',letterSpacing:0.5,marginBottom:6}}>{T.prevAlertOverprod}</div>{alerts.overproduction.map((a,i)=>(<div key={i} style={{padding:'10px 12px',background:'rgba(245,158,11,0.06)',border:'1px solid rgba(245,158,11,0.2)',borderRadius:7,marginBottom:6,fontSize:12}}>{T.prevAlertOverprodMsg(a.product.name, a.dowName, a.wastePct, a.suggested)}</div>))}</div>)}
+      {alerts.optimized.length > 0 && (<div><div style={{fontSize:11,fontWeight:700,color:'#22c55e',textTransform:'uppercase',letterSpacing:0.5,marginBottom:6}}>{T.prevAlertOptimized}</div>{alerts.optimized.map((a,i)=>(<div key={i} style={{padding:'8px 12px',background:'rgba(34,197,94,0.06)',border:'1px solid rgba(34,197,94,0.2)',borderRadius:7,marginBottom:4,fontSize:12}}>{T.prevAlertOptimizedMsg(a.product.name)}</div>))}</div>)}</div>);
 }
 
 // ── Weather Correlation Section ───────────────────────────────────────────────
@@ -1270,16 +779,16 @@ function WeatherCorrelationSection({ product, last30, weatherMap, onUpdateSensit
   const [dismissed, setDismissed] = useState(false);
 
   // Group last30 by whether weather was warm (>15°C) or cold (<10°C)
-  const warmDays = last30.filter(s => (weatherMap[s.date]?.temp_max ?? 12) > 15);
-  const coldDays = last30.filter(s => (weatherMap[s.date]?.temp_max ?? 12) < 10);
-  const neutralDays = last30.filter(s => { const t = weatherMap[s.date]?.temp_max ?? 12; return t >= 10 && t <= 15; });
+  const warmDays = last30.filter(s =>(weatherMap[s.date]?.temp_max ?? 12) > 15);
+  const coldDays = last30.filter(s => (weatherMap[s.date]?.temp_max ?? 12)< 10);
+  const neutralDays = last30.filter(s =>{ const t = weatherMap[s.date]?.temp_max ?? 12; return t >= 10 && t<= 15; });
 
-  const avg = arr => arr.length ? arr.reduce((a,s)=>a+s.quantity_sold,0)/arr.length : null;
+  const avg = arr =>arr.length ? arr.reduce((a,s)=>a+s.quantity_sold,0)/arr.length : null;
   const warmAvg = avg(warmDays);
   const coldAvg = avg(coldDays);
   const neutralAvg = avg(neutralDays) || avg(last30) || 0;
 
-  if (!neutralAvg || (warmDays.length < 3 && coldDays.length < 3)) return null;
+  if (!neutralAvg || (warmDays.length< 3 && coldDays.length < 3)) return null;
 
   // Compute observed sensitivity: +2 if warm avg >25% above neutral, +1 if 10-25%, etc.
   let observedSens = 0;
@@ -1291,22 +800,8 @@ function WeatherCorrelationSection({ product, last30, weatherMap, onUpdateSensit
   const warmPct = warmAvg ? `${warmAvg > neutralAvg ? '+' : ''}${Math.round((warmAvg/neutralAvg-1)*100)}%` : null;
   const coldPct = coldAvg ? `${coldAvg > neutralAvg ? '+' : ''}${Math.round((coldAvg/neutralAvg-1)*100)}%` : null;
 
-  return (
-    <div style={{marginBottom:16,padding:'10px 12px',background:'rgba(96,165,250,0.06)',border:'1px solid rgba(96,165,250,0.2)',borderRadius:8}}>
-      <div style={{fontSize:11,fontWeight:600,marginBottom:6,color:'#60a5fa'}}>{T.prevItemWeatherCorr}</div>
-      <div style={{fontSize:11,opacity:0.8,marginBottom:4,display:'flex',gap:16,flexWrap:'wrap'}}>
-        {warmAvg && warmDays.length >= 3 && <span>☀️ &gt;15°C: <strong style={{color:warmAvg>neutralAvg?'#22c55e':'#ef4444'}}>{warmPct} vs neutre</strong> ({warmDays.length}j)</span>}
-        {coldAvg && coldDays.length >= 3 && <span>❄️ &lt;10°C: <strong style={{color:coldAvg>neutralAvg?'#22c55e':'#ef4444'}}>{coldPct} vs neutre</strong> ({coldDays.length}j)</span>}
-      </div>
-      {!dismissed && observedSens !== 0 && observedSens !== product.weather_sensitivity && (
-        <div style={{fontSize:11,color:'#f59e0b',marginTop:6,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-          <span>💡 {T.prevItemUpdateSens}<strong>{observedSens > 0 ? `+${observedSens}` : observedSens}</strong>{T.prevItemUpdateSens2}</span>
-          <button onClick={()=>{ onUpdateSensitivity(product, observedSens); setDismissed(true); }} style={{padding:'2px 10px',borderRadius:10,border:'none',background:'#f59e0b',color:'#fff',cursor:'pointer',fontSize:10,fontWeight:700}}>{T.prevItemYes}</button>
-          <button onClick={()=>setDismissed(true)} style={{padding:'2px 10px',borderRadius:10,border:'1px solid rgba(245,158,11,0.4)',background:'transparent',color:'#f59e0b',cursor:'pointer',fontSize:10}}>{T.prevItemNo}</button>
-        </div>
-      )}
-    </div>
-  );
+  return (<div style={{marginBottom:16,padding:'10px 12px',background:'rgba(96,165,250,0.06)',border:'1px solid rgba(96,165,250,0.2)',borderRadius:8}}><div style={{fontSize:11,fontWeight:600,marginBottom:6,color:'#60a5fa'}}>{T.prevItemWeatherCorr}</div><div style={{fontSize:11,opacity:0.8,marginBottom:4,display:'flex',gap:16,flexWrap:'wrap'}}>{warmAvg && warmDays.length >= 3 &&<span>&gt;15°C:<strong style={{color:warmAvg>neutralAvg?'#22c55e':'#ef4444'}}>{warmPct} vs neutre</strong>({warmDays.length}j)</span>}
+        {coldAvg && coldDays.length >= 3 &&<span>&lt;10°C:<strong style={{color:coldAvg>neutralAvg?'#22c55e':'#ef4444'}}>{coldPct} vs neutre</strong>({coldDays.length}j)</span>}</div>{!dismissed && observedSens !== 0 && observedSens !== product.weather_sensitivity && (<div style={{fontSize:11,color:'#f59e0b',marginTop:6,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}><span>{T.prevItemUpdateSens}<strong>{observedSens > 0 ? `+${observedSens}` : observedSens}</strong>{T.prevItemUpdateSens2}</span><button onClick={()=>{ onUpdateSensitivity(product, observedSens); setDismissed(true); }} style={{padding:'2px 10px',borderRadius:10,border:'none',background:'#f59e0b',color:'#fff',cursor:'pointer',fontSize:10,fontWeight:700}}>{T.prevItemYes}</button><button onClick={()=>setDismissed(true)} style={{padding:'2px 10px',borderRadius:10,border:'1px solid rgba(245,158,11,0.4)',background:'transparent',color:'#f59e0b',cursor:'pointer',fontSize:10}}>{T.prevItemNo}</button></div>)}</div>);
 }
 
 // ── Item Detail View ──────────────────────────────────────────────────────────
@@ -1350,8 +845,8 @@ function ItemDetailView({ product, allSales, weatherMap, onBack, onBackToAI, onU
       const cutoff = toDateStr(new Date(Date.now()-30*86400000));
       return d.getDay()===dow && s.date<toDateStr(new Date()) && s.date>=cutoff;
     });
-    if (past.length < 2) return null;
-    const accs = past.map(s => {
+    if (past.length< 2) return null;
+    const accs = past.map(s =>{
       const r = computePrediction(product.id, s.date, productSales.filter(x=>x.date<s.date), weatherMap, product);
       if (!r.prediction) return null;
       return Math.max(0, 1 - Math.abs(r.prediction - s.quantity_sold)/Math.max(s.quantity_sold,1));
@@ -1372,7 +867,7 @@ function ItemDetailView({ product, allSales, weatherMap, onBack, onBackToAI, onU
     : String(stockoutDays);
 
   const weekCount = Math.round(productSales.length / 7);
-  const confText = weekCount < 2
+  const confText = weekCount< 2
     ? (lang==='en'?'Base (< 2 weeks)':'Base (< 2 sem.)')
     : weekCount < 4 ? `${lang==='en'?'Low':'Faible'} (${weekCount} ${lang==='en'?'wks':'sem'})`
     : weekCount < 8 ? `${lang==='en'?'Medium':'Moyen'} (${weekCount} ${lang==='en'?'wks':'sem'})`
@@ -1389,32 +884,10 @@ function ItemDetailView({ product, allSales, weatherMap, onBack, onBackToAI, onU
   const peakStockouts = last30.filter(s=>new Date(s.date+'T12:00:00').getDay()===maxDowIdx&&s.stockout).length;
   const peakTotal = last30.filter(s=>new Date(s.date+'T12:00:00').getDay()===maxDowIdx).length;
 
-  return (
-    <div>
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,marginBottom:14,flexWrap:'wrap'}}>
-        <button onClick={onBack} style={{background:'none',border:'none',color:'#f97316',cursor:'pointer',fontSize:12,fontWeight:600,padding:0}}>{T.prevItemBack}</button>
-        <button onClick={onBackToAI}
-          style={{padding:'5px 12px',borderRadius:6,border:'1px solid rgba(167,139,250,0.3)',background:'rgba(167,139,250,0.08)',color:'#a78bfa',cursor:'pointer',fontSize:11,fontWeight:600}}>
-          ✨ {lang==='en'?'Analyze with AI':'Analyser avec IA'}{!canUse('aiAnalysis')&&<span style={{marginLeft:4,fontSize:8,verticalAlign:'middle',padding:'1px 4px',borderRadius:3,background:'rgba(167,139,250,0.2)'}}>PRO</span>}
-        </button>
-      </div>
+  return (<div><div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,marginBottom:14,flexWrap:'wrap'}}><button onClick={onBack} style={{background:'none',border:'none',color:'#f97316',cursor:'pointer',fontSize:12,fontWeight:600,padding:0}}>{T.prevItemBack}</button><button onClick={onBackToAI}
+          style={{padding:'5px 12px',borderRadius:6,border:'1px solid rgba(167,139,250,0.3)',background:'rgba(167,139,250,0.08)',color:'#a78bfa',cursor:'pointer',fontSize:11,fontWeight:600}}>{lang==='en'?'Analyze with AI':'Analyser avec IA'}{!canUse('aiAnalysis')&&<span style={{marginLeft:4,fontSize:8,verticalAlign:'middle',padding:'1px 4px',borderRadius:3,background:'rgba(167,139,250,0.2)'}}>PRO</span>}</button></div><div style={{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:2,marginBottom:4}}>{T.prevItemProfile}</div><div style={{fontSize:16,fontWeight:700,marginBottom:2}}>{product.name}</div>{product.category &&<div style={{fontSize:11,opacity:0.5,marginBottom:14}}>{product.category}</div>}
 
-      <div style={{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:2,marginBottom:4}}>{T.prevItemProfile}</div>
-      <div style={{fontSize:16,fontWeight:700,marginBottom:2}}>{product.name}</div>
-      {product.category && <div style={{fontSize:11,opacity:0.5,marginBottom:14}}>{product.category}</div>}
-
-      {last30.length === 0 ? (
-        <div style={{textAlign:'center',padding:'20px 0',fontSize:12,opacity:0.5}}>{T.prevItemNoData}</div>
-      ) : (
-        <>
-          {/* Two-column: Overview + DOW Pattern */}
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
-            {/* Overview card */}
-            <div style={{padding:'16px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:10}}>
-              <div style={{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:1,marginBottom:12}}>
-                📊 {lang==='en'?'Overview':'Vue d\'ensemble'}
-              </div>
-              {[
+      {last30.length === 0 ? (<div style={{textAlign:'center',padding:'20px 0',fontSize:12,opacity:0.5}}>{T.prevItemNoData}</div>) : (<>{/* Two-column: Overview + DOW Pattern */}<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>{/* Overview card */}<div style={{padding:'16px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:10}}><div style={{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:1,marginBottom:12}}>{lang==='en'?'Overview':'Vue d\'ensemble'}</div>{[
                 [lang==='en'?'Average sold / day':'Moy. vendu / jour', Math.round(avgSold), null],
                 [lang==='en'?'Average produced / day':'Moy. produit / jour', avgMade > 0 ? Math.round(avgMade) : '—', null],
                 [lang==='en'?'Waste rate':'Taux gaspillage', avgMade > 0 ? `${Math.round(wasteRate*100)}%` : '—', avgMade>0?(wasteRate>0.15?'#ef4444':wasteRate>0.08?'#f59e0b':'#22c55e'):null],
@@ -1423,75 +896,16 @@ function ItemDetailView({ product, allSales, weatherMap, onBack, onBackToAI, onU
                 [lang==='en'?'Weather sensitivity':'Sensibilité météo', sensDisplay, null],
                 [lang==='en'?'Shelf life':'Durée de vie', `${product.shelf_life_days} ${lang==='en'?'day':'jour'}${product.shelf_life_days>1?'s':''}`, null],
                 [lang==='en'?'Forecast confidence':'Fiabilité prévision', confText, confColor],
-              ].map(([label,val,color])=>(
-                <div key={label} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',padding:'5px 0',borderBottom:`1px solid ${t.cardBorder}`,fontSize:11,gap:8}}>
-                  <span style={{opacity:0.6,flexShrink:0}}>{label}</span>
-                  <strong style={{color:color||t.text,textAlign:'right',fontSize:12}}>{val}</strong>
-                </div>
-              ))}
-            </div>
-
-            {/* DOW Pattern card */}
-            <div style={{padding:'16px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:10,display:'flex',flexDirection:'column',gap:10}}>
-              <div style={{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:1}}>
-                📅 {lang==='en'?'Day-of-Week Pattern':'Profil par jour'}
-              </div>
-              <div>
-                {dowAvg.map((val,i) => {
+              ].map(([label,val,color])=>(<div key={label} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',padding:'5px 0',borderBottom:`1px solid ${t.cardBorder}`,fontSize:11,gap:8}}><span style={{opacity:0.6,flexShrink:0}}>{label}</span><strong style={{color:color||t.text,textAlign:'right',fontSize:12}}>{val}</strong></div>))}</div>{/* DOW Pattern card */}<div style={{padding:'16px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:10,display:'flex',flexDirection:'column',gap:10}}><div style={{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:1}}>{lang==='en'?'Day-of-Week Pattern':'Profil par jour'}</div><div>{dowAvg.map((val,i) => {
                   if (val === null) return null;
                   const isPeak = i === maxDowIdx;
                   const pct = maxDow > 0 ? (val / maxDow) * 100 : 0;
-                  return (
-                    <div key={i} style={{display:'flex',alignItems:'center',gap:6,marginBottom:5,fontSize:11}}>
-                      <span style={{width:26,opacity:0.6,fontSize:10,flexShrink:0}}>{dayNames[i]}</span>
-                      <div style={{flex:1,background:t.cardBorder,borderRadius:3,height:12,overflow:'hidden'}}>
-                        <div style={{width:`${pct}%`,height:'100%',background:isPeak?'#f97316':'rgba(249,115,22,0.35)',borderRadius:3}}/>
-                      </div>
-                      <span style={{width:30,textAlign:'right',fontWeight:isPeak?700:400,color:isPeak?'#f97316':'inherit',flexShrink:0,fontSize:isPeak?12:11}}>{Math.round(val)}</span>
-                    </div>
-                  );
-                })}
-              </div>
-              {maxDowIdx !== -1 && peakMultiplier && parseFloat(peakMultiplier) > 1.2 && (
-                <div style={{fontSize:11,opacity:0.75,lineHeight:1.5}}>
-                  {lang==='en'
+                  return (<div key={i} style={{display:'flex',alignItems:'center',gap:6,marginBottom:5,fontSize:11}}><span style={{width:26,opacity:0.6,fontSize:10,flexShrink:0}}>{dayNames[i]}</span><div style={{flex:1,background:t.cardBorder,borderRadius:3,height:12,overflow:'hidden'}}><div style={{width:`${pct}%`,height:'100%',background:isPeak?'#f97316':'rgba(249,115,22,0.35)',borderRadius:3}}/></div><span style={{width:30,textAlign:'right',fontWeight:isPeak?700:400,color:isPeak?'#f97316':'inherit',flexShrink:0,fontSize:isPeak?12:11}}>{Math.round(val)}</span></div>);
+                })}</div>{maxDowIdx !== -1 && peakMultiplier && parseFloat(peakMultiplier) > 1.2 && (<div style={{fontSize:11,opacity:0.75,lineHeight:1.5}}>{lang==='en'
                     ? `${dayNames[maxDowIdx]} demand is ${peakMultiplier}× the weekday avg.`
                     : `La demande du ${dayNames[maxDowIdx]} est ${peakMultiplier}× la moy. semaine.`}
-                  {peakStockouts >= 2 && <span style={{color:'#ef4444',marginLeft:4}}>🔴 {lang==='en'?`Out of stock ${peakStockouts}/${peakTotal} times.`:`Rupture ${peakStockouts}/${peakTotal} fois.`}</span>}
-                </div>
-              )}
-              {accuracyByDow.length > 0 && (
-                <div>
-                  <div style={{fontSize:10,opacity:0.55,marginBottom:4}}>{T.prevItemAccTitle}</div>
-                  <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
-                    {accuracyByDow.map(a=>(
-                      <span key={a.dow} style={{padding:'2px 7px',borderRadius:6,background:'rgba(34,197,94,0.08)',border:'1px solid rgba(34,197,94,0.2)',fontSize:10}}>
-                        {a.name}: <strong style={{color:'#22c55e'}}>{a.acc}%</strong>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <WeatherCorrelationSection product={product} last30={last30} weatherMap={weatherMap} onUpdateSensitivity={onUpdateSensitivity} T={T} t={t} lang={lang}/>
-            </div>
-          </div>
-
-          {/* Recent History */}
-          <div style={{padding:'16px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:10}}>
-            <div style={{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:1,marginBottom:12}}>
-              🗒️ {T.prevItemHistory}
-            </div>
-            <div style={{overflowX:'auto'}}>
-              <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
-                <thead>
-                  <tr style={{borderBottom:`1px solid ${t.cardBorder}`}}>
-                    {[T.prevColDate,T.prevColMade,T.prevColSold,T.prevColRemaining,T.prevColStockout,lang==='en'?'Weather':'Météo',lang==='en'?'Waste':'Gaspillage'].map(h=>(
-                      <th key={h} style={{padding:'5px 8px',textAlign:'left',opacity:0.55,fontWeight:700,fontSize:10,textTransform:'uppercase',letterSpacing:0.5}}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {last14.map((s,i)=>{
+                  {peakStockouts >= 2 &&<span style={{color:'#ef4444',marginLeft:4}}>{lang==='en'?`Out of stock ${peakStockouts}/${peakTotal} times.`:`Rupture ${peakStockouts}/${peakTotal} fois.`}</span>}</div>)}
+              {accuracyByDow.length > 0 && (<div><div style={{fontSize:10,opacity:0.55,marginBottom:4}}>{T.prevItemAccTitle}</div><div style={{display:'flex',flexWrap:'wrap',gap:4}}>{accuracyByDow.map(a=>(<span key={a.dow} style={{padding:'2px 7px',borderRadius:6,background:'rgba(34,197,94,0.08)',border:'1px solid rgba(34,197,94,0.2)',fontSize:10}}>{a.name}:<strong style={{color:'#22c55e'}}>{a.acc}%</strong></span>))}</div></div>)}<WeatherCorrelationSection product={product} last30={last30} weatherMap={weatherMap} onUpdateSensitivity={onUpdateSensitivity} T={T} t={t} lang={lang}/></div></div>{/* Recent History */}<div style={{padding:'16px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:10}}><div style={{fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:1,marginBottom:12}}>{T.prevItemHistory}</div><div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}><thead><tr style={{borderBottom:`1px solid ${t.cardBorder}`}}>{[T.prevColDate,T.prevColMade,T.prevColSold,T.prevColRemaining,T.prevColStockout,lang==='en'?'Weather':'Météo',lang==='en'?'Waste':'Gaspillage'].map(h=>(<th key={h} style={{padding:'5px 8px',textAlign:'left',opacity:0.55,fontWeight:700,fontSize:10,textTransform:'uppercase',letterSpacing:0.5}}>{h}</th>))}</tr></thead><tbody>{last14.map((s,i)=>{
                     const wDay = weatherMap[s.date];
                     const weatherCell = wDay ? `${conditionToIcon(weatherCodeToCondition(wDay.weather_code))} ${Math.round(wDay.temp_max||0)}°` : '—';
                     let wasteCell = '—';
@@ -1501,37 +915,15 @@ function ItemDetailView({ product, allSales, weatherMap, onBack, onBackToAI, onU
                       wasteCell = `${wastePct}%`;
                       wasteColor = wastePct > 15 ? '#ef4444' : wastePct > 8 ? '#f59e0b' : '#22c55e';
                     }
-                    return (
-                      <tr key={i} style={{borderBottom:`1px solid ${t.cardBorder}`}}>
-                        <td style={{padding:'5px 8px'}}>{formatDateShort(s.date,lang)}</td>
-                        <td style={{padding:'5px 8px'}}>{s.quantity_made??'—'}</td>
-                        <td style={{padding:'5px 8px',fontWeight:600}}>{s.quantity_sold}</td>
-                        <td style={{padding:'5px 8px'}}>{s.quantity_remaining??'—'}</td>
-                        <td style={{padding:'5px 8px'}}>{s.stockout?<span style={{color:'#ef4444',fontWeight:700}}>🔴 {lang==='en'?'Yes':'Oui'}</span>:'—'}</td>
-                        <td style={{padding:'5px 8px'}}>{weatherCell}</td>
-                        <td style={{padding:'5px 8px',fontWeight:600,color:wasteColor}}>{wasteCell}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Financial Profile */}
-          {(product.unit_cost != null || product.sell_price != null) && (
-            <div style={{padding:'14px 16px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:10,marginTop:12}}>
-              <div style={{fontSize:12,fontWeight:700,marginBottom:8}}>💰 {lang==='en'?'Profitability':'Rentabilité'} — {product.name}</div>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,fontSize:11}}>
-                {product.unit_cost!=null&&<div><span style={{opacity:0.6}}>{lang==='en'?'Unit cost:':'Coût/unité:'}</span> ${product.unit_cost.toFixed(2)}</div>}
-                {product.sell_price!=null&&<div><span style={{opacity:0.6}}>{lang==='en'?'Sell price:':'Prix de vente:'}</span> ${product.sell_price.toFixed(2)}</div>}
+                    return (<tr key={i} style={{borderBottom:`1px solid ${t.cardBorder}`}}><td style={{padding:'5px 8px'}}>{formatDateShort(s.date,lang)}</td><td style={{padding:'5px 8px'}}>{s.quantity_made??'—'}</td><td style={{padding:'5px 8px',fontWeight:600}}>{s.quantity_sold}</td><td style={{padding:'5px 8px'}}>{s.quantity_remaining??'—'}</td><td style={{padding:'5px 8px'}}>{s.stockout?<span style={{color:'#ef4444',fontWeight:700}}>{lang==='en'?'Yes':'Oui'}</span>:'—'}</td><td style={{padding:'5px 8px'}}>{weatherCell}</td><td style={{padding:'5px 8px',fontWeight:600,color:wasteColor}}>{wasteCell}</td></tr>);
+                  })}</tbody></table></div></div>{/* Financial Profile */}
+          {(product.unit_cost != null || product.sell_price != null) && (<div style={{padding:'14px 16px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:10,marginTop:12}}><div style={{fontSize:12,fontWeight:700,marginBottom:8}}>{lang==='en'?'Profitability':'Rentabilité'} — {product.name}</div><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,fontSize:11}}>{product.unit_cost!=null&&<div><span style={{opacity:0.6}}>{lang==='en'?'Unit cost:':'Coût/unité:'}</span>${product.unit_cost.toFixed(2)}</div>}
+                {product.sell_price!=null&&<div><span style={{opacity:0.6}}>{lang==='en'?'Sell price:':'Prix de vente:'}</span>${product.sell_price.toFixed(2)}</div>}
                 {product.unit_cost!=null&&product.sell_price!=null&&(()=>{
                   const m=product.sell_price-product.unit_cost,p=(m/product.sell_price)*100;
                   const c=p>50?'#22c55e':p>30?'#f97316':'#ef4444';
-                  return <div style={{color:c}}><span style={{opacity:0.6,color:t.textSub}}>{lang==='en'?'Margin:':'Marge:'}</span> ${m.toFixed(2)} ({p.toFixed(0)}%)</div>;
-                })()}
-              </div>
-              {(()=>{
+                  return<div style={{color:c}}><span style={{opacity:0.6,color:t.textSub}}>{lang==='en'?'Margin:':'Marge:'}</span>${m.toFixed(2)} ({p.toFixed(0)}%)</div>;
+                })()}</div>{(()=>{
                 const ps=allSales.filter(s=>s.product_id===product.id&&s.quantity_remaining!=null);
                 if(ps.length===0)return null;
                 const avgWaste=ps.reduce((a,s)=>a+(s.quantity_remaining||0),0)/ps.length;
@@ -1539,20 +931,10 @@ function ItemDetailView({ product, allSales, weatherMap, onBack, onBackToAI, onU
                 const stockouts=ps.filter(s=>s.stockout);
                 const weeklyLost=product.sell_price!=null&&stockouts.length>0?(stockouts.length/ps.length)*avgWaste*1.25*product.sell_price*7:null;
                 if(!weeklyWasteCost&&!weeklyLost)return null;
-                return (
-                  <div style={{marginTop:8,paddingTop:8,borderTop:`1px solid ${t.cardBorder}`,fontSize:11,display:'flex',flexDirection:'column',gap:3}}>
-                    {weeklyWasteCost!=null&&avgWaste>0&&<div style={{opacity:0.7}}>{lang==='en'?`Avg weekly waste: ~${Math.round(avgWaste)} units = $${(avgWaste*product.unit_cost).toFixed(2)}`:`Gaspillage moy./sem: ~${Math.round(avgWaste)} u = ${(avgWaste*product.unit_cost).toFixed(2)}$`}</div>}
+                return (<div style={{marginTop:8,paddingTop:8,borderTop:`1px solid ${t.cardBorder}`,fontSize:11,display:'flex',flexDirection:'column',gap:3}}>{weeklyWasteCost!=null&&avgWaste>0&&<div style={{opacity:0.7}}>{lang==='en'?`Avg weekly waste: ~${Math.round(avgWaste)} units = $${(avgWaste*product.unit_cost).toFixed(2)}`:`Gaspillage moy./sem: ~${Math.round(avgWaste)} u = ${(avgWaste*product.unit_cost).toFixed(2)}$`}</div>}
                     {weeklyLost!=null&&weeklyLost>0&&<div style={{color:'#ef4444',opacity:0.85}}>{lang==='en'?`Est. weekly stockout loss: -$${weeklyLost.toFixed(2)}`:`Ruptures est./sem: -${weeklyLost.toFixed(2)}$`}</div>}
-                    {weeklyWasteCost!=null&&weeklyLost!=null&&<div style={{color:'#22c55e',fontWeight:600}}>{lang==='en'?`If optimized: +$${(weeklyWasteCost*0.6+weeklyLost*0.8).toFixed(2)}/week`:`Si optimisé: +${(weeklyWasteCost*0.6+weeklyLost*0.8).toFixed(2)}$/semaine`}</div>}
-                  </div>
-                );
-              })()}
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
+                    {weeklyWasteCost!=null&&weeklyLost!=null&&<div style={{color:'#22c55e',fontWeight:600}}>{lang==='en'?`If optimized: +$${(weeklyWasteCost*0.6+weeklyLost*0.8).toFixed(2)}/week`:`Si optimisé: +${(weeklyWasteCost*0.6+weeklyLost*0.8).toFixed(2)}$/semaine`}</div>}</div>);
+              })()}</div>)}</>)}</div>);
 }
 
 // ── Production List View ──────────────────────────────────────────────────────
@@ -1593,11 +975,11 @@ function ProductionListView({ products, allSales, weatherMap, learnedPatterns = 
     const s = getStartDate(r), e = getEndDate(r);
     const dates = [];
     let d = s;
-    while (d <= e) { dates.push(d); d = addDays(d, 1); }
+    while (d<= e) { dates.push(d); d = addDays(d, 1); }
     return dates;
   };
 
-  const generate = (rangeOverride) => {
+  const generate = (rangeOverride) =>{
     const r = rangeOverride || range;
     const dates = getDates(r);
     const activeProducts = products.filter(p=>p.active);
@@ -1607,10 +989,10 @@ function ProductionListView({ products, allSales, weatherMap, learnedPatterns = 
     const batchMap = {};
 
     activeProducts.forEach(p => {
-      if (p.shelf_life_days <= 1) {
+      if (p.shelf_life_days<= 1) {
         // Daily products
         const dailyPreds = [];
-        dates.forEach(date => {
+        dates.forEach(date =>{
           const r = computePrediction(p.id, date, allSales, weatherMap, p, learnedPatterns, lastGasPrice, eventsByDate[date] || null);
           const onHand = parseInt(stockOverrides[p.id] || 0);
           const toMake = Math.max(0, r.prediction - (date === dates[0] ? onHand : 0));
@@ -1634,8 +1016,8 @@ function ProductionListView({ products, allSales, weatherMap, learnedPatterns = 
           const diff = avgPred - p.base_quantity;
           const diffPct = p.base_quantity > 0 ? diff / p.base_quantity : 0;
           let reason = T.prevListAdjOnTrack;
-          if (diffPct < -0.10) reason = T.prevListAdjOverprod; // model predicts less than baseline → overproduction if keeping base
-          else if (diffPct > 0.10) reason = T.prevListAdjStockout; // model predicts more → stockout risk if keeping base
+          if (diffPct< -0.10) reason = T.prevListAdjOverprod; // model predicts less than baseline → overproduction if keeping base
+          else if (diffPct >0.10) reason = T.prevListAdjStockout; // model predicts more → stockout risk if keeping base
           adjustments.push({ product: p, baseQty: p.base_quantity, avgPredicted: avgPred, diff, reason, isBatch: false });
         }
       } else {
@@ -1664,8 +1046,8 @@ function ProductionListView({ products, allSales, weatherMap, learnedPatterns = 
           const diff = total - baseTotal;
           const diffPct = Math.abs(diff) / baseTotal;
           let reason = T.prevListAdjOnTrack;
-          if (diff < -baseTotal * 0.10) reason = T.prevListAdjOverprod;
-          else if (diff > baseTotal * 0.10) reason = T.prevListAdjStockout;
+          if (diff< -baseTotal * 0.10) reason = T.prevListAdjOverprod;
+          else if (diff >baseTotal * 0.10) reason = T.prevListAdjStockout;
           adjustments.push({ product: p, baseQty: baseTotal, avgPredicted: total, diff: Math.round(diff), reason, isBatch: true });
         }
       }
@@ -1703,7 +1085,7 @@ function ProductionListView({ products, allSales, weatherMap, learnedPatterns = 
     if (generated.weatherAnnotations.length > 0) {
       weatherSection = `<h2 style="font-size:13px;margin-top:28px;margin-bottom:8px">${T.prevListWeatherAnno}</h2><ul style="font-size:12px;padding-left:18px;margin:0">`;
       generated.weatherAnnotations.forEach(a => {
-        weatherSection += `<li>${a.icon} ${formatDateShort(a.date,lang)} ${a.temp}°C — ${a.product.name} <strong>${a.pctStr}</strong> vs base</li>`;
+        weatherSection += `<li>${a.icon} ${formatDateShort(a.date,lang)} ${a.temp}°C — ${a.product.name}<strong>${a.pctStr}</strong>vs base</li>`;
       });
       weatherSection += '</ul>';
     }
@@ -1717,190 +1099,57 @@ function ProductionListView({ products, allSales, weatherMap, learnedPatterns = 
       });
       const savings = generated.adjustments.filter(a=>a.diff<0).reduce((sum,a)=>sum+Math.abs(a.diff),0);
       adjSection += `</tbody></table>`;
-      if (savings > 0) adjSection += `<p style="font-size:11px;color:#f97316;margin-top:8px">💡 ${T.prevListSavingsTotal(savings, T.prevColProduct)}</p>`;
+      if (savings > 0) adjSection += `<p style="font-size:11px;color:#f97316;margin-top:8px">${T.prevListSavingsTotal(savings, T.prevColProduct)}</p>`;
     }
 
-    return `<html><head><meta charset="utf-8"><title>${title}</title><style>body{font-family:'Outfit',sans-serif;margin:32px;color:#111}h1{font-size:18px;margin-bottom:4px}h2{color:#374151}p{font-size:12px;color:#666;margin-bottom:20px}table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px}th{background:#f3f4f6;padding:8px 10px;text-align:left;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.5px}td{padding:8px 10px;border-bottom:1px solid #e5e7eb}strong{color:#f97316;font-size:15px}@media print{body{margin:16px}}</style></head><body><h1>${title}</h1><table><thead><tr><th>${T.prevColProduct}</th><th>${T.prevColDate}</th><th>${T.prevListForecast}</th><th>${T.prevListOnHand}</th><th>${T.prevListToMake}</th></tr></thead><tbody>${rows}</tbody></table>${weatherSection}${adjSection}</body></html>`;
+    return `<html><head><meta charset="utf-8"><title>${title}</title><style>body{font-family:'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif;margin:32px;color:#111}h1{font-size:18px;margin-bottom:4px}h2{color:#374151}p{font-size:12px;color:#666;margin-bottom:20px}table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px}th{background:#f3f4f6;padding:8px 10px;text-align:left;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.5px}td{padding:8px 10px;border-bottom:1px solid #e5e7eb}strong{color:#f97316;font-size:15px}@media print{body{margin:16px}}</style></head><body><h1>${title}</h1><table><thead><tr><th>${T.prevColProduct}</th><th>${T.prevColDate}</th><th>${T.prevListForecast}</th><th>${T.prevListOnHand}</th><th>${T.prevListToMake}</th></tr></thead><tbody>${rows}</tbody></table>${weatherSection}${adjSection}</body></html>`;
   };
 
-  const inp = { background:t.inputBg, border:`1px solid ${t.inputBorder}`, borderRadius:5, color:'inherit', fontSize:12, padding:'5px 8px', outline:'none', fontFamily:"'Outfit',sans-serif" };
+  const inp = { background:t.inputBg, border:`1px solid ${t.inputBorder}`, borderRadius:5, color:'inherit', fontSize:12, padding:'5px 8px', outline:'none', fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif" };
 
-  return (
-    <div>
-      <div style={{fontSize:13,fontWeight:700,marginBottom:12,display:'flex',alignItems:'center',gap:2}}>
-        {T.prevListTitle}
-        <TipIcon text={lang==='en'?'Your printable list of what to prepare today. You can adjust quantities before printing — the system records your adjustments to refine future predictions.':'Liste imprimable de ce qu\'il faut préparer aujourd\'hui. Vous pouvez ajuster les quantités avant d\'imprimer — le système enregistre vos ajustements pour affiner les futures prédictions.'} align="left"/>
-      </div>
-
-      <div style={{display:'flex',gap:8,marginBottom:10,flexWrap:'wrap',alignItems:'center'}}>
-        <span style={{fontSize:11,opacity:0.6}}>{T.prevListRange}:</span>
-        {[['3',T.prevListDays3],['7',T.prevListDays7],['custom',T.prevListCustom]].map(([v,l])=>(
-          <button key={v} onClick={()=>{ setRange(v); if(v!=='custom') generate(v); else setGenerated(null); }} style={{padding:'4px 12px',borderRadius:12,border:`1px solid ${range===v?'#f97316':t.cardBorder}`,background:range===v?'rgba(249,115,22,0.15)':t.section,color:range===v?'#f97316':'inherit',cursor:'pointer',fontSize:11}}>{l}</button>
-        ))}
-        {range==='custom'&&<><input type="date" value={customStart} onChange={e=>setCustomStart(e.target.value)} style={inp}/><span style={{opacity:0.4}}>→</span><input type="date" value={customEnd} onChange={e=>setCustomEnd(e.target.value)} style={inp}/></>}
-      </div>
-
-      {/* Stock on hand */}
-      {products.filter(p=>p.active).length > 0 && (
-        <div style={{marginBottom:12,padding:'10px 12px',background:t.section,borderRadius:7,border:`1px solid ${t.cardBorder}`}}>
-          <div style={{display:'flex',alignItems:'baseline',gap:8,marginBottom:6}}>
-            <div style={{fontSize:11,fontWeight:600,opacity:0.7}}>{T.prevListCurrentStock}</div>
-            <div style={{fontSize:10,opacity:0.45}}>{lang==='en'?'auto-filled from last entry · edit to override':'rempli depuis la dernière saisie · modifiable'}</div>
-          </div>
-          <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
-            {products.filter(p=>p.active).map(p=>(
-              <div key={p.id} style={{display:'flex',alignItems:'center',gap:5}}>
-                <span style={{fontSize:11,opacity:0.8}}>{p.name}:</span>
-                <input type="number" min="0" value={stockOverrides[p.id]||''} onChange={e=>setStockOverrides(s=>({...s,[p.id]:e.target.value}))}
-                  placeholder="0" style={{...inp,width:55,textAlign:'center',padding:'3px 6px',fontFamily:"'DM Mono',monospace"}}/>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <button onClick={generate} style={{padding:'8px 20px',borderRadius:7,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:12,fontWeight:600,marginBottom:16}}>{T.prevListGenerate}</button>
-
-      {generated && (
-        <div>
-          {/* Daily items rendered as per-day cards */}
+  return (<div><div style={{fontSize:13,fontWeight:700,marginBottom:12,display:'flex',alignItems:'center',gap:2}}>{T.prevListTitle}<TipIcon text={lang==='en'?'Your printable list of what to prepare today. You can adjust quantities before printing — the system records your adjustments to refine future predictions.':'Liste imprimable de ce qu\'il faut préparer aujourd\'hui. Vous pouvez ajuster les quantités avant d\'imprimer — le système enregistre vos ajustements pour affiner les futures prédictions.'} align="left"/></div><div style={{display:'flex',gap:8,marginBottom:10,flexWrap:'wrap',alignItems:'center'}}><span style={{fontSize:11,opacity:0.6}}>{T.prevListRange}:</span>{[['3',T.prevListDays3],['7',T.prevListDays7],['custom',T.prevListCustom]].map(([v,l])=>(<button key={v} onClick={()=>{ setRange(v); if(v!=='custom') generate(v); else setGenerated(null); }} style={{padding:'4px 12px',borderRadius:12,border:`1px solid ${range===v?'#f97316':t.cardBorder}`,background:range===v?'rgba(249,115,22,0.15)':t.section,color:range===v?'#f97316':'inherit',cursor:'pointer',fontSize:11}}>{l}</button>))}
+        {range==='custom'&&<><input type="date" value={customStart} onChange={e=>setCustomStart(e.target.value)} style={inp}/><span style={{opacity:0.4}}>→</span><input type="date" value={customEnd} onChange={e=>setCustomEnd(e.target.value)} style={inp}/></>}</div>{/* Stock on hand */}
+      {products.filter(p=>p.active).length > 0 && (<div style={{marginBottom:12,padding:'10px 12px',background:t.section,borderRadius:7,border:`1px solid ${t.cardBorder}`}}><div style={{display:'flex',alignItems:'baseline',gap:8,marginBottom:6}}><div style={{fontSize:11,fontWeight:600,opacity:0.7}}>{T.prevListCurrentStock}</div><div style={{fontSize:10,opacity:0.45}}>{lang==='en'?'auto-filled from last entry · edit to override':'rempli depuis la dernière saisie · modifiable'}</div></div><div style={{display:'flex',flexWrap:'wrap',gap:8}}>{products.filter(p=>p.active).map(p=>(<div key={p.id} style={{display:'flex',alignItems:'center',gap:5}}><span style={{fontSize:11,opacity:0.8}}>{p.name}:</span><input type="number" min="0" value={stockOverrides[p.id]||''} onChange={e=>setStockOverrides(s=>({...s,[p.id]:e.target.value}))}
+                  placeholder="0" style={{...inp,width:55,textAlign:'center',padding:'3px 6px',fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}/></div>))}</div></div>)}<button onClick={generate} style={{padding:'8px 20px',borderRadius:7,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:12,fontWeight:600,marginBottom:16}}>{T.prevListGenerate}</button>{generated && (<div>{/* Daily items rendered as per-day cards */}
           {generated.dates.map(date => {
             const dayItems = generated.list.filter(item => item.date === date);
             if (dayItems.length === 0) return null;
             const w = weatherMap[date];
             const weatherNote = w ? ` — ${conditionToIcon(weatherCodeToCondition(w.weather_code))} ${Math.round(w.temp_max||0)}°/${Math.round(w.temp_min||0)}°` : '';
             const hasWeatherAdj = dayItems.some(item => item.weatherFactor !== 0);
-            return (
-              <div key={date} style={{marginBottom:10,padding:'14px 16px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:10}}>
-                <div style={{fontSize:13,fontWeight:700,marginBottom:10}}>
-                  🗓️ {formatDateShort(date,lang)}{weatherNote}
-                </div>
-                {(() => {
+            return (<div key={date} style={{marginBottom:10,padding:'14px 16px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:10}}><div style={{fontSize:13,fontWeight:700,marginBottom:10}}>{formatDateShort(date,lang)}{weatherNote}</div>{(() => {
                   const hasCost = dayItems.some(item=>item.product.unit_cost!=null);
                   const headers = [T.prevColProduct,T.prevListForecast,T.prevListOnHand,T.prevListToMake,...(hasCost?[lang==='en'?'Cost':'Coût']:[])]
-                  return (
-                    <>
-                      <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-                        <thead><tr style={{opacity:0.6}}>
-                          {headers.map(h=>(
-                            <th key={h} style={{padding:'4px 8px',textAlign:'left',fontWeight:600,fontSize:10,borderBottom:`1px solid ${t.cardBorder}`}}>{h}</th>
-                          ))}
-                        </tr></thead>
-                        <tbody>
-                          {dayItems.map((item,i)=>(
-                            <tr key={i} style={{borderBottom:`1px solid ${t.cardBorder}`}}>
-                              <td style={{padding:'5px 8px',fontWeight:600}}>
-                                {item.product.name}
-                                {item.weatherFactor !== 0 && (
-                                  <span style={{marginLeft:7,fontSize:9,padding:'1px 5px',borderRadius:8,background:item.weatherFactor>0?'rgba(34,197,94,0.1)':'rgba(239,68,68,0.1)',color:item.weatherFactor>0?'#22c55e':'#ef4444',fontWeight:700,display:'inline-block'}}>
-                                    {item.weatherFactor>=0?'+':''}{Math.round(item.weatherFactor*100)}%
-                                  </span>
-                                )}
-                              </td>
-                              <td style={{padding:'5px 8px'}}>{item.forecast}</td>
-                              <td style={{padding:'5px 8px'}}>{item.onHand||0}</td>
-                              <td style={{padding:'5px 8px',fontWeight:800,color:'#f97316',fontSize:13}}>{item.toMake}</td>
-                              {hasCost&&<td style={{padding:'5px 8px',fontSize:11,opacity:0.7}}>{item.product.unit_cost!=null?`$${(item.toMake*item.product.unit_cost).toFixed(2)}`:'—'}</td>}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      {(() => {
+                  return (<><table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}><thead><tr style={{opacity:0.6}}>{headers.map(h=>(<th key={h} style={{padding:'4px 8px',textAlign:'left',fontWeight:600,fontSize:10,borderBottom:`1px solid ${t.cardBorder}`}}>{h}</th>))}</tr></thead><tbody>{dayItems.map((item,i)=>(<tr key={i} style={{borderBottom:`1px solid ${t.cardBorder}`}}><td style={{padding:'5px 8px',fontWeight:600}}>{item.product.name}
+                                {item.weatherFactor !== 0 && (<span style={{marginLeft:7,fontSize:9,padding:'1px 5px',borderRadius:8,background:item.weatherFactor>0?'rgba(34,197,94,0.1)':'rgba(239,68,68,0.1)',color:item.weatherFactor>0?'#22c55e':'#ef4444',fontWeight:700,display:'inline-block'}}>
+                                    {item.weatherFactor>=0?'+':''}{Math.round(item.weatherFactor*100)}%</span>)}</td><td style={{padding:'5px 8px'}}>{item.forecast}</td><td style={{padding:'5px 8px'}}>{item.onHand||0}</td><td style={{padding:'5px 8px',fontWeight:800,color:'#f97316',fontSize:13}}>{item.toMake}</td>{hasCost&&<td style={{padding:'5px 8px',fontSize:11,opacity:0.7}}>{item.product.unit_cost!=null?`$${(item.toMake*item.product.unit_cost).toFixed(2)}`:'—'}</td>}</tr>))}</tbody></table>{(() => {
                         const totalCost = dayItems.filter(i=>i.product.unit_cost!=null).reduce((a,i)=>a+(i.toMake*(i.product.unit_cost||0)),0);
                         if (totalCost === 0) return null;
-                        return (
-                          <div style={{marginTop:6,paddingTop:5,borderTop:`1px solid ${t.cardBorder}`,fontSize:11,textAlign:'right',opacity:0.7}}>
-                            {lang==='en'?'Ingredient cost:':'Coût ingrédients:'} <strong>${totalCost.toFixed(2)}</strong>
-                          </div>
-                        );
-                      })()}
-                    </>
-                  );
-                })()}
-              </div>
-            );
+                        return (<div style={{marginTop:6,paddingTop:5,borderTop:`1px solid ${t.cardBorder}`,fontSize:11,textAlign:'right',opacity:0.7}}>{lang==='en'?'Ingredient cost:':'Coût ingrédients:'}<strong>${totalCost.toFixed(2)}</strong></div>);
+                      })()}</>);
+                })()}</div>);
           })}
 
           {/* Batch items card */}
-          {generated.batchItems.length > 0 && (
-            <div style={{marginBottom:10,padding:'14px 16px',background:t.section,border:`1px solid rgba(249,115,22,0.15)`,borderRadius:10}}>
-              <div style={{fontSize:13,fontWeight:700,marginBottom:3}}>📦 {lang==='en'?'Batch items':'Produits en lot'} — {generated.dates.length} {lang==='en'?'days':'jours'}</div>
-              <div style={{fontSize:11,opacity:0.5,marginBottom:10}}>{lang==='en'?'These products have shelf life > 1 day — make once for the full period, not daily':'Ces produits ont une durée de vie > 1 jour — à produire en lot pour toute la période'}</div>
-              <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-                <thead><tr style={{opacity:0.6}}>
-                  {[T.prevColProduct, generated.dates.length+' '+(lang==='en'?'day':'j')+' total', T.prevListOnHand, T.prevListToMake].map(h=>(
-                    <th key={h} style={{padding:'4px 8px',textAlign:'left',fontWeight:600,fontSize:10,borderBottom:`1px solid ${t.cardBorder}`}}>{h}</th>
-                  ))}
-                </tr></thead>
-                <tbody>
-                  {generated.batchItems.map((item,i)=>(
-                    <tr key={i} style={{borderBottom:`1px solid ${t.cardBorder}`}}>
-                      <td style={{padding:'5px 8px',fontWeight:600}}>{item.product.name}<span style={{fontSize:10,opacity:0.5,marginLeft:4}}>({lang==='en'?'shelf life':'durée de vie'}: {item.product.shelf_life_days}{lang==='en'?' day':' j'}{item.product.shelf_life_days>1?'s':''})</span></td>
-                      <td style={{padding:'5px 8px'}}>{item.total}</td>
-                      <td style={{padding:'5px 8px'}}>{item.onHand}</td>
-                      <td style={{padding:'5px 8px',fontWeight:800,color:'#f97316',fontSize:13}}>{item.toMake}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {generated.batchItems.length > 0 && (<div style={{marginBottom:10,padding:'14px 16px',background:t.section,border:`1px solid rgba(249,115,22,0.15)`,borderRadius:10}}><div style={{fontSize:13,fontWeight:700,marginBottom:3}}>{lang==='en'?'Batch items':'Produits en lot'} — {generated.dates.length} {lang==='en'?'days':'jours'}</div><div style={{fontSize:11,opacity:0.5,marginBottom:10}}>{lang==='en'?'These products have shelf life > 1 day — make once for the full period, not daily':'Ces produits ont une durée de vie > 1 jour — à produire en lot pour toute la période'}</div><table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}><thead><tr style={{opacity:0.6}}>{[T.prevColProduct, generated.dates.length+' '+(lang==='en'?'day':'j')+' total', T.prevListOnHand, T.prevListToMake].map(h=>(<th key={h} style={{padding:'4px 8px',textAlign:'left',fontWeight:600,fontSize:10,borderBottom:`1px solid ${t.cardBorder}`}}>{h}</th>))}</tr></thead><tbody>{generated.batchItems.map((item,i)=>(<tr key={i} style={{borderBottom:`1px solid ${t.cardBorder}`}}><td style={{padding:'5px 8px',fontWeight:600}}>{item.product.name}<span style={{fontSize:10,opacity:0.5,marginLeft:4}}>({lang==='en'?'shelf life':'durée de vie'}: {item.product.shelf_life_days}{lang==='en'?' day':' j'}{item.product.shelf_life_days>1?'s':''})</span></td><td style={{padding:'5px 8px'}}>{item.total}</td><td style={{padding:'5px 8px'}}>{item.onHand}</td><td style={{padding:'5px 8px',fontWeight:800,color:'#f97316',fontSize:13}}>{item.toMake}</td></tr>))}</tbody></table></div>)}
 
 
           {/* Smart adjustments table */}
-          {generated.adjustments.length > 0 ? (
-            <div style={{marginBottom:12,padding:'10px 12px',background:t.section,borderRadius:7,border:`1px solid ${t.cardBorder}`}}>
-              <div style={{fontSize:11,fontWeight:700,marginBottom:8,opacity:0.8}}>{T.prevListAdjTitle}</div>
-              <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
-                <thead><tr style={{opacity:0.6}}>
-                  {[T.prevColProduct,T.prevListAdjCurrent,T.prevListAdjSuggested,T.prevListAdjDiff,T.prevListAdjReason].map(h=>(
-                    <th key={h} style={{padding:'4px 8px',textAlign:'left',fontWeight:600,borderBottom:`1px solid ${t.cardBorder}`}}>{h}</th>
-                  ))}
-                </tr></thead>
-                <tbody>
-                  {generated.adjustments.map((a,i)=>(
-                    <tr key={i} style={{borderBottom:`1px solid ${t.cardBorder}`}}>
-                      <td style={{padding:'5px 8px',fontWeight:600}}>{a.product.name}{a.isBatch?` (×${generated.dates.length}d)`:''}</td>
-                      <td style={{padding:'5px 8px',fontFamily:"'DM Mono',monospace"}}>{a.baseQty}</td>
-                      <td style={{padding:'5px 8px',fontFamily:"'DM Mono',monospace"}}>{a.avgPredicted}</td>
-                      <td style={{padding:'5px 8px',fontWeight:700,color:a.diff<0?'#22c55e':a.diff>0?'#f59e0b':'inherit',fontFamily:"'DM Mono',monospace"}}>
-                        {a.diff>=0?'+':''}{a.diff}
-                      </td>
-                      <td style={{padding:'5px 8px',fontSize:10,opacity:0.8}}>{a.reason}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {(() => {
+          {generated.adjustments.length > 0 ? (<div style={{marginBottom:12,padding:'10px 12px',background:t.section,borderRadius:7,border:`1px solid ${t.cardBorder}`}}><div style={{fontSize:11,fontWeight:700,marginBottom:8,opacity:0.8}}>{T.prevListAdjTitle}</div><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}><thead><tr style={{opacity:0.6}}>{[T.prevColProduct,T.prevListAdjCurrent,T.prevListAdjSuggested,T.prevListAdjDiff,T.prevListAdjReason].map(h=>(<th key={h} style={{padding:'4px 8px',textAlign:'left',fontWeight:600,borderBottom:`1px solid ${t.cardBorder}`}}>{h}</th>))}</tr></thead><tbody>{generated.adjustments.map((a,i)=>(<tr key={i} style={{borderBottom:`1px solid ${t.cardBorder}`}}><td style={{padding:'5px 8px',fontWeight:600}}>{a.product.name}{a.isBatch?` (×${generated.dates.length}d)`:''}</td><td style={{padding:'5px 8px',fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{a.baseQty}</td><td style={{padding:'5px 8px',fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{a.avgPredicted}</td><td style={{padding:'5px 8px',fontWeight:700,color:a.diff<0?'#22c55e':a.diff>0?'#f59e0b':'inherit',fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>
+                        {a.diff>=0?'+':''}{a.diff}</td><td style={{padding:'5px 8px',fontSize:10,opacity:0.8}}>{a.reason}</td></tr>))}</tbody></table>{(() => {
                 const savings = generated.adjustments.filter(a=>a.diff<0).reduce((sum,a)=>sum+Math.abs(a.diff),0);
-                return savings > 0 ? (
-                  <div style={{marginTop:8,fontSize:11,color:'#22c55e'}}>
-                    💡 {T.prevListSavingsTotal(savings, lang==='en'?'units':'unités')}
-                  </div>
-                ) : null;
-              })()}
-            </div>
-          ) : products.filter(p=>p.active&&p.base_quantity>0).length===0 ? (
-            <div style={{marginBottom:12,fontSize:11,opacity:0.5,fontStyle:'italic'}}>{T.prevListNoAdj}</div>
-          ) : null}
+                return savings > 0 ? (<div style={{marginTop:8,fontSize:11,color:'#22c55e'}}>{T.prevListSavingsTotal(savings, lang==='en'?'units':'unités')}</div>) : null;
+              })()}</div>) : products.filter(p=>p.active&&p.base_quantity>0).length===0 ? (<div style={{marginBottom:12,fontSize:11,opacity:0.5,fontStyle:'italic'}}>{T.prevListNoAdj}</div>) : null}
 
-          {/* Print/Export buttons */}
-          <div style={{display:'flex',gap:8}}>
-            <button onClick={()=>window.dispatchEvent(new CustomEvent('biq:pdf-preview',{detail:buildHTML()}))}
-              style={{padding:'7px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:12}}>{T.prevListPrint}</button>
-            <button onClick={()=>{
+          {/* Print/Export buttons */}<div style={{display:'flex',gap:8}}><button onClick={()=>window.dispatchEvent(new CustomEvent('biq:pdf-preview',{detail:buildHTML()}))}
+              style={{padding:'7px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:12}}>{T.prevListPrint}</button><button onClick={()=>{
               const wb = XLSX.utils.book_new();
               const data = [[T.prevColProduct,T.prevColDate,T.prevListForecast,T.prevListOnHand,T.prevListToMake],
                 ...generated.list.map(i=>[i.product.name,i.date,i.forecast,i.onHand||0,i.toMake]),
                 ...generated.batchItems.map(i=>[i.product.name,'batch',i.total,i.onHand,i.toMake])];
               XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), 'Production');
               XLSX.writeFile(wb, `production-list-${startDate}.xlsx`);
-            }} style={{padding:'7px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:12}}>{T.prevListExportCSV}</button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+            }} style={{padding:'7px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:12}}>{T.prevListExportCSV}</button></div></div>)}</div>);
 }
 
 // ── Main PrevisionsTab ────────────────────────────────────────────────────────
@@ -2226,44 +1475,15 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
       : 'Enter daily quantities sold for each product. To automate this import, connect your POS (Square, Clover, Shopify) in Config → Integrations. The more complete your data, the more accurate predictions will be.',
   };
 
-  return (
-    <div style={{display:'flex',flexDirection:'column',gap:0}}>
-      {/* How it works collapsible */}
-      <div style={{marginBottom:12}}>
-        <button onClick={()=>setHowOpen(o=>!o)} style={{background:'none',border:'none',color:t.textMuted,cursor:'pointer',fontSize:11.5,fontWeight:600,display:'flex',alignItems:'center',gap:4,padding:'2px 0',fontFamily:"'DM Sans','Outfit',sans-serif"}}>
-          <span style={{fontSize:10,display:'inline-block',transform:howOpen?'rotate(90deg)':'rotate(0deg)',transition:'transform 0.15s'}}>▶</span>
-          {fr ? 'Comment fonctionnent les Prévisions ?' : 'How does Forecasting work?'}
-        </button>
-        {howOpen && (
-          <div style={{marginTop:10,background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:8,padding:'12px 14px',fontSize:11.5,lineHeight:1.7,color:t.textSub}}>
-            <ol style={{margin:0,padding:'0 0 0 16px'}}>
-              {HOW_IT_WORKS[fr?'fr':'en'].map((step,i)=><li key={i} style={{marginBottom:4}}>{step}</li>)}
-            </ol>
-            <p style={{marginTop:10,marginBottom:4,color:t.textSub}}>{fr?HOW_IT_WORKS.noteFr:HOW_IT_WORKS.noteEn}</p>
-            <div style={{marginTop:8,background:'rgba(249,115,22,0.07)',border:'1px solid rgba(249,115,22,0.2)',borderRadius:5,padding:'6px 10px',fontSize:11,color:'#f97316'}}>
-              💡 {fr?HOW_IT_WORKS.tipFr:HOW_IT_WORKS.tipEn}
-            </div>
-          </div>
-        )}
-      </div>
-      {/* Sub-nav */}
-      <div style={{display:'flex',gap:0,borderBottom:`1px solid ${t.cardBorder}`,marginBottom:16,overflowX:'auto'}}>
-        {subTabs.map(tab=>{
+  return (<div style={{display:'flex',flexDirection:'column',gap:0}}>{/* How it works collapsible */}<div style={{marginBottom:12}}><button onClick={()=>setHowOpen(o=>!o)} style={{background:'none',border:'none',color:t.textMuted,cursor:'pointer',fontSize:11.5,fontWeight:600,display:'flex',alignItems:'center',gap:4,padding:'2px 0',fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}><span style={{fontSize:10,display:'inline-block',transform:howOpen?'rotate(90deg)':'rotate(0deg)',transition:'transform 0.15s'}}>▶</span>{fr ? 'Comment fonctionnent les Prévisions ?' : 'How does Forecasting work?'}</button>{howOpen && (<div style={{marginTop:10,background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:8,padding:'12px 14px',fontSize:11.5,lineHeight:1.7,color:t.textSub}}><ol style={{margin:0,padding:'0 0 0 16px'}}>{HOW_IT_WORKS[fr?'fr':'en'].map((step,i)=><li key={i} style={{marginBottom:4}}>{step}</li>)}</ol><p style={{marginTop:10,marginBottom:4,color:t.textSub}}>{fr?HOW_IT_WORKS.noteFr:HOW_IT_WORKS.noteEn}</p><div style={{marginTop:8,background:'rgba(249,115,22,0.07)',border:'1px solid rgba(249,115,22,0.2)',borderRadius:5,padding:'6px 10px',fontSize:11,color:'#f97316'}}>{fr?HOW_IT_WORKS.tipFr:HOW_IT_WORKS.tipEn}</div></div>)}</div>{/* Sub-nav */}<div style={{display:'flex',gap:0,borderBottom:`1px solid ${t.cardBorder}`,marginBottom:16,overflowX:'auto'}}>{subTabs.map(tab=>{
           const isAI = tab.id === 'ai';
           const active = subView === tab.id;
-          return (
-            <button key={tab.id} onClick={()=>{setSubView(tab.id);setSelectedProduct(null);}}
+          return (<button key={tab.id} onClick={()=>{setSubView(tab.id);setSelectedProduct(null);}}
               style={{background:'none',border:'none',borderBottom:active?(isAI?'2px solid #a78bfa':'2px solid #f97316'):'2px solid transparent',color:active?(isAI?'#a78bfa':'#f97316'):t.textMuted,fontSize:12,fontWeight:600,padding:'8px 14px',cursor:'pointer',whiteSpace:'nowrap',transition:'all 0.15s',display:'flex',alignItems:'center',gap:4}}>
               {tab.label}
-              {isAI && !canUse('aiAnalysis') && <span style={{fontSize:8,padding:'1px 4px',borderRadius:3,background:'rgba(167,139,250,0.15)',color:'#a78bfa',fontWeight:700,lineHeight:1.5}}>PRO</span>}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Item detail overlay */}
-      {selectedProduct && subView==='forecast' && (
-        <ItemDetailView
+              {isAI && !canUse('aiAnalysis') &&<span style={{fontSize:8,padding:'1px 4px',borderRadius:3,background:'rgba(167,139,250,0.15)',color:'#a78bfa',fontWeight:700,lineHeight:1.5}}>PRO</span>}</button>);
+        })}</div>{/* Item detail overlay */}
+      {selectedProduct && subView==='forecast' && (<ItemDetailView
           product={selectedProduct}
           allSales={allSales}
           weatherMap={weatherMap}
@@ -2275,17 +1495,10 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
       )}
 
       {/* FORECAST VIEW */}
-      {subView==='forecast' && !selectedProduct && (
-        <div>
-          {/* ── Financial Dashboard ── */}
+      {subView==='forecast' && !selectedProduct && (<div>{/* ── Financial Dashboard ── */}
           {(() => {
             const withCost = activeProducts.filter(p=>p.unit_cost!=null&&p.unit_cost>0);
-            if (withCost.length === 0) return (
-              <div style={{padding:'10px 14px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:8,marginBottom:14,fontSize:11,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}>
-                <span style={{opacity:0.65}}>{lang==='en'?'Add cost & sell price to your products to see financial impact.':'Ajoutez coût et prix de vente à vos produits pour voir l\'impact financier.'}</span>
-                <button onClick={()=>setSubView('products')} style={{padding:'4px 10px',borderRadius:5,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:10,fontWeight:600,whiteSpace:'nowrap'}}>{lang==='en'?'Configure':'Configurer'}</button>
-              </div>
-            );
+            if (withCost.length === 0) return (<div style={{padding:'10px 14px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:8,marginBottom:14,fontSize:11,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}><span style={{opacity:0.65}}>{lang==='en'?'Add cost & sell price to your products to see financial impact.':'Ajoutez coût et prix de vente à vos produits pour voir l\'impact financier.'}</span><button onClick={()=>setSubView('products')} style={{padding:'4px 10px',borderRadius:5,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:10,fontWeight:600,whiteSpace:'nowrap'}}>{lang==='en'?'Configure':'Configurer'}</button></div>);
             const now = new Date();
             const mStart = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
             const pmDate = new Date(now.getFullYear(),now.getMonth()-1,1);
@@ -2308,141 +1521,45 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
             const potential=mWaste*0.6+mStock*0.8;
             const wTrend=pmWaste>0?(mWaste-pmWaste)/pmWaste:null;
             const sTrend=pmStock>0?(mStock-pmStock)/pmStock:null;
-            return (
-              <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:14}}>
-                {[
-                  {icon:'🗑️',label:lang==='en'?'Monthly Waste':'Gaspillage du mois',val:`$${mWaste.toFixed(0)}`,trend:wTrend,goodDown:true,tip:TIPS.waste},
-                  {icon:'📉',label:lang==='en'?'Estimated Stockouts':'Ruptures estimées',val:`$${mStock.toFixed(0)}`,trend:sTrend,goodDown:true,tip:TIPS.stockout},
-                  {icon:'💰',label:lang==='en'?'Potential Improvement':'Amélioration potentielle',val:`$${potential.toFixed(0)}/mo`,trend:null,highlight:true,tip:TIPS.financialImpact},
-                ].map((c,i)=>(
-                  <div key={i} style={{padding:'12px 14px',background:c.highlight?'rgba(249,115,22,0.08)':t.section,border:`1px solid ${c.highlight?'rgba(249,115,22,0.3)':t.cardBorder}`,borderRadius:8}}>
-                    <div style={{fontSize:10,opacity:0.6,marginBottom:3,display:'flex',alignItems:'center',gap:2}}>{c.icon} {c.label}{c.tip&&<TipIcon text={c.tip} align={i===2?'right':'center'}/>}</div>
-                    <div style={{fontSize:18,fontWeight:800,color:c.highlight?'#f97316':t.text}}>{c.val}</div>
-                    {c.trend!=null&&<div style={{fontSize:10,marginTop:2,color:((c.goodDown&&c.trend<0)||(!c.goodDown&&c.trend>0))?'#22c55e':'#ef4444'}}>{c.trend>=0?'↑':'↓'}{Math.abs(Math.round(c.trend*100))}% vs {lang==='en'?'last month':'mois dernier'}</div>}
-                  </div>
-                ))}
-              </div>
-            );
+            return (<div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:14}}>{[
+                  {icon:'',label:lang==='en'?'Monthly Waste':'Gaspillage du mois',val:`$${mWaste.toFixed(0)}`,trend:wTrend,goodDown:true,tip:TIPS.waste},
+                  {icon:'',label:lang==='en'?'Estimated Stockouts':'Ruptures estimées',val:`$${mStock.toFixed(0)}`,trend:sTrend,goodDown:true,tip:TIPS.stockout},
+                  {icon:'',label:lang==='en'?'Potential Improvement':'Amélioration potentielle',val:`$${potential.toFixed(0)}/mo`,trend:null,highlight:true,tip:TIPS.financialImpact},
+                ].map((c,i)=>(<div key={i} style={{padding:'12px 14px',background:c.highlight?'rgba(249,115,22,0.08)':t.section,border:`1px solid ${c.highlight?'rgba(249,115,22,0.3)':t.cardBorder}`,borderRadius:8}}><div style={{fontSize:10,opacity:0.6,marginBottom:3,display:'flex',alignItems:'center',gap:2}}>{c.icon} {c.label}{c.tip&&<TipIcon text={c.tip} align={i===2?'right':'center'}/>}</div><div style={{fontSize:18,fontWeight:800,color:c.highlight?'#f97316':t.text}}>{c.val}</div>{c.trend!=null&&<div style={{fontSize:10,marginTop:2,color:((c.goodDown&&c.trend<0)||(!c.goodDown&&c.trend>0))?'#22c55e':'#ef4444'}}>{c.trend>=0?'↑':'↓'}{Math.abs(Math.round(c.trend*100))}% vs {lang==='en'?'last month':'mois dernier'}</div>}</div>))}</div>);
           })()}
 
           {/* ── Insights ── */}
-          {insights.filter(i=>!i.read).length > 0 && (
-            <div style={{marginBottom:14,padding:'12px 14px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:8}}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
-                <div style={{fontSize:12,fontWeight:700,display:'flex',alignItems:'center',gap:2}}>
-                  📊 {insights.filter(i=>!i.read).length} {lang==='en'?'new insights this week':'nouveaux insights cette semaine'}
-                  <TipIcon text={lang==='en'?'Automatic observations from the learning engine, based on your actual data — not guesses. Each insight shows the recommended action and estimated dollar impact.':'Observations automatiques du moteur d\'apprentissage, basées sur vos données réelles. Chaque insight indique l\'action recommandée et l\'impact financier estimé.'} align="right"/>
-                </div>
-                <button onClick={async()=>{await window.api.forecast.insights.markAllRead().catch(()=>{});await loadInsights();}}
+          {insights.filter(i=>!i.read).length > 0 && (<div style={{marginBottom:14,padding:'12px 14px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:8}}><div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}><div style={{fontSize:12,fontWeight:700,display:'flex',alignItems:'center',gap:2}}>{insights.filter(i=>!i.read).length} {lang==='en'?'new insights this week':'nouveaux insights cette semaine'}<TipIcon text={lang==='en'?'Automatic observations from the learning engine, based on your actual data — not guesses. Each insight shows the recommended action and estimated dollar impact.':'Observations automatiques du moteur d\'apprentissage, basées sur vos données réelles. Chaque insight indique l\'action recommandée et l\'impact financier estimé.'} align="right"/></div><button onClick={async()=>{await window.api.forecast.insights.markAllRead().catch(()=>{});await loadInsights();}}
                   style={{fontSize:10,background:'none',border:'none',cursor:'pointer',opacity:0.55,color:t.textSub}}>
-                  {lang==='en'?'Mark all read':'Tout marquer lu'}
-                </button>
-              </div>
-              {insights.filter(i=>!i.read).slice(0,5).map(ins=>(
-                <div key={ins.id} style={{display:'flex',alignItems:'flex-start',gap:8,padding:'7px 0',borderTop:`1px solid ${t.cardBorder}`}}>
-                  <div style={{flex:1,fontSize:11,lineHeight:1.5,color:ins.severity==='critical'?'#ef4444':ins.severity==='warning'?'#f97316':t.text}}>
-                    {lang==='en'?ins.message_en:ins.message_fr}
-                  </div>
-                  {ins.financial_impact!=null&&<div style={{fontSize:10,fontWeight:700,color:'#f97316',whiteSpace:'nowrap'}}>${Math.round(Math.abs(ins.financial_impact))}</div>}
-                  <button onClick={async()=>{await window.api.forecast.insights.markRead(ins.id).catch(()=>{});await loadInsights();}}
+                  {lang==='en'?'Mark all read':'Tout marquer lu'}</button></div>{insights.filter(i=>!i.read).slice(0,5).map(ins=>(<div key={ins.id} style={{display:'flex',alignItems:'flex-start',gap:8,padding:'7px 0',borderTop:`1px solid ${t.cardBorder}`}}><div style={{flex:1,fontSize:11,lineHeight:1.5,color:ins.severity==='critical'?'#ef4444':ins.severity==='warning'?'#f97316':t.text}}>{lang==='en'?ins.message_en:ins.message_fr}</div>{ins.financial_impact!=null&&<div style={{fontSize:10,fontWeight:700,color:'#f97316',whiteSpace:'nowrap'}}>${Math.round(Math.abs(ins.financial_impact))}</div>}<button onClick={async()=>{await window.api.forecast.insights.markRead(ins.id).catch(()=>{});await loadInsights();}}
                     style={{fontSize:9,background:'none',border:`1px solid ${t.cardBorder}`,borderRadius:3,padding:'2px 5px',cursor:'pointer',color:t.textSub,whiteSpace:'nowrap'}}>
-                    {lang==='en'?'Dismiss':'Ignorer'}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+                    {lang==='en'?'Dismiss':'Ignorer'}</button></div>))}</div>)}
 
           {/* Missing data warning */}
-          {missingDates.length > 0 && (
-            <div style={{padding:'8px 12px',background:'rgba(245,158,11,0.08)',border:'1px solid rgba(245,158,11,0.25)',borderRadius:7,fontSize:11,color:'#f59e0b',marginBottom:12}}>
-              {T.prevMissingData(missingDates.slice(0,3).map(d=>formatDateShort(d,lang)).join(', ') + (missingDates.length>3?`…`:''))}
-            </div>
-          )}
+          {missingDates.length > 0 && (<div style={{padding:'8px 12px',background:'rgba(245,158,11,0.08)',border:'1px solid rgba(245,158,11,0.25)',borderRadius:7,fontSize:11,color:'#f59e0b',marginBottom:12}}>{T.prevMissingData(missingDates.slice(0,3).map(d=>formatDateShort(d,lang)).join(', ') + (missingDates.length>3?`…`:''))}</div>)}
 
-          {/* Week nav */}
-          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12,flexWrap:'wrap'}}>
-            <button onClick={()=>setCurrentWeekMonday(m=>addDays(m,-7))} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,padding:'5px 10px',cursor:'pointer',fontSize:13}}>←</button>
-            <span style={{fontSize:13,fontWeight:700,flex:1}}>{T.prevWeekOf(formatDateShort(currentWeekMonday, lang))} → {formatDateShort(addDays(currentWeekMonday,6), lang)}</span>
-            <button onClick={()=>setCurrentWeekMonday(m=>addDays(m,7))} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,padding:'5px 10px',cursor:'pointer',fontSize:13}}>→</button>
-            <button onClick={()=>setCurrentWeekMonday(getMondayOf(toDateStr(new Date())))} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:'#f97316',padding:'5px 10px',cursor:'pointer',fontSize:11,fontWeight:600}}>{T.prevToday}</button>
-            <PrevTip text={lang==='en'?'AI analyzes your forecast data and gives you a plain-language report: which products are trending up/down, why, and what to do. Uses 1 of your 50 monthly queries (Pro).':'L\'IA analyse vos données et vous donne un rapport en langage clair\u00a0: quels produits montent/descendent, pourquoi, et quoi faire. Utilise 1 de vos 50 requêtes mensuelles (Pro).'} align="right">
-              <button onClick={()=>{setSubView('ai');setSelectedProduct(null);}} style={{padding:'5px 12px',borderRadius:6,border:'1px solid rgba(167,139,250,0.3)',background:'rgba(167,139,250,0.08)',color:'#a78bfa',cursor:'pointer',fontSize:11,fontWeight:600}}>
-                ✨ {lang==='en'?'AI Analysis':'Analyse IA'}{!canUse('aiAnalysis')&&<span style={{marginLeft:4,fontSize:8,verticalAlign:'middle',padding:'1px 4px',borderRadius:3,background:'rgba(167,139,250,0.2)'}}>PRO</span>}
-              </button>
-            </PrevTip>
-          </div>
-
-          {/* Inline alert summary */}
+          {/* Week nav */}<div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12,flexWrap:'wrap'}}><button onClick={()=>setCurrentWeekMonday(m=>addDays(m,-7))} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,padding:'5px 10px',cursor:'pointer',fontSize:13}}>←</button><span style={{fontSize:13,fontWeight:700,flex:1}}>{T.prevWeekOf(formatDateShort(currentWeekMonday, lang))} → {formatDateShort(addDays(currentWeekMonday,6), lang)}</span><button onClick={()=>setCurrentWeekMonday(m=>addDays(m,7))} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,padding:'5px 10px',cursor:'pointer',fontSize:13}}>→</button><button onClick={()=>setCurrentWeekMonday(getMondayOf(toDateStr(new Date())))} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:'#f97316',padding:'5px 10px',cursor:'pointer',fontSize:11,fontWeight:600}}>{T.prevToday}</button><PrevTip text={lang==='en'?'AI analyzes your forecast data and gives you a plain-language report: which products are trending up/down, why, and what to do. Uses 1 of your 50 monthly queries (Pro).':'L\'IA analyse vos données et vous donne un rapport en langage clair\u00a0: quels produits montent/descendent, pourquoi, et quoi faire. Utilise 1 de vos 50 requêtes mensuelles (Pro).'} align="right"><button onClick={()=>{setSubView('ai');setSelectedProduct(null);}} style={{padding:'5px 12px',borderRadius:6,border:'1px solid rgba(167,139,250,0.3)',background:'rgba(167,139,250,0.08)',color:'#a78bfa',cursor:'pointer',fontSize:11,fontWeight:600}}>
+                 {lang==='en'?'AI Analysis':'Analyse IA'}{!canUse('aiAnalysis')&&<span style={{marginLeft:4,fontSize:8,verticalAlign:'middle',padding:'1px 4px',borderRadius:3,background:'rgba(167,139,250,0.2)'}}>PRO</span>}</button></PrevTip></div>{/* Inline alert summary */}
           {(() => {
             if (activeProducts.length === 0) return null;
             const topAlerts = computeAlerts(activeProducts, allSales, T, lang);
             const badges = [
-              ...topAlerts.stockout.map(a => ({ color:'#fca5a5', bg:'rgba(239,68,68,0.08)', border:'rgba(239,68,68,0.2)', text:`🔴 ${a.product.name} — ${a.dowName}` })),
+              ...topAlerts.stockout.map(a => ({ color:'#fca5a5', bg:'rgba(239,68,68,0.08)', border:'rgba(239,68,68,0.2)', text:` ${a.product.name} — ${a.dowName}` })),
               ...topAlerts.overproduction.map(a => ({ color:'#fde68a', bg:'rgba(234,179,8,0.08)', border:'rgba(234,179,8,0.2)', text:`🟡 ${a.product.name} — ${a.dowName} ${a.wastePct}%` })),
               ...topAlerts.optimized.slice(0,2).map(a => ({ color:'#86efac', bg:'rgba(34,197,94,0.08)', border:'rgba(34,197,94,0.2)', text:`🟢 ${a.product.name}` })),
             ].slice(0,4);
             if (!badges.length) return null;
-            return (
-              <div style={{display:'flex',gap:6,marginBottom:8,flexWrap:'wrap'}}>
-                {badges.map((b,i)=>(
-                  <span key={i} style={{padding:'5px 10px',borderRadius:7,fontSize:11,background:b.bg,border:`1px solid ${b.border}`,color:b.color}}>{b.text}</span>
-                ))}
-              </div>
-            );
+            return (<div style={{display:'flex',gap:6,marginBottom:8,flexWrap:'wrap'}}>{badges.map((b,i)=>(<span key={i} style={{padding:'5px 10px',borderRadius:7,fontSize:11,background:b.bg,border:`1px solid ${b.border}`,color:b.color}}>{b.text}</span>))}</div>);
           })()}
 
-          {/* Forecast table — weather row is first row in thead so columns align perfectly */}
-          <div style={{overflowX:'auto',border:`1px solid ${t.cardBorder}`,borderRadius:8}}>
-            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-              <thead>
-                {/* Weather row */}
-                <tr style={{background:t.section,borderBottom:`1px solid ${t.cardBorder}`}}>
-                  <th style={{textAlign:'left',padding:'6px 8px',fontSize:10,fontWeight:600,opacity:0.5,minWidth:100}}>
-                    <span style={{display:'inline-flex',alignItems:'center',gap:2}}>
-                      {T.prevWeatherBar}
-                      <TipIcon text={lang==='en'?'Weather data auto-fetched for your location. Click any day to override manually. The system correlates weather with your past sales to adjust predictions (e.g., rainy day = fewer customers).':'Données météo auto-récupérées pour votre région. Cliquez un jour pour l\'ajuster manuellement. Le système corrèle la météo avec vos ventes passées pour ajuster les prédictions.'} align="left"/>
-                    </span>
-                  </th>
-                  {weekDates.map(date => {
+          {/* Forecast table — weather row is first row in thead so columns align perfectly */}<div style={{overflowX:'auto',border:`1px solid ${t.cardBorder}`,borderRadius:8}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}><thead>{/* Weather row */}<tr style={{background:t.section,borderBottom:`1px solid ${t.cardBorder}`}}><th style={{textAlign:'left',padding:'6px 8px',fontSize:10,fontWeight:600,opacity:0.5,minWidth:100}}><span style={{display:'inline-flex',alignItems:'center',gap:2}}>{T.prevWeatherBar}<TipIcon text={lang==='en'?'Weather data auto-fetched for your location. Click any day to override manually. The system correlates weather with your past sales to adjust predictions (e.g., rainy day = fewer customers).':'Données météo auto-récupérées pour votre région. Cliquez un jour pour l\'ajuster manuellement. Le système corrèle la météo avec vos ventes passées pour ajuster les prédictions.'} align="left"/></span></th>{weekDates.map(date => {
                     const w = weatherMap[date];
                     const isManual = w?.source === 'manual';
                     const cond = w ? weatherCodeToCondition(w.weather_code) : null;
-                    return (
-                      <th key={date} style={{textAlign:'center',padding:'5px 4px',cursor:'pointer',minWidth:44,fontWeight:'normal'}}
+                    return (<th key={date} style={{textAlign:'center',padding:'5px 4px',cursor:'pointer',minWidth:44,fontWeight:'normal'}}
                         title={isManual ? T.prevWeatherManual : T.prevWeatherAuto}
-                        onClick={()=>setWeatherOverrideDate(date)}>
-                        <div style={{fontSize:14}}>{w ? conditionToIcon(cond) : '—'}</div>
-                        <div style={{fontSize:10,fontWeight:600,lineHeight:1.3}}>{w ? <><span style={{color:'#f97316'}}>{Math.round(w.temp_max||0)}°</span><span style={{opacity:0.45,fontSize:9}}>{' / '}{Math.round(w.temp_min||0)}°</span></> : ''}</div>
-                        <div style={{fontSize:9,opacity:0.45}}>{isManual?'✏️':'auto'}</div>
-                      </th>
-                    );
-                  })}
-                  <th style={{minWidth:50}}></th>
-                  <th style={{minWidth:40}}></th>
-                </tr>
-                {/* Day headers row */}
-                <tr style={{borderBottom:`2px solid ${t.cardBorder}`,background:t.section}}>
-                  <th style={{textAlign:'left',padding:'7px 10px',fontSize:11,fontWeight:700,minWidth:100}}>{T.prevColProduct}</th>
-                  {weekDates.map(d=>(
-                    <th key={d} style={{textAlign:'center',padding:'7px 5px',fontSize:10,fontWeight:600,minWidth:44}}>
-                      <div>{getDayName(d,lang)}</div>
-                      <div style={{fontWeight:400,opacity:0.5,fontSize:9}}>{d.slice(8)}</div>
-                    </th>
-                  ))}
-                  <th style={{textAlign:'center',padding:'7px 5px',fontSize:11,fontWeight:700,minWidth:50}}>{T.prevColTotal}</th>
-                  <th style={{textAlign:'center',padding:'7px 5px',fontSize:11,fontWeight:700,minWidth:40}}></th>
-                </tr>
-              </thead>
-              {activeProducts.length === 0 ? (
-                <tbody>
-                  <tr>
-                    <td colSpan={10} style={{textAlign:'center',padding:'30px 20px'}}>
-                      <div style={{fontSize:12,opacity:0.5,marginBottom:10}}>{T.prevNoProducts}</div>
-                    </td>
-                  </tr>
-                </tbody>
-              ) : (
+                        onClick={()=>setWeatherOverrideDate(date)}><div style={{fontSize:14}}>{w ? conditionToIcon(cond) : '—'}</div><div style={{fontSize:10,fontWeight:600,lineHeight:1.3}}>{w ?<><span style={{color:'#f97316'}}>{Math.round(w.temp_max||0)}°</span><span style={{opacity:0.45,fontSize:9}}>{' / '}{Math.round(w.temp_min||0)}°</span></>: ''}</div><div style={{fontSize:9,opacity:0.45}}>{isManual?'':'auto'}</div></th>);
+                  })}<th style={{minWidth:50}}></th><th style={{minWidth:40}}></th></tr>{/* Day headers row */}<tr style={{borderBottom:`2px solid ${t.cardBorder}`,background:t.section}}><th style={{textAlign:'left',padding:'7px 10px',fontSize:11,fontWeight:700,minWidth:100}}>{T.prevColProduct}</th>{weekDates.map(d=>(<th key={d} style={{textAlign:'center',padding:'7px 5px',fontSize:10,fontWeight:600,minWidth:44}}><div>{getDayName(d,lang)}</div><div style={{fontWeight:400,opacity:0.5,fontSize:9}}>{d.slice(8)}</div></th>))}<th style={{textAlign:'center',padding:'7px 5px',fontSize:11,fontWeight:700,minWidth:50}}>{T.prevColTotal}</th><th style={{textAlign:'center',padding:'7px 5px',fontSize:11,fontWeight:700,minWidth:40}}></th></tr></thead>{activeProducts.length === 0 ? (<tbody><tr><td colSpan={10} style={{textAlign:'center',padding:'30px 20px'}}><div style={{fontSize:12,opacity:0.5,marginBottom:10}}>{T.prevNoProducts}</div></td></tr></tbody>) : (
                 (() => {
                   // Group by category for table display
                   const catGroups = {};
@@ -2453,84 +1570,34 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
                   });
                   const catKeys = Object.keys(catGroups).sort();
                   const showCatRows = catKeys.length > 1;
-                  return (
-                    <tbody>
-                      {catKeys.map(cat => (
-                        <React.Fragment key={cat}>
-                          {showCatRows && (
-                            <tr style={{background:'rgba(249,115,22,0.04)'}}>
-                              <td colSpan={10} style={{padding:'10px 10px 4px',fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:'1px',borderBottom:`1px solid ${t.cardBorder}`}}>{cat}</td>
-                            </tr>
-                          )}
+                  return (<tbody>{catKeys.map(cat => (<React.Fragment key={cat}>{showCatRows && (<tr style={{background:'rgba(249,115,22,0.04)'}}><td colSpan={10} style={{padding:'10px 10px 4px',fontSize:10,fontWeight:700,color:'#f97316',textTransform:'uppercase',letterSpacing:'1px',borderBottom:`1px solid ${t.cardBorder}`}}>{cat}</td></tr>)}
                           {catGroups[cat].map(p => {
                             const weekTotal = weekDates.reduce((s,d) => s + (predictions[p.id]?.[d]?.prediction||0), 0);
                             const pAlerts = computeAlerts([p], allSales, T, lang);
-                            const alertIcon = pAlerts.stockout.length ? '🔴' : pAlerts.overproduction.length ? '🟡' : pAlerts.optimized.length ? '🟢' : '';
-                            return (
-                              <tr key={p.id} style={{borderBottom:`1px solid ${t.cardBorder}`,cursor:'pointer'}} onClick={()=>setSelectedProduct(p)}>
-                                <td style={{padding:'6px 10px',fontWeight:600,whiteSpace:'nowrap'}}>{p.name}</td>
-                                {weekDates.map(date => {
+                            const alertIcon = pAlerts.stockout.length ? '' : pAlerts.overproduction.length ? '🟡' : pAlerts.optimized.length ? '🟢' : '';
+                            return (<tr key={p.id} style={{borderBottom:`1px solid ${t.cardBorder}`,cursor:'pointer'}} onClick={()=>setSelectedProduct(p)}><td style={{padding:'6px 10px',fontWeight:600,whiteSpace:'nowrap'}}>{p.name}</td>{weekDates.map(date => {
                                   const r = predictions[p.id]?.[date];
-                                  if (!r) return <td key={date} style={{textAlign:'center',padding:'6px 4px'}}>—</td>;
-                                  return (
-                                    <td key={date} style={{textAlign:'center',padding:'6px 4px',opacity:confDim[r.confidence]}}
-                                      onClick={e=>{e.stopPropagation();setCellDetail({product:p,date,result:r});}}>
-                                      <span style={{fontWeight:r.confidence==='high'?700:400,cursor:'pointer',borderBottom:r.confidence!=='high'?'1px dotted currentColor':'none'}}>{r.prediction}</span>
-                                    </td>
-                                  );
-                                })}
-                                <td style={{textAlign:'center',padding:'6px 5px',fontWeight:800,color:'#f97316'}}>{weekTotal}</td>
-                                <td style={{textAlign:'center',padding:'6px 5px',fontSize:14}}>{alertIcon}</td>
-                              </tr>
-                            );
-                          })}
-                        </React.Fragment>
-                      ))}
-                    </tbody>
-                  );
+                                  if (!r) return<td key={date} style={{textAlign:'center',padding:'6px 4px'}}>—</td>;
+                                  return (<td key={date} style={{textAlign:'center',padding:'6px 4px',opacity:confDim[r.confidence]}}
+                                      onClick={e=>{e.stopPropagation();setCellDetail({product:p,date,result:r});}}><span style={{fontWeight:r.confidence==='high'?700:400,cursor:'pointer',borderBottom:r.confidence!=='high'?'1px dotted currentColor':'none'}}>{r.prediction}</span></td>);
+                                })}<td style={{textAlign:'center',padding:'6px 5px',fontWeight:800,color:'#f97316'}}>{weekTotal}</td><td style={{textAlign:'center',padding:'6px 5px',fontSize:14}}>{alertIcon}</td></tr>);
+                          })}</React.Fragment>))}</tbody>);
                 })()
-              )}
-            </table>
-          </div>
-
-          {/* Last week actuals */}
-          {activeProducts.length > 0 && allSales.length > 0 && (
-            <div style={{marginTop:16}}>
-              <div style={{fontSize:11,fontWeight:600,opacity:0.6,marginBottom:6}}>{T.prevLastWeek}</div>
-              <div style={{overflowX:'auto',border:`1px solid ${t.cardBorder}`,borderRadius:8}}>
-                <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
-                  <thead><tr style={{background:t.section,borderBottom:`1px solid ${t.cardBorder}`}}>
-                    <th style={{textAlign:'left',padding:'6px 10px',fontWeight:600,fontSize:10,opacity:0.6,minWidth:100}}>{T.prevColProduct}</th>
-                    {lastWeekDates.map(d=><th key={d} style={{textAlign:'center',padding:'5px 4px',fontWeight:600,fontSize:9,opacity:0.6,minWidth:40}}>{getDayName(d,lang)}</th>)}
-                    <th style={{textAlign:'center',padding:'5px 5px',fontWeight:600,fontSize:10,opacity:0.6}}>{T.prevColWaste}</th>
-                  </tr></thead>
-                  <tbody>
-                    {activeProducts.map(p => {
+              )}</table></div>{/* Last week actuals */}
+          {activeProducts.length > 0 && allSales.length > 0 && (<div style={{marginTop:16}}><div style={{fontSize:11,fontWeight:600,opacity:0.6,marginBottom:6}}>{T.prevLastWeek}</div><div style={{overflowX:'auto',border:`1px solid ${t.cardBorder}`,borderRadius:8}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}><thead><tr style={{background:t.section,borderBottom:`1px solid ${t.cardBorder}`}}><th style={{textAlign:'left',padding:'6px 10px',fontWeight:600,fontSize:10,opacity:0.6,minWidth:100}}>{T.prevColProduct}</th>{lastWeekDates.map(d=><th key={d} style={{textAlign:'center',padding:'5px 4px',fontWeight:600,fontSize:9,opacity:0.6,minWidth:40}}>{getDayName(d,lang)}</th>)}<th style={{textAlign:'center',padding:'5px 5px',fontWeight:600,fontSize:10,opacity:0.6}}>{T.prevColWaste}</th></tr></thead><tbody>{activeProducts.map(p => {
                       const withMade = lastWeekDates.map(d=>lastWeekActuals[p.id]?.[d]).filter(s=>s?.quantity_made>0);
                       const wasteAvg = withMade.length ? withMade.reduce((a,s)=>a+(s.quantity_made-s.quantity_sold)/s.quantity_made,0)/withMade.length : null;
-                      return (
-                        <tr key={p.id} style={{borderBottom:`1px solid ${t.cardBorder}`}}>
-                          <td style={{padding:'5px 10px',fontWeight:600,opacity:0.8}}>{p.name}</td>
-                          {lastWeekDates.map(d => {
+                      return (<tr key={p.id} style={{borderBottom:`1px solid ${t.cardBorder}`}}><td style={{padding:'5px 10px',fontWeight:600,opacity:0.8}}>{p.name}</td>{lastWeekDates.map(d => {
                             const s = lastWeekActuals[p.id]?.[d];
-                            return <td key={d} style={{textAlign:'center',padding:'5px 4px',opacity:0.7}}>{s ? s.quantity_sold : '—'}</td>;
-                          })}
-                          <td style={{textAlign:'center',padding:'5px 5px',fontWeight:600,color:wasteAvg==null?'inherit':wasteAvg>0.15?'#ef4444':wasteAvg>0.08?'#f59e0b':'#22c55e'}}>
-                            {wasteAvg != null ? `${Math.round(wasteAvg*100)}%` : '—'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+                            return<td key={d} style={{textAlign:'center',padding:'5px 4px',opacity:0.7}}>{s ? s.quantity_sold : '—'}</td>;
+                          })}<td style={{textAlign:'center',padding:'5px 5px',fontWeight:600,color:wasteAvg==null?'inherit':wasteAvg>0.15?'#ef4444':wasteAvg>0.08?'#f59e0b':'#22c55e'}}>
+                            {wasteAvg != null ? `${Math.round(wasteAvg*100)}%` : '—'}</td></tr>);
+                    })}</tbody></table></div></div>)}
 
           {/* ── Prediction Accuracy ── */}
           {(() => {
             const withBoth = accuracyData.filter(a=>a.predicted!=null&&a.actual!=null);
-            if (withBoth.length < 3) return null;
+            if (withBoth.length< 3) return null;
             // Group by week number
             const weekMap = {};
             withBoth.forEach(a=>{
@@ -2541,86 +1608,52 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
               weekMap[key].push(a.error_pct!=null?1-Math.min(a.error_pct,1):null);
             });
             const weeks = Object.entries(weekMap).sort(([a],[b])=>a.localeCompare(b)).slice(-4);
-            if (weeks.length < 2) return null;
+            if (weeks.length< 2) return null;
             return (
-              <div style={{padding:'10px 14px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:8,marginTop:14}}>
-                <div style={{fontSize:11,fontWeight:700,marginBottom:6,display:'flex',alignItems:'center',gap:2}}>📊 {lang==='en'?'Forecast Accuracy':'Précision des prévisions'}<TipIcon text={TIPS.accuracy} align="right"/></div>
-                <div style={{display:'flex',gap:16,alignItems:'flex-end'}}>
-                  {weeks.map(([wk,accs],i)=>{
+              <div style={{padding:'10px 14px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:8,marginTop:14}}><div style={{fontSize:11,fontWeight:700,marginBottom:6,display:'flex',alignItems:'center',gap:2}}>{lang==='en'?'Forecast Accuracy':'Précision des prévisions'}<TipIcon text={TIPS.accuracy} align="right"/></div><div style={{display:'flex',gap:16,alignItems:'flex-end'}}>{weeks.map(([wk,accs],i)=>{
                     const valid=accs.filter(v=>v!=null&&v>=0);
                     const avg=valid.length>0?valid.reduce((a,b)=>a+b,0)/valid.length:null;
                     const pct=avg!=null?Math.round(avg*100):null;
                     const color=pct==null?t.textSub:pct>=80?'#22c55e':pct>=60?'#f97316':'#ef4444';
-                    return (
-                      <div key={wk} style={{textAlign:'center'}}>
-                        <div style={{fontSize:15,fontWeight:800,color}}>{pct!=null?`${pct}%`:'—'}</div>
-                        <div style={{fontSize:9,opacity:0.5,marginTop:1}}>{lang==='en'?`Week ${i+1}`:`Sem. ${i+1}`}</div>
-                      </div>
-                    );
-                  })}
-                  <div style={{flex:1,fontSize:10,opacity:0.5,paddingBottom:2}}>
-                    {lang==='en'?'Accuracy improves as more sales data is entered.':'La précision s\'améliore avec plus de données de ventes.'}
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
-        </div>
-      )}
+                    return (<div key={wk} style={{textAlign:'center'}}><div style={{fontSize:15,fontWeight:800,color}}>{pct!=null?`${pct}%`:'—'}</div><div style={{fontSize:9,opacity:0.5,marginTop:1}}>{lang==='en'?`Week ${i+1}`:`Sem. ${i+1}`}</div></div>);
+                  })}<div style={{flex:1,fontSize:10,opacity:0.5,paddingBottom:2}}>{lang==='en'?'Accuracy improves as more sales data is entered.':'La précision s\'améliore avec plus de données de ventes.'}</div></div></div>);
+          })()}</div>)}
 
       {/* IMPORT VIEW */}
-      {subView==='import' && (
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
-          <div style={{padding:'16px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:8}}>
-            <CSVImportView
+      {subView==='import' && (<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}><div style={{padding:'16px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:8}}><CSVImportView
               products={activeProducts}
-              onImported={async (recs, newProds) => { await loadProducts(); await loadSales(); }}
+              onImported={async (recs, newProds) =>{ await loadProducts(); await loadSales(); }}
               savedFormats={savedFormats}
               onSaveFormat={async (m) => { await window.api.forecast.csvMappings.save(m); await loadFormats(); }}
               T={T} t={t} lang={lang}
               canUse={canUse} apiConfig={apiConfig} showUpgradePrompt={showUpgradePrompt}
-            />
-          </div>
-          <div style={{padding:'16px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:8}}>
-            <ManualEntryView
+            /></div><div style={{padding:'16px',background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:8}}><ManualEntryView
               products={activeProducts}
               selectedDate={manualDate}
               setSelectedDate={setManualDate}
               salesByDate={salesByDate}
               onSaveSales={saveSales}
               T={T} t={t} lang={lang}
-            />
-          </div>
-        </div>
-      )}
+            /></div></div>)}
 
       {/* ALERTS VIEW */}
-      {subView==='alerts' && (
-        <AlertsView products={products} allSales={allSales} T={T} lang={lang}/>
-      )}
+      {subView==='alerts' && (<AlertsView products={products} allSales={allSales} T={T} lang={lang}/>)}
 
       {/* PRODUCTION LIST VIEW */}
-      {subView==='production' && (
-        <ProductionListView products={products} allSales={allSales} weatherMap={weatherMap} learnedPatterns={learnedPatterns} T={T} t={t} lang={lang} lastGasPrice={lastGasPriceKnown} eventsByDate={eventsByDate}/>
-      )}
+      {subView==='production' && (<ProductionListView products={products} allSales={allSales} weatherMap={weatherMap} learnedPatterns={learnedPatterns} T={T} t={t} lang={lang} lastGasPrice={lastGasPriceKnown} eventsByDate={eventsByDate}/>)}
 
       {/* PRODUCTS VIEW */}
-      {subView==='products' && (
-        <ProductsView products={products} onSaveProduct={saveProduct} T={T} t={t} lang={lang}/>
-      )}
+      {subView==='products' && (<ProductsView products={products} onSaveProduct={saveProduct} T={T} t={t} lang={lang}/>)}
 
       {/* AI ANALYSIS VIEW */}
-      {subView==='ai' && (
-        <AIAnalysisView
+      {subView==='ai' && (<AIAnalysisView
           canUse={canUse} allSales={allSales} products={activeProducts} weatherMap={weatherMap}
           weekDates={weekDates} predictions={predictions} showUpgradePrompt={showUpgradePrompt}
           apiConfig={apiConfig} T={T} t={t} lang={lang}
-        />
-      )}
+        />)}
 
       {/* Modals */}
-      {cellDetail && (
-        <CellDetailPopover
+      {cellDetail && (<CellDetailPopover
           product={cellDetail.product}
           dateStr={cellDetail.date}
           result={cellDetail.result}
@@ -2629,15 +1662,13 @@ export default function PrevisionsTab({ apiConfig, showUpgradePrompt, canUse, T,
           onClose={()=>setCellDetail(null)}
         />
       )}
-      {weatherOverrideDate && (
-        <WeatherOverrideModal
+      {weatherOverrideDate && (<WeatherOverrideModal
           date={weatherOverrideDate}
           existing={weatherMap[weatherOverrideDate]}
           onSave={async (rec)=>{ await saveWeatherOverride(rec); setWeatherOverrideDate(null); }}
           onClose={()=>setWeatherOverrideDate(null)}
           T={T} t={t} lang={lang}
         />
-      )}
-    </div>
+      )}</div>
   );
 }

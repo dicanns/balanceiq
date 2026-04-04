@@ -3,7 +3,7 @@ import React, { useState, useCallback } from 'react';
 // Helper: compute net sales for a day from raw caisse data
 function dayVenteNet(dayData) {
   if (!dayData?.cashes) return 0;
-  return dayData.cashes.reduce((s, c) => {
+  return dayData.cashes.reduce((s, c) =>{
     if (c.finalCash != null && c.float != null) {
       return s + (c.interac || 0) + (c.livraisons || 0) + (c.deposits || 0) + (c.finalCash || 0) - (c.float || 0);
     }
@@ -23,10 +23,10 @@ function monthRange(start, end) {
   const [sy, sm] = start.split('-').map(Number);
   const [ey, em] = end.split('-').map(Number);
   let y = sy, m = sm;
-  while (y < ey || (y === ey && m <= em)) {
+  while (y< ey || (y === ey && m <= em)) {
     months.push(`${y}-${String(m).padStart(2, '0')}`);
     m++;
-    if (m > 12) { m = 1; y++; }
+    if (m >12) { m = 1; y++; }
   }
   return months;
 }
@@ -48,7 +48,7 @@ async function buildYearEndHTML(fiscalStart, fiscalEnd, liveData, suppliers, fac
     const [my, mm] = month.split('-');
     const daysInMonth = new Date(parseInt(my), parseInt(mm), 0).getDate();
     let revenue = 0;
-    for (let d = 1; d <= daysInMonth; d++) {
+    for (let d = 1; d<= daysInMonth; d++) {
       const key = `${my}-${mm}-${String(d).padStart(2, '0')}`;
       revenue += dayVenteNet(liveData[key]);
     }
@@ -56,7 +56,7 @@ async function buildYearEndHTML(fiscalStart, fiscalEnd, liveData, suppliers, fac
 
     // F&P: sum all supplier bills
     let fpT = 0;
-    (suppliers || []).forEach(sup => {
+    (suppliers || []).forEach(sup =>{
       const bills = plData[`sup_${sup.id}_bills`];
       fpT += billsSum(bills, plData[`sup_${sup.id}`]);
     });
@@ -97,21 +97,21 @@ async function buildYearEndHTML(fiscalStart, fiscalEnd, liveData, suppliers, fac
   // Invoice journal — filter by date range
   const fyStart = `${fiscalStart}-01`;
   const fyEndDate = `${fiscalEnd}-${new Date(parseInt(fiscalEnd.split('-')[0]), parseInt(fiscalEnd.split('-')[1]), 0).getDate()}`;
-  const invoices = (facFactures || []).filter(f => f.date >= fyStart && f.date <= fyEndDate);
+  const invoices = (facFactures || []).filter(f => f.date >= fyStart && f.date<= fyEndDate);
 
   // AR aging as of fiscal year end
   const today2 = new Date(fyEndDate + 'T12:00:00');
-  const unpaid = invoices.filter(f => f.statut !== 'Annulée' && (f.montantDu || 0) > 0.01);
+  const unpaid = invoices.filter(f =>f.statut !== 'Annulée' && (f.montantDu || 0) > 0.01);
   const agingBuckets = { current: [], d30: [], d60: [], d90: [], d90plus: [] };
   unpaid.forEach(f => {
     const age = Math.floor((today2 - new Date(f.date + 'T12:00:00')) / 86400000);
-    if (age <= 30) agingBuckets.current.push(f);
+    if (age<= 30) agingBuckets.current.push(f);
     else if (age <= 60) agingBuckets.d30.push(f);
     else if (age <= 90) agingBuckets.d60.push(f);
     else if (age <= 120) agingBuckets.d90.push(f);
     else agingBuckets.d90plus.push(f);
   });
-  const agingSum = arr => arr.reduce((s, f) => s + (f.montantDu || 0), 0);
+  const agingSum = arr =>arr.reduce((s, f) => s + (f.montantDu || 0), 0);
 
   // Supplier annual breakdown
   const supTotals = {};
@@ -126,9 +126,7 @@ async function buildYearEndHTML(fiscalStart, fiscalEnd, liveData, suppliers, fac
 
   const fiscalLabel = `${fiscalStart} → ${fiscalEnd}`;
 
-  let h = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${titleYE}</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
+  let h = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${titleYE}</title><style>*{margin:0;padding:0;box-sizing:border-box}
 body{font:12px/1.5 Arial,sans-serif;color:#222;padding:24px}
 h1{font-size:22px;color:#ea580c;margin-bottom:4px}
 h2{font-size:15px;color:#ea580c;margin:28px 0 10px;padding-bottom:5px;border-bottom:2px solid #ea580c}
@@ -143,87 +141,35 @@ td:not(:first-child){text-align:right}
 .sub{font-size:10px;color:#888}
 .cover{margin-bottom:32px;padding:24px;background:#fff8f0;border-radius:8px;border-left:4px solid #ea580c}
 .disclaimer{font-size:10px;color:#888;border-left:3px solid #f97316;padding:6px 10px;margin-bottom:16px;background:#fff8f0}
-@media print{body{padding:10px}h2{page-break-before:auto}}
-</style></head><body>`;
+@media print{body{padding:10px}h2{page-break-before:auto}}</style></head><body>`;
 
   // Cover
-  h += `<div class="cover">
-  <h1>${titleYE}</h1>
-  <p class="sub">${co.name || 'BalanceIQ'} &nbsp;|&nbsp; ${fiscalLabel} &nbsp;|&nbsp; ${lang === 'en' ? 'Generated' : 'Généré le'} ${today}</p>
-  ${co.address ? `<p class="sub">${co.address}</p>` : ''}
-  ${co.tps ? `<p class="sub">TPS: ${co.tps}${co.tvq ? ` &nbsp;|&nbsp; TVQ: ${co.tvq}` : ''}</p>` : ''}
-</div>
-<div class="disclaimer">
-  ${lang === 'en'
+  h += `<div class="cover"><h1>${titleYE}</h1><p class="sub">${co.name || 'BalanceIQ'} &nbsp;|&nbsp; ${fiscalLabel} &nbsp;|&nbsp; ${lang === 'en' ? 'Generated' : 'Généré le'} ${today}</p>${co.address ? `<p class="sub">${co.address}</p>` : ''}
+  ${co.tps ? `<p class="sub">TPS: ${co.tps}${co.tvq ? ` &nbsp;|&nbsp; TVQ: ${co.tvq}` : ''}</p>` : ''}</div><div class="disclaimer">${lang === 'en'
     ? 'Operational estimates only — always validate with your accountant.'
-    : 'Estimations opérationnelles seulement — toujours valider avec votre comptable.'}
-</div>`;
+    : 'Estimations opérationnelles seulement — toujours valider avec votre comptable.'}</div>`;
 
   // Monthly P&L summary table
-  h += `<h2>${titlePL}</h2>
-<table>
-<tr>
-  <th>${lang === 'en' ? 'Month' : 'Mois'}</th>
-  <th>${lang === 'en' ? 'Revenue' : 'Revenus'}</th>
-  <th>F&P %</th>
-  <th>${lang === 'en' ? 'Labour %' : 'Main-d\'œuvre %'}</th>
-  <th>${lang === 'en' ? 'Expenses' : 'Dépenses'}</th>
-  <th>${lang === 'en' ? 'Net Profit' : 'Profit net'} %</th>
-</tr>`;
+  h += `<h2>${titlePL}</h2><table><tr><th>${lang === 'en' ? 'Month' : 'Mois'}</th><th>${lang === 'en' ? 'Revenue' : 'Revenus'}</th><th>F&P %</th><th>${lang === 'en' ? 'Labour %' : 'Main-d\'œuvre %'}</th><th>${lang === 'en' ? 'Expenses' : 'Dépenses'}</th><th>${lang === 'en' ? 'Net Profit' : 'Profit net'} %</th></tr>`;
 
   rows.forEach(r => {
     const npClass = r.np >= 0 ? 'g' : 'r';
-    h += `<tr>
-  <td>${r.monthLabel}</td>
-  <td>${fmt(r.revenue)}</td>
-  <td>${r.fpPct}%</td>
-  <td>${r.labPct}%</td>
-  <td>${fmt(r.expT)}</td>
-  <td class="${npClass}">${fmt(r.np)} (${r.npPct}%)</td>
-</tr>`;
+    h += `<tr><td>${r.monthLabel}</td><td>${fmt(r.revenue)}</td><td>${r.fpPct}%</td><td>${r.labPct}%</td><td>${fmt(r.expT)}</td><td class="${npClass}">${fmt(r.np)} (${r.npPct}%)</td></tr>`;
   });
 
-  h += `<tr class="tot">
-  <td>${lang === 'en' ? 'TOTAL' : 'TOTAL'}</td>
-  <td>${fmt(totRev)}</td>
-  <td>${fmtPct(totFP, totRev)}</td>
-  <td>${fmtPct(totLab, totRev)}</td>
-  <td>${fmt(totExp)}</td>
-  <td class="${totNP >= 0 ? 'g' : 'r'}">${fmt(totNP)} (${fmtPct(totNP, totRev)})</td>
-</tr></table>`;
+  h += `<tr class="tot"><td>${lang === 'en' ? 'TOTAL' : 'TOTAL'}</td><td>${fmt(totRev)}</td><td>${fmtPct(totFP, totRev)}</td><td>${fmtPct(totLab, totRev)}</td><td>${fmt(totExp)}</td><td class="${totNP >= 0 ? 'g' : 'r'}">${fmt(totNP)} (${fmtPct(totNP, totRev)})</td></tr></table>`;
 
   // Invoice journal
   h += `<h2>${titleInv}</h2>`;
   if (invoices.length === 0) {
     h += `<p class="sub">${lang === 'en' ? 'No invoices in this period.' : 'Aucune facture dans cette période.'}</p>`;
   } else {
-    h += `<table>
-<tr>
-  <th>${lang === 'en' ? 'No.' : 'No.'}</th>
-  <th>${lang === 'en' ? 'Date' : 'Date'}</th>
-  <th>${lang === 'en' ? 'Client' : 'Client'}</th>
-  <th>${lang === 'en' ? 'Subtotal' : 'Sous-total'}</th>
-  <th>TPS</th>
-  <th>TVQ</th>
-  <th>${lang === 'en' ? 'Total' : 'Total'}</th>
-  <th>${lang === 'en' ? 'Balance due' : 'Solde dû'}</th>
-  <th>${lang === 'en' ? 'Status' : 'Statut'}</th>
-</tr>`;
+    h += `<table><tr><th>${lang === 'en' ? 'No.' : 'No.'}</th><th>${lang === 'en' ? 'Date' : 'Date'}</th><th>${lang === 'en' ? 'Client' : 'Client'}</th><th>${lang === 'en' ? 'Subtotal' : 'Sous-total'}</th><th>TPS</th><th>TVQ</th><th>${lang === 'en' ? 'Total' : 'Total'}</th><th>${lang === 'en' ? 'Balance due' : 'Solde dû'}</th><th>${lang === 'en' ? 'Status' : 'Statut'}</th></tr>`;
     let invTot = 0, invDue = 0;
     invoices.forEach(f => {
       const total = (f.subtotalHT || 0) + (f.tps || 0) + (f.tvq || 0);
       invTot += total; invDue += f.montantDu || 0;
-      h += `<tr>
-  <td>${f.numero || '—'}</td>
-  <td>${f.date || '—'}</td>
-  <td>${f.clientNom || '—'}</td>
-  <td>${fmt(f.subtotalHT || 0)}</td>
-  <td>${fmt(f.tps || 0)}</td>
-  <td>${fmt(f.tvq || 0)}</td>
-  <td>${fmt(total)}</td>
-  <td class="${(f.montantDu || 0) > 0.01 ? 'r' : 'g'}">${fmt(f.montantDu || 0)}</td>
-  <td>${f.statut || '—'}</td>
-</tr>`;
+      h += `<tr><td>${f.numero || '—'}</td><td>${f.date || '—'}</td><td>${f.clientNom || '—'}</td><td>${fmt(f.subtotalHT || 0)}</td><td>${fmt(f.tps || 0)}</td><td>${fmt(f.tvq || 0)}</td><td>${fmt(total)}</td><td class="${(f.montantDu || 0) >0.01 ? 'r' : 'g'}">${fmt(f.montantDu || 0)}</td><td>${f.statut || '—'}</td></tr>`;
     });
     h += `<tr class="tot"><td colspan="6">${lang === 'en' ? 'TOTAL' : 'TOTAL'}</td><td>${fmt(invTot)}</td><td class="r">${fmt(invDue)}</td><td></td></tr>`;
     h += `</table>`;
@@ -237,7 +183,7 @@ td:not(:first-child){text-align:right}
   const bucketKeys = ['current', 'd30', 'd60', 'd90', 'd90plus'];
   const totAging = agingSum(unpaid);
   if (totAging === 0) {
-    h += `<p class="sub" style="color:#16a34a">✓ ${lang === 'en' ? 'No outstanding AR.' : 'Aucun solde AR en attente.'}</p>`;
+    h += `<p class="sub" style="color:#16a34a">${lang === 'en' ? 'No outstanding AR.' : 'Aucun solde AR en attente.'}</p>`;
   } else {
     h += `<table><tr><th>${lang === 'en' ? 'Bucket' : 'Tranche'}</th><th>${lang === 'en' ? 'Count' : 'Nb'}</th><th>${lang === 'en' ? 'Amount' : 'Montant'}</th></tr>`;
     bucketKeys.forEach((k, i) => {
@@ -271,7 +217,7 @@ async function buildTaxHTML(fiscalStart, fiscalEnd, liveData, suppliers, lang) {
   // Group months into quarters
   const quarters = [];
   let i = 0;
-  while (i < months.length) {
+  while (i< months.length) {
     const qMonths = months.slice(i, i + 3);
     const [qy, qm] = qMonths[0].split('-').map(Number);
     const qNum = Math.ceil(qm / 3);
@@ -279,7 +225,7 @@ async function buildTaxHTML(fiscalStart, fiscalEnd, liveData, suppliers, lang) {
     i += 3;
   }
 
-  const fmt = n => `${n >= 0 ? '' : '-'}$${Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
+  const fmt = n =>`${n >= 0 ? '' : '-'}$${Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
   const today = new Date().toLocaleDateString(lang === 'en' ? 'en-CA' : 'fr-CA', { year: 'numeric', month: 'long', day: 'numeric' });
 
   let totTpsC = 0, totTvqC = 0, totTpsN = 0, totTvqN = 0, totRev = 0;
@@ -297,7 +243,7 @@ async function buildTaxHTML(fiscalStart, fiscalEnd, liveData, suppliers, lang) {
       } catch (e) { /* no data */ }
 
       let monthRev = 0;
-      for (let d = 1; d <= daysInMonth; d++) {
+      for (let d = 1; d<= daysInMonth; d++) {
         const key = `${my}-${mm}-${String(d).padStart(2, '0')}`;
         monthRev += dayVenteNet(liveData[key]);
       }
@@ -320,9 +266,7 @@ async function buildTaxHTML(fiscalStart, fiscalEnd, liveData, suppliers, lang) {
     ? '* Input tax credits not tracked — manual entry required in your accounting software (Acomba/Sage 50).'
     : '* Crédits intrants non disponibles — saisie manuelle requise dans votre logiciel de comptabilité.';
 
-  let h = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${titleTax}</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
+  let h = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${titleTax}</title><style>*{margin:0;padding:0;box-sizing:border-box}
 body{font:12px/1.5 Arial,sans-serif;color:#222;padding:24px}
 h1{font-size:20px;color:#ea580c;margin-bottom:4px}
 h2{font-size:14px;color:#ea580c;margin:20px 0 8px;padding-bottom:4px;border-bottom:2px solid #ea580c}
@@ -333,68 +277,25 @@ td:not(:first-child){text-align:right}
 .tot{background:#fff8f0;font-weight:700}
 .sub{font-size:10px;color:#888}
 .disclaimer{font-size:10px;color:#888;border-left:3px solid #f97316;padding:6px 10px;margin:12px 0;background:#fff8f0}
-.note{font-size:10px;color:#b45309;margin-top:8px;font-style:italic}
-</style></head><body>`;
+.note{font-size:10px;color:#b45309;margin-top:8px;font-style:italic}</style></head><body>`;
 
-  h += `<h1>${titleTax}</h1>
-<p class="sub">${lang === 'en' ? 'Period' : 'Période'}: ${fiscalStart} → ${fiscalEnd} &nbsp;|&nbsp; ${lang === 'en' ? 'Generated' : 'Généré le'} ${today}</p>
-<div class="disclaimer">${disclaimer}</div>`;
+  h += `<h1>${titleTax}</h1><p class="sub">${lang === 'en' ? 'Period' : 'Période'}: ${fiscalStart} → ${fiscalEnd} &nbsp;|&nbsp; ${lang === 'en' ? 'Generated' : 'Généré le'} ${today}</p><div class="disclaimer">${disclaimer}</div>`;
 
-  h += `<h2>TPS ${lang === 'en' ? '(GST)' : '(TPS)'}</h2>
-<table>
-<tr>
-  <th>${lang === 'en' ? 'Quarter' : 'Trimestre'}</th>
-  <th>${lang === 'en' ? 'Revenue' : 'Revenus'}</th>
-  <th>${lang === 'en' ? 'TPS Collected (5%)' : 'TPS collectée (5%)'}</th>
-  <th>${lang === 'en' ? 'Input Credits *' : 'Crédits intrants *'}</th>
-  <th>${lang === 'en' ? 'Net Owing' : 'Net à remettre'}</th>
-</tr>`;
+  h += `<h2>TPS ${lang === 'en' ? '(GST)' : '(TPS)'}</h2><table><tr><th>${lang === 'en' ? 'Quarter' : 'Trimestre'}</th><th>${lang === 'en' ? 'Revenue' : 'Revenus'}</th><th>${lang === 'en' ? 'TPS Collected (5%)' : 'TPS collectée (5%)'}</th><th>${lang === 'en' ? 'Input Credits *' : 'Crédits intrants *'}</th><th>${lang === 'en' ? 'Net Owing' : 'Net à remettre'}</th></tr>`;
 
   qRows.forEach(q => {
-    h += `<tr>
-  <td><strong>${q.label}</strong></td>
-  <td>${fmt(q.rev)}</td>
-  <td>${fmt(q.tpsC)}</td>
-  <td class="sub" style="text-align:right;color:#b45309">—*</td>
-  <td><strong>${fmt(q.tpsNet)}</strong></td>
-</tr>`;
+    h += `<tr><td><strong>${q.label}</strong></td><td>${fmt(q.rev)}</td><td>${fmt(q.tpsC)}</td><td class="sub" style="text-align:right;color:#b45309">—*</td><td><strong>${fmt(q.tpsNet)}</strong></td></tr>`;
   });
 
-  h += `<tr class="tot">
-  <td>TOTAL</td>
-  <td>${fmt(totRev)}</td>
-  <td>${fmt(totTpsC)}</td>
-  <td>—*</td>
-  <td>${fmt(totTpsN)}</td>
-</tr></table>`;
+  h += `<tr class="tot"><td>TOTAL</td><td>${fmt(totRev)}</td><td>${fmt(totTpsC)}</td><td>—*</td><td>${fmt(totTpsN)}</td></tr></table>`;
 
-  h += `<h2>TVQ ${lang === 'en' ? '(QST)' : '(TVQ)'}</h2>
-<table>
-<tr>
-  <th>${lang === 'en' ? 'Quarter' : 'Trimestre'}</th>
-  <th>${lang === 'en' ? 'Revenue' : 'Revenus'}</th>
-  <th>${lang === 'en' ? 'TVQ Collected (9.975%)' : 'TVQ collectée (9,975%)'}</th>
-  <th>${lang === 'en' ? 'Input Credits *' : 'Crédits intrants *'}</th>
-  <th>${lang === 'en' ? 'Net Owing' : 'Net à remettre'}</th>
-</tr>`;
+  h += `<h2>TVQ ${lang === 'en' ? '(QST)' : '(TVQ)'}</h2><table><tr><th>${lang === 'en' ? 'Quarter' : 'Trimestre'}</th><th>${lang === 'en' ? 'Revenue' : 'Revenus'}</th><th>${lang === 'en' ? 'TVQ Collected (9.975%)' : 'TVQ collectée (9,975%)'}</th><th>${lang === 'en' ? 'Input Credits *' : 'Crédits intrants *'}</th><th>${lang === 'en' ? 'Net Owing' : 'Net à remettre'}</th></tr>`;
 
   qRows.forEach(q => {
-    h += `<tr>
-  <td><strong>${q.label}</strong></td>
-  <td>${fmt(q.rev)}</td>
-  <td>${fmt(q.tvqC)}</td>
-  <td class="sub" style="text-align:right;color:#b45309">—*</td>
-  <td><strong>${fmt(q.tvqNet)}</strong></td>
-</tr>`;
+    h += `<tr><td><strong>${q.label}</strong></td><td>${fmt(q.rev)}</td><td>${fmt(q.tvqC)}</td><td class="sub" style="text-align:right;color:#b45309">—*</td><td><strong>${fmt(q.tvqNet)}</strong></td></tr>`;
   });
 
-  h += `<tr class="tot">
-  <td>TOTAL</td>
-  <td>${fmt(totRev)}</td>
-  <td>${fmt(totTvqC)}</td>
-  <td>—*</td>
-  <td>${fmt(totTvqN)}</td>
-</tr></table>`;
+  h += `<tr class="tot"><td>TOTAL</td><td>${fmt(totRev)}</td><td>${fmt(totTvqC)}</td><td>—*</td><td>${fmt(totTvqN)}</td></tr></table>`;
 
   h += `<p class="note">${creditsNote}</p>`;
   h += `<p class="sub" style="margin-top:20px">BalanceIQ &nbsp;|&nbsp; ${today}</p></body></html>`;
@@ -448,7 +349,7 @@ export default function YearEndPackage({ liveData, suppliers, facFactures, compa
   const inputStyle = {
     background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)',
     borderRadius: 6, color: 'inherit', fontSize: 12, padding: '5px 10px',
-    fontFamily: "'DM Mono', monospace",
+    fontFamily: "'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif",
   };
   const btnStyle = (disabled) => ({
     padding: '8px 18px', borderRadius: 7, border: 'none', cursor: disabled ? 'not-allowed' : 'pointer',
@@ -456,42 +357,8 @@ export default function YearEndPackage({ liveData, suppliers, facFactures, compa
     background: disabled ? '#555' : 'linear-gradient(135deg,#f97316,#ea580c)', color: '#fff',
   });
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Fiscal period selector */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <label style={{ fontSize: 12, fontWeight: 600, opacity: 0.7 }}>{T.yearEndFiscalStart}</label>
-        <input type="month" value={fiscalStart} onChange={e => setFiscalStart(e.target.value)} style={inputStyle} max={fiscalEnd} />
-        <label style={{ fontSize: 12, fontWeight: 600, opacity: 0.7 }}>{T.yearEndFiscalEnd}</label>
-        <input type="month" value={fiscalEnd} onChange={e => setFiscalEnd(e.target.value)} style={inputStyle} min={fiscalStart} />
-      </div>
-
-      {/* Year-end package */}
-      <div style={{ padding: '14px 16px', background: 'rgba(249,115,22,0.06)', border: '1px solid rgba(249,115,22,0.2)', borderRadius: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{T.yearEndTitle}</div>
-        <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 12 }}>{T.yearEndDesc}</div>
-        {locked
-          ? <div style={{ fontSize: 11, color: '#f97316', fontStyle: 'italic' }}>{T.yearEndLocked}</div>
-          : <button onClick={handleYearEnd} disabled={!!generating} style={btnStyle(!!generating)}>
-              {generating === 'yearend' ? T.yearEndGenerating : T.yearEndGenerate}
-            </button>
-        }
-      </div>
-
-      {/* Quarterly tax summary */}
-      <div style={{ padding: '14px 16px', background: 'rgba(249,115,22,0.06)', border: '1px solid rgba(249,115,22,0.2)', borderRadius: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{T.taxSummaryTitle}</div>
-        <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 12 }}>{T.taxSummaryDesc}</div>
-        <div style={{ fontSize: 10, color: '#b45309', marginBottom: 10, fontStyle: 'italic' }}>{T.taxCreditsNote}</div>
-        {locked
-          ? <div style={{ fontSize: 11, color: '#f97316', fontStyle: 'italic' }}>{T.yearEndLocked}</div>
-          : <button onClick={handleTax} disabled={!!generating} style={btnStyle(!!generating)}>
-              {generating === 'tax' ? T.taxGenerating : T.taxGenerate}
-            </button>
-        }
-      </div>
-
-      <div style={{ fontSize: 10, opacity: 0.5, fontStyle: 'italic' }}>{T.taxDisclaimer}</div>
-    </div>
+  return (<div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>{/* Fiscal period selector */}<div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}><label style={{ fontSize: 12, fontWeight: 600, opacity: 0.7 }}>{T.yearEndFiscalStart}</label><input type="month" value={fiscalStart} onChange={e =>setFiscalStart(e.target.value)} style={inputStyle} max={fiscalEnd} /><label style={{ fontSize: 12, fontWeight: 600, opacity: 0.7 }}>{T.yearEndFiscalEnd}</label><input type="month" value={fiscalEnd} onChange={e =>setFiscalEnd(e.target.value)} style={inputStyle} min={fiscalStart} /></div>{/* Year-end package */}<div style={{ padding: '14px 16px', background: 'rgba(249,115,22,0.06)', border: '1px solid rgba(249,115,22,0.2)', borderRadius: 10 }}><div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{T.yearEndTitle}</div><div style={{ fontSize: 12, opacity: 0.7, marginBottom: 12 }}>{T.yearEndDesc}</div>{locked
+          ?<div style={{ fontSize: 11, color: '#f97316', fontStyle: 'italic' }}>{T.yearEndLocked}</div>:<button onClick={handleYearEnd} disabled={!!generating} style={btnStyle(!!generating)}>{generating === 'yearend' ? T.yearEndGenerating : T.yearEndGenerate}</button>}</div>{/* Quarterly tax summary */}<div style={{ padding: '14px 16px', background: 'rgba(249,115,22,0.06)', border: '1px solid rgba(249,115,22,0.2)', borderRadius: 10 }}><div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{T.taxSummaryTitle}</div><div style={{ fontSize: 12, opacity: 0.7, marginBottom: 12 }}>{T.taxSummaryDesc}</div><div style={{ fontSize: 10, color: '#b45309', marginBottom: 10, fontStyle: 'italic' }}>{T.taxCreditsNote}</div>{locked
+          ?<div style={{ fontSize: 11, color: '#f97316', fontStyle: 'italic' }}>{T.yearEndLocked}</div>:<button onClick={handleTax} disabled={!!generating} style={btnStyle(!!generating)}>{generating === 'tax' ? T.taxGenerating : T.taxGenerate}</button>}</div><div style={{ fontSize: 10, opacity: 0.5, fontStyle: 'italic' }}>{T.taxDisclaimer}</div></div>
   );
 }

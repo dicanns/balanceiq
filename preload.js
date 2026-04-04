@@ -71,6 +71,7 @@ contextBridge.exposeInMainWorld('api', {
     showInFolder:   (filePath) => ipcRenderer.invoke('file:showInFolder', filePath),
   },
   forecast: {
+    clearAll: () => ipcRenderer.invoke('forecast:clearAll'),
     products: {
       getAll:   ()    => ipcRenderer.invoke('forecast:products:getAll'),
       upsert:   (p)   => ipcRenderer.invoke('forecast:products:upsert', p),

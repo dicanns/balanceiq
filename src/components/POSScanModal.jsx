@@ -16,15 +16,15 @@ function preprocessCanvasForOCR(srcCanvas) {
   for (let i = 0; i < data.length; i += 4) {
     const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
     if (lum < min) min = lum;
-    if (lum > max) max = lum;
+    if (lum >max) max = lum;
   }
   const range = max - min || 1;
 
-  for (let i = 0; i < data.length; i += 4) {
+  for (let i = 0; i< data.length; i += 4) {
     const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
     const normalized = ((lum - min) / range) * 255;
     // Adaptive threshold: binarize
-    const val = normalized > 128 ? 255 : 0;
+    const val = normalized >128 ? 255 : 0;
     data[i] = val; data[i + 1] = val; data[i + 2] = val;
     // keep alpha
   }
@@ -39,7 +39,7 @@ async function renderPDFToCanvas(base64Data) {
 
   const binaryStr = atob(base64Data);
   const bytes = new Uint8Array(binaryStr.length);
-  for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+  for (let i = 0; i< binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
 
   const pdf = await pdfjsLib.getDocument({ data: bytes, disableWorker: true }).promise;
   const page = await pdf.getPage(1);
@@ -55,7 +55,7 @@ async function renderPDFToCanvas(base64Data) {
 
 // ── Decode base64 image to canvas ────────────────────────────────────────────
 function imageBase64ToCanvas(base64Data, mimeType) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, reject) =>{
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement('canvas');
@@ -197,8 +197,8 @@ function parseOCRLines(text) {
   const numRe = /\b\d+\b/;
   return lines.map(l => ({
     ...l,
-    hasValue: moneyRe.test(l.raw) || (numRe.test(l.raw) && l.raw.length < 40),
-    extractedValue: (() => {
+    hasValue: moneyRe.test(l.raw) || (numRe.test(l.raw) && l.raw.length< 40),
+    extractedValue: (() =>{
       const m = moneyRe.exec(l.raw);
       if (m) return parseFloat(m[0].replace(/[$,]/g, ''));
       const n = numRe.exec(l.raw);
@@ -215,11 +215,7 @@ function ConfBadge({ conf, T }) {
     low: { bg: 'rgba(239,68,68,0.12)', color: '#dc2626', text: T.scanLowConf },
   };
   const s = map[conf] || map.low;
-  return (
-    <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: s.bg, color: s.color }}>
-      {s.text}
-    </span>
-  );
+  return (<span style={{ fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: s.bg, color: s.color }}>{s.text}</span>);
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -760,62 +756,12 @@ export default function POSScanModal({ isOpen, onClose, onApply, caisseIndex, da
 
   // ── Render: idle ─────────────────────────────────────────────────────────────
   if (step === 'idle') {
-    return (
-      <div style={overlay} onClick={handleClose}>
-        <div style={modal} onClick={e => e.stopPropagation()}>
-          <div style={header}>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{T.scanButton}</div>
-              <div style={{ fontSize: 11, color: t.textMuted, marginTop: 2 }}>{T.scanHelper}</div>
-            </div>
-            <button onClick={handleClose} style={{ background: 'none', border: 'none', color: t.textMuted, fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>✕</button>
-          </div>
-          <div style={body}>
-            {error && <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 6, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444', fontSize: 12 }}>{error}</div>}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: '20px 0' }}>
-              <div style={{ width: 64, height: 64, borderRadius: 14, background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>📄</div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 13, color: t.text, fontWeight: 600, marginBottom: 6 }}>{T.scanButton}</div>
-                <div style={{ fontSize: 11, color: t.textMuted, lineHeight: 1.5 }}>{T.scanHelper}</div>
-                {isProCloud && (
-                  <div style={{ marginTop: 8, fontSize: 10, color: '#f97316', fontWeight: 500 }}>
-                    ✨ {T.scanEngineCloud}
-                  </div>
-                )}
-              </div>
-              <button onClick={handleScan} style={{ ...btnPrimary, padding: '10px 28px', fontSize: 14 }}>
-                📷 {T.scanButton}
-              </button>
-              <div style={{ fontSize: 10, color: t.textDim || t.textMuted }}>PDF · PNG · JPG · JPEG</div>
-            </div>
-          </div>
-          <div style={{ ...footer, justifyContent: 'space-between' }}>
-            <button onClick={handleShowHistory} style={{ ...btnSecondary, fontSize: 11, padding: '6px 12px' }}>
-              🕐 {T.scanHistory}
-            </button>
-            <button onClick={handleClose} style={btnSecondary}>{T.scanCancel}</button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+    return (<div style={overlay} onClick={handleClose}><div style={modal} onClick={e =>e.stopPropagation()}><div style={header}><div><div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{T.scanButton}</div><div style={{ fontSize: 11, color: t.textMuted, marginTop: 2 }}>{T.scanHelper}</div></div><button onClick={handleClose} style={{ background: 'none', border: 'none', color: t.textMuted, fontSize: 18, cursor: 'pointer', lineHeight: 1 }}></button></div><div style={body}>{error &&<div style={{ marginBottom: 12, padding:'8px 12px', borderRadius: 6, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444', fontSize: 12 }}>{error}</div>}<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: '20px 0' }}><div style={{ width: 64, height: 64, borderRadius: 14, background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}></div><div style={{ textAlign:'center' }}><div style={{ fontSize: 13, color: t.text, fontWeight: 600, marginBottom: 6 }}>{T.scanButton}</div><div style={{ fontSize: 11, color: t.textMuted, lineHeight: 1.5 }}>{T.scanHelper}</div>{isProCloud && (<div style={{ marginTop: 8, fontSize: 10, color: '#f97316', fontWeight: 500 }}>{T.scanEngineCloud}</div>)}</div><button onClick={handleScan} style={{ ...btnPrimary, padding:'10px 28px', fontSize: 14 }}>{T.scanButton}</button><div style={{ fontSize: 10, color: t.textDim || t.textMuted }}>PDF · PNG · JPG · JPEG</div></div></div><div style={{ ...footer, justifyContent:'space-between' }}><button onClick={handleShowHistory} style={{ ...btnSecondary, fontSize: 11, padding: '6px 12px'}}>{T.scanHistory}</button><button onClick={handleClose} style={btnSecondary}>{T.scanCancel}</button></div></div></div>);
+ }
 
-  // ── Render: processing ───────────────────────────────────────────────────────
-  if (step === 'processing') {
-    return (
-      <div style={overlay}>
-        <div style={{ ...modal, width: 380 }}>
-          <div style={{ ...body, textAlign: 'center', padding: '40px 20px' }}>
-            <div style={{ fontSize: 32, marginBottom: 16 }}>⚙️</div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: t.text, marginBottom: 8 }}>{T.scanProcessing}</div>
-            <div style={{ height: 6, background: 'rgba(255,255,255,0.08)', borderRadius: 3, margin: '12px 0', overflow: 'hidden' }}>
-              <div style={{ width: `${progress}%`, height: '100%', background: 'linear-gradient(90deg,#f97316,#ea580c)', borderRadius: 3, transition: 'width 0.3s' }} />
-            </div>
-            <div style={{ fontSize: 10, color: t.textMuted }}>{progressLabel}</div>
-          </div>
-        </div>
-      </div>
-    );
+ // ── Render: processing ───────────────────────────────────────────────────────
+ if (step ==='processing') {
+    return (<div style={overlay}><div style={{ ...modal, width: 380 }}><div style={{ ...body, textAlign: 'center', padding: '40px 20px'}}><div style={{ fontSize: 32, marginBottom: 16 }}></div><div style={{ fontSize: 14, fontWeight: 600, color: t.text, marginBottom: 8 }}>{T.scanProcessing}</div><div style={{ height: 6, background:'rgba(255,255,255,0.08)', borderRadius: 3, margin: '12px 0', overflow: 'hidden' }}><div style={{ width: `${progress}%`, height: '100%', background: 'linear-gradient(90deg,#f97316,#ea580c)', borderRadius: 3, transition: 'width 0.3s' }} /></div><div style={{ fontSize: 10, color: t.textMuted }}>{progressLabel}</div></div></div></div>);
   }
 
   // ── Render: confirm panel ────────────────────────────────────────────────────
@@ -825,85 +771,20 @@ export default function POSScanModal({ isOpen, onClose, onApply, caisseIndex, da
       ...unmatchedValues.map(u => ({ id: 'unmatched_' + u.label, rawLabel: u.label, value: u.value, confidence: 'low', isUnmatched: true })),
     ];
 
-    return (
-      <div style={overlay} onClick={handleClose}>
-        <div style={modal} onClick={e => e.stopPropagation()}>
-          <div style={header}>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>
-                {matchedTemplate ? T.scanMatchedAs(posSystemName || matchedTemplate.pos_system) : T.scanDetected}
-              </div>
-              {matchedTemplate && (
-                <div style={{ fontSize: 10, color: t.textMuted, marginTop: 2 }}>
-                  {T.scanMatchScore(Math.round(matchScore * 100))}
-                  {' · '}
-                  <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, background: matchedTemplate.is_community ? 'rgba(139,92,246,0.15)' : 'rgba(249,115,22,0.1)', color: matchedTemplate.is_community ? '#8b5cf6' : '#f97316' }}>
-                    {matchedTemplate.is_community ? T.scanCommunityLabel : T.scanLocalLabel}
-                  </span>
-                </div>
-              )}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {isProCloud && (
-                <span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 4, background: scanEngine === 'claude-haiku' ? 'rgba(139,92,246,0.15)' : 'rgba(255,255,255,0.07)', color: scanEngine === 'claude-haiku' ? '#8b5cf6' : t.textMuted, fontWeight: 600 }}>
-                  {scanEngine === 'claude-haiku' ? '✨ ' + T.scanEngineCloud : T.scanEngineLocal}
-                </span>
-              )}
-              <button onClick={handleClose} style={{ background: 'none', border: 'none', color: t.textMuted, fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>✕</button>
-            </div>
-          </div>
-          <div style={body}>
-            {error && <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 6, background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.2)', color: '#f97316', fontSize: 11 }}>{error}</div>}
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead>
-                <tr>
-                  <th style={{ textAlign: 'left', color: t.textMuted, fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, padding: '0 0 8px', borderBottom: `1px solid ${t.innerBorder || 'rgba(255,255,255,0.08)'}` }}>{T.scanColLabel}</th>
-                  <th style={{ textAlign: 'right', color: t.textMuted, fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, padding: '0 8px 8px', borderBottom: `1px solid ${t.innerBorder || 'rgba(255,255,255,0.08)'}` }}>{T.scanColValue}</th>
-                  <th style={{ textAlign: 'left', color: t.textMuted, fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, padding: '0 0 8px 8px', borderBottom: `1px solid ${t.innerBorder || 'rgba(255,255,255,0.08)'}` }}>{T.scanColField}</th>
-                  <th style={{ textAlign: 'center', color: t.textMuted, fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, padding: '0 0 8px 8px', borderBottom: `1px solid ${t.innerBorder || 'rgba(255,255,255,0.08)'}` }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {allRows.map((row) => (
-                  <tr key={row.id} style={{ borderBottom: `1px solid rgba(255,255,255,0.04)` }}>
-                    <td style={{ padding: '7px 0', color: t.text, fontSize: 11 }}>{row.rawLabel}</td>
-                    <td style={{ padding: '7px 8px', textAlign: 'right' }}>
-                      <input
+    return (<div style={overlay} onClick={handleClose}><div style={modal} onClick={e =>e.stopPropagation()}><div style={header}><div><div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{matchedTemplate ? T.scanMatchedAs(posSystemName || matchedTemplate.pos_system) : T.scanDetected}</div>{matchedTemplate && (<div style={{ fontSize: 10, color: t.textMuted, marginTop: 2 }}>{T.scanMatchScore(Math.round(matchScore * 100))}
+                  {' · '}<span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, background: matchedTemplate.is_community ? 'rgba(139,92,246,0.15)' : 'rgba(249,115,22,0.1)', color: matchedTemplate.is_community ? '#8b5cf6' : '#f97316' }}>{matchedTemplate.is_community ? T.scanCommunityLabel : T.scanLocalLabel}</span></div>)}</div><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>{isProCloud && (<span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 4, background: scanEngine === 'claude-haiku' ? 'rgba(139,92,246,0.15)' : 'rgba(255,255,255,0.07)', color: scanEngine === 'claude-haiku' ? '#8b5cf6' : t.textMuted, fontWeight: 600 }}>{scanEngine === 'claude-haiku' ? ' ' + T.scanEngineCloud : T.scanEngineLocal}</span>)}<button onClick={handleClose} style={{ background: 'none', border: 'none', color: t.textMuted, fontSize: 18, cursor: 'pointer', lineHeight: 1 }}></button></div></div><div style={body}>{error &&<div style={{ marginBottom: 12, padding:'8px 12px', borderRadius: 6, background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.2)', color: '#f97316', fontSize: 11 }}>{error}</div>}<table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}><thead><tr><th style={{ textAlign: 'left', color: t.textMuted, fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, padding: '0 0 8px', borderBottom: `1px solid ${t.innerBorder || 'rgba(255,255,255,0.08)'}` }}>{T.scanColLabel}</th><th style={{ textAlign: 'right', color: t.textMuted, fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, padding: '0 8px 8px', borderBottom: `1px solid ${t.innerBorder || 'rgba(255,255,255,0.08)'}` }}>{T.scanColValue}</th><th style={{ textAlign: 'left', color: t.textMuted, fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, padding: '0 0 8px 8px', borderBottom: `1px solid ${t.innerBorder || 'rgba(255,255,255,0.08)'}` }}>{T.scanColField}</th><th style={{ textAlign: 'center', color: t.textMuted, fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, padding: '0 0 8px 8px', borderBottom: `1px solid ${t.innerBorder || 'rgba(255,255,255,0.08)'}` }}></th></tr></thead><tbody>{allRows.map((row) => (<tr key={row.id} style={{ borderBottom: `1px solid rgba(255,255,255,0.04)` }}><td style={{ padding: '7px 0', color: t.text, fontSize: 11 }}>{row.rawLabel}</td><td style={{ padding: '7px 8px', textAlign: 'right' }}><input
                         type="number"
                         value={rowValues[row.id] ?? String(row.value ?? '')}
-                        onChange={e => setRowValues(prev => ({ ...prev, [row.id]: e.target.value }))}
-                        style={{ ...inputStyle, width: 90, textAlign: 'right', fontFamily: "'DM Mono',monospace" }}
+                        onChange={e =>setRowValues(prev => ({ ...prev, [row.id]: e.target.value }))}
+                        style={{ ...inputStyle, width: 90, textAlign: 'right', fontFamily: "'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif" }}
                         step="0.01"
-                      />
-                    </td>
-                    <td style={{ padding: '7px 0 7px 8px' }}>
-                      <select
+                      /></td><td style={{ padding: '7px 0 7px 8px' }}><select
                         value={rowAssignments[row.id] || ''}
-                        onChange={e => setRowAssignments(prev => ({ ...prev, [row.id]: e.target.value }))}
+                        onChange={e =>setRowAssignments(prev => ({ ...prev, [row.id]: e.target.value }))}
                         style={{ ...inputStyle, width: 'auto', fontSize: 11 }}
-                      >
-                        <option value="">— {T.scanSkipField} —</option>
-                        {FIELD_KEYS.map(fk => (
-                          <option key={fk} value={fk}>{getFieldLabel(fk, T)}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td style={{ padding: '7px 0 7px 8px', textAlign: 'center' }}>
-                      <ConfBadge conf={row.confidence} T={T} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {allRows.length === 0 && (
-              <div style={{ textAlign: 'center', padding: '20px 0', color: t.textMuted, fontSize: 12 }}>
-                {T.scanUnknown}
-              </div>
-            )}
-            {matchedTemplate?.is_community === 1 && (
-              <div style={{ marginTop: 12, textAlign: 'center' }}>
-                <button
-                  onClick={async () => {
+                      ><option value="">— {T.scanSkipField} —</option>{FIELD_KEYS.map(fk => (<option key={fk} value={fk}>{getFieldLabel(fk, T)}</option>))}</select></td><td style={{ padding: '7px 0 7px 8px', textAlign: 'center' }}><ConfBadge conf={row.confidence} T={T} /></td></tr>))}</tbody></table>{allRows.length === 0 && (<div style={{ textAlign: 'center', padding: '20px 0', color: t.textMuted, fontSize: 12 }}>{T.scanUnknown}</div>)}
+            {matchedTemplate?.is_community === 1 && (<div style={{ marginTop: 12, textAlign: 'center' }}><button
+                  onClick={async () =>{
                     try {
                       const { supabase, SUPABASE_URL } = await import('../services/supabase.js');
                       const { data: sd } = await supabase.auth.getSession();
@@ -915,126 +796,53 @@ export default function POSScanModal({ isOpen, onClose, onApply, caisseIndex, da
                       });
                     } catch (_) { /* non-critical */ }
                   }}
-                  style={{ background: 'none', border: 'none', color: t.textDim || t.textMuted, fontSize: 10, cursor: 'pointer', textDecoration: 'underline' }}
-                >
-                  ⚑ {T.scanFlagBad}
-                </button>
-              </div>
-            )}
-          </div>
-          {scanEngine === 'claude-haiku' && supplementPng && FIELD_KEYS.some(k => !extractedFields[k]) && (
-            <div style={{ padding: '8px 20px', borderTop: `1px solid ${t.innerBorder || 'rgba(255,255,255,0.06)'}`, background: 'rgba(249,115,22,0.04)' }}>
-              <button
+                  style={{ background: 'none', border: 'none', color: t.textDim || t.textMuted, fontSize: 10, cursor: 'pointer', textDecoration: 'underline'}}
+ >
+ {T.scanFlagBad}</button></div>)}</div>{scanEngine ==='claude-haiku' && supplementPng && FIELD_KEYS.some(k => !extractedFields[k]) && (<div style={{ padding: '8px 20px', borderTop: `1px solid ${t.innerBorder || 'rgba(255,255,255,0.06)'}`, background: 'rgba(249,115,22,0.04)' }}><button
                 onClick={handleSupplementWithTesseract}
-                style={{ background: 'none', border: '1px solid rgba(249,115,22,0.3)', color: '#f97316', borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer', width: '100%' }}
-              >
-                🔍 {T.scanSupplementTesseract}
-              </button>
-            </div>
-          )}
-          <div style={footer}>
-            <button onClick={handleClose} style={btnSecondary}>{T.scanCancel}</button>
-            <button onClick={handleApplyConfirm} style={btnPrimary} disabled={allRows.length === 0}>
-              ✓ {T.scanApply}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+                style={{ background: 'none', border: '1px solid rgba(249,115,22,0.3)', color: '#f97316', borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer', width: '100%'}}
+ >{T.scanSupplementTesseract}</button></div>)}<div style={footer}><button onClick={handleClose} style={btnSecondary}>{T.scanCancel}</button><button onClick={handleApplyConfirm} style={btnPrimary} disabled={allRows.length === 0}>{T.scanApply}</button></div></div></div>);
+ }
 
-  // ── Render: mapping UI ────────────────────────────────────────────────────────
-  if (step === 'mapping') {
+ // ── Render: mapping UI ────────────────────────────────────────────────────────
+ if (step ==='mapping') {
     const fieldOptions = FIELD_KEYS.map(fk => ({ key: fk, label: getFieldLabel(fk, T) }));
     const assignedFields = new Set(Object.values(lineFieldAssignments).filter(v => v && v !== 'skip'));
 
-    return (
-      <div style={overlay} onClick={handleClose}>
-        <div style={modal} onClick={e => e.stopPropagation()}>
-          <div style={header}>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{T.scanUnknown}</div>
-              <div style={{ fontSize: 11, color: t.textMuted, marginTop: 2 }}>{T.scanNameYourPOS}</div>
-            </div>
-            <button onClick={handleClose} style={{ background: 'none', border: 'none', color: t.textMuted, fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>✕</button>
-          </div>
-          <div style={{ ...body, padding: 0 }}>
-            {/* POS system name */}
-            <div style={{ padding: '12px 20px', borderBottom: `1px solid ${t.innerBorder || 'rgba(255,255,255,0.08)'}` }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: t.textMuted, display: 'block', marginBottom: 5 }}>{T.scanPosSystem}</label>
-              <input
+    return (<div style={overlay} onClick={handleClose}><div style={modal} onClick={e =>e.stopPropagation()}><div style={header}><div><div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{T.scanUnknown}</div><div style={{ fontSize: 11, color: t.textMuted, marginTop: 2 }}>{T.scanNameYourPOS}</div></div><button onClick={handleClose} style={{ background: 'none', border: 'none', color: t.textMuted, fontSize: 18, cursor: 'pointer', lineHeight: 1 }}></button></div><div style={{ ...body, padding: 0 }}>{/* POS system name */}<div style={{ padding:'12px 20px', borderBottom: `1px solid ${t.innerBorder || 'rgba(255,255,255,0.08)'}` }}><label style={{ fontSize: 11, fontWeight: 600, color: t.textMuted, display: 'block', marginBottom: 5 }}>{T.scanPosSystem}</label><input
                 type="text"
                 value={posSystemName}
-                onChange={e => setPosSystemName(e.target.value)}
+                onChange={e =>setPosSystemName(e.target.value)}
                 placeholder={T.scanPosSystemHint}
                 style={{ ...inputStyle, maxWidth: 320 }}
                 list="pos-systems"
-              />
-              <datalist id="pos-systems">
-                {["Maitre D'", 'Veloce', 'Lightspeed', 'Square', 'Clover', 'Shopify', 'Auphan', 'TouchBistro', 'Toast'].map(n => (
-                  <option key={n} value={n} />
-                ))}
-              </datalist>
-            </div>
-
-            {/* Two-panel layout */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', height: 380, overflow: 'hidden' }}>
-              {/* Left: detected text */}
-              <div style={{ borderRight: `1px solid ${t.innerBorder || 'rgba(255,255,255,0.08)'}`, overflow: 'auto', padding: 16 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: t.textMuted, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>{T.scanDetectedText}</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {ocrLines.map(line => {
+              /><datalist id="pos-systems">{["Maitre D'", 'Veloce', 'Lightspeed', 'Square', 'Clover', 'Shopify', 'Auphan', 'TouchBistro', 'Toast'].map(n => (<option key={n} value={n} />))}</datalist></div>{/* Two-panel layout */}<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', height: 380, overflow: 'hidden' }}>{/* Left: detected text */}<div style={{ borderRight: `1px solid ${t.innerBorder || 'rgba(255,255,255,0.08)'}`, overflow: 'auto', padding: 16 }}><div style={{ fontSize: 10, fontWeight: 700, color: t.textMuted, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>{T.scanDetectedText}</div><div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>{ocrLines.map(line => {
                     const isAssigned = Object.keys(lineFieldAssignments).includes(String(line.idx));
                     const assignedTo = lineFieldAssignments[line.idx];
                     const isSelected = selectedLine === line.idx;
-                    return (
-                      <div
+                    return (<div
                         key={line.idx}
-                        onClick={() => setSelectedLine(isSelected ? null : line.idx)}
+                        onClick={() =>setSelectedLine(isSelected ? null : line.idx)}
                         style={{
                           padding: '5px 8px',
                           borderRadius: 5,
                           cursor: 'pointer',
                           fontSize: 11,
-                          fontFamily: "'DM Mono',monospace",
+                          fontFamily: "'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",
                           background: isSelected ? 'rgba(249,115,22,0.15)' : isAssigned && assignedTo !== 'skip' ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.04)',
                           border: isSelected ? '1px solid rgba(249,115,22,0.4)' : isAssigned && assignedTo !== 'skip' ? '1px solid rgba(34,197,94,0.2)' : '1px solid transparent',
                           color: isAssigned && assignedTo !== 'skip' ? '#86efac' : t.text,
                           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                         }}
-                      >
-                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{line.raw}</span>
-                        {isAssigned && assignedTo !== 'skip' && (
-                          <span style={{ fontSize: 9, color: '#86efac', marginLeft: 6, whiteSpace: 'nowrap' }}>→ {getFieldLabel(assignedTo, T)}</span>
-                        )}
-                        {isSelected && line.extractedValue != null && (
-                          <span style={{ fontSize: 9, color: '#f97316', marginLeft: 6, fontWeight: 700 }}>{line.extractedValue}</span>
-                        )}
-                      </div>
-                    );
+                      ><span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{line.raw}</span>{isAssigned && assignedTo !== 'skip' && (<span style={{ fontSize: 9, color: '#86efac', marginLeft: 6, whiteSpace: 'nowrap' }}>→ {getFieldLabel(assignedTo, T)}</span>)}
+                        {isSelected && line.extractedValue != null && (<span style={{ fontSize: 9, color: '#f97316', marginLeft: 6, fontWeight: 700 }}>{line.extractedValue}</span>)}</div>);
                   })}
-                  {ocrLines.length === 0 && (
-                    <div style={{ color: t.textMuted, fontSize: 11 }}>Aucune valeur détectée</div>
-                  )}
-                </div>
-              </div>
-
-              {/* Right: caisse fields */}
-              <div style={{ overflow: 'auto', padding: 16 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: t.textMuted, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>{T.scanCaisseFields}</div>
-                {selectedLine !== null && (
-                  <div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 6, background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.2)', fontSize: 11, color: '#f97316' }}>
-                    ← <b>«{ocrLines.find(l => l.idx === selectedLine)?.raw?.slice(0, 30)}…»</b> — {T.scanSelectField}
-                  </div>
-                )}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {fieldOptions.map(({ key, label }) => {
+                  {ocrLines.length === 0 && (<div style={{ color: t.textMuted, fontSize: 11 }}>Aucune valeur détectée</div>)}</div></div>{/* Right: caisse fields */}<div style={{ overflow: 'auto', padding: 16 }}><div style={{ fontSize: 10, fontWeight: 700, color: t.textMuted, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>{T.scanCaisseFields}</div>{selectedLine !== null && (<div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 6, background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.2)', fontSize: 11, color: '#f97316' }}>←<b>«{ocrLines.find(l => l.idx === selectedLine)?.raw?.slice(0, 30)}…»</b>— {T.scanSelectField}</div>)}<div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{fieldOptions.map(({ key, label }) => {
                     const assigned = assignedFields.has(key);
                     const value = lineValueOverrides[key];
-                    return (
-                      <div
+                    return (<div
                         key={key}
-                        onClick={() => selectedLine !== null ? assignLine(selectedLine, key) : undefined}
+                        onClick={() =>selectedLine !== null ? assignLine(selectedLine, key) : undefined}
                         style={{
                           padding: '8px 10px',
                           borderRadius: 6,
@@ -1043,157 +851,40 @@ export default function POSScanModal({ isOpen, onClose, onApply, caisseIndex, da
                           cursor: selectedLine !== null ? 'pointer' : 'default',
                           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                         }}
-                      >
-                        <span style={{ fontSize: 11, color: assigned ? '#86efac' : t.text, fontWeight: assigned ? 600 : 400 }}>{label}</span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          {assigned && value != null && (
-                            <span style={{ fontSize: 11, fontFamily: "'DM Mono',monospace", color: '#86efac', fontWeight: 700 }}>
-                              {key === 'nb_transactions' ? value : `$${Number(value).toFixed(2)}`}
-                            </span>
-                          )}
-                          {assigned && <span style={{ fontSize: 9, color: '#86efac' }}>✓</span>}
-                        </div>
-                      </div>
-                    );
+                      ><span style={{ fontSize: 11, color: assigned ? '#86efac' : t.text, fontWeight: assigned ? 600 : 400 }}>{label}</span><div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{assigned && value != null && (<span style={{ fontSize: 11, fontFamily: "'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif", color: '#86efac', fontWeight: 700 }}>{key === 'nb_transactions' ? value : `$${Number(value).toFixed(2)}`}</span>)}
+                          {assigned &&<span style={{ fontSize: 9, color: '#86efac' }}></span>}</div></div>);
                   })}
-                  {selectedLine !== null && (
-                    <button
-                      onClick={() => assignLine(selectedLine, 'skip')}
+                  {selectedLine !== null && (<button
+                      onClick={() =>assignLine(selectedLine, 'skip')}
                       style={{ ...btnSecondary, fontSize: 11, padding: '6px 10px', textAlign: 'left' }}
                     >
-                      ⊘ {T.scanSkipField}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-          <div style={footer}>
-            <button onClick={handleClose} style={btnSecondary}>{T.scanCancel}</button>
-            <button onClick={() => handleApplyMapping(false)} style={btnSecondary}>
-              {T.scanApply}
-            </button>
-            <button
-              onClick={() => handleApplyMapping(true)}
+                      ⊘ {T.scanSkipField}</button>)}</div></div></div></div><div style={footer}><button onClick={handleClose} style={btnSecondary}>{T.scanCancel}</button><button onClick={() =>handleApplyMapping(false)} style={btnSecondary}>
+              {T.scanApply}</button><button
+              onClick={() =>handleApplyMapping(true)}
               disabled={!posSystemName.trim() || Object.keys(lineValueOverrides).length === 0}
               style={{ ...btnPrimary, opacity: (!posSystemName.trim() || Object.keys(lineValueOverrides).length === 0) ? 0.5 : 1 }}
             >
-              💾 {T.scanApplySave}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+               {T.scanApplySave}</button></div></div></div>);
   }
 
   // ── Render: community sharing ─────────────────────────────────────────────────
   if (step === 'sharing') {
-    return (
-      <div style={overlay}>
-        <div style={{ ...modal, width: 440 }}>
-          <div style={header}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>
-              {shareStatus === 'done' ? '✓ ' + T.scanSaved : T.scanSaved}
-            </div>
-            <button onClick={handleClose} style={{ background: 'none', border: 'none', color: t.textMuted, fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>✕</button>
-          </div>
-          <div style={body}>
-            {shareStatus === null && (
-              <>
-                <div style={{ fontSize: 13, color: t.text, lineHeight: 1.6, marginBottom: 20 }}>
-                  {T.scanSharePrompt}
-                </div>
-                <div style={{ fontSize: 11, color: t.textMuted, padding: '8px 12px', borderRadius: 6, background: 'rgba(255,255,255,0.04)', border: `1px solid ${t.innerBorder || 'rgba(255,255,255,0.08)'}` }}>
-                  ℹ️ Seule la structure du format est partagée — aucune donnée financière n'est envoyée.
-                </div>
-              </>
-            )}
-            {shareStatus === 'uploading' && (
-              <div style={{ textAlign: 'center', padding: '20px 0' }}>
-                <div style={{ fontSize: 24, marginBottom: 12 }}>⏳</div>
-                <div style={{ fontSize: 12, color: t.textMuted }}>{T.scanUploadingTemplate}</div>
-              </div>
-            )}
-            {shareStatus === 'done' && (
-              <div style={{ textAlign: 'center', padding: '20px 0' }}>
-                <div style={{ fontSize: 32, marginBottom: 12 }}>✅</div>
-                <div style={{ fontSize: 13, color: t.text, lineHeight: 1.6 }}>{T.scanShareThanks}</div>
-              </div>
-            )}
-            {shareStatus === 'error' && (
-              <div style={{ textAlign: 'center', padding: '20px 0' }}>
-                <div style={{ fontSize: 24, marginBottom: 12 }}>⚠️</div>
-                <div style={{ fontSize: 12, color: '#f97316' }}>{T.scanUploadError}</div>
-              </div>
-            )}
-          </div>
-          <div style={footer}>
-            {shareStatus === null && (
-              <>
-                <button onClick={handleClose} style={btnSecondary}>{T.scanShareNo}</button>
-                <button onClick={handleShare} style={btnPrimary}>{T.scanShareYes}</button>
-              </>
-            )}
-            {(shareStatus === 'done' || shareStatus === 'error') && (
-              <button onClick={handleClose} style={btnPrimary}>OK</button>
-            )}
-          </div>
-        </div>
-      </div>
-    );
+    return (<div style={overlay}><div style={{ ...modal, width: 440 }}><div style={header}><div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{shareStatus === 'done' ? '' + T.scanSaved : T.scanSaved}</div><button onClick={handleClose} style={{ background: 'none', border: 'none', color: t.textMuted, fontSize: 18, cursor: 'pointer', lineHeight: 1 }}></button></div><div style={body}>{shareStatus === null && (<><div style={{ fontSize: 13, color: t.text, lineHeight: 1.6, marginBottom: 20 }}>{T.scanSharePrompt}</div><div style={{ fontSize: 11, color: t.textMuted, padding: '8px 12px', borderRadius: 6, background: 'rgba(255,255,255,0.04)', border: `1px solid ${t.innerBorder || 'rgba(255,255,255,0.08)'}` }}>ℹ Seule la structure du format est partagée — aucune donnée financière n'est envoyée.</div></>)}
+            {shareStatus === 'uploading' && (<div style={{ textAlign: 'center', padding: '20px 0' }}><div style={{ fontSize: 24, marginBottom: 12 }}>⏳</div><div style={{ fontSize: 12, color: t.textMuted }}>{T.scanUploadingTemplate}</div></div>)}
+            {shareStatus === 'done' && (<div style={{ textAlign: 'center', padding: '20px 0'}}><div style={{ fontSize: 32, marginBottom: 12 }}></div><div style={{ fontSize: 13, color: t.text, lineHeight: 1.6 }}>{T.scanShareThanks}</div></div>)}
+ {shareStatus ==='error' && (<div style={{ textAlign: 'center', padding: '20px 0'}}><div style={{ fontSize: 24, marginBottom: 12 }}></div><div style={{ fontSize: 12, color:'#f97316' }}>{T.scanUploadError}</div></div>)}</div><div style={footer}>{shareStatus === null && (<><button onClick={handleClose} style={btnSecondary}>{T.scanShareNo}</button><button onClick={handleShare} style={btnPrimary}>{T.scanShareYes}</button></>)}
+            {(shareStatus === 'done' || shareStatus === 'error') && (<button onClick={handleClose} style={btnPrimary}>OK</button>)}</div></div></div>);
   }
 
   // ── Render: scan history ──────────────────────────────────────────────────────
   if (step === 'history') {
-    return (
-      <div style={overlay} onClick={handleClose}>
-        <div style={modal} onClick={e => e.stopPropagation()}>
-          <div style={header}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>🕐 {T.scanHistory}</div>
-            <button onClick={handleClose} style={{ background: 'none', border: 'none', color: t.textMuted, fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>✕</button>
-          </div>
-          <div style={body}>
-            {historyEntries.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '30px 0', color: t.textMuted, fontSize: 12 }}>{T.scanHistoryEmpty}</div>
-            ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-                <thead>
-                  <tr>
-                    {[T.scanHistoryDate, T.scanHistoryPOS, T.scanHistoryEngine, T.scanHistoryCorrections].map(h => (
-                      <th key={h} style={{ textAlign: 'left', color: t.textMuted, fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, padding: '0 8px 8px 0', borderBottom: `1px solid ${t.innerBorder || 'rgba(255,255,255,0.08)'}` }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {historyEntries.map(entry => {
+ return (<div style={overlay} onClick={handleClose}><div style={modal} onClick={e =>e.stopPropagation()}><div style={header}><div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{T.scanHistory}</div><button onClick={handleClose} style={{ background:'none', border: 'none', color: t.textMuted, fontSize: 18, cursor: 'pointer', lineHeight: 1 }}></button></div><div style={body}>{historyEntries.length === 0 ? (<div style={{ textAlign:'center', padding: '30px 0', color: t.textMuted, fontSize: 12 }}>{T.scanHistoryEmpty}</div>) : (<table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}><thead><tr>{[T.scanHistoryDate, T.scanHistoryPOS, T.scanHistoryEngine, T.scanHistoryCorrections].map(h => (<th key={h} style={{ textAlign: 'left', color: t.textMuted, fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, padding: '0 8px 8px 0', borderBottom: `1px solid ${t.innerBorder || 'rgba(255,255,255,0.08)'}` }}>{h}</th>))}</tr></thead><tbody>{historyEntries.map(entry => {
                     let tplName = '—';
                     const tpl = templates.find(t2 => t2.id === entry.template_id);
                     if (tpl) tplName = tpl.pos_system;
-                    return (
-                      <tr key={entry.id} style={{ borderBottom: `1px solid rgba(255,255,255,0.04)` }}>
-                        <td style={{ padding: '6px 8px 6px 0', color: t.text }}>{entry.date_key}</td>
-                        <td style={{ padding: '6px 8px 6px 0', color: t.text }}>{tplName}</td>
-                        <td style={{ padding: '6px 8px 6px 0', color: t.textMuted }}>
-                          <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, background: entry.ocr_engine === 'claude-haiku' ? 'rgba(139,92,246,0.15)' : 'rgba(255,255,255,0.07)', color: entry.ocr_engine === 'claude-haiku' ? '#8b5cf6' : t.textMuted }}>
-                            {entry.ocr_engine === 'claude-haiku' ? '✨ cloud' : 'local'}
-                          </span>
-                        </td>
-                        <td style={{ padding: '6px 0 6px 0', color: entry.corrections_made > 0 ? '#f97316' : t.textMuted }}>
-                          {entry.corrections_made > 0 ? `${entry.corrections_made} ✏️` : '—'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
-          <div style={footer}>
-            <button onClick={() => setStep('idle')} style={btnSecondary}>← {T.scanButton}</button>
-            <button onClick={handleClose} style={btnPrimary}>{T.scanCloseHistory}</button>
-          </div>
-        </div>
-      </div>
+                    return (<tr key={entry.id} style={{ borderBottom: `1px solid rgba(255,255,255,0.04)` }}><td style={{ padding: '6px 8px 6px 0', color: t.text }}>{entry.date_key}</td><td style={{ padding: '6px 8px 6px 0', color: t.text }}>{tplName}</td><td style={{ padding: '6px 8px 6px 0', color: t.textMuted }}><span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, background: entry.ocr_engine === 'claude-haiku' ? 'rgba(139,92,246,0.15)' : 'rgba(255,255,255,0.07)', color: entry.ocr_engine === 'claude-haiku' ? '#8b5cf6' : t.textMuted }}>{entry.ocr_engine === 'claude-haiku' ? ' cloud' : 'local'}</span></td><td style={{ padding: '6px 0 6px 0', color: entry.corrections_made >0 ? '#f97316': t.textMuted }}>
+ {entry.corrections_made > 0 ? `${entry.corrections_made} ` :'—'}</td></tr>);
+                  })}</tbody></table>)}</div><div style={footer}><button onClick={() =>setStep('idle')} style={btnSecondary}>← {T.scanButton}</button><button onClick={handleClose} style={btnPrimary}>{T.scanCloseHistory}</button></div></div></div>
     );
   }
 
