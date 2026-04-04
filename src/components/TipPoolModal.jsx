@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
-const fmt = (n) => (n ?? 0).toLocaleString('fr-CA', { style: 'currency', currency: 'CAD' });
+const fmt = (n) =>(n ?? 0).toLocaleString('fr-CA', { style: 'currency', currency: 'CAD' });
 const round2 = (n) => Math.round(n * 100) / 100;
 
 // ─── translations ────────────────────────────────────────────────────────────
@@ -21,12 +21,12 @@ const TR = {
     pct:           '%',
     share:         'Part',
     addEmp:        '+ Ajouter',
-    remove:        '✕',
+    remove:        '',
     calculate:     'Calculer',
     confirm:       'Confirmer & enregistrer',
     cancel:        'Annuler',
-    print:         '🖨 Imprimer',
-    finalized:     '✓ Enregistré',
+    print:         'Imprimer',
+    finalized:     'Enregistré',
     history:       'Historique',
     noHistory:     'Aucun historique',
     date:          'Date',
@@ -56,12 +56,12 @@ const TR = {
     pct:           '%',
     share:         'Share',
     addEmp:        '+ Add',
-    remove:        '✕',
+    remove:        '',
     calculate:     'Calculate',
     confirm:       'Confirm & save',
     cancel:        'Cancel',
-    print:         '🖨 Print',
-    finalized:     '✓ Saved',
+    print:         'Print',
+    finalized:     'Saved',
     history:       'History',
     noHistory:     'No history',
     date:          'Date',
@@ -80,14 +80,14 @@ const TR = {
 
 // ─── calculation engine ───────────────────────────────────────────────────────
 function calcDistributions(method, totalTips, employees) {
-  if (!totalTips || totalTips <= 0 || employees.length === 0) return [];
+  if (!totalTips || totalTips<= 0 || employees.length === 0) return [];
   const total = parseFloat(totalTips) || 0;
 
   let shares = [];
 
   if (method === 'equal') {
     const each = round2(total / employees.length);
-    shares = employees.map(() => each);
+    shares = employees.map(() =>each);
 
   } else if (method === 'hours') {
     const totalHours = employees.reduce((s, e) => s + (parseFloat(e.hours) || 0), 0);
@@ -220,13 +220,13 @@ export default function TipPoolModal({ lang = 'fr', date, dailyEmployees = [], s
       const each = round2(100 / employees.length);
       setEmployees(prev => prev.map((e, i) => ({
         ...e,
-        pct: i < prev.length - 1 ? each : round2(100 - each * (prev.length - 1)),
+        pct: i< prev.length - 1 ? each : round2(100 - each * (prev.length - 1)),
       })));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [method]);
 
-  const pctSum = useMemo(() => employees.reduce((s, e) => s + (parseFloat(e.pct) || 0), 0), [employees]);
+  const pctSum = useMemo(() =>employees.reduce((s, e) => s + (parseFloat(e.pct) || 0), 0), [employees]);
 
   function calculate() {
     if (method === 'pct' && Math.abs(pctSum - 100) > 0.01) {
@@ -296,20 +296,10 @@ export default function TipPoolModal({ lang = 'fr', date, dailyEmployees = [], s
     const rows = (results || employees).map(e =>
       `<tr><td>${e.name}</td><td>${e.hours || '—'}</td><td>${fmt(e.share)}</td></tr>`
     ).join('');
-    const html = `<html><head><meta charset="utf-8"><style>
-      body{font-family:Arial,sans-serif;padding:20px;font-size:13px}
+    const html = `<html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;padding:20px;font-size:13px}
       h2{color:#f97316}table{width:100%;border-collapse:collapse;margin-top:12px}
       th,td{border:1px solid #ccc;padding:6px 10px;text-align:left}
-      th{background:#f3f4f6}tfoot td{font-weight:bold;background:#f9fafb}
-    </style></head><body>
-      <h2>${T.title}</h2>
-      <p><strong>${T.date}:</strong> ${date} &nbsp; <strong>${T.totalTips}:</strong> ${fmt(parseFloat(totalTips)||0)}</p>
-      <p><strong>${T.method}:</strong> ${T['method'+method.charAt(0).toUpperCase()+method.slice(1)]||method}</p>
-      <table><thead><tr><th>${T.name}</th><th>${T.hours}</th><th>${T.share}</th></tr></thead>
-      <tbody>${rows}</tbody>
-      <tfoot><tr><td colspan="2">${T.total}</td><td>${fmt(parseFloat(totalTips)||0)}</td></tr></tfoot>
-      </table>${notes ? `<p><em>${notes}</em></p>` : ''}
-    </body></html>`;
+      th{background:#f3f4f6}tfoot td{font-weight:bold;background:#f9fafb}</style></head><body><h2>${T.title}</h2><p><strong>${T.date}:</strong>${date} &nbsp;<strong>${T.totalTips}:</strong>${fmt(parseFloat(totalTips)||0)}</p><p><strong>${T.method}:</strong>${T['method'+method.charAt(0).toUpperCase()+method.slice(1)]||method}</p><table><thead><tr><th>${T.name}</th><th>${T.hours}</th><th>${T.share}</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="2">${T.total}</td><td>${fmt(parseFloat(totalTips)||0)}</td></tr></tfoot></table>${notes ? `<p><em>${notes}</em></p>` : ''}</body></html>`;
     if (window.api?.pdf?.print) window.api.pdf.print(html);
     else { const w = window.open('', '_blank'); w.document.write(html); w.print(); }
   }
@@ -351,205 +341,48 @@ export default function TipPoolModal({ lang = 'fr', date, dailyEmployees = [], s
   const needsPoints  = method === 'points';
   const needsPct     = method === 'pct';
 
-  return (
-    <div style={overlay} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={modal}>
-        {/* Header */}
-        <div style={header}>
-          <span style={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>💰 {T.title}</span>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>×</button>
-        </div>
-
-        {/* Tabs */}
-        <div style={{ display: 'flex', gap: 6, padding: '12px 20px 0', borderBottom: `1px solid ${th.border}` }}>
-          {[['calc', T.distribution], ['history', T.history], ['config', T.configTitle]].map(([id, label]) => (
-            <button key={id} style={tabBtn(tab === id)} onClick={() => setTab(id)}>{label}</button>
-          ))}
-        </div>
-
-        <div style={{ padding: 20 }}>
-
-          {/* ── CALC TAB ── */}
-          {tab === 'calc' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-              {/* Total tips input */}
-              <div>
-                <label style={{ display: 'block', fontSize: 12, color: th.muted, marginBottom: 4 }}>{T.totalTips}</label>
-                <input type="number" min="0" step="0.01" style={{ ...inp, fontSize: 18, fontWeight: 700 }}
-                  value={totalTips} onChange={e => { setTotalTips(e.target.value); setResults(null); setSaved(false); }}
-                  placeholder="0.00" />
-              </div>
-
-              {/* Method selector */}
-              <div>
-                <label style={{ display: 'block', fontSize: 12, color: th.muted, marginBottom: 6 }}>{T.method}</label>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {methodBtns.map(({ key, label, active }) => (
-                    <button key={key} style={tabBtn(active)} onClick={() => { setMethod(key); setResults(null); setSaved(false); }}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Employees */}
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <label style={{ fontSize: 12, color: th.muted }}>{T.employees}</label>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {staffRoster.length > 0 && (
-                      <button style={{ ...btn(false), fontSize: 11, padding: '4px 10px' }} onClick={loadFromRoster}>
-                        👥 {T.loadRoster}
-                      </button>
+  return (<div style={overlay} onClick={e =>{ if (e.target === e.currentTarget) onClose(); }}><div style={modal}>{/* Header */}<div style={header}><span style={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>{T.title}</span><button onClick={onClose} style={{ background:'none', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>×</button></div>{/* Tabs */}<div style={{ display: 'flex', gap: 6, padding: '12px 20px 0', borderBottom: `1px solid ${th.border}` }}>{[['calc', T.distribution], ['history', T.history], ['config', T.configTitle]].map(([id, label]) => (<button key={id} style={tabBtn(tab === id)} onClick={() =>setTab(id)}>{label}</button>))}</div><div style={{ padding: 20 }}>{/* ── CALC TAB ── */}
+          {tab === 'calc' && (<div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>{/* Total tips input */}<div><label style={{ display: 'block', fontSize: 12, color: th.muted, marginBottom: 4 }}>{T.totalTips}</label><input type="number" min="0" step="0.01" style={{ ...inp, fontSize: 18, fontWeight: 700 }}
+                  value={totalTips} onChange={e =>{ setTotalTips(e.target.value); setResults(null); setSaved(false); }}
+                  placeholder="0.00" /></div>{/* Method selector */}<div><label style={{ display: 'block', fontSize: 12, color: th.muted, marginBottom: 6 }}>{T.method}</label><div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{methodBtns.map(({ key, label, active }) => (<button key={key} style={tabBtn(active)} onClick={() =>{ setMethod(key); setResults(null); setSaved(false); }}>
+                      {label}</button>))}</div></div>{/* Employees */}<div><div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}><label style={{ fontSize: 12, color: th.muted }}>{T.employees}</label><div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{staffRoster.length > 0 && (<button style={{ ...btn(false), fontSize: 11, padding: '4px 10px'}} onClick={loadFromRoster}>{T.loadRoster}</button>)}
+ {dailyEmployees.length > 0 && (<button style={{ ...btn(false), fontSize: 11, padding:'4px 10px'}} onClick={loadDailyEmployees}>{T.loadEmp}</button>)}<button style={{ ...btn(false), fontSize: 11, padding:'4px 10px' }} onClick={addEmployee}>{T.addEmp}</button></div></div>{/* Grid header */}<div style={{ display: 'grid', gridTemplateColumns: `2fr ${needsHours||needsPoints||needsPct ? '80px' : ''} 80px 28px`.replace(/\s+/g, ' ').trim(), gap: 6, marginBottom: 4 }}><span style={{ fontSize: 11, color: th.muted }}>{T.name}</span>{needsHours  &&<span style={{ fontSize: 11, color: th.muted, textAlign: 'center' }}>{T.hours}</span>}
+                  {needsPoints &&<span style={{ fontSize: 11, color: th.muted, textAlign: 'center' }}>{T.points}</span>}
+                  {needsPct    &&<span style={{ fontSize: 11, color: th.muted, textAlign: 'center' }}>{T.pct}</span>}<span style={{ fontSize: 11, color: th.muted, textAlign: 'right' }}>{T.share}</span><span /></div>{employees.map((e, i) => (<div key={i} style={{ display: 'grid', gridTemplateColumns: `2fr ${needsHours||needsPoints||needsPct ? '80px' : ''} 80px 28px`.replace(/\s+/g, ' ').trim(), gap: 6, marginBottom: 5, alignItems: 'center' }}><input style={inp} value={e.name} placeholder={T.name}
+                      onChange={ev =>updateEmployee(i, 'name', ev.target.value)} />
+                    {needsHours && (<input type="number" min="0" step="0.5" style={{ ...inp, textAlign: 'center' }}
+                        value={e.hours || ''} placeholder="0" onChange={ev =>updateEmployee(i, 'hours', ev.target.value)} />
                     )}
-                    {dailyEmployees.length > 0 && (
-                      <button style={{ ...btn(false), fontSize: 11, padding: '4px 10px' }} onClick={loadDailyEmployees}>
-                        📅 {T.loadEmp}
-                      </button>
+                    {needsPoints && (<input type="number" min="0" step="1" style={{ ...inp, textAlign: 'center' }}
+                        value={e.points || ''} placeholder="1" onChange={ev =>updateEmployee(i, 'points', ev.target.value)} />
                     )}
-                    <button style={{ ...btn(false), fontSize: 11, padding: '4px 10px' }} onClick={addEmployee}>
-                      {T.addEmp}
-                    </button>
-                  </div>
-                </div>
+                    {needsPct && (<input type="number" min="0" max="100" step="1" style={{ ...inp, textAlign: 'center' }}
+                        value={e.pct || ''} placeholder="0" onChange={ev =>updateEmployee(i, 'pct', ev.target.value)} />
+                    )}<span style={{ textAlign: 'right', fontSize: 13, fontWeight: 600, color: e.share >0 ? '#16a34a' : th.muted }}>
+                      {results ? fmt(e.share) : '—'}</span><button onClick={() =>removeEmployee(i)} style={{ background: 'none', border: 'none', color: th.muted, cursor: 'pointer', fontSize: 14, padding: 0 }}>
+                      {T.remove}</button></div>))}
 
-                {/* Grid header */}
-                <div style={{ display: 'grid', gridTemplateColumns: `2fr ${needsHours||needsPoints||needsPct ? '80px' : ''} 80px 28px`.replace(/\s+/g, ' ').trim(), gap: 6, marginBottom: 4 }}>
-                  <span style={{ fontSize: 11, color: th.muted }}>{T.name}</span>
-                  {needsHours  && <span style={{ fontSize: 11, color: th.muted, textAlign: 'center' }}>{T.hours}</span>}
-                  {needsPoints && <span style={{ fontSize: 11, color: th.muted, textAlign: 'center' }}>{T.points}</span>}
-                  {needsPct    && <span style={{ fontSize: 11, color: th.muted, textAlign: 'center' }}>{T.pct}</span>}
-                  <span style={{ fontSize: 11, color: th.muted, textAlign: 'right' }}>{T.share}</span>
-                  <span />
-                </div>
+                {needsPct && (<div style={{ fontSize: 11, color: Math.abs(pctSum - 100) < 0.01 ? '#16a34a' : '#ef4444', textAlign: 'right', marginTop: 2 }}>{T.pct} total: {round2(pctSum)}%
+                    {pctError && ` — ${T.pctSum}`}</div>)}</div>{/* Notes */}<div><label style={{ display: 'block', fontSize: 12, color: th.muted, marginBottom: 4 }}>{T.notes}</label><input style={inp} value={notes} onChange={e =>setNotes(e.target.value)} placeholder="..." /></div>{/* Actions */}<div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}><button style={btn(false)} onClick={onClose}>{T.cancel}</button>{results && !saved && (<button style={btn(false)} onClick={doPrint}>{T.print}</button>)}
+                {results && saved && (<button style={{ ...btn(false), color: '#16a34a' }} onClick={doPrint}>{T.print}</button>)}
+                {!results && (<button style={btn(true)} onClick={calculate}
+                    disabled={!totalTips || employees.length === 0}>{T.calculate}</button>)}
+                {results && !saved && (<button style={btn(true)} onClick={confirmSave}>{T.confirm}</button>)}
+                {saved && (<span style={{ padding: '8px 14px', color: '#16a34a', fontWeight: 700, fontSize: 13 }}>{T.finalized}</span>)}</div></div>)}
 
-                {employees.map((e, i) => (
-                  <div key={i} style={{ display: 'grid', gridTemplateColumns: `2fr ${needsHours||needsPoints||needsPct ? '80px' : ''} 80px 28px`.replace(/\s+/g, ' ').trim(), gap: 6, marginBottom: 5, alignItems: 'center' }}>
-                    <input style={inp} value={e.name} placeholder={T.name}
-                      onChange={ev => updateEmployee(i, 'name', ev.target.value)} />
-                    {needsHours && (
-                      <input type="number" min="0" step="0.5" style={{ ...inp, textAlign: 'center' }}
-                        value={e.hours || ''} placeholder="0" onChange={ev => updateEmployee(i, 'hours', ev.target.value)} />
-                    )}
-                    {needsPoints && (
-                      <input type="number" min="0" step="1" style={{ ...inp, textAlign: 'center' }}
-                        value={e.points || ''} placeholder="1" onChange={ev => updateEmployee(i, 'points', ev.target.value)} />
-                    )}
-                    {needsPct && (
-                      <input type="number" min="0" max="100" step="1" style={{ ...inp, textAlign: 'center' }}
-                        value={e.pct || ''} placeholder="0" onChange={ev => updateEmployee(i, 'pct', ev.target.value)} />
-                    )}
-                    <span style={{ textAlign: 'right', fontSize: 13, fontWeight: 600, color: e.share > 0 ? '#16a34a' : th.muted }}>
-                      {results ? fmt(e.share) : '—'}
-                    </span>
-                    <button onClick={() => removeEmployee(i)} style={{ background: 'none', border: 'none', color: th.muted, cursor: 'pointer', fontSize: 14, padding: 0 }}>
-                      {T.remove}
-                    </button>
-                  </div>
-                ))}
-
-                {needsPct && (
-                  <div style={{ fontSize: 11, color: Math.abs(pctSum - 100) < 0.01 ? '#16a34a' : '#ef4444', textAlign: 'right', marginTop: 2 }}>
-                    {T.pct} total: {round2(pctSum)}%
-                    {pctError && ` — ${T.pctSum}`}
-                  </div>
-                )}
-              </div>
-
-              {/* Notes */}
-              <div>
-                <label style={{ display: 'block', fontSize: 12, color: th.muted, marginBottom: 4 }}>{T.notes}</label>
-                <input style={inp} value={notes} onChange={e => setNotes(e.target.value)} placeholder="..." />
-              </div>
-
-              {/* Actions */}
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                <button style={btn(false)} onClick={onClose}>{T.cancel}</button>
-                {results && !saved && (
-                  <button style={btn(false)} onClick={doPrint}>{T.print}</button>
-                )}
-                {results && saved && (
-                  <button style={{ ...btn(false), color: '#16a34a' }} onClick={doPrint}>{T.print}</button>
-                )}
-                {!results && (
-                  <button style={btn(true)} onClick={calculate}
-                    disabled={!totalTips || employees.length === 0}>
-                    {T.calculate}
-                  </button>
-                )}
-                {results && !saved && (
-                  <button style={btn(true)} onClick={confirmSave}>{T.confirm}</button>
-                )}
-                {saved && (
-                  <span style={{ padding: '8px 14px', color: '#16a34a', fontWeight: 700, fontSize: 13 }}>
-                    ✓ {T.finalized}
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ── HISTORY TAB ── */}
-          {tab === 'history' && (
-            <div>
-              {history.length === 0
-                ? <p style={{ color: th.muted, fontSize: 13 }}>{T.noHistory}</p>
-                : history.map((h, i) => {
+ {/* ── HISTORY TAB ── */}
+ {tab ==='history' && (<div>{history.length === 0
+                ?<p style={{ color: th.muted, fontSize: 13 }}>{T.noHistory}</p>: history.map((h, i) => {
                   let dists = [];
                   try { dists = JSON.parse(h.distributions || '[]'); } catch (e) {}
-                  return (
-                    <div key={i} style={{ border: `1px solid ${th.border}`, borderRadius: 8, padding: 12, marginBottom: 10 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                        <span style={{ fontWeight: 600, fontSize: 13, color: th.text }}>{h.date}</span>
-                        <span style={{ fontWeight: 700, color: '#f97316' }}>{fmt(h.total_tips)}</span>
-                      </div>
-                      {dists.map((d, j) => (
-                        <div key={j} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: th.muted, padding: '2px 0' }}>
-                          <span>{d.name || '—'}</span>
-                          <span style={{ color: '#16a34a', fontWeight: 600 }}>{fmt(d.share)}</span>
-                        </div>
-                      ))}
-                      {h.finalized_by && (
-                        <div style={{ fontSize: 11, color: th.muted, marginTop: 4, fontStyle: 'italic' }}>{h.finalized_by}</div>
-                      )}
-                    </div>
-                  );
+                  return (<div key={i} style={{ border: `1px solid ${th.border}`, borderRadius: 8, padding: 12, marginBottom: 10 }}><div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}><span style={{ fontWeight: 600, fontSize: 13, color: th.text }}>{h.date}</span><span style={{ fontWeight: 700, color: '#f97316' }}>{fmt(h.total_tips)}</span></div>{dists.map((d, j) => (<div key={j} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: th.muted, padding: '2px 0' }}><span>{d.name || '—'}</span><span style={{ color: '#16a34a', fontWeight: 600 }}>{fmt(d.share)}</span></div>))}
+                      {h.finalized_by && (<div style={{ fontSize: 11, color: th.muted, marginTop: 4, fontStyle: 'italic' }}>{h.finalized_by}</div>)}</div>);
                 })
-              }
-            </div>
-          )}
+              }</div>)}
 
           {/* ── CONFIG TAB ── */}
-          {tab === 'config' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, color: th.muted, marginBottom: 6 }}>{T.method}</label>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {['equal', 'hours', 'points', 'pct'].map(m => (
-                    <button key={m} style={tabBtn(cfgMethod === m)} onClick={() => setCfgMethod(m)}>
-                      {T['method' + m.charAt(0).toUpperCase() + m.slice(1)]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: th.text, cursor: 'pointer' }}>
-                <input type="checkbox" checked={cfgManagerIncl} onChange={e => setCfgManagerIncl(e.target.checked)} />
-                {T.managerIncl}
-              </label>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, color: th.muted, marginBottom: 4 }}>{T.notes}</label>
-                <input style={inp} value={cfgNotes} onChange={e => setCfgNotes(e.target.value)} placeholder="..." />
-              </div>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button style={btn(true)} onClick={saveConfig}>{T.confirm}</button>
-                {cfgSaved && <span style={{ padding: '8px 0', color: '#16a34a', fontSize: 12 }}>{T.configSaved}</span>}
-              </div>
-            </div>
-          )}
-
-        </div>
-      </div>
-    </div>
+          {tab === 'config' && (<div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}><div><label style={{ display: 'block', fontSize: 12, color: th.muted, marginBottom: 6 }}>{T.method}</label><div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{['equal', 'hours', 'points', 'pct'].map(m => (<button key={m} style={tabBtn(cfgMethod === m)} onClick={() =>setCfgMethod(m)}>
+                      {T['method' + m.charAt(0).toUpperCase() + m.slice(1)]}</button>))}</div></div><label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: th.text, cursor: 'pointer' }}><input type="checkbox" checked={cfgManagerIncl} onChange={e =>setCfgManagerIncl(e.target.checked)} />
+                {T.managerIncl}</label><div><label style={{ display: 'block', fontSize: 12, color: th.muted, marginBottom: 4 }}>{T.notes}</label><input style={inp} value={cfgNotes} onChange={e =>setCfgNotes(e.target.value)} placeholder="..." /></div><div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}><button style={btn(true)} onClick={saveConfig}>{T.confirm}</button>{cfgSaved &&<span style={{ padding: '8px 0', color: '#16a34a', fontSize: 12 }}>{T.configSaved}</span>}</div></div>)}</div></div></div>
   );
 }

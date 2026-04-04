@@ -595,6 +595,18 @@ function snapshotListDates() {
   return getDb().prepare('SELECT date, COUNT(*) as count, MAX(snapshot_timestamp) as latest FROM daily_snapshots GROUP BY date ORDER BY date DESC').all();
 }
 
+// ── FORECAST: Clear all demo data ──
+function forecastClearAll() {
+  const db = getDb();
+  db.prepare('DELETE FROM forecast_daily_sales').run();
+  db.prepare('DELETE FROM forecast_products').run();
+  db.prepare('DELETE FROM forecast_weather').run();
+  db.prepare('DELETE FROM learned_patterns').run();
+  db.prepare('DELETE FROM learning_insights').run();
+  db.prepare('DELETE FROM prediction_accuracy').run();
+  return true;
+}
+
 // ── FORECAST: Products ──
 function forecastProductsGetAll() {
   return getDb().prepare('SELECT * FROM forecast_products ORDER BY category, name').all();
@@ -1070,6 +1082,7 @@ module.exports = {
   storageGet, storageSet, storageGetAll,
   auditInsert, auditQuery, getDeviceId,
   snapshotSave, snapshotGetByDate, snapshotGetLatest, snapshotListDates,
+  forecastClearAll,
   forecastProductsGetAll, forecastProductUpsert,
   forecastSalesGetForDate, forecastSalesGetForProduct, forecastSalesGetRange, forecastSalesUpsert, forecastSalesDeleteForDate,
   forecastImportsGetAll, forecastImportLog, forecastImportDelete, forecastImportMarkReplaced,
