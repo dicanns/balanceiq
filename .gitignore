@@ -11,7 +11,7 @@ release/
 .env.*.local
 
 # Internal planning & dev docs — not for public repo
-CLAUDE.md
+DEVELOPMENT.md
 ROADMAP.md
 BACKUP_CHECKLIST.md
 ADMIN_GUIDE.md
