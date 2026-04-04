@@ -5588,6 +5588,8 @@ export default function App(){
     else if(params.action==='new-invoice'){setFacDeepLink({action:'new-invoice'});setActiveTab('facturation');}
     else if(params.action==='new-client'){setFacDeepLink({action:'new-client'});setActiveTab('facturation');}
     else if(params.date&&tab==='daily'){setSelectedDate(params.date);setActiveTab('daily');}
+    else if(params.date&&tab==='encaisse'){setSelectedDate(params.date);setActiveTab('encaisse');}
+    else if(tab==='livraisons'){setActiveTab('daily');}
     else if(tab){setActiveTab(tab);}
   },[]);
 
@@ -6213,8 +6215,6 @@ export default function App(){
 
             {/* Tip Pool Modal */}
             {showTipPool&&(<Suspense fallback={null}><TipPoolModal lang={lang} date={selectedDate} dailyEmployees={emps||[]} staffRoster={empRoster||[]} onClose={()=>setShowTipPool(false)}/></Suspense>)}
-            {/* Global Search (Cmd+K) */}
-            {searchOpen&&(<Suspense fallback={null}><GlobalSearchLazy isOpen={searchOpen} onClose={()=>setSearchOpen(false)} onNavigate={handleSearchNavigate} lang={lang} isDark={themeName!=='warm'}/></Suspense>)}
             {/* POS Scan Modal */}
             {posScanOpen&&(<Suspense fallback={null}><POSScanModal
                   isOpen={true}
@@ -6522,6 +6522,9 @@ export default function App(){
             {configSubTab==="redevances"&&appMode==="franchiseur"&&(<><RedevancesConfig royaltyConfig={royaltyConfig} saveRoyaltyConfig={saveRoyaltyConfig} facCategories={facCategories} facProduits={facProduits} perfTargets={perfTargets} savePerfTargets={savePerfTargets}/><AlertsConfigCard alertConfig={alertConfig} saveAlertConfig={saveAlertConfig}/></>)}
 
             {/*  MARQUE BLANCHE — franchiseur only */}
-            {configSubTab==="marqueblanche"&&appMode==="franchiseur"&&(<MarqueBlancheConfig whiteLabelConfig={whiteLabelConfig} saveWhiteLabel={saveWhiteLabel}/>)}</div></div>)}</div></div>{/* end scrollable */}</div>{/* end main area */}</div></ThemeCtx.Provider></LangCtx.Provider>
+            {configSubTab==="marqueblanche"&&appMode==="franchiseur"&&(<MarqueBlancheConfig whiteLabelConfig={whiteLabelConfig} saveWhiteLabel={saveWhiteLabel}/>)}</div></div>)}</div></div>{/* end scrollable */}</div>{/* end main area */}</div>
+            {/* Global Search (Cmd+K) — top-level so it works from any tab */}
+            {searchOpen&&(<Suspense fallback={null}><GlobalSearchLazy isOpen={searchOpen} onClose={()=>setSearchOpen(false)} onNavigate={handleSearchNavigate} lang={lang} isDark={themeName!=='warm'}/></Suspense>)}
+            </ThemeCtx.Provider></LangCtx.Provider>
   );
 }

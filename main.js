@@ -45,6 +45,7 @@ const {
   onboardingGetAll, onboardingMarkDone, onboardingReset,
   plInvoiceHistoryRecord, plInvoiceHistoryGetLast, plInvoiceHistoryGetRecent,
   searchIngredients, searchForecastProducts, searchHistoryGet, searchHistorySave,
+  storageGetByPrefix,
 } = require('./src/db/database.js');
 
 const BACKUP_DIR = () => path.join(app.getPath('userData'), 'Backups');
@@ -1596,6 +1597,120 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
 
   // ── Forecast products (FTS5 — SQLite table) ──
   results.forecastProducts = searchForecastProducts(query, limit);
+
+  // ── Daily text search — notes + cashier names (dicann-v7) ──
+  results.dailyEntries = [];
+  try {
+    const dailyRaw = storageGet('dicann-v7');
+    if (dailyRaw?.value) {
+      const dailyData = JSON.parse(dailyRaw.value);
+      const matches = [];
+      for (const [date, dayObj] of Object.entries(dailyData || {})) {
+        if (dayObj.notes && String(dayObj.notes).toLowerCase().includes(q)) {
+          matches.push({ type: 'daily_note', date, reason: 'note', preview: String(dayObj.notes).substring(0, 80) });
+        } else {
+          const cashes = Array.isArray(dayObj?.cashes) ? dayObj.cashes : [];
+          for (const c of cashes) {
+            if (c.cashier && String(c.cashier).toLowerCase().includes(q)) {
+              matches.push({ type: 'daily_cashier', date, reason: 'cashier', cashier: c.cashier });
+              break;
+            }
+          }
+        }
+        if (matches.length >= limit) break;
+      }
+      results.dailyEntries = matches.slice(0, limit);
+    }
+  } catch (_) {}
+
+  // ── P&L monthly bills — search all dicann-pl-* keys ──
+  results.plBills = [];
+  try {
+    const plRows = storageGetByPrefix('dicann-pl-');
+    const plMatches = [];
+    for (const row of plRows) {
+      if (plMatches.length >= limit) break;
+      try {
+        const plData = JSON.parse(row.value);
+        const month = row.key.replace('dicann-pl-', '');
+        // Each supplier key stores its bills at `${supplierKey}_bills`
+        for (const [k, v] of Object.entries(plData)) {
+          if (!k.endsWith('_bills') || !Array.isArray(v)) continue;
+          const supplierKey = k.replace('_bills', '');
+          for (const bill of v) {
+            if (matchStr(bill.note) || matchStr(supplierKey)) {
+              plMatches.push({ type: 'pl_bill', month, supplierKey, note: bill.note || '', amount: bill.amount || 0, date: bill.date || month });
+              if (plMatches.length >= limit) break;
+            }
+          }
+          if (plMatches.length >= limit) break;
+        }
+        // Also match on supplier keys directly (without _bills suffix)
+        for (const [k, v] of Object.entries(plData)) {
+          if (k.endsWith('_bills') || k.startsWith('_') || typeof v !== 'number') continue;
+          if (matchStr(k)) {
+            plMatches.push({ type: 'pl_supplier', month, supplierKey: k, amount: v });
+            if (plMatches.length >= limit) break;
+          }
+          if (plMatches.length >= limit) break;
+        }
+      } catch (_) {}
+    }
+    results.plBills = plMatches.slice(0, limit);
+  } catch (_) {}
+
+  // ── Encaisse entries — sorties + notes (dicann-encaisse) ──
+  results.encaisseEntries = [];
+  try {
+    const encRaw = storageGet('dicann-encaisse');
+    if (encRaw?.value) {
+      const encData = JSON.parse(encRaw.value);
+      const matches = [];
+      for (const [date, dayObj] of Object.entries(encData || {})) {
+        if (date.startsWith('_')) continue;
+        // Search notes
+        if (dayObj.notes && String(dayObj.notes).toLowerCase().includes(q)) {
+          matches.push({ type: 'encaisse_note', date, preview: String(dayObj.notes).substring(0, 80) });
+        }
+        // Search sortie categories and notes
+        const sorties = Array.isArray(dayObj.sorties) ? dayObj.sorties : [];
+        for (const s of sorties) {
+          if (matchStr(s.category) || matchStr(s.note) || matchStr(s.description)) {
+            matches.push({ type: 'encaisse_sortie', date, category: s.category || '', amount: s.montant || 0 });
+            break; // one match per day
+          }
+        }
+        if (matches.length >= limit) break;
+      }
+      results.encaisseEntries = matches.slice(0, limit);
+    }
+  } catch (_) {}
+
+  // ── Delivery platforms (dicann-platforms) ──
+  results.platforms = [];
+  try {
+    const platRaw = storageGet('dicann-platforms');
+    if (platRaw?.value) {
+      results.platforms = JSON.parse(platRaw.value)
+        .filter(p => matchStr(p.name) || matchStr(p.id))
+        .slice(0, limit)
+        .map(p => ({ id: p.id, name: p.name, emoji: p.emoji || '' }));
+    }
+  } catch (_) {}
+
+  // ── Encaisse categories (dicann-encaisse-config) ──
+  results.encaisseCategories = [];
+  try {
+    const encCfgRaw = storageGet('dicann-encaisse-config');
+    if (encCfgRaw?.value) {
+      const cfg = JSON.parse(encCfgRaw.value);
+      const cats = Array.isArray(cfg.sortieCategories) ? cfg.sortieCategories : [];
+      results.encaisseCategories = cats
+        .filter(c => matchStr(c.name))
+        .slice(0, 3)
+        .map(c => ({ id: c.id, name: c.name }));
+    }
+  } catch (_) {}
 
   return { results, history: [] };
 });

@@ -1198,8 +1198,14 @@ function searchHistorySave(query, result_type, result_id) {
   } catch (_) {}
 }
 
+function storageGetByPrefix(prefix) {
+  try {
+    return getDb().prepare("SELECT key, value FROM kv_store WHERE key LIKE ?").all(prefix + '%');
+  } catch (_) { return []; }
+}
+
 module.exports = {
-  storageGet, storageSet, storageGetAll,
+  storageGet, storageSet, storageGetAll, storageGetByPrefix,
   auditInsert, auditQuery, getDeviceId,
   snapshotSave, snapshotGetByDate, snapshotGetLatest, snapshotListDates,
   forecastClearAll,

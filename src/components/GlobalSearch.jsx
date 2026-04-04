@@ -297,6 +297,31 @@ export default function GlobalSearch({ isOpen, onClose, onNavigate, lang = 'fr',
       items.push({ _type: 'daily', _icon: '📋', _label: d.date, _sub: fmt(d.total), _hint: T ? 'Daily' : 'Quotidien', _key: `day-${d.date}`, ...d });
     });
 
+    // Daily text entries (notes + cashier names)
+    (results.dailyEntries || []).forEach(d => {
+      const label = d.reason === 'note' ? d.preview : (T ? `Cashier: ${d.cashier}` : `Caissier: ${d.cashier}`);
+      items.push({ _type: 'daily_entry', _icon: '📋', _label: d.date, _sub: label, _hint: T ? 'Daily' : 'Quotidien', _key: `de-${d.date}-${d.reason}`, ...d });
+    });
+
+    // P&L bills
+    (results.plBills || []).forEach(b => {
+      const label = b.supplierKey || '';
+      const sub = b.note ? `${b.note}${b.amount ? ' · ' + fmt(b.amount) : ''}` : (b.amount ? fmt(b.amount) : b.month);
+      items.push({ _type: 'pl_bill', _icon: '📄', _label: label, _sub: sub, _hint: 'P&L', _key: `plb-${b.month}-${b.supplierKey}-${b.date}`, ...b });
+    });
+
+    // Encaisse entries
+    (results.encaisseEntries || []).forEach(e => {
+      const label = e.type === 'encaisse_sortie' ? e.category : (T ? 'Note' : 'Note');
+      const sub = e.type === 'encaisse_sortie' ? `${e.date}${e.amount ? ' · ' + fmt(e.amount) : ''}` : e.preview;
+      items.push({ _type: 'encaisse_entry', _icon: '💵', _label: label, _sub: sub, _hint: T ? 'Cash Position' : 'Encaisse', _key: `enc-${e.date}-${e.type}`, ...e });
+    });
+
+    // Platforms
+    (results.platforms || []).forEach(p => {
+      items.push({ _type: 'platform', _icon: '🛵', _label: p.name, _sub: null, _hint: T ? 'Deliveries' : 'Livraisons', _key: `plt-${p.id}`, ...p });
+    });
+
     // Navigation
     getNavResults(q, lang).forEach(n => {
       items.push({ _type: 'nav', _icon: n.icon, _label: T ? n.labelEn : n.label, _hint: null, _key: n.id, ...n });
@@ -317,8 +342,22 @@ export default function GlobalSearch({ isOpen, onClose, onNavigate, lang = 'fr',
     const employees = (results.employees || []).map(e => ({ _type: 'employee', _icon: '👷', _label: e.nom, _sub: e.role || null, _hint: T ? 'Daily' : 'Quotidien', _key: `emp-${e.id}`, ...e }));
     const ingredients = (results.ingredients || []).map(i => ({ _type: 'ingredient', _icon: '🥩', _label: T ? (i.name_en || i.name_fr) : i.name_fr, _sub: i.category || null, _hint: T ? 'Costs' : 'Recettes', _key: `ing-${i.id}`, ...i }));
     const dailyTotals = (results.dailyTotals || []).map(d => ({ _type: 'daily', _icon: '📋', _label: d.date, _sub: fmt(d.total), _hint: T ? 'Daily' : 'Quotidien', _key: `day-${d.date}`, ...d }));
+    const dailyEntries = (results.dailyEntries || []).map(d => {
+      const label = d.reason === 'note' ? d.preview : (T ? `Cashier: ${d.cashier}` : `Caissier: ${d.cashier}`);
+      return { _type: 'daily_entry', _icon: '📋', _label: d.date, _sub: label, _hint: T ? 'Daily' : 'Quotidien', _key: `de-${d.date}-${d.reason}`, ...d };
+    });
+    const plBills = (results.plBills || []).map(b => {
+      const sub = b.note ? `${b.note}${b.amount ? ' · ' + fmt(b.amount) : ''}` : (b.amount ? fmt(b.amount) : b.month);
+      return { _type: 'pl_bill', _icon: '📄', _label: b.supplierKey || '', _sub: sub, _hint: 'P&L', _key: `plb-${b.month}-${b.supplierKey}-${b.date}`, ...b };
+    });
+    const encaisseEntries = (results.encaisseEntries || []).map(e => {
+      const label = e.type === 'encaisse_sortie' ? e.category : (T ? 'Note' : 'Note');
+      const sub = e.type === 'encaisse_sortie' ? `${e.date}${e.amount ? ' · ' + fmt(e.amount) : ''}` : e.preview;
+      return { _type: 'encaisse_entry', _icon: '💵', _label: label, _sub: sub, _hint: T ? 'Cash Position' : 'Encaisse', _key: `enc-${e.date}-${e.type}`, ...e };
+    });
+    const platforms = (results.platforms || []).map(p => ({ _type: 'platform', _icon: '🛵', _label: p.name, _sub: null, _hint: T ? 'Deliveries' : 'Livraisons', _key: `plt-${p.id}`, ...p }));
     const nav = getNavResults(q, lang).map(n => ({ ...n, _type: 'nav', _icon: n.icon, _label: T ? n.labelEn : n.label, _hint: null, _key: n.id }));
-    return { actions, clients, invoices, suppliers, employees, ingredients, dailyTotals, nav };
+    return { actions, clients, invoices, suppliers, employees, ingredients, dailyTotals, dailyEntries, plBills, encaisseEntries, platforms, nav };
   }, [results, query, lang, T]);
 
   // Scroll selected item into view
@@ -382,6 +421,18 @@ export default function GlobalSearch({ isOpen, onClose, onNavigate, lang = 'fr',
       case 'forecast':
         onNavigate('previsions', {});
         break;
+      case 'daily_entry':
+        onNavigate('daily', { date: item.date });
+        break;
+      case 'pl_bill':
+        onNavigate('monthly', {});
+        break;
+      case 'encaisse_entry':
+        onNavigate('encaisse', { date: item.date });
+        break;
+      case 'platform':
+        onNavigate('livraisons', {});
+        break;
       default:
         if (item.tab) onNavigate(item.tab, {});
     }
@@ -396,7 +447,7 @@ export default function GlobalSearch({ isOpen, onClose, onNavigate, lang = 'fr',
   // Compute index offsets per group for keyboard nav mapping
   let offset = 0;
   const offsets = {};
-  for (const key of ['actions', 'clients', 'invoices', 'suppliers', 'employees', 'ingredients', 'dailyTotals', 'nav']) {
+  for (const key of ['actions', 'clients', 'invoices', 'suppliers', 'employees', 'ingredients', 'dailyTotals', 'dailyEntries', 'plBills', 'encaisseEntries', 'platforms', 'nav']) {
     offsets[key] = offset;
     offset += (groups[key] || []).length;
   }
@@ -466,6 +517,10 @@ export default function GlobalSearch({ isOpen, onClose, onNavigate, lang = 'fr',
               <ResultGroup label={T ? 'EMPLOYEES' : 'EMPLOYÉS'} items={groups.employees} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.employees} query={query} styles={styles} />
               <ResultGroup label={T ? 'INGREDIENTS' : 'INGRÉDIENTS'} items={groups.ingredients} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.ingredients} query={query} styles={styles} />
               <ResultGroup label={T ? 'DAILY TOTALS' : 'JOURNÉES'} items={groups.dailyTotals} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.dailyTotals} query={query} styles={styles} />
+              <ResultGroup label={T ? 'DAILY ENTRIES' : 'ENTRÉES QUOTIDIENNES'} items={groups.dailyEntries} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.dailyEntries} query={query} styles={styles} />
+              <ResultGroup label={T ? 'P&L' : 'P&L'} items={groups.plBills} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.plBills} query={query} styles={styles} />
+              <ResultGroup label={T ? 'CASH POSITION' : 'ENCAISSE'} items={groups.encaisseEntries} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.encaisseEntries} query={query} styles={styles} />
+              <ResultGroup label={T ? 'DELIVERY PLATFORMS' : 'PLATEFORMES'} items={groups.platforms} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.platforms} query={query} styles={styles} />
               <ResultGroup label={T ? 'NAVIGATION' : 'NAVIGATION'} items={groups.nav} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.nav} query={query} styles={styles} />
             </>
           )}
