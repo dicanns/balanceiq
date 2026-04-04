@@ -1458,6 +1458,9 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
   }
 
   const q = query.trim().toLowerCase();
+  // Accent-normalized query — strips diacritics so "ete" matches "été", "caisse" matches "caïsse"
+  const normalize = s => !s ? '' : String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const nq = normalize(q);
   const results = {};
 
   // ── kv_store helpers ──
@@ -1477,7 +1480,21 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
     } catch (_) { return {}; }
   };
 
-  const matchStr = (str) => str && String(str).toLowerCase().includes(q);
+  // matchStr: accent-insensitive substring match. "ete" matches "été", "caisse" matches "caïsse".
+  const matchStr = (str) => {
+    if (!str) return false;
+    const nt = normalize(str);
+    return nt.includes(nq);
+  };
+  // scoreMatch: rank by match quality (3=exact, 2=starts-with, 1=contains, 0=no match)
+  const scoreMatch = (str) => {
+    if (!str) return 0;
+    const nt = normalize(str);
+    if (nt === nq) return 3;
+    if (nt.startsWith(nq)) return 2;
+    if (nt.includes(nq)) return 1;
+    return 0;
+  };
 
   // ── Numeric query parsing — handles French format (2 335,51) and English (2,335.51) ──
   const parseNumericQuery = (raw) => {
@@ -1496,35 +1513,52 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
   // ── Clients (dicann-fac-clients) ──
   const clients = readKV('dicann-fac-clients');
   results.clients = clients
-    .filter(c => matchStr(c.entreprise) || matchStr(c.courriel) || matchStr(c.telephone) || matchStr(c.ville) || matchStr(c.code))
+    .map(c => {
+      const score = Math.max(scoreMatch(c.entreprise), scoreMatch(c.courriel), scoreMatch(c.telephone), scoreMatch(c.ville), scoreMatch(c.code), scoreMatch(c.adresse), scoreMatch(c.adresse2));
+      return score > 0 ? { ...c, _score: score } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => b._score - a._score)
     .slice(0, limit)
     .map(c => ({ id: c.id, entreprise: c.entreprise || '', courriel: c.courriel || '', ville: c.ville || '', code: c.code || '' }));
 
-  // ── Invoices/Factures (dicann-fac-factures) — also soumissions, commandes ──
+  // ── Invoices/Factures (dicann-fac-factures) — also soumissions, commandes, credit notes ──
   const factures = readKV('dicann-fac-factures');
   const soumissions = readKV('dicann-fac-soumissions');
   const commandes = readKV('dicann-fac-commandes');
-  const allDocs = [...factures, ...soumissions, ...commandes];
+  const creditNotes = readKV('dicann-fac-creditnotes');
+  const allDocs = [...factures, ...soumissions, ...commandes, ...creditNotes];
 
   results.invoices = allDocs
-    .filter(f => {
-      const cl = clients.find(c => c.id === f.clientId);
-      return matchStr(f.numero) || matchStr(f.referenceClient) || matchStr(cl?.entreprise) ||
-        (f.lignes || []).some(l => matchStr(l.description)) ||
-        (isNumericSearch && Math.abs((f.total || 0) - numQ) < 1);
-    })
-    .slice(0, limit)
     .map(f => {
       const cl = clients.find(c => c.id === f.clientId);
+      const numericMatch = isNumericSearch && Math.abs((f.total || 0) - numQ) < 1;
+      const score = Math.max(
+        scoreMatch(f.numero), scoreMatch(f.referenceClient), scoreMatch(cl?.entreprise),
+        (f.lignes || []).reduce((s, l) => Math.max(s, scoreMatch(l.description)), 0),
+        numericMatch ? 1 : 0
+      );
+      return score > 0 ? { ...f, _score: score, _cl: cl } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => b._score - a._score)
+    .slice(0, limit)
+    .map(f => {
       const total = typeof f.total === 'number' ? f.total
         : (f.lignes || []).reduce((s, l) => s + ((l.quantite || 1) * (l.prixUnitaire || 0)), 0);
-      return { id: f.id, numero: f.numero || '', clientName: cl?.entreprise || '', total, date: f.date || '', statut: f.statut || '', type: f._type || 'facture' };
+      return { id: f.id, numero: f.numero || '', clientName: f._cl?.entreprise || '', total, date: f.date || '', statut: f.statut || '', type: f._type || 'facture' };
     });
 
   // ── Employees (dicann-emp-roster) ──
   const employees = readKV('dicann-emp-roster');
   results.employees = employees
-    .filter(e => matchStr(e.nom) || matchStr(e.prenom) || matchStr(e.role) || matchStr(`${e.prenom} ${e.nom}`))
+    .map(e => {
+      const fullName = `${e.prenom || ''} ${e.nom || ''}`.trim();
+      const score = Math.max(scoreMatch(e.nom), scoreMatch(e.prenom), scoreMatch(fullName), scoreMatch(e.role));
+      return score > 0 ? { ...e, _score: score } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => b._score - a._score)
     .slice(0, limit)
     .map(e => ({ id: e.id, nom: `${e.prenom || ''} ${e.nom || ''}`.trim(), role: e.role || '' }));
 
@@ -1538,7 +1572,12 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
   // ── Suppliers (dicann-suppliers-v2) ──
   const suppliersV2 = readKV('dicann-suppliers-v2');
   results.suppliers = suppliersV2
-    .filter(s => matchStr(s.name) || matchStr(s.category) || matchStr(s.id))
+    .map(s => {
+      const score = Math.max(scoreMatch(s.name), scoreMatch(s.category), scoreMatch(s.id));
+      return score > 0 ? { ...s, _score: score } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => b._score - a._score)
     .slice(0, limit)
     .map(s => ({ key: `sup_${s.id}`, name: s.name || '', category: s.category || '' }));
 
@@ -1664,6 +1703,17 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
     }
     results.plBills = plMatches.slice(0, limit);
   } catch (_) {}
+
+  // ── P&L expense categories (dicann-pl-expense-items) — search by label/name ──
+  results.expenseItems = readKV('dicann-pl-expense-items')
+    .map(item => {
+      const score = Math.max(scoreMatch(item.label), scoreMatch(item.name));
+      return score > 0 ? { ...item, _score: score } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => b._score - a._score)
+    .slice(0, limit)
+    .map(item => ({ id: item.id, label: item.label || item.name || '' }));
 
   // ── Encaisse — sorties, autreEntrees, notes (dicann-encaisse) ──
   // Fix: sorties use field `categorie` (French) not `category`

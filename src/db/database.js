@@ -113,6 +113,64 @@ const MIGRATIONS = [
       )`).run();
     },
   },
+  {
+    version: 6,
+    description: 'Rebuild FTS5 tables with unicode61 tokenizer for accent-insensitive French search (été→ete, caïsse→caisse)',
+    up: (database) => {
+      // Drop old tables and triggers created without the unicode61 tokenizer
+      database.prepare(`DROP TRIGGER IF EXISTS fts_ing_insert`).run();
+      database.prepare(`DROP TRIGGER IF EXISTS fts_ing_update`).run();
+      database.prepare(`DROP TRIGGER IF EXISTS fts_ing_delete`).run();
+      database.prepare(`DROP TRIGGER IF EXISTS fts_fp_insert`).run();
+      database.prepare(`DROP TRIGGER IF EXISTS fts_fp_update`).run();
+      database.prepare(`DROP TRIGGER IF EXISTS fts_fp_delete`).run();
+      database.prepare(`DROP TABLE IF EXISTS fts_ingredients`).run();
+      database.prepare(`DROP TABLE IF EXISTS fts_forecast_products`).run();
+
+      // Recreate with unicode61 — remove_diacritics=1 is the default, so
+      // "ete" matches "été", "caisse" matches "caïsse", etc.
+      database.prepare(`CREATE VIRTUAL TABLE IF NOT EXISTS fts_ingredients USING fts5(
+        name_fr, name_en, category,
+        content='ingredients', content_rowid='id',
+        tokenize='unicode61'
+      )`).run();
+      database.prepare(`CREATE VIRTUAL TABLE IF NOT EXISTS fts_forecast_products USING fts5(
+        name, category,
+        content='forecast_products', content_rowid='id',
+        tokenize='unicode61'
+      )`).run();
+
+      // Repopulate from existing data
+      try { database.prepare(`INSERT INTO fts_ingredients(rowid, name_fr, name_en, category)
+        SELECT id, name_fr, COALESCE(name_en,''), COALESCE(category,'') FROM ingredients`).run(); } catch(_) {}
+      try { database.prepare(`INSERT INTO fts_forecast_products(rowid, name, category)
+        SELECT id, name, COALESCE(category,'') FROM forecast_products`).run(); } catch(_) {}
+
+      // Recreate sync triggers — ingredients
+      database.prepare(`CREATE TRIGGER IF NOT EXISTS fts_ing_insert AFTER INSERT ON ingredients BEGIN
+        INSERT INTO fts_ingredients(rowid, name_fr, name_en, category)
+        VALUES (new.id, new.name_fr, COALESCE(new.name_en,''), COALESCE(new.category,''));
+      END`).run();
+      database.prepare(`CREATE TRIGGER IF NOT EXISTS fts_ing_update AFTER UPDATE ON ingredients BEGIN
+        UPDATE fts_ingredients SET name_fr=new.name_fr, name_en=COALESCE(new.name_en,''), category=COALESCE(new.category,'')
+        WHERE rowid=old.id;
+      END`).run();
+      database.prepare(`CREATE TRIGGER IF NOT EXISTS fts_ing_delete AFTER DELETE ON ingredients BEGIN
+        DELETE FROM fts_ingredients WHERE rowid=old.id;
+      END`).run();
+
+      // Recreate sync triggers — forecast_products
+      database.prepare(`CREATE TRIGGER IF NOT EXISTS fts_fp_insert AFTER INSERT ON forecast_products BEGIN
+        INSERT INTO fts_forecast_products(rowid, name, category) VALUES (new.id, new.name, COALESCE(new.category,''));
+      END`).run();
+      database.prepare(`CREATE TRIGGER IF NOT EXISTS fts_fp_update AFTER UPDATE ON forecast_products BEGIN
+        UPDATE fts_forecast_products SET name=new.name, category=COALESCE(new.category,'') WHERE rowid=old.id;
+      END`).run();
+      database.prepare(`CREATE TRIGGER IF NOT EXISTS fts_fp_delete AFTER DELETE ON forecast_products BEGIN
+        DELETE FROM fts_forecast_products WHERE rowid=old.id;
+      END`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.

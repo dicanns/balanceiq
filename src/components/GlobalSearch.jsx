@@ -310,6 +310,11 @@ export default function GlobalSearch({ isOpen, onClose, onNavigate, lang = 'fr',
       items.push({ _type: 'pl_bill', _icon: '📄', _label: label, _sub: sub, _hint: 'P&L', _key: `plb-${b.month}-${b.supplierKey}-${b.date}`, ...b });
     });
 
+    // P&L expense categories
+    (results.expenseItems || []).forEach(item => {
+      items.push({ _type: 'expense_item', _icon: '💼', _label: item.label, _sub: null, _hint: 'P&L', _key: `exp-${item.id}`, ...item });
+    });
+
     // Encaisse entries
     (results.encaisseEntries || []).forEach(e => {
       const label = e.type === 'encaisse_sortie' ? e.category : (T ? 'Note' : 'Note');
@@ -378,6 +383,7 @@ export default function GlobalSearch({ isOpen, onClose, onNavigate, lang = 'fr',
       const sub = [b.note, b.amount ? fmt(b.amount) : null, b.month].filter(Boolean).join(' · ');
       return { _type: 'pl_bill', _icon: '📄', _label: label, _sub: sub, _hint: 'P&L', _key: `plb-${b.month}-${b.supplierKey}-${b.date}`, ...b };
     });
+    const expenseItems = (results.expenseItems || []).map(item => ({ _type: 'expense_item', _icon: '💼', _label: item.label, _sub: null, _hint: 'P&L', _key: `exp-${item.id}`, ...item }));
     const encaisseEntries = (results.encaisseEntries || []).map(e => {
       const label = e.type === 'encaisse_sortie' ? e.category : (T ? 'Note' : 'Note');
       const sub = e.type === 'encaisse_sortie' ? `${e.date}${e.amount ? ' · ' + fmt(e.amount) : ''}` : e.preview;
@@ -390,7 +396,7 @@ export default function GlobalSearch({ isOpen, onClose, onNavigate, lang = 'fr',
     const locations = (results.locations || []).map(l => ({ _type: 'location', _icon: '📍', _label: l.nom || l.name || '', _sub: [l.adresse, l.ville].filter(Boolean).join(', ') || null, _hint: T ? 'Network' : 'Réseau', _key: `loc-${l.id}`, ...l }));
     const wasteEntries = (results.wasteEntries || []).map(w => ({ _type: 'waste_entry', _icon: '♻️', _label: w.ingredientName || w.category || '', _sub: [w.reason, w.date].filter(Boolean).join(' · ') || null, _hint: T ? 'Waste' : 'Gaspillage', _key: `we-${w.id}`, ...w }));
     const nav = getNavResults(q, lang).map(n => ({ ...n, _type: 'nav', _icon: n.icon, _label: T ? n.labelEn : n.label, _hint: null, _key: n.id }));
-    return { actions, clients, invoices, suppliers, employees, ingredients, dailyTotals, dailyEntries, plBills, encaisseEntries, platforms, facProducts, facCategories, recurrents, locations, wasteEntries, nav };
+    return { actions, clients, invoices, suppliers, employees, ingredients, dailyTotals, dailyEntries, plBills, expenseItems, encaisseEntries, platforms, facProducts, facCategories, recurrents, locations, wasteEntries, nav };
   }, [results, query, lang, T]);
 
   // Scroll selected item into view
@@ -458,6 +464,7 @@ export default function GlobalSearch({ isOpen, onClose, onNavigate, lang = 'fr',
         onNavigate('daily', { date: item.date });
         break;
       case 'pl_bill':
+      case 'expense_item':
         onNavigate('monthly', {});
         break;
       case 'encaisse_entry':
@@ -491,7 +498,7 @@ export default function GlobalSearch({ isOpen, onClose, onNavigate, lang = 'fr',
   // Compute index offsets per group for keyboard nav mapping
   let offset = 0;
   const offsets = {};
-  for (const key of ['actions', 'clients', 'invoices', 'suppliers', 'employees', 'ingredients', 'dailyTotals', 'dailyEntries', 'plBills', 'encaisseEntries', 'platforms', 'facProducts', 'facCategories', 'recurrents', 'locations', 'wasteEntries', 'nav']) {
+  for (const key of ['actions', 'clients', 'invoices', 'suppliers', 'employees', 'ingredients', 'dailyTotals', 'dailyEntries', 'plBills', 'expenseItems', 'encaisseEntries', 'platforms', 'facProducts', 'facCategories', 'recurrents', 'locations', 'wasteEntries', 'nav']) {
     offsets[key] = offset;
     offset += (groups[key] || []).length;
   }
@@ -563,6 +570,7 @@ export default function GlobalSearch({ isOpen, onClose, onNavigate, lang = 'fr',
               <ResultGroup label={T ? 'DAILY TOTALS' : 'JOURNÉES'} items={groups.dailyTotals} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.dailyTotals} query={query} styles={styles} />
               <ResultGroup label={T ? 'DAILY ENTRIES' : 'ENTRÉES QUOTIDIENNES'} items={groups.dailyEntries} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.dailyEntries} query={query} styles={styles} />
               <ResultGroup label={T ? 'P&L' : 'P&L'} items={groups.plBills} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.plBills} query={query} styles={styles} />
+              <ResultGroup label={T ? 'EXPENSE CATEGORIES' : 'CATÉGORIES DÉPENSES'} items={groups.expenseItems} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.expenseItems} query={query} styles={styles} />
               <ResultGroup label={T ? 'CASH POSITION' : 'ENCAISSE'} items={groups.encaisseEntries} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.encaisseEntries} query={query} styles={styles} />
               <ResultGroup label={T ? 'DELIVERY PLATFORMS' : 'PLATEFORMES'} items={groups.platforms} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.platforms} query={query} styles={styles} />
               <ResultGroup label={T ? 'PRODUCTS' : 'PRODUITS'} items={groups.facProducts} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.facProducts} query={query} styles={styles} />
