@@ -474,7 +474,7 @@ function AIAnalysisView({ canUse, allSales, products, weatherMap, weekDates, pre
   if (locked) {
     return (<div style={{padding:'32px 24px',textAlign:'center'}}><div style={{fontSize:32,marginBottom:12}}></div><div style={{fontSize:16,fontWeight:700,marginBottom:8}}>{lang==='en'?'AI Analysis — Pro Feature':'Analyse IA — Fonctionnalité Pro'}</div><div style={{fontSize:13,opacity:0.6,marginBottom:6,maxWidth:380,margin:'0 auto 16px'}}>{lang==='en'
             ? 'Get AI to analyze your production patterns, identify waste risks, stockout alerts, and give specific weekly recommendations.'
-            : 'Faites analyser vos données de production par l'IA — gaspillage, ruptures de stock, recommandations hebdomadaires spécifiques.'}</div><div style={{fontSize:11,opacity:0.5,marginBottom:20}}>{lang==='en'?'Pro: 50 queries/month · Franchise: 200 queries/month · On-demand only':'Pro: 50 requêtes/mois · Franchise: 200 requêtes/mois · À la demande seulement'}</div><button onClick={()=>showUpgradePrompt&&showUpgradePrompt('aiAnalysis')}
+            : 'Analyse IA de vos données : gaspillage, ruptures de stock, recommandations hebdomadaires spécifiques.'}</div><div style={{fontSize:11,opacity:0.5,marginBottom:20}}>{lang==='en'?'Pro: 50 queries/month · Franchise: 200 queries/month · On-demand only':'Pro: 50 requêtes/mois · Franchise: 200 requêtes/mois · À la demande seulement'}</div><button onClick={()=>showUpgradePrompt&&showUpgradePrompt('aiAnalysis')}
           style={{padding:'10px 24px',borderRadius:8,border:'none',background:'linear-gradient(135deg,#a78bfa,#7c3aed)',color:'#fff',cursor:'pointer',fontSize:13,fontWeight:700}}>
           {lang==='en'?'Upgrade to Pro':'Passer au Pro'} ↑</button></div>);
   }
