@@ -5245,9 +5245,17 @@ export default function App(){
         if(cloud?.session){
           setCloudUser({email:cloud.session.user.email,plan:cloud.plan});
           setMyLinkedLocations(getMyLinkedLocations());
+          if(cloud.plan){setPlan(cloud.plan);setActivePlan(cloud.plan);}
         }
       }catch(_){}
     },1000);
+    // Auto-refresh plan 5s after launch in case it changed in DB since last session
+    setTimeout(async()=>{
+      try{
+        const p=await refreshPlan();
+        if(p){setPlan(p);setActivePlan(p);setCloudUser(u=>u?{...u,plan:p}:u);}
+      }catch(_){}
+    },6000);
     // Subscription plan refresh — triggered when Stripe redirects back after checkout/portal
     if(window.api?.subscription){
       window.api.subscription.onPlanRefresh(async()=>{
