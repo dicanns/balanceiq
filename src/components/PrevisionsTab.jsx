@@ -459,7 +459,7 @@ function AIAnalysisView({ canUse, allSales, products, weatherMap, weekDates, pre
       if (data.error) throw new Error(data.message || data.error);
       if (!data.text) {
         console.warn('[AI Intelligence] empty text, full response:', JSON.stringify(data));
-        throw new Error(lang==='en'?'Analysis returned an empty response. Open DevTools Console for details.':'Réponse vide de l'analyse. Voir la console pour les détails.');
+        throw new Error(lang==='en'?'Analysis returned an empty response. Open DevTools Console for details.':'Réponse vide. Voir la console pour les détails.');
       }
       setResult({ text: data.text, usageCount: data.usageCount, usageLimit: data.usageLimit });
       trackEvent('feature_used:ai_analysis');
