@@ -42,12 +42,17 @@ Data:
     case 'anomalies':
       // deno-lint-ignore no-explicit-any
       return `${fr
-        ? 'Tu es conseiller pour un restaurant rapide. Explique ces anomalies de ventes en 2-3 phrases et suggère une action concrète. Réponds en français seulement.'
-        : 'You are a fast-food restaurant advisor. Explain these sales anomalies in 2-3 sentences and suggest one concrete action. Reply in English only.'
+        ? `Tu es conseiller pour un restaurant rapide. Analyse ces anomalies de ventes. Pour chaque anomalie, les notes du propriétaire (si présentes) sont des faits réels confirmés — base-toi sur elles en priorité. Classe chaque cause comme CONFIRMÉE (note présente) ou POSSIBLE (déduction). Donne une explication de 3-4 phrases et une action concrète. Si certaines anomalies n'ont pas de notes, encourage le propriétaire à en ajouter. Réponds en français seulement.`
+        : `You are a fast-food restaurant advisor. Analyze these sales anomalies. For each anomaly, the owner's notes (if present) are real confirmed facts — prioritize them. Label each cause as CONFIRMED (note present) or POSSIBLE (inference). Give a 3-4 sentence explanation and one concrete action. If some anomalies have no notes, encourage the owner to add them. Reply in English only.`
       }
 
-${(ctx.anomalies as Array<{day:string,date:string,venteNet:number,avg:number,pct:number}>)
-  .map(a => `- ${a.day} ${a.date}: $${a.venteNet} (avg $${a.avg}, ${a.pct>0?'+':''}${a.pct}%)`)
+${(ctx.anomalies as Array<{day:string,date:string,venteNet:number,avg:number,pct:number,note?:string,weather?:string,tempC?:number}>)
+  .map(a => {
+    const parts = [`- ${a.day} ${a.date}: $${a.venteNet} (avg $${a.avg}, ${a.pct>0?'+':''}${a.pct}%)`];
+    if (a.weather) parts.push(`weather: ${a.weather}${a.tempC!=null?`, ${a.tempC}°C`:''}`);
+    if (a.note) parts.push(`owner note: "${a.note}"`);
+    return parts.join(' | ');
+  })
   .join('\n')}`;
 
     case 'ordering':
