@@ -430,7 +430,7 @@ function AIAnalysisView({ canUse, allSales, products, weatherMap, weekDates, pre
     try {
       const ctx = buildContext();
       if (!ctx) { setResult(lang==='en'?'Select a product first.':'Sélectionnez un produit d\'abord.'); setLoading(false); return; }
-      const { supabase } = await import('../services/supabase.js');
+      const { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } = await import('../services/supabase.js');
       const { getCloudOrgId } = await import('../services/cloudSync.js');
       let { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error(lang==='en'?'Sign in required — go to Config → Application':'Connexion requise — allez dans Config → Application');
@@ -440,9 +440,9 @@ function AIAnalysisView({ canUse, allSales, products, weatherMap, weekDates, pre
         if (refreshed?.session) session = refreshed.session;
       } catch {}
       const orgId = getCloudOrgId() || null;
-      const resp = await fetch('https://etiwnesxjypdwhxqnqqq.supabase.co/functions/v1/ai-intelligence', {
+      const resp = await fetch(`${SUPABASE_URL}/functions/v1/ai-intelligence`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${session.access_token}` },
         body: JSON.stringify({ ...ctx, orgId, lang, ownApiKey: apiConfig?.anthropicApiKey || null }),
       });
       if (!resp.ok) {
