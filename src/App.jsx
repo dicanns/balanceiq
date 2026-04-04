@@ -3170,7 +3170,12 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
  try{
  const {supabase,SUPABASE_URL,SUPABASE_ANON_KEY}=await import('./services/supabase.js');
  const ownApiKey=apiConfig?.anthropicApiKey||null;
- const {data:sd}=await supabase.auth.getSession();
+ let {data:sd}=await supabase.auth.getSession();
+ // Refresh if token is expired or about to expire in next 60s
+ if(sd?.session?.expires_at&&(sd.session.expires_at-60)<(Date.now()/1000)){
+   const {data:refreshed}=await supabase.auth.refreshSession();
+   if(refreshed?.session)sd={session:refreshed.session};
+ }
  const authToken=sd?.session?.access_token;
  if(!authToken){setAiError(T.aiNoAuth);setAiLoading(false);return;}
  const res=await fetch(`${SUPABASE_URL}/functions/v1/ai-intelligence`,{
