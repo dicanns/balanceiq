@@ -3946,10 +3946,13 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
 
  const fmt=v=>v>=1000?`$${(v/1000).toFixed(1)}k`:`$${v.toFixed(0)}`;
  const fmtFull=v=>`$${v.toLocaleString('fr-CA',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
- const activeLocs=locations.filter(l=>l.statut!=="inactive");
+ const _locs=Array.isArray(locations)?locations:[];
+ const _facFactures=Array.isArray(facFactures)?facFactures:[];
+ const _facClients=Array.isArray(facClients)?facClients:[];
+ const activeLocs=_locs.filter(l=>l.statut!=="inactive");
  const networkTotal=Object.values(monthlyData).reduce((s,d)=>s+(d?.monthlySales||0),0);
  const balancedToday=Object.values(monthlyData).filter(d=>d?.todayStatus==="balanced").length;
- const royaltyDue=facFactures.filter(f=>f.status!=="paid"&&f.tags?.includes("redevance")).reduce((s,f)=>s+(f.total||0),0);
+ const royaltyDue=_facFactures.filter(f=>f.status!=="paid"&&f.tags?.includes("redevance")).reduce((s,f)=>s+(f.total||0),0);
 
  // Alerts
  const alerts=[];
@@ -3997,7 +4000,7 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
  const cashes=v.cashes||[];return sum+cashes.reduce((s,c)=>{if(c.float!=null&&c.deposits!=null&&c.finalCash!=null)return s+(c.interac||0)+(c.livraisons||0)+(c.deposits||0)+(c.finalCash||0)-(c.float||0);return s;},0);
  },0);
  const royCalc=calcRoyaltyFull(sales,loc,royaltyConfig);
- const client=facClients.find(c=>c.id===loc.clientId);
+ const client=_facClients.find(c=>c.id===loc.clientId);
  preview.push({loc,sales,rate:royCalc.rate,adRate:royCalc.adRate,royalty:royCalc.royalty,ad:royCalc.ad,total:royCalc.total,client,checked:true});
  }
  setGenPreview(preview);
@@ -4007,7 +4010,7 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
  const createRoyaltyInvoices=()=>{
  if(!genPreview)return;
  const checked=genPreview.filter(p=>p.checked&&p.client);
- const newFactures=[...facFactures];
+ const newFactures=[..._facFactures];
  let nextNum=docNums?.nextFac||1;
  const created=[];
  for(const p of checked){
@@ -4142,7 +4145,7 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
  const remitRate=contribs.reduce((s,c)=>s+(parseFloat(c.rate)||0),0);
  const freqLabel=loc=>{const f=loc?.payFrequency||'biweekly';return f==='weekly'?T.payrollWeekly:f==='biweekly'?T.payrollBiweekly:f==='semimonthly'?T.payrollSemimonth:T.payrollMonthly;};
  return(<table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}><thead><tr style={{background:t.section}}>{[T.colStore,T.colRevenue,T.plFPPct,T.colLabourPct,T.colExpenses,T.colNetProfit,'%',T.colRemitEst,T.colPayFreq].map(h=>(<th key={h} style={{padding:'6px 10px',textAlign:'left',fontWeight:600,color:t.textSub,fontSize:10,textTransform:'uppercase',letterSpacing:0.5}}>{h}</th>))}</tr></thead><tbody>{sorted.map((r,i)=>{
- const loc=locations.find(l=>l.id===r.locId);
+ const loc=_locs.find(l=>l.id===r.locId);
  const remitAmt=r.labC>0?r.labC*remitRate/100:0;
  return(<tr key={r.locId} style={{borderTop:`1px solid ${t.divider}`,background:i===0?'rgba(34,197,94,0.03)':r.np<0?'rgba(239,68,68,0.03)':'transparent'}}><td style={{padding:'7px 10px',fontWeight:600,color:t.text}}>{r.locName}{i===0&&<span style={{marginLeft:5,fontSize:9,color:'#16a34a'}}></span>}{r.np<0&&<span style={{marginLeft:5,fontSize:9,color:'#ef4444'}}></span>}</td><td style={{padding:'7px 10px',fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:'#a78bfa'}}>{fmtFull(r.revenue)}</td><td style={{padding:'7px 10px',fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:r.fpP>fpMax?'#ef4444':r.fpP>(fpMax*0.9)?'#fbbf24':'#22c55e'}}>{r.revenue>0?`${r.fpP.toFixed(1)}%`:'—'}</td><td style={{padding:'7px 10px',fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:r.labP>labMax?'#ef4444':r.labP>(labMax*0.9)?'#fbbf24':'#22c55e'}}>{r.revenue>0?`${r.labP.toFixed(1)}%`:'—'}</td><td style={{padding:'7px 10px',fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:t.textSub}}>{fmtFull(r.expT)}</td><td style={{padding:'7px 10px',fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontWeight:700,color:r.np>=0?'#22c55e':'#ef4444'}}>{fmtFull(r.np)}</td><td style={{padding:'7px 10px',fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:r.npP>=0?'#22c55e':'#ef4444'}}>{r.revenue>0?`${r.npP.toFixed(1)}%`:'—'}</td><td style={{padding:'7px 10px',fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:'#f59e0b'}}>{remitAmt>0?fmtFull(remitAmt):'—'}</td><td style={{padding:'7px 10px',fontSize:10,color:t.textSub,whiteSpace:'nowrap'}}>{freqLabel(loc)}</td></tr>)})}</tbody></table>);})()}</div>)}</div>);
  })()}</>)}
@@ -4168,8 +4171,8 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
  const rate=(loc.royaltyOverride&&loc.royaltyRate!=null)?loc.royaltyRate:royaltyConfig.rate;
  const adRate2=(loc.royaltyOverride&&loc.adRate!=null)?loc.adRate:royaltyConfig.adRate;
  const due=(d.monthlySales||0)*(rate+adRate2)/100;
- const billed=facFactures.filter(f=>f.clientId===loc.clientId&&f.tags?.includes("redevance")&&(f.date||"").startsWith(reconMonth.slice(0,7))).reduce((s,f)=>s+(f.total||0),0);
- const paid=facFactures.filter(f=>f.clientId===loc.clientId&&f.tags?.includes("redevance")&&(f.date||"").startsWith(reconMonth.slice(0,7))&&f.status==="paid").reduce((s,f)=>s+(f.total||0),0);
+ const billed=_facFactures.filter(f=>f.clientId===loc.clientId&&f.tags?.includes("redevance")&&(f.date||"").startsWith(reconMonth.slice(0,7))).reduce((s,f)=>s+(f.total||0),0);
+ const paid=_facFactures.filter(f=>f.clientId===loc.clientId&&f.tags?.includes("redevance")&&(f.date||"").startsWith(reconMonth.slice(0,7))&&f.status==="paid").reduce((s,f)=>s+(f.total||0),0);
  const solde=billed-paid;
  const statusColor=solde<=0?"#22c55e":paid>0?"#fbbf24":"#ef4444";
  const statusLabel=solde<=0?T.reconPaidStatus:paid>0?T.reconPartialStatus:T.reconUnpaidStatus;
@@ -4178,8 +4181,8 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
  {/* Totals row */}
  {activeLocs.length>0&&(()=>{
  const totSales=activeLocs.reduce((s,l)=>s+(monthlyData[l.id]?.monthlySales||0),0);
- const totBilled=facFactures.filter(f=>f.tags?.includes("redevance")&&(f.date||"").startsWith(reconMonth.slice(0,7))).reduce((s,f)=>s+(f.total||0),0);
- const totPaid=facFactures.filter(f=>f.tags?.includes("redevance")&&(f.date||"").startsWith(reconMonth.slice(0,7))&&f.status==="paid").reduce((s,f)=>s+(f.total||0),0);
+ const totBilled=_facFactures.filter(f=>f.tags?.includes("redevance")&&(f.date||"").startsWith(reconMonth.slice(0,7))).reduce((s,f)=>s+(f.total||0),0);
+ const totPaid=_facFactures.filter(f=>f.tags?.includes("redevance")&&(f.date||"").startsWith(reconMonth.slice(0,7))&&f.status==="paid").reduce((s,f)=>s+(f.total||0),0);
  return(<tr style={{borderTop:`2px solid ${t.dividerStrong}`,background:t.section}}><td style={{padding:"8px 12px",fontWeight:700,color:t.text}}>TOTAL</td><td style={{padding:"8px 12px",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontWeight:700,color:"#a78bfa"}}>{fmtFull(totSales)}</td><td style={{padding:"8px 12px"}}></td><td style={{padding:"8px 12px",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontWeight:700,color:t.text}}>{fmtFull(totBilled)}</td><td style={{padding:"8px 12px",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontWeight:700,color:"#22c55e"}}>{fmtFull(totPaid)}</td><td style={{padding:"8px 12px",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontWeight:700,color:"#f97316"}}>{fmtFull(totBilled-totPaid)}</td><td></td></tr>);
  })()}
  {activeLocs.length===0&&<tr><td colSpan={7} style={{padding:20,textAlign:"center",color:t.textMuted,fontSize:12}}>{T.noActiveStoresShort}</td></tr>}</tbody></table></div></div>)}
@@ -4210,14 +4213,17 @@ function DelinquencyPanel({facFactures,facClients,locations,royaltyConfig,apiCon
  };
  // Compute overdue royalty invoices
  const overdueInvoices=useMemo(()=>{
- return facFactures
+ const _ff=Array.isArray(facFactures)?facFactures:[];
+ const _locs=Array.isArray(locations)?locations:[];
+ const _fc=Array.isArray(facClients)?facClients:[];
+ return _ff
  .filter(f=>f.tags?.includes("redevance")&&(f.statut==="Envoyée"||f.statut==="Payée partiellement"))
  .map(f=>{
  const invDate=new Date((f.date||new Date().toISOString().slice(0,10))+"T12:00:00");
  const dueDate=new Date(invDate);dueDate.setDate(invDate.getDate()+gracePeriod);
  const daysOverdue=Math.max(0,Math.floor((today-dueDate)/(1000*60*60*24)));
- const loc=locations.find(l=>l.clientId===f.clientId);
- const client=facClients.find(c=>c.id===f.clientId);
+ const loc=_locs.find(l=>l.clientId===f.clientId);
+ const client=_fc.find(c=>c.id===f.clientId);
  const balance=(f.total||0)-(f.paidAmount||0);
  return{...f,daysOverdue,dueDate,loc,client,balance};
  })
