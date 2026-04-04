@@ -1557,11 +1557,11 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
           // Legacy / demo data stores venteNet directly on the day object
           if (!matched && dayObj.venteNet && Math.abs(dayObj.venteNet - numQ) < 1) matched = true;
 
-          // Compute from cashes array (real data)
+          // Compute from cashes array (real data) — field is "cashes" (not "caisses")
           if (!matched) {
-            const caisses = Array.isArray(dayObj?.caisses) ? dayObj.caisses : [];
+            const cashes = Array.isArray(dayObj?.cashes) ? dayObj.cashes : [];
             let posVN = 0, grossT = 0, manT = 0;
-            for (const c of caisses) {
+            for (const c of cashes) {
               const pv = parseFloat(c.posVentes) || 0;
               const tps = parseFloat(c.posTPS) || 0;
               const tvq = parseFloat(c.posTVQ) || 0;
@@ -1579,9 +1579,9 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
 
           if (matched) {
             // Compute display total (gross = posVentes+TPS+TVQ, fall back to venteNet)
-            const caisses = Array.isArray(dayObj?.caisses) ? dayObj.caisses : [];
-            const displayTotal = caisses.length > 0
-              ? caisses.reduce((s, c) => s + (parseFloat(c.posVentes) || 0) + (parseFloat(c.posTPS) || 0) + (parseFloat(c.posTVQ) || 0), 0)
+            const cashes = Array.isArray(dayObj?.cashes) ? dayObj.cashes : [];
+            const displayTotal = cashes.length > 0
+              ? cashes.reduce((s, c) => s + (parseFloat(c.posVentes) || 0) + (parseFloat(c.posTPS) || 0) + (parseFloat(c.posTVQ) || 0), 0)
               : (dayObj.venteNet || 0);
             results.dailyTotals.push({ date, total: displayTotal || numQ });
             if (results.dailyTotals.length >= limit) break;
