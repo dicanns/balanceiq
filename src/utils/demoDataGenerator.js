@@ -1188,7 +1188,7 @@ export async function loadDemoData(lang = 'fr', presetKey = 'qsr') {
     apiConfig.demoMode = true;
     apiConfig.demoPreset = presetKey;
     apiConfig.weatherLat = preset.weatherCoords.lat;
-    apiConfig.weatherLon = preset.weatherCoords.lon;
+    apiConfig.weatherLng = preset.weatherCoords.lon;
     apiConfig.weatherCity = preset.weatherCoords.city;
     await api.storage.set('dicann-api-config', JSON.stringify(apiConfig));
     await api.storage.set('balanceiq-previsions-enabled', JSON.stringify(true));
