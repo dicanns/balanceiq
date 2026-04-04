@@ -70,6 +70,10 @@ contextBridge.exposeInMainWorld('api', {
     openDownloaded: (filePath) => ipcRenderer.invoke('file:openDownloaded', filePath),
     showInFolder:   (filePath) => ipcRenderer.invoke('file:showInFolder', filePath),
   },
+  search: {
+    global:      (params) => ipcRenderer.invoke('search:global', params),
+    saveHistory: (params) => ipcRenderer.invoke('search:save-history', params),
+  },
   forecast: {
     clearAll: () => ipcRenderer.invoke('forecast:clearAll'),
     products: {

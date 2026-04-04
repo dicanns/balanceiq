@@ -9,6 +9,7 @@ const WasteTabLazy             = lazy(() => import('./components/WasteTab.jsx'))
 const EcocontributionTabLazy   = lazy(() => import('./components/EcocontributionTab.jsx'));
 const TipPoolModal      = lazy(() => import('./components/TipPoolModal.jsx'));
 const POSScanModal      = lazy(() => import('./components/POSScanModal.jsx'));
+const GlobalSearchLazy  = lazy(() => import('./components/GlobalSearch.jsx'));
 import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./config/features.js";
 import { calcRoyaltyFull } from "./utils/calculations.js";
@@ -1745,12 +1746,28 @@ function AgingReport({factures,clients,creditNotes,companyInfo,apiConfig,showUpg
 }
 
 // ── FACTURATION TAB ──
-function FacturationTab({categories,saveCategories,produits,saveProduits,clients,saveClients,soumissions,saveSoumissions,commandes,saveCommandes,factures,saveFactures,creditNotes,saveCreditNotes,docNums,saveDocNums,companyInfo,encaisseData,persistEncaisse,showUpgradePrompt,apiConfig,recurrents,saveRecurrents,invoiceTemplate,rawInvoiceTemplate,saveInvoiceTemplate,canUse,glAccounts,saveGlAccounts}){
+function FacturationTab({categories,saveCategories,produits,saveProduits,clients,saveClients,soumissions,saveSoumissions,commandes,saveCommandes,factures,saveFactures,creditNotes,saveCreditNotes,docNums,saveDocNums,companyInfo,encaisseData,persistEncaisse,showUpgradePrompt,apiConfig,recurrents,saveRecurrents,invoiceTemplate,rawInvoiceTemplate,saveInvoiceTemplate,canUse,glAccounts,saveGlAccounts,deepLink,onDeepLinkDone}){
  const t=useT();
  const T=useL();
  const [subTab,setSubTab]=useState("documents");
  const [activeDoc,setActiveDoc]=useState(null);
  const [selectedClientId,setSelectedClientId]=useState(null);
+ // ── Deep link from GlobalSearch ──
+ useEffect(()=>{
+   if(!deepLink)return;
+   if(deepLink.invoiceId){
+     const all=[...(Array.isArray(factures)?factures:[]),...(Array.isArray(soumissions)?soumissions:[]),...(Array.isArray(commandes)?commandes:[])];
+     const doc=all.find(f=>f.id===deepLink.invoiceId);
+     if(doc){const type=doc._type||'facture';setActiveDoc({type,doc,clientId:doc.clientId||null});}
+   }else if(deepLink.clientId){
+     setSubTab('clients');setSelectedClientId(deepLink.clientId);
+   }else if(deepLink.action==='new-invoice'){
+     openDoc('facture',null,null);
+   }else if(deepLink.action==='new-client'){
+     setSubTab('clients');
+   }
+   onDeepLinkDone?.();
+ },[deepLink?.invoiceId,deepLink?.clientId,deepLink?.action]);
  const [showRecurringModal,setShowRecurringModal]=useState(false);
  const today=dk(new Date());
  const dueCount=useMemo(()=>(Array.isArray(recurrents)?recurrents:[]).filter(r=>isRecurringDue(r,today)).length,[recurrents,today]);
@@ -5135,6 +5152,8 @@ export default function App(){
   const [closedDays,setClosedDays]=useState({});// {[dateKey]: {closedAt: ISO string}}
   const [showCloseConfirm,setShowCloseConfirm]=useState(false);
   const [showTipPool,setShowTipPool]=useState(false);
+  const [searchOpen,setSearchOpen]=useState(false);
+  const [facDeepLink,setFacDeepLink]=useState(null); // {clientId?, invoiceId?} for GlobalSearch nav
   const [posScanOpen,setPosScanOpen]=useState(null); // null | { caisseIndex: number }
   const [flashTestStatus,setFlashTestStatus]=useState(null); // null | 'sending' | {ok} | {err}
   const [flashReport,setFlashReport]=useState(null); // null | {date, venteNet, total, wtdSales, wtdDays, closedCount, totalRegs, isClosed, labourCost, labourPct, cashes}
@@ -5555,6 +5574,21 @@ export default function App(){
   const handleCloudResetPassword=useCallback(async(email)=>{await requestPasswordReset(email);},[]);
   const handleCloudSignOut=useCallback(async()=>{await cloudSignOut();setCloudUser(null);setSyncStatus(null);setMyLinkedLocations([]);setActiveMUOLocationId(null);},[]);
   const handleRefreshPlan=useCallback(async()=>{const p=await refreshPlan();if(p){setPlan(p);setActivePlan(p);setCloudUser(u=>u?{...u,plan:p}:u);}},[])
+
+  // ── CMD+K / CTRL+K GLOBAL SEARCH ─────────────────────────────────────────
+  useEffect(()=>{
+    const h=(e)=>{if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();setSearchOpen(o=>!o);}};
+    window.addEventListener('keydown',h);
+    return()=>window.removeEventListener('keydown',h);
+  },[]);
+
+  const handleSearchNavigate=useCallback((tab,params={})=>{
+    if(params.invoiceId){setFacDeepLink({invoiceId:params.invoiceId});setActiveTab('facturation');}
+    else if(params.clientId){setFacDeepLink({clientId:params.clientId});setActiveTab('facturation');}
+    else if(params.action==='new-invoice'){setFacDeepLink({action:'new-invoice'});setActiveTab('facturation');}
+    else if(params.action==='new-client'){setFacDeepLink({action:'new-client'});setActiveTab('facturation');}
+    else if(tab){setActiveTab(tab);}
+  },[]);
 
   // ── ONLINE/OFFLINE DETECTION ──────────────────────────────────────────────
   useEffect(()=>{
@@ -6081,7 +6115,7 @@ export default function App(){
               {(()=>{const connectedPOS=Object.entries(posCredentials).find(([,v])=>v?.connected);if(!connectedPOS)return null;const posName=connectedPOS[0];const dot=<span style={{display:"inline-block",width:6,height:6,borderRadius:"50%",background:"#22c55e",marginLeft:2}}/>;return<span title={`POS: ${posName}`} style={{fontSize:11,color:t.textSub,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:1}} onClick={()=>{setActiveTab("config");setConfigSubTab("integrations");}}>{dot}</span>})()}
               {hasL&&<Pill ok label={T.entryMode}/>}
               {!obAllDone&&!!appMode&&!loading&&<button onClick={()=>setShowObChecklist(true)} title={lang==='fr'?'Ouvrir le guide de démarrage':'Open getting started guide'} style={{background:"rgba(249,115,22,0.08)",border:"1px solid rgba(249,115,22,0.25)",borderRadius:5,color:"#f97316",fontSize:10,padding:"3px 8px",cursor:"pointer",fontWeight:700,letterSpacing:0.1}}>
-                {lang==='fr'?`Démarrage: ${obDone}/${OB_ITEMS.length}`:`Setup: ${obDone}/${OB_ITEMS.length}`}</button>}<button onClick={()=>{saveAppMode(null)}} title="Changer de mode" style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textMuted,fontSize:10,padding:"3px 8px",cursor:"pointer",fontWeight:600}}>
+                {lang==='fr'?`Démarrage: ${obDone}/${OB_ITEMS.length}`:`Setup: ${obDone}/${OB_ITEMS.length}`}</button>}<button onClick={()=>setSearchOpen(true)} title={lang==='en'?'Search (⌘K)':'Rechercher (⌘K)'} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textMuted,fontSize:11,padding:"3px 8px",cursor:"pointer",fontWeight:600,display:"flex",alignItems:"center",gap:4}}>🔍<span style={{fontSize:9,opacity:0.6,fontFamily:"monospace"}}>⌘K</span></button><button onClick={()=>{saveAppMode(null)}} title="Changer de mode" style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textMuted,fontSize:10,padding:"3px 8px",cursor:"pointer",fontWeight:600}}>
                 ⇄ {T.modeToggle}</button>{lockConfig.enabled&&lockConfig.pin&&(<button onClick={()=>setAppLocked(true)} title="Verrouiller l'application" style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textMuted,fontSize:11,padding:"3px 8px",cursor:"pointer",fontWeight:600}}></button>)}<button onClick={()=>{setTourStep(0);setTourActive(true);}} title="Tour guidé" style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textMuted,fontSize:11,padding:"3px 8px",cursor:"pointer",fontWeight:700,lineHeight:1}}>?</button></div></div></div>{/* ── PUSH MESSAGE BANNERS ── */}
  {appMessages.map(m=>{
  const colors={info:{bg:"rgba(59,130,246,0.12)",border:"rgba(59,130,246,0.3)",text:"#60a5fa"},warning:{bg:"rgba(234,179,8,0.12)",border:"rgba(234,179,8,0.3)",text:"#facc15"},update:{bg:"rgba(249,115,22,0.12)",border:"rgba(249,115,22,0.3)",text:"#f97316"}};
@@ -6178,6 +6212,8 @@ export default function App(){
 
             {/* Tip Pool Modal */}
             {showTipPool&&(<Suspense fallback={null}><TipPoolModal lang={lang} date={selectedDate} dailyEmployees={emps||[]} staffRoster={empRoster||[]} onClose={()=>setShowTipPool(false)}/></Suspense>)}
+            {/* Global Search (Cmd+K) */}
+            {searchOpen&&(<Suspense fallback={null}><GlobalSearchLazy isOpen={searchOpen} onClose={()=>setSearchOpen(false)} onNavigate={handleSearchNavigate} lang={lang} isDark={themeName!=='warm'}/></Suspense>)}
             {/* POS Scan Modal */}
             {posScanOpen&&(<Suspense fallback={null}><POSScanModal
                   isOpen={true}
@@ -6308,7 +6344,7 @@ export default function App(){
 
  {activeTab==="monthly"&&<MonthlyPL computeDay={computeDay} suppliers={suppliers} liveData={liveData} platforms={platforms} expenseItems={expenseItems} glAccounts={glAccounts} apiConfig={apiConfig} ocrMappings={ocrMappings} setOcrMappings={setOcrMappings} payrollConfig={payrollConfig} lang={lang} showSectionTooltips={showSectionTooltips} setActiveTab={setActiveTab}/>}
  {activeTab==="encaisse"&&<EncaisseTab liveData={liveData} encaisseData={encaisseData} persistEncaisse={persistEncaisse} encaisseConfig={encaisseConfig} saveEncaisseConfig={saveEncaisseConfig}/>}
- {activeTab==="facturation"&&<FacturationTab categories={facCategories} saveCategories={saveFacCategories} produits={facProduits} saveProduits={saveFacProduits} clients={facClients} saveClients={saveFacClients} soumissions={facSoumissions} saveSoumissions={saveFacSoumissions} commandes={facCommandes} saveCommandes={saveFacCommandes} factures={facFactures} saveFactures={saveFacFactures} creditNotes={facCreditNotes} saveCreditNotes={saveFacCreditNotes} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData} persistEncaisse={persistEncaisse} showUpgradePrompt={showUpgradePrompt} apiConfig={apiConfig} recurrents={facRecurrents} saveRecurrents={saveFacRecurrents} invoiceTemplate={effectiveTemplate} rawInvoiceTemplate={invoiceTemplate} saveInvoiceTemplate={saveInvoiceTemplate} canUse={canUse} glAccounts={glAccounts} saveGlAccounts={saveGlAccounts}/>}
+ {activeTab==="facturation"&&<FacturationTab categories={facCategories} saveCategories={saveFacCategories} produits={facProduits} saveProduits={saveFacProduits} clients={facClients} saveClients={saveFacClients} soumissions={facSoumissions} saveSoumissions={saveFacSoumissions} commandes={facCommandes} saveCommandes={saveFacCommandes} factures={facFactures} saveFactures={saveFacFactures} creditNotes={facCreditNotes} saveCreditNotes={saveFacCreditNotes} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData} persistEncaisse={persistEncaisse} showUpgradePrompt={showUpgradePrompt} apiConfig={apiConfig} recurrents={facRecurrents} saveRecurrents={saveFacRecurrents} invoiceTemplate={effectiveTemplate} rawInvoiceTemplate={invoiceTemplate} saveInvoiceTemplate={saveInvoiceTemplate} canUse={canUse} glAccounts={glAccounts} saveGlAccounts={saveGlAccounts} deepLink={facDeepLink} onDeepLinkDone={()=>setFacDeepLink(null)}/>}
  {activeTab==="intelligence"&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR} platforms={platforms} encaisseData={encaisseData} encaisseConfig={encaisseConfig} apiConfig={apiConfig} checklistCompliance={checklistComplianceStats} priceAlerts={priceAlerts} suppliers={suppliers}/>}
  {activeTab==="previsions"&&previsionsEnabled&&(<Suspense fallback={<div style={{padding:16,fontSize:12,opacity:0.5}}>Chargement...</div>}><PrevisionsTabLazy apiConfig={apiConfig} showUpgradePrompt={showUpgradePrompt} canUse={canUse} T={T} t={t} lang={lang} onInsightCountChange={setPrevInsightCount}/></Suspense>)}
 

@@ -59,6 +59,60 @@ const MIGRATIONS = [
         ON pl_invoice_history(supplier_key, recorded_at DESC)`).run();
     },
   },
+  {
+    version: 5,
+    description: 'Global search — FTS5 indexes for ingredients + forecast_products + search_history table',
+    up: (database) => {
+      // FTS5 virtual tables (shadow indexes — real data stays in source tables)
+      database.prepare(`CREATE VIRTUAL TABLE IF NOT EXISTS fts_ingredients USING fts5(
+        name_fr, name_en, category,
+        content='ingredients', content_rowid='id'
+      )`).run();
+      database.prepare(`CREATE VIRTUAL TABLE IF NOT EXISTS fts_forecast_products USING fts5(
+        name, category,
+        content='forecast_products', content_rowid='id'
+      )`).run();
+
+      // Populate FTS5 from existing rows (one-time, ignore if empty)
+      try { database.prepare(`INSERT INTO fts_ingredients(rowid, name_fr, name_en, category)
+        SELECT id, name_fr, COALESCE(name_en,''), COALESCE(category,'') FROM ingredients`).run(); } catch(_) {}
+      try { database.prepare(`INSERT INTO fts_forecast_products(rowid, name, category)
+        SELECT id, name, COALESCE(category,'') FROM forecast_products`).run(); } catch(_) {}
+
+      // Sync triggers — ingredients
+      database.prepare(`CREATE TRIGGER IF NOT EXISTS fts_ing_insert AFTER INSERT ON ingredients BEGIN
+        INSERT INTO fts_ingredients(rowid, name_fr, name_en, category)
+        VALUES (new.id, new.name_fr, COALESCE(new.name_en,''), COALESCE(new.category,''));
+      END`).run();
+      database.prepare(`CREATE TRIGGER IF NOT EXISTS fts_ing_update AFTER UPDATE ON ingredients BEGIN
+        UPDATE fts_ingredients SET name_fr=new.name_fr, name_en=COALESCE(new.name_en,''), category=COALESCE(new.category,'')
+        WHERE rowid=old.id;
+      END`).run();
+      database.prepare(`CREATE TRIGGER IF NOT EXISTS fts_ing_delete AFTER DELETE ON ingredients BEGIN
+        DELETE FROM fts_ingredients WHERE rowid=old.id;
+      END`).run();
+
+      // Sync triggers — forecast_products
+      database.prepare(`CREATE TRIGGER IF NOT EXISTS fts_fp_insert AFTER INSERT ON forecast_products BEGIN
+        INSERT INTO fts_forecast_products(rowid, name, category) VALUES (new.id, new.name, COALESCE(new.category,''));
+      END`).run();
+      database.prepare(`CREATE TRIGGER IF NOT EXISTS fts_fp_update AFTER UPDATE ON forecast_products BEGIN
+        UPDATE fts_forecast_products SET name=new.name, category=COALESCE(new.category,'') WHERE rowid=old.id;
+      END`).run();
+      database.prepare(`CREATE TRIGGER IF NOT EXISTS fts_fp_delete AFTER DELETE ON forecast_products BEGIN
+        DELETE FROM fts_forecast_products WHERE rowid=old.id;
+      END`).run();
+
+      // Search history (last 20 queries with their result destination)
+      database.prepare(`CREATE TABLE IF NOT EXISTS search_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        query TEXT NOT NULL,
+        result_type TEXT,
+        result_id TEXT,
+        searched_at TEXT DEFAULT (datetime('now','localtime'))
+      )`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -1078,6 +1132,72 @@ function upgradePromptDismiss(key) {
   return true;
 }
 
+// ── Global Search ─────────────────────────────────────────────────────────────
+// FTS5 is used for SQLite-backed tables; kv_store data is filtered in main.js.
+function _safeFtsQuery(raw) {
+  // Strip FTS5 special characters to avoid query syntax errors
+  return (raw || '').replace(/["*()\-:^]/g, ' ').trim();
+}
+
+function searchIngredients(raw, limit = 6) {
+  const safe = _safeFtsQuery(raw);
+  if (!safe) return [];
+  const q = safe.split(/\s+/).filter(Boolean).map(w => `${w}*`).join(' ');
+  try {
+    return getDb().prepare(`
+      SELECT i.id, i.name_fr, i.name_en, i.category, i.current_unit_price, i.default_unit
+      FROM fts_ingredients
+      JOIN ingredients i ON fts_ingredients.rowid = i.id
+      WHERE fts_ingredients MATCH ?
+      ORDER BY rank LIMIT ?
+    `).all(q, limit);
+  } catch (_) {
+    // FTS5 query parse error — fall back to LIKE
+    return getDb().prepare(
+      `SELECT id, name_fr, name_en, category, current_unit_price, default_unit
+       FROM ingredients WHERE name_fr LIKE ? OR COALESCE(name_en,'') LIKE ? LIMIT ?`
+    ).all(`%${safe}%`, `%${safe}%`, limit);
+  }
+}
+
+function searchForecastProducts(raw, limit = 6) {
+  const safe = _safeFtsQuery(raw);
+  if (!safe) return [];
+  const q = safe.split(/\s+/).filter(Boolean).map(w => `${w}*`).join(' ');
+  try {
+    return getDb().prepare(`
+      SELECT fp.id, fp.name, fp.category
+      FROM fts_forecast_products
+      JOIN forecast_products fp ON fts_forecast_products.rowid = fp.id
+      WHERE fts_forecast_products MATCH ?
+      ORDER BY rank LIMIT ?
+    `).all(q, limit);
+  } catch (_) {
+    return getDb().prepare(
+      `SELECT id, name, category FROM forecast_products WHERE name LIKE ? LIMIT ?`
+    ).all(`%${safe}%`, limit);
+  }
+}
+
+function searchHistoryGet(limit = 5) {
+  try {
+    return getDb().prepare(
+      'SELECT id, query, result_type, result_id, searched_at FROM search_history ORDER BY searched_at DESC LIMIT ?'
+    ).all(limit);
+  } catch (_) { return []; }
+}
+
+function searchHistorySave(query, result_type, result_id) {
+  try {
+    getDb().prepare(
+      `INSERT INTO search_history (query, result_type, result_id) VALUES (?, ?, ?)`
+    ).run(query || '', result_type || null, result_id || null);
+    getDb().prepare(
+      `DELETE FROM search_history WHERE id NOT IN (SELECT id FROM search_history ORDER BY searched_at DESC LIMIT 20)`
+    ).run();
+  } catch (_) {}
+}
+
 module.exports = {
   storageGet, storageSet, storageGetAll,
   auditInsert, auditQuery, getDeviceId,
@@ -1111,4 +1231,5 @@ module.exports = {
   upgradePromptGetDismissedAt, upgradePromptDismiss,
   onboardingGetAll, onboardingMarkDone, onboardingReset,
   plInvoiceHistoryRecord, plInvoiceHistoryGetLast, plInvoiceHistoryGetRecent,
+  searchIngredients, searchForecastProducts, searchHistoryGet, searchHistorySave,
 };

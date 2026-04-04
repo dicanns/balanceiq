@@ -44,6 +44,7 @@ const {
   upgradePromptGetDismissedAt, upgradePromptDismiss,
   onboardingGetAll, onboardingMarkDone, onboardingReset,
   plInvoiceHistoryRecord, plInvoiceHistoryGetLast, plInvoiceHistoryGetRecent,
+  searchIngredients, searchForecastProducts, searchHistoryGet, searchHistorySave,
 } = require('./src/db/database.js');
 
 const BACKUP_DIR = () => path.join(app.getPath('userData'), 'Backups');
@@ -817,7 +818,7 @@ function createWindow() {
     },
   });
 
-  const isDev = !app.isPackaged;
+  const isDev = !app.isPackaged && process.env.NODE_ENV !== 'test';
   if (isDev) {
     win.loadURL('http://localhost:5173');
     win.webContents.openDevTools({ mode: 'detach' });
@@ -1312,7 +1313,7 @@ app.on('open-url', (event, url) => {
 });
 
 // Windows: deep link arrives as second argv when app is already running
-if (!app.requestSingleInstanceLock()) {
+if (process.env.NODE_ENV !== 'test' && !app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', (_event, argv) => {
@@ -1447,6 +1448,98 @@ ipcMain.handle('onboarding:reset',    ()         => onboardingReset());
 ipcMain.handle('plPriceIntel:record',    (_e, r)              => plInvoiceHistoryRecord(r));
 ipcMain.handle('plPriceIntel:getLast',   (_e, key, excludeId) => plInvoiceHistoryGetLast(key, excludeId));
 ipcMain.handle('plPriceIntel:getRecent', (_e, key, limit)     => plInvoiceHistoryGetRecent(key, limit));
+
+// ── Global Search ─────────────────────────────────────────────────────────────
+// Queries kv_store JSON + FTS5 SQLite indexes and returns grouped results.
+ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
+  if (!query || query.trim().length === 0) {
+    return { results: {}, history: searchHistoryGet(5) };
+  }
+
+  const q = query.trim().toLowerCase();
+  const results = {};
+
+  // ── kv_store helpers ──
+  const readKV = (key) => {
+    try {
+      const row = storageGet(key);
+      if (!row?.value) return [];
+      const parsed = JSON.parse(row.value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_) { return []; }
+  };
+
+  const readKVObj = (key) => {
+    try {
+      const row = storageGet(key);
+      return row?.value ? JSON.parse(row.value) : {};
+    } catch (_) { return {}; }
+  };
+
+  const matchStr = (str) => str && String(str).toLowerCase().includes(q);
+
+  // ── Clients (dicann-fac-clients) ──
+  const clients = readKV('dicann-fac-clients');
+  results.clients = clients
+    .filter(c => matchStr(c.entreprise) || matchStr(c.courriel) || matchStr(c.telephone) || matchStr(c.ville) || matchStr(c.code))
+    .slice(0, limit)
+    .map(c => ({ id: c.id, entreprise: c.entreprise || '', courriel: c.courriel || '', ville: c.ville || '', code: c.code || '' }));
+
+  // ── Invoices/Factures (dicann-fac-factures) — also soumissions, commandes ──
+  const factures = readKV('dicann-fac-factures');
+  const soumissions = readKV('dicann-fac-soumissions');
+  const commandes = readKV('dicann-fac-commandes');
+  const allDocs = [...factures, ...soumissions, ...commandes];
+  const numQ = parseFloat(q.replace(/[$,\s]/g, ''));
+
+  results.invoices = allDocs
+    .filter(f => {
+      const cl = clients.find(c => c.id === f.clientId);
+      return matchStr(f.numero) || matchStr(f.referenceClient) || matchStr(cl?.entreprise) ||
+        (!isNaN(numQ) && Math.abs((f.total || 0) - numQ) < 50);
+    })
+    .slice(0, limit)
+    .map(f => {
+      const cl = clients.find(c => c.id === f.clientId);
+      const total = typeof f.total === 'number' ? f.total
+        : (f.lignes || []).reduce((s, l) => s + ((l.quantite || 1) * (l.prixUnitaire || 0)), 0);
+      return { id: f.id, numero: f.numero || '', clientName: cl?.entreprise || '', total, date: f.date || '', statut: f.statut || '', type: f._type || 'facture' };
+    });
+
+  // ── Employees (dicann-emp-roster) ──
+  const employees = readKV('dicann-emp-roster');
+  results.employees = employees
+    .filter(e => matchStr(e.nom) || matchStr(e.prenom) || matchStr(e.role) || matchStr(`${e.prenom} ${e.nom}`))
+    .slice(0, limit)
+    .map(e => ({ id: e.id, nom: `${e.prenom || ''} ${e.nom || ''}`.trim(), role: e.role || '' }));
+
+  // ── Cashiers / Roster (dicann-roster) ──
+  const roster = readKV('dicann-roster');
+  results.cashiers = roster
+    .filter(r => matchStr(r.name) || matchStr(r.nom))
+    .slice(0, limit)
+    .map(r => ({ id: r.id, name: r.name || r.nom || '' }));
+
+  // ── Suppliers (from dicann-api-config.suppliers) ──
+  const apiCfg = readKVObj('dicann-api-config');
+  const suppliers = Array.isArray(apiCfg.suppliers) ? apiCfg.suppliers : [];
+  results.suppliers = suppliers
+    .filter(s => matchStr(s.name) || matchStr(s.category))
+    .slice(0, limit)
+    .map(s => ({ key: s.key || s.name, name: s.name || '', category: s.category || '' }));
+
+  // ── Ingredients (FTS5 — SQLite table) ──
+  results.ingredients = searchIngredients(query, limit);
+
+  // ── Forecast products (FTS5 — SQLite table) ──
+  results.forecastProducts = searchForecastProducts(query, limit);
+
+  return { results, history: [] };
+});
+
+ipcMain.handle('search:save-history', async (_e, { query, result_type, result_id }) => {
+  searchHistorySave(query, result_type, result_id);
+});
 
 // ── Supabase Proxy Fetch ───────────────────────────────────────────────────
 // Routes Supabase HTTP calls through Electron's net module (main process) to
