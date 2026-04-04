@@ -3170,22 +3170,22 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
  try{
  const {supabase,SUPABASE_URL,SUPABASE_ANON_KEY}=await import('./services/supabase.js');
  const ownApiKey=apiConfig?.anthropicApiKey||null;
- // Get auth token explicitly — bypass supabase.functions.invoke auth injection
  const {data:sd}=await supabase.auth.getSession();
- const authToken=sd?.session?.access_token||SUPABASE_ANON_KEY;
+ const authToken=sd?.session?.access_token;
+ if(!authToken){setAiError(T.aiNoAuth);setAiLoading(false);return;}
  const res=await fetch(`${SUPABASE_URL}/functions/v1/ai-intelligence`,{
  method:'POST',
  headers:{'Content-Type':'application/json','apikey':SUPABASE_ANON_KEY,'Authorization':`Bearer ${authToken}`},
  body:JSON.stringify({queryType,contextData,orgId:getCloudOrgId(),ownApiKey,lang}),
  });
- if(!res.ok)throw new Error(`Erreur serveur (${res.status})`);
+ if(!res.ok){setAiError(T.aiServerError?.(res.status)||`Error ${res.status}`);setAiLoading(false);return;}
  const data=await res.json();
  if(data?.error==='limit_reached'){setAiError(T.aiLimitReached(data.usageCount,data.usageLimit));}
  else if(data?.error==='upgrade_required'){setAiError(T.aiUpgradeRequired);}
  else if(data?.error==='no_auth'){setAiError(T.aiNoAuth);}
  else if(data?.error){setAiError(data.message||T.aiGenericError);}
  else{setAiResponse(data.text);setAiUsage(data.usageCount);setAiLimit(data.usageLimit||50);}
- }catch(e){setAiError(e.message);}
+ }catch(e){setAiError(e.message||T.aiGenericError);}
  finally{setAiLoading(false);}
  };
 
