@@ -1542,7 +1542,9 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
     .map(s => ({ key: s.key || s.name, name: s.name || '', category: s.category || '' }));
 
   // ── Daily totals (dicann-v7) — numeric search only ──
-  // Each day's total = sum of venteNet across all cashiers for that date.
+  // Checks: net sales (posVentes), gross total (posVentes+TPS+TVQ), manual count
+  // (interac+finalCash+deposits) — both day-level and per-register.
+  // Also checks dayObj.venteNet directly (present in demo/legacy data).
   results.dailyTotals = [];
   if (isNumericSearch) {
     try {
@@ -1550,10 +1552,38 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
       if (dailyRaw?.value) {
         const dailyData = JSON.parse(dailyRaw.value);
         for (const [date, dayObj] of Object.entries(dailyData || {})) {
-          const caisses = Array.isArray(dayObj?.caisses) ? dayObj.caisses : [];
-          const dayTotal = caisses.reduce((s, c) => s + (parseFloat(c.venteNet) || 0), 0);
-          if (dayTotal > 0 && Math.abs(dayTotal - numQ) < 1) {
-            results.dailyTotals.push({ date, total: dayTotal });
+          let matched = false;
+
+          // Legacy / demo data stores venteNet directly on the day object
+          if (!matched && dayObj.venteNet && Math.abs(dayObj.venteNet - numQ) < 1) matched = true;
+
+          // Compute from cashes array (real data)
+          if (!matched) {
+            const caisses = Array.isArray(dayObj?.caisses) ? dayObj.caisses : [];
+            let posVN = 0, grossT = 0, manT = 0;
+            for (const c of caisses) {
+              const pv = parseFloat(c.posVentes) || 0;
+              const tps = parseFloat(c.posTPS) || 0;
+              const tvq = parseFloat(c.posTVQ) || 0;
+              const man = (parseFloat(c.interac) || 0) + (parseFloat(c.finalCash) || 0) + (parseFloat(c.deposits) || 0);
+              posVN += pv; grossT += pv + tps + tvq; manT += man;
+
+              // Per-register match
+              if (!matched && (Math.abs(pv - numQ) < 1 || Math.abs(pv + tps + tvq - numQ) < 1 || Math.abs(man - numQ) < 1)) matched = true;
+            }
+            // Day-level sums
+            if (!matched && posVN > 0 && Math.abs(posVN - numQ) < 1) matched = true;
+            if (!matched && grossT > 0 && Math.abs(grossT - numQ) < 1) matched = true;
+            if (!matched && manT > 0 && Math.abs(manT - numQ) < 1) matched = true;
+          }
+
+          if (matched) {
+            // Compute display total (gross = posVentes+TPS+TVQ, fall back to venteNet)
+            const caisses = Array.isArray(dayObj?.caisses) ? dayObj.caisses : [];
+            const displayTotal = caisses.length > 0
+              ? caisses.reduce((s, c) => s + (parseFloat(c.posVentes) || 0) + (parseFloat(c.posTPS) || 0) + (parseFloat(c.posTVQ) || 0), 0)
+              : (dayObj.venteNet || 0);
+            results.dailyTotals.push({ date, total: displayTotal || numQ });
             if (results.dailyTotals.length >= limit) break;
           }
         }
