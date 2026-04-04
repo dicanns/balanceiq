@@ -292,6 +292,11 @@ export default function GlobalSearch({ isOpen, onClose, onNavigate, lang = 'fr',
       items.push({ _type: 'forecast', _icon: '📈', _label: p.name, _sub: p.category || null, _hint: T ? 'Forecast' : 'Prévisions', _key: `fp-${p.id}`, ...p });
     });
 
+    // Daily totals (numeric search)
+    (results.dailyTotals || []).forEach(d => {
+      items.push({ _type: 'daily', _icon: '📋', _label: d.date, _sub: fmt(d.total), _hint: T ? 'Daily' : 'Quotidien', _key: `day-${d.date}`, ...d });
+    });
+
     // Navigation
     getNavResults(q, lang).forEach(n => {
       items.push({ _type: 'nav', _icon: n.icon, _label: T ? n.labelEn : n.label, _hint: null, _key: n.id, ...n });
@@ -311,8 +316,9 @@ export default function GlobalSearch({ isOpen, onClose, onNavigate, lang = 'fr',
     const suppliers = (results.suppliers || []).map(s => ({ _type: 'supplier', _icon: '🏭', _label: s.name, _sub: s.category || null, _hint: 'P&L', _key: `sup-${s.key}`, ...s }));
     const employees = (results.employees || []).map(e => ({ _type: 'employee', _icon: '👷', _label: e.nom, _sub: e.role || null, _hint: T ? 'Daily' : 'Quotidien', _key: `emp-${e.id}`, ...e }));
     const ingredients = (results.ingredients || []).map(i => ({ _type: 'ingredient', _icon: '🥩', _label: T ? (i.name_en || i.name_fr) : i.name_fr, _sub: i.category || null, _hint: T ? 'Costs' : 'Recettes', _key: `ing-${i.id}`, ...i }));
+    const dailyTotals = (results.dailyTotals || []).map(d => ({ _type: 'daily', _icon: '📋', _label: d.date, _sub: fmt(d.total), _hint: T ? 'Daily' : 'Quotidien', _key: `day-${d.date}`, ...d }));
     const nav = getNavResults(q, lang).map(n => ({ ...n, _type: 'nav', _icon: n.icon, _label: T ? n.labelEn : n.label, _hint: null, _key: n.id }));
-    return { actions, clients, invoices, suppliers, employees, ingredients, nav };
+    return { actions, clients, invoices, suppliers, employees, ingredients, dailyTotals, nav };
   }, [results, query, lang, T]);
 
   // Scroll selected item into view
@@ -364,6 +370,9 @@ export default function GlobalSearch({ isOpen, onClose, onNavigate, lang = 'fr',
       case 'supplier':
         onNavigate('monthly', {});
         break;
+      case 'daily':
+        onNavigate('daily', { date: item.date });
+        break;
       case 'employee':
         onNavigate('daily', {});
         break;
@@ -387,7 +396,7 @@ export default function GlobalSearch({ isOpen, onClose, onNavigate, lang = 'fr',
   // Compute index offsets per group for keyboard nav mapping
   let offset = 0;
   const offsets = {};
-  for (const key of ['actions', 'clients', 'invoices', 'suppliers', 'employees', 'ingredients', 'nav']) {
+  for (const key of ['actions', 'clients', 'invoices', 'suppliers', 'employees', 'ingredients', 'dailyTotals', 'nav']) {
     offsets[key] = offset;
     offset += (groups[key] || []).length;
   }
@@ -456,6 +465,7 @@ export default function GlobalSearch({ isOpen, onClose, onNavigate, lang = 'fr',
               <ResultGroup label={T ? 'SUPPLIERS' : 'FOURNISSEURS'} items={groups.suppliers} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.suppliers} query={query} styles={styles} />
               <ResultGroup label={T ? 'EMPLOYEES' : 'EMPLOYÉS'} items={groups.employees} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.employees} query={query} styles={styles} />
               <ResultGroup label={T ? 'INGREDIENTS' : 'INGRÉDIENTS'} items={groups.ingredients} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.ingredients} query={query} styles={styles} />
+              <ResultGroup label={T ? 'DAILY TOTALS' : 'JOURNÉES'} items={groups.dailyTotals} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.dailyTotals} query={query} styles={styles} />
               <ResultGroup label={T ? 'NAVIGATION' : 'NAVIGATION'} items={groups.nav} selectedIndex={selectedIndex} onSelect={selectResult} onHover={setSelectedIndex} indexOffset={offsets.nav} query={query} styles={styles} />
             </>
           )}

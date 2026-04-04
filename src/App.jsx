@@ -5587,6 +5587,7 @@ export default function App(){
     else if(params.clientId){setFacDeepLink({clientId:params.clientId});setActiveTab('facturation');}
     else if(params.action==='new-invoice'){setFacDeepLink({action:'new-invoice'});setActiveTab('facturation');}
     else if(params.action==='new-client'){setFacDeepLink({action:'new-client'});setActiveTab('facturation');}
+    else if(params.date&&tab==='daily'){setSelectedDate(params.date);setActiveTab('daily');}
     else if(tab){setActiveTab(tab);}
   },[]);
 

@@ -1478,6 +1478,20 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
 
   const matchStr = (str) => str && String(str).toLowerCase().includes(q);
 
+  // ── Numeric query parsing — handles French format (2 335,51) and English (2,335.51) ──
+  const parseNumericQuery = (raw) => {
+    let s = raw.replace(/[$\s]/g, ''); // strip $ and spaces (thousands sep in FR)
+    // French decimal: comma followed by 1-2 digits at end → convert to period
+    if (/,\d{1,2}$/.test(s)) {
+      s = s.replace(/\./g, '').replace(',', '.');
+    } else {
+      s = s.replace(/,/g, ''); // English: comma is thousands separator
+    }
+    return parseFloat(s);
+  };
+  const numQ = parseNumericQuery(q);
+  const isNumericSearch = !isNaN(numQ) && numQ > 0;
+
   // ── Clients (dicann-fac-clients) ──
   const clients = readKV('dicann-fac-clients');
   results.clients = clients
@@ -1490,13 +1504,12 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
   const soumissions = readKV('dicann-fac-soumissions');
   const commandes = readKV('dicann-fac-commandes');
   const allDocs = [...factures, ...soumissions, ...commandes];
-  const numQ = parseFloat(q.replace(/[$,\s]/g, ''));
 
   results.invoices = allDocs
     .filter(f => {
       const cl = clients.find(c => c.id === f.clientId);
       return matchStr(f.numero) || matchStr(f.referenceClient) || matchStr(cl?.entreprise) ||
-        (!isNaN(numQ) && Math.abs((f.total || 0) - numQ) < 50);
+        (isNumericSearch && Math.abs((f.total || 0) - numQ) < 1);
     })
     .slice(0, limit)
     .map(f => {
@@ -1527,6 +1540,26 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
     .filter(s => matchStr(s.name) || matchStr(s.category))
     .slice(0, limit)
     .map(s => ({ key: s.key || s.name, name: s.name || '', category: s.category || '' }));
+
+  // ── Daily totals (dicann-v7) — numeric search only ──
+  // Each day's total = sum of venteNet across all cashiers for that date.
+  results.dailyTotals = [];
+  if (isNumericSearch) {
+    try {
+      const dailyRaw = storageGet('dicann-v7');
+      if (dailyRaw?.value) {
+        const dailyData = JSON.parse(dailyRaw.value);
+        for (const [date, dayObj] of Object.entries(dailyData || {})) {
+          const caisses = Array.isArray(dayObj?.caisses) ? dayObj.caisses : [];
+          const dayTotal = caisses.reduce((s, c) => s + (parseFloat(c.venteNet) || 0), 0);
+          if (dayTotal > 0 && Math.abs(dayTotal - numQ) < 1) {
+            results.dailyTotals.push({ date, total: dayTotal });
+            if (results.dailyTotals.length >= limit) break;
+          }
+        }
+      }
+    } catch (_) {}
+  }
 
   // ── Ingredients (FTS5 — SQLite table) ──
   results.ingredients = searchIngredients(query, limit);
