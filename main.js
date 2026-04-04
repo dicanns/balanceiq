@@ -1534,13 +1534,12 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
     .slice(0, limit)
     .map(r => ({ id: r.id, name: r.name || r.nom || '' }));
 
-  // ── Suppliers (from dicann-api-config.suppliers) ──
-  const apiCfg = readKVObj('dicann-api-config');
-  const suppliers = Array.isArray(apiCfg.suppliers) ? apiCfg.suppliers : [];
-  results.suppliers = suppliers
-    .filter(s => matchStr(s.name) || matchStr(s.category))
+  // ── Suppliers (dicann-suppliers-v2) ──
+  const suppliersV2 = readKV('dicann-suppliers-v2');
+  results.suppliers = suppliersV2
+    .filter(s => matchStr(s.name) || matchStr(s.category) || matchStr(s.id))
     .slice(0, limit)
-    .map(s => ({ key: s.key || s.name, name: s.name || '', category: s.category || '' }));
+    .map(s => ({ key: `sup_${s.id}`, name: s.name || '', category: s.category || '' }));
 
   // ── Daily totals (dicann-v7) — numeric search only ──
   // Checks: net sales (posVentes), gross total (posVentes+TPS+TVQ), manual count
@@ -1624,13 +1623,12 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
   } catch (_) {}
 
   // ── P&L monthly bills — search all dicann-pl-* keys ──
-  // Build supplier display-name lookup (key → name) from apiConfig
+  // Build supplier display-name lookup: P&L key = "sup_${s.id}", names from dicann-suppliers-v2
   results.plBills = [];
   try {
-    const apiCfgRaw = readKVObj('dicann-api-config');
     const supplierNameMap = {};
-    (Array.isArray(apiCfgRaw.suppliers) ? apiCfgRaw.suppliers : []).forEach(s => {
-      if (s.key) supplierNameMap[s.key] = s.name || s.key;
+    suppliersV2.forEach(s => {
+      if (s.id) supplierNameMap[`sup_${s.id}`] = s.name || s.id;
     });
 
     const plRows = storageGetByPrefix('dicann-pl-');
