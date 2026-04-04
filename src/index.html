@@ -17,6 +17,22 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Electron 31 fetch patch: strip enum fields that cause "Invalid value" errors.
+         Runs before any module code so ALL fetch calls (Supabase auth, REST, etc.) are covered. -->
+    <script>
+    (function(){
+      var _orig=window.fetch.bind(window);
+      var STRIP=['referrerPolicy','referrer','mode','cache','credentials','redirect','priority','duplex'];
+      window.fetch=function(url,init){
+        if(init&&typeof init==='object'){
+          var opts=Object.assign({},init);
+          STRIP.forEach(function(k){delete opts[k];});
+          return _orig(url,opts);
+        }
+        return _orig(url,init);
+      };
+    })();
+    </script>
     <script type="module" src="./index.jsx"></script>
   </body>
 </html>
