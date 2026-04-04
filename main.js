@@ -1448,6 +1448,19 @@ ipcMain.handle('plPriceIntel:record',    (_e, r)              => plInvoiceHistor
 ipcMain.handle('plPriceIntel:getLast',   (_e, key, excludeId) => plInvoiceHistoryGetLast(key, excludeId));
 ipcMain.handle('plPriceIntel:getRecent', (_e, key, limit)     => plInvoiceHistoryGetRecent(key, limit));
 
+// ── Supabase Proxy Fetch ───────────────────────────────────────────────────
+// Routes Supabase HTTP calls through Electron's net module (main process) to
+// bypass renderer window.fetch "Invalid value" validation in Electron 31.
+ipcMain.handle('supabase:fetch', async (_e, { url, method, headers, body }) => {
+  const opts = { method: method || 'GET', headers: headers || {} };
+  if (body != null) opts.body = body;
+  const res = await net.fetch(url, opts);
+  const text = await res.text();
+  const resHeaders = {};
+  res.headers.forEach((value, key) => { resHeaders[key] = value; });
+  return { ok: res.ok, status: res.status, statusText: res.statusText, headers: resHeaders, body: text };
+});
+
 app.on('window-all-closed', () => {
   if (biqTray) { biqTray.destroy(); biqTray = null; }
   if (process.platform !== 'darwin') app.quit();
