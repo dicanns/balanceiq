@@ -603,6 +603,8 @@ function CSVImportView({ products, onImported, savedFormats, onSaveFormat, T, t,
   const [filename, setFilename] = useState('');
   const [importHistory, setImportHistory] = useState([]);
   const [duplicateWarning, setDuplicateWarning] = useState(null); // {dates, toImport, newProds}
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState(null);
 
   const productNames = new Set(products.map(p=>p.name.toLowerCase()));
   const inp = { background:t.inputBg, border:`1px solid ${t.inputBorder}`, borderRadius:5, color:'inherit', fontSize:12, padding:'5px 8px', outline:'none', fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif" };
@@ -680,49 +682,63 @@ function CSVImportView({ products, onImported, savedFormats, onSaveFormat, T, t,
   };
 
   const handleImportClick = async () => {
+    setImportError(null);
     const { toImport, newProds } = buildImportData();
-    // Check for duplicate dates
-    const uniqueDates = [...new Set(toImport.map(r => r.date))];
-    const duplicateDates = [];
-    for (const date of uniqueDates) {
-      const existing = await window.api.forecast.sales.getForDate(date);
-      if (existing.length > 0) duplicateDates.push(date);
+    if (toImport.length === 0 && newProds.length === 0) {
+      setImportError(lang === 'en' ? 'Nothing to import — check column mapping.' : 'Rien à importer — vérifiez le mappage des colonnes.');
+      return;
     }
-    if (duplicateDates.length > 0) {
-      setDuplicateWarning({ dates: duplicateDates, toImport, newProds });
-    } else {
-      await doImport(toImport, newProds, false);
+    setImporting(true);
+    try {
+      const uniqueDates = [...new Set(toImport.map(r => r.date))];
+      const duplicateDates = [];
+      for (const date of uniqueDates) {
+        const existing = await window.api.forecast.sales.getForDate(date);
+        if (existing && existing.length > 0) duplicateDates.push(date);
+      }
+      if (duplicateDates.length > 0) {
+        setDuplicateWarning({ dates: duplicateDates, toImport, newProds });
+      } else {
+        await doImport(toImport, newProds, false);
+      }
+    } catch (e) {
+      setImportError(e?.message || 'Import failed');
+    } finally {
+      setImporting(false);
     }
   };
 
   const doImport = async (toImport, newProds, replaced) => {
-    // Save new products first
-    for (const p of newProds) await window.api.forecast.products.upsert(p);
-    // Save sales records
-    for (const rec of toImport) await window.api.forecast.sales.upsert(rec);
-    // Determine target_date string for log
-    const uniqueDates = [...new Set(toImport.map(r => r.date))].sort();
-    const targetDate = uniqueDates.length === 0 ? importDate
-      : uniqueDates.length === 1 ? uniqueDates[0]
-      : `${uniqueDates[0]} – ${uniqueDates[uniqueDates.length-1]}`;
-    // Log import
-    const logId = await window.api.forecast.imports.log({
-      filename: filename || 'import',
-      target_date: targetDate,
-      record_count: toImport.length,
-      replaced: replaced ? 1 : 0,
-    });
-    // Mark previous imports for same dates as replaced
-    if (replaced) {
-      for (const date of uniqueDates) {
-        await window.api.forecast.imports.markReplaced(date, logId);
+    setImporting(true);
+    setImportError(null);
+    try {
+      for (const p of newProds) await window.api.forecast.products.upsert(p);
+      for (const rec of toImport) await window.api.forecast.sales.upsert(rec);
+      const uniqueDates = [...new Set(toImport.map(r => r.date))].sort();
+      const targetDate = uniqueDates.length === 0 ? importDate
+        : uniqueDates.length === 1 ? uniqueDates[0]
+        : `${uniqueDates[0]} – ${uniqueDates[uniqueDates.length-1]}`;
+      const logId = await window.api.forecast.imports.log({
+        filename: filename || 'import',
+        target_date: targetDate,
+        record_count: toImport.length,
+        replaced: replaced ? 1 : 0,
+      });
+      if (replaced) {
+        for (const date of uniqueDates) {
+          await window.api.forecast.imports.markReplaced(date, logId);
+        }
       }
+      setDuplicateWarning(null);
+      setResult(toImport.length);
+      setStep('done');
+      onImported(toImport, newProds);
+      loadHistory();
+    } catch (e) {
+      setImportError(e?.message || 'Import failed');
+    } finally {
+      setImporting(false);
     }
-    setDuplicateWarning(null);
-    setResult(toImport.length);
-    setStep('done');
-    onImported(toImport, newProds);
-    loadHistory();
   };
 
   const handleDeleteImport = async (id) => {
@@ -756,7 +772,7 @@ function CSVImportView({ products, onImported, savedFormats, onSaveFormat, T, t,
                   style={{padding:'3px 10px',borderRadius:12,border:`1px solid ${u.action===a?'#f97316':t.cardBorder}`,background:u.action===a?'rgba(249,115,22,0.15)':t.section,color:u.action===a?'#f97316':'inherit',cursor:'pointer',fontSize:11}}>
                   {a==='add'?T.prevImportAddCat:T.prevImportIgnore}</button>))}</div>))}<div style={{display:'flex',gap:8,marginTop:12}}><button onClick={()=>setStep('map')} style={{padding:'7px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:12}}>{T.prevImportCancel}</button><button onClick={()=>setStep('preview')} style={{padding:'7px 14px',borderRadius:6,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:12,fontWeight:600}}>{T.prevImportConfirm}</button></div></div>)}
 
-      {step === 'preview' && (<div><div style={{fontSize:12,opacity:0.6,marginBottom:8}}>{T.prevImportPreview} ({rows.length} lignes)</div><div style={{maxHeight:220,overflowY:'auto',border:`1px solid ${t.cardBorder}`,borderRadius:6,marginBottom:12}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}><thead style={{position:'sticky',top:0,background:t.cardBg}}><tr>{[T.prevColProduct,T.prevColSold,T.prevColDate,T.prevColMade,T.prevColRemaining].map(h=><th key={h} style={{padding:'5px 8px',textAlign:'left',fontWeight:600,opacity:0.7,borderBottom:`1px solid ${t.cardBorder}`}}>{h}</th>)}</tr></thead><tbody>{rows.slice(0,50).map((row,i)=>(<tr key={i} style={{borderBottom:`1px solid ${t.cardBorder}`}}><td style={{padding:'4px 8px'}}>{String(row[columns.indexOf(mapping.prod)]||'')}</td><td style={{padding:'4px 8px'}}>{String(row[columns.indexOf(mapping.sold)]||'')}</td><td style={{padding:'4px 8px'}}>{mapping.date?String(row[columns.indexOf(mapping.date)]||''):importDate}</td><td style={{padding:'4px 8px'}}>{mapping.made?String(row[columns.indexOf(mapping.made)]||''):'—'}</td><td style={{padding:'4px 8px'}}>{mapping.remaining?String(row[columns.indexOf(mapping.remaining)]||''):'—'}</td></tr>))}</tbody></table></div>{duplicateWarning && (<div style={{background:'rgba(249,115,22,0.1)',border:'1px solid rgba(249,115,22,0.3)',borderRadius:7,padding:'10px 12px',marginBottom:12}}><div style={{fontSize:12,fontWeight:600,color:'#f97316',marginBottom:6}}>{T.prevImportDuplicateTitle}</div><div style={{fontSize:11,marginBottom:10}}>{T.prevImportDuplicateMsg(duplicateWarning.dates.join(', '))}</div><div style={{display:'flex',gap:8}}><button onClick={()=>doImport(duplicateWarning.toImport,duplicateWarning.newProds,true)} style={{padding:'5px 12px',borderRadius:5,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:11,fontWeight:600}}>{T.prevImportReplace}</button><button onClick={()=>setDuplicateWarning(null)} style={{padding:'5px 12px',borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:11}}>{T.prevImportCancel}</button></div></div>)}<div style={{display:'flex',gap:8}}><button onClick={()=>setStep('map')} style={{padding:'7px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:12}}>{T.prevImportCancel}</button><button onClick={handleImportClick} style={{padding:'7px 14px',borderRadius:6,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:12,fontWeight:600}}>{T.prevImportConfirm}</button></div></div>)}
+      {step === 'preview' && (<div><div style={{fontSize:12,opacity:0.6,marginBottom:8}}>{T.prevImportPreview} ({rows.length} lignes)</div><div style={{maxHeight:220,overflowY:'auto',border:`1px solid ${t.cardBorder}`,borderRadius:6,marginBottom:12}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}><thead style={{position:'sticky',top:0,background:t.cardBg}}><tr>{[T.prevColProduct,T.prevColSold,T.prevColDate,T.prevColMade,T.prevColRemaining].map(h=><th key={h} style={{padding:'5px 8px',textAlign:'left',fontWeight:600,opacity:0.7,borderBottom:`1px solid ${t.cardBorder}`}}>{h}</th>)}</tr></thead><tbody>{rows.slice(0,50).map((row,i)=>(<tr key={i} style={{borderBottom:`1px solid ${t.cardBorder}`}}><td style={{padding:'4px 8px'}}>{String(row[columns.indexOf(mapping.prod)]||'')}</td><td style={{padding:'4px 8px'}}>{String(row[columns.indexOf(mapping.sold)]||'')}</td><td style={{padding:'4px 8px'}}>{mapping.date?String(row[columns.indexOf(mapping.date)]||''):importDate}</td><td style={{padding:'4px 8px'}}>{mapping.made?String(row[columns.indexOf(mapping.made)]||''):'—'}</td><td style={{padding:'4px 8px'}}>{mapping.remaining?String(row[columns.indexOf(mapping.remaining)]||''):'—'}</td></tr>))}</tbody></table></div>{importError && (<div style={{background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.3)',borderRadius:7,padding:'8px 12px',marginBottom:10,fontSize:12,color:'#ef4444'}}>{importError}</div>)}{duplicateWarning && (<div style={{background:'rgba(249,115,22,0.1)',border:'1px solid rgba(249,115,22,0.3)',borderRadius:7,padding:'10px 12px',marginBottom:12}}><div style={{fontSize:12,fontWeight:600,color:'#f97316',marginBottom:6}}>{T.prevImportDuplicateTitle}</div><div style={{fontSize:11,marginBottom:10}}>{T.prevImportDuplicateMsg(duplicateWarning.dates.join(', '))}</div><div style={{display:'flex',gap:8}}><button onClick={()=>doImport(duplicateWarning.toImport,duplicateWarning.newProds,true)} disabled={importing} style={{padding:'5px 12px',borderRadius:5,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:importing?'not-allowed':'pointer',fontSize:11,fontWeight:600,opacity:importing?0.6:1}}>{importing?(lang==='en'?'Importing…':'Importation…'):T.prevImportReplace}</button><button onClick={()=>setDuplicateWarning(null)} disabled={importing} style={{padding:'5px 12px',borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:11}}>{T.prevImportCancel}</button></div></div>)}<div style={{display:'flex',gap:8}}><button onClick={()=>setStep('map')} disabled={importing} style={{padding:'7px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:12}}>{T.prevImportCancel}</button><button onClick={handleImportClick} disabled={importing} style={{padding:'7px 14px',borderRadius:6,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:importing?'not-allowed':'pointer',fontSize:12,fontWeight:600,opacity:importing?0.6:1}}>{importing?(lang==='en'?'Importing…':'Importation…'):T.prevImportConfirm}</button></div></div>)}
 
       {step === 'done' && (<div style={{textAlign:'center',padding:'20px 0'}}><div style={{fontSize:24,marginBottom:8}}></div><div style={{fontSize:13,fontWeight:700,color:'#22c55e',marginBottom:4}}>{T.prevImportImported(result)}</div><button onClick={()=>{setStep('upload');setRows([]);setColumns([]);setMapping({prod:'',sold:'',date:'',made:'',remaining:''});setResult(null);}} style={{marginTop:12,padding:'7px 18px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:12}}>{T.prevImportBtn}</button></div>)}</div>);
 }

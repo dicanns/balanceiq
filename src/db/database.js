@@ -171,6 +171,38 @@ const MIGRATIONS = [
       END`).run();
     },
   },
+  {
+    version: 7,
+    description: 'Fix FTS5 forecast_products — UUID ids cannot be FTS5 rowids; switch to standalone table with fp_id column',
+    up: (database) => {
+      database.prepare(`DROP TRIGGER IF EXISTS fts_fp_insert`).run();
+      database.prepare(`DROP TRIGGER IF EXISTS fts_fp_update`).run();
+      database.prepare(`DROP TRIGGER IF EXISTS fts_fp_delete`).run();
+      database.prepare(`DROP TABLE IF EXISTS fts_forecast_products`).run();
+
+      database.prepare(`CREATE VIRTUAL TABLE IF NOT EXISTS fts_forecast_products USING fts5(
+        fp_id UNINDEXED, name, category, tokenize='unicode61'
+      )`).run();
+
+      try {
+        database.prepare(`INSERT INTO fts_forecast_products(fp_id, name, category)
+          SELECT id, name, COALESCE(category,'') FROM forecast_products`).run();
+      } catch(_) {}
+
+      database.prepare(`CREATE TRIGGER IF NOT EXISTS fts_fp_insert AFTER INSERT ON forecast_products BEGIN
+        INSERT INTO fts_forecast_products(fp_id, name, category) VALUES (new.id, new.name, COALESCE(new.category,''));
+      END`).run();
+      database.prepare(`CREATE TRIGGER IF NOT EXISTS fts_fp_update AFTER UPDATE ON forecast_products BEGIN
+        INSERT INTO fts_forecast_products(fts_forecast_products, rowid, fp_id, name, category)
+          SELECT 'delete', rowid, fp_id, name, category FROM fts_forecast_products WHERE fp_id=old.id LIMIT 1;
+        INSERT INTO fts_forecast_products(fp_id, name, category) VALUES (new.id, new.name, COALESCE(new.category,''));
+      END`).run();
+      database.prepare(`CREATE TRIGGER IF NOT EXISTS fts_fp_delete AFTER DELETE ON forecast_products BEGIN
+        INSERT INTO fts_forecast_products(fts_forecast_products, rowid, fp_id, name, category)
+          SELECT 'delete', rowid, fp_id, name, category FROM fts_forecast_products WHERE fp_id=old.id LIMIT 1;
+      END`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -1242,7 +1274,7 @@ function searchForecastProducts(raw, limit = 6) {
     return getDb().prepare(`
       SELECT fp.id, fp.name, fp.category
       FROM fts_forecast_products
-      JOIN forecast_products fp ON fts_forecast_products.rowid = fp.id
+      JOIN forecast_products fp ON fts_forecast_products.fp_id = fp.id
       WHERE fts_forecast_products MATCH ?
       ORDER BY rank LIMIT ?
     `).all(q, limit);
