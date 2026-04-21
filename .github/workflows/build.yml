@@ -5,12 +5,26 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
-# Required for electron-builder to create GitHub Releases and upload assets
 permissions:
   contents: write
 
 jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Create draft release
+        run: |
+          gh release create ${{ github.ref_name }} \
+            --draft \
+            --title "${{ github.ref_name }}" \
+            --notes "" \
+            -R ${{ github.repository }} || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build-mac:
+    needs: create-release
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
@@ -38,27 +52,23 @@ jobs:
           KEYCHAIN_PATH="$RUNNER_TEMP/balanceiq-signing.keychain-db"
           CERT_PATH="$RUNNER_TEMP/certificate.p12"
 
-          # Decode the certificate
           echo "$APPLE_CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
 
-          # Create a temporary keychain
           security create-keychain -p "temp-keychain-password" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "temp-keychain-password" "$KEYCHAIN_PATH"
 
-          # Import the certificate
           security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" \
             -T /usr/bin/codesign -T /usr/bin/security
           security set-key-partition-list -S "apple-tool:,apple:" -s -k "temp-keychain-password" "$KEYCHAIN_PATH"
 
-          # Add to search list so electron-builder can find it
           security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
 
       - name: Rebuild better-sqlite3 for Electron
         run: npx @electron/rebuild -f -w better-sqlite3
 
       - name: Build macOS universal installer (signed + notarized)
-        run: npx electron-builder --mac --universal --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
+        run: npx electron-builder --mac --universal --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -66,6 +76,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
   build-win:
+    needs: create-release
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
@@ -89,7 +100,7 @@ jobs:
         run: npx @electron/rebuild -f -w better-sqlite3
 
       - name: Build Windows installer
-        run: npx electron-builder --win --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
+        run: npx electron-builder --win --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
