@@ -190,16 +190,9 @@ const fmtDate = (d) => d ? d.slice(0, 10) : '—';
 // ── BanqueTab ─────────────────────────────────────────────────────────────────
 export default function BanqueTab({ lang = 'fr' }) {
   const T = UI[lang] || UI.fr;
+  const bankAvailable = !!window.api?.bank;
 
-  // Guard: preload bridge may not be available if app hasn't restarted after upgrade
-  if (!window.api?.bank) {
-    return (
-      <div style={{ padding: 32, color: '#64748b', textAlign: 'center' }}>
-        <p style={{ fontSize: 14 }}>🔄 {lang === 'en' ? 'Please restart the app to load the Bank module.' : 'Veuillez redémarrer l\'application pour charger le module Banque.'}</p>
-      </div>
-    );
-  }
-
+  // ALL hooks must be called unconditionally before any early return (Rules of Hooks)
   const [subTab, setSubTab] = useState('comptes');
 
   const [accounts, setAccounts]         = useState([]);
@@ -241,17 +234,19 @@ export default function BanqueTab({ lang = 'fr' }) {
 
   // ── Data loading ────────────────────────────────────────────────────────────
   const loadAccounts = useCallback(async () => {
+    if (!window.api?.bank) return;
     const rows = await window.api.bank.accounts.list();
     setAccounts(rows || []);
   }, []);
 
   const loadCoa = useCallback(async () => {
+    if (!window.api?.coa) return;
     const rows = await window.api.coa.list();
     setCoaList((rows || []).filter(a => !a.is_archived));
   }, []);
 
   const loadTransactions = useCallback(async () => {
-    if (!selectedAccount) return;
+    if (!window.api?.bank || !selectedAccount) return;
     const rows = await window.api.bank.transactions.list(selectedAccount.id, {
       statusFilter: txFilter !== 'all' ? txFilter : undefined,
       dateFrom: txDateFrom || undefined,
@@ -261,18 +256,19 @@ export default function BanqueTab({ lang = 'fr' }) {
   }, [selectedAccount, txFilter, txDateFrom, txDateTo]);
 
   const loadStatements = useCallback(async () => {
-    if (!selectedAccount) return;
+    if (!window.api?.bank || !selectedAccount) return;
     const rows = await window.api.bank.statement.list(selectedAccount.id);
     setStatements(rows || []);
   }, [selectedAccount]);
 
   const loadLearnedRules = useCallback(async () => {
+    if (!window.api?.bank) return;
     const rows = await window.api.bank.learned.list();
     setLearnedRules(rows || []);
   }, []);
 
   const loadRecPreview = useCallback(async () => {
-    if (!selectedAccount) return;
+    if (!window.api?.bank || !selectedAccount) return;
     setRecLoading(true);
     try {
       const p = await window.api.bank.reconcile.preview(selectedAccount.id);
@@ -288,6 +284,15 @@ export default function BanqueTab({ lang = 'fr' }) {
   useEffect(() => { if (subTab === 'transactions') loadTransactions(); }, [subTab, selectedAccount, txFilter, txDateFrom, txDateTo]);
   useEffect(() => { if (subTab === 'rapprochements') { loadStatements(); loadRecPreview(); } }, [subTab, selectedAccount]);
   useEffect(() => { if (subTab === 'regles') loadLearnedRules(); }, [subTab]);
+
+  // Guard AFTER all hooks — React Rules of Hooks require hooks before any early return
+  if (!bankAvailable) {
+    return (
+      <div style={{ padding: 32, color: '#64748b', textAlign: 'center' }}>
+        <p style={{ fontSize: 14 }}>🔄 {lang === 'en' ? 'Please restart the app to load the Bank module.' : 'Veuillez redémarrer l\'application pour charger le module Banque.'}</p>
+      </div>
+    );
+  }
 
   // ── Account CRUD ────────────────────────────────────────────────────────────
   const openNewAccount = () => {
