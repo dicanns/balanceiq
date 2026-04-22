@@ -13,6 +13,7 @@ const GlobalSearchLazy  = lazy(() => import('./components/GlobalSearch.jsx'));
 const ChartOfAccountsTabLazy = lazy(() => import('./components/ChartOfAccountsTab.jsx'));
 const GrandLivreTabLazy       = lazy(() => import('./components/GrandLivreTab.jsx'));
 const BanqueTabLazy           = lazy(() => import('./components/BanqueTab.jsx'));
+const TaxPeriodTabLazy        = lazy(() => import('./components/TaxPeriodTab.jsx'));
 import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./config/features.js";
 import { calcRoyaltyFull } from "./utils/calculations.js";
@@ -546,16 +547,24 @@ function BillEntry({label,baseKey,plData,updPL,accent="249,115,22",onBillAdded})
   const [newDate,setNewDate]=useState('');
   const [newAmt,setNewAmt]=useState('');
   const [newNote,setNewNote]=useState('');
+  const [newTps,setNewTps]=useState('');
+  const [newTvq,setNewTvq]=useState('');
+  const [showTax,setShowTax]=useState(false);
   const [amtBlurred,setAmtBlurred]=useState(false);
   const bills=plData[`${baseKey}_bills`]||[];
   const total=bills.length?bills.reduce((s,b)=>s+(b.amount||0),0):(plData[baseKey]||0);
+  const autoTps=(v)=>setNewTps(v?((parseFloat(v)||0)*0.05).toFixed(2):'');
+  const autoTvq=(v)=>setNewTvq(v?((parseFloat(v)||0)*0.09975).toFixed(4):'');
   const addBill=()=>{
     const amt=parseFloat(newAmt);if(!amt||isNaN(amt))return;
+    const tpsPaid=parseFloat(newTps)||0;
+    const tvqPaid=parseFloat(newTvq)||0;
     const bill={id:Date.now().toString(),date:newDate,amount:amt,note:newNote.trim()};
+    if(showTax&&(tpsPaid>0||tvqPaid>0)){bill.amount_before_tax=amt;bill.tps_paid=tpsPaid;bill.tvq_paid=tvqPaid;bill.business_use_pct=100;}
     updPL(`${baseKey}_bills`,[...bills,bill]);
     logCreate('pl','facture_fournisseur',bill.id,bill);
     onBillAdded?.(bill,baseKey);
-    setNewAmt('');setNewNote('');
+    setNewAmt('');setNewNote('');setNewTps('');setNewTvq('');
   };
   const removeBill=async id=>{
     const reason=await promptCorrectionReason('Retrait de facture fournisseur');
@@ -566,13 +575,16 @@ function BillEntry({label,baseKey,plData,updPL,accent="249,115,22",onBillAdded})
   const accentRgb=`rgba(${accent},`;
   return(<div style={{borderBottom:`1px solid ${t.divider}`,marginBottom:0}}>{/* Header — click to collapse/expand */}<div onClick={()=>setOpen(!open)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 0",cursor:"pointer",userSelect:"none"}}><div style={{display:"flex",alignItems:"center",gap:5}}><span style={{fontSize:9,color:open?`rgb(${accent})`:t.textDim,display:"inline-block",transform:open?"rotate(0deg)":"rotate(-90deg)",transition:"transform 0.15s"}}>▾</span><span style={{fontSize:11.5,color:t.textSub,fontWeight:500}}>{label}</span>{bills.length>0&&<span style={{fontSize:9,color:`rgb(${accent})`,background:accentRgb+"0.08)",borderRadius:8,padding:"1px 5px",fontWeight:600}}>{bills.length} fact.</span>}</div><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontSize:12,color:total>0?t.rrValue:t.textDim,fontWeight:600}}>{fmt(total)}</span></div>{/* Expanded content */}
     {open&&(<div style={{paddingLeft:12,paddingBottom:8}}>{/* Existing bills */}
-      {bills.length>0&&(<div style={{marginBottom:6}}><div style={{display:"grid",gridTemplateColumns:"76px 1fr 80px 20px",gap:4,padding:"2px 0 3px",marginBottom:1}}>{["Date","Note / N° facture","Montant (HT)",""].map((h,i)=>(<span key={i} style={{fontSize:9,color:t.textMuted,fontWeight:600,textAlign:i===2?"right":"left"}}>{h}</span>))}</div>{bills.map(b=>(<div key={b.id} style={{display:"grid",gridTemplateColumns:"76px 1fr 80px 20px",gap:4,padding:"3px 0",borderTop:`1px solid ${t.divider}`,alignItems:"center"}}><span style={{fontSize:10,color:t.textMuted,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{b.date||"—"}</span><span style={{fontSize:10,color:t.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.note||"—"}</span><span style={{fontSize:11,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:t.text,textAlign:"right"}}>{fmt(b.amount)}</span><button onClick={()=>removeBill(b.id)} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:3,color:"#ef4444",fontSize:9,padding:"1px 4px",cursor:"pointer"}}></button></div>))}<div style={{display:"flex",justifyContent:"flex-end",padding:"4px 24px 0 0",borderTop:`1px solid ${accentRgb+"0.2)"}`,marginTop:2}}><span style={{fontSize:11,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontWeight:700,color:`rgb(${accent})`}}>{fmt(total)}</span></div></div>)}
+      {bills.length>0&&(<div style={{marginBottom:6}}><div style={{display:"grid",gridTemplateColumns:"76px 1fr 80px 20px",gap:4,padding:"2px 0 3px",marginBottom:1}}>{["Date","Note / N° facture","Montant (HT)",""].map((h,i)=>(<span key={i} style={{fontSize:9,color:t.textMuted,fontWeight:600,textAlign:i===2?"right":"left"}}>{h}</span>))}</div>{bills.map(b=>(<div key={b.id} style={{display:"grid",gridTemplateColumns:"76px 1fr 80px 20px",gap:4,padding:"3px 0",borderTop:`1px solid ${t.divider}`,alignItems:"center"}}><span style={{fontSize:10,color:t.textMuted,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{b.date||"—"}</span><span style={{fontSize:10,color:t.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.note||"—"}{(b.tps_paid>0||b.tvq_paid>0)&&<span style={{marginLeft:4,fontSize:8,color:"#0d9488",background:"rgba(20,184,166,0.1)",borderRadius:3,padding:"0 3px",verticalAlign:"middle"}}>CTI</span>}</span><span style={{fontSize:11,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:t.text,textAlign:"right"}}>{fmt(b.amount)}</span><button onClick={()=>removeBill(b.id)} style={{background:"rgba(239,68,68,0.07)",border:"none",borderRadius:3,color:"#ef4444",fontSize:9,padding:"1px 4px",cursor:"pointer"}}></button></div>))}<div style={{display:"flex",justifyContent:"flex-end",padding:"4px 24px 0 0",borderTop:`1px solid ${accentRgb+"0.2)"}`,marginTop:2}}><span style={{fontSize:11,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontWeight:700,color:`rgb(${accent})`}}>{fmt(total)}</span></div></div>)}
       {/* Add bill form */}<div style={{display:"grid",gridTemplateColumns:"76px 1fr 76px auto",gap:4,alignItems:"center",marginTop:4}}><input type="date" value={newDate} onChange={e=>setNewDate(e.target.value)}
           style={{padding:"3px 4px",borderRadius:3,border:`1px solid ${accentRgb+"0.15)"}`,background:t.inputBg,color:t.inputText,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontSize:9,outline:"none"}}/><input type="text" value={newNote} onChange={e=>setNewNote(e.target.value)} placeholder="Note / N° facture..."
           onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();const amt=document.activeElement.closest('div')?.querySelector('input[type="number"]');if(amt)amt.focus();}}}
           style={{padding:"3px 5px",borderRadius:3,border:`1px solid ${accentRgb+"0.15)"}`,background:t.inputBg,color:t.inputText,fontSize:10,outline:"none"}}/><input type="number" inputMode="decimal" value={newAmt} onChange={e=>{setNewAmt(e.target.value);setAmtBlurred(false);}} onBlur={()=>setAmtBlurred(true)} placeholder="Montant HT"
           onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addBill();}}}
-          style={{padding:"3px 5px",borderRadius:3,border:`1px solid ${accentRgb+"0.25)"}`,background:t.inputBg,color:t.inputText,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontSize:10,textAlign:"right",outline:"none"}}/><button onClick={addBill} style={{fontSize:10,padding:"3px 8px",borderRadius:3,border:`1px solid ${accentRgb+"0.25)"}`,background:accentRgb+"0.08)",color:`rgb(${accent})`,cursor:"pointer",fontWeight:700}}>+</button></div>{amtBlurred&&newAmt!==""&&(()=>{const n=parseFloat(newAmt);return n<0?<div style={{fontSize:10,color:"#f97316",padding:"1px 0 2px"}}>{T.warnNegativeAmount}</div>:n>50000?<div style={{fontSize:10,color:"#f97316",padding:"1px 0 2px"}}>{T.warnHighAmount}</div>:null})()}<div style={{fontSize:9,color:t.textDim,marginTop:3}}>Tous les montants avant taxes (HT)</div></div>)}</div>);
+          style={{padding:"3px 5px",borderRadius:3,border:`1px solid ${accentRgb+"0.25)"}`,background:t.inputBg,color:t.inputText,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontSize:10,textAlign:"right",outline:"none"}}/><button onClick={addBill} style={{fontSize:10,padding:"3px 8px",borderRadius:3,border:`1px solid ${accentRgb+"0.25)"}`,background:accentRgb+"0.08)",color:`rgb(${accent})`,cursor:"pointer",fontWeight:700}}>+</button></div>
+      {/* Tax fields toggle */}<div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}><button onClick={()=>setShowTax(v=>!v)} style={{fontSize:9,padding:"1px 6px",borderRadius:3,border:`1px solid rgba(20,184,166,0.25)`,background:showTax?"rgba(20,184,166,0.12)":"none",color:"#0d9488",cursor:"pointer"}}>{showTax?"▲ CTI/RTI":"▼ + CTI/RTI"}</button><span style={{fontSize:9,color:t.textDim}}>Taxes payées sur cet achat</span></div>
+      {showTax&&(<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4,marginTop:4,padding:"6px 8px",background:"rgba(20,184,166,0.04)",borderRadius:4,border:"1px solid rgba(20,184,166,0.15)"}}><div><div style={{fontSize:9,color:"#0d9488",marginBottom:2}}>TPS payée (5% CTI)</div><input type="number" inputMode="decimal" value={newTps} onChange={e=>setNewTps(e.target.value)} placeholder="0.00" style={{width:"100%",padding:"3px 5px",borderRadius:3,border:"1px solid rgba(20,184,166,0.25)",background:t.inputBg,color:t.inputText,fontSize:10,outline:"none",boxSizing:"border-box"}}/></div><div><div style={{fontSize:9,color:"#0d9488",marginBottom:2}}>TVQ payée (9,975% RTI)</div><input type="number" inputMode="decimal" value={newTvq} onChange={e=>setNewTvq(e.target.value)} placeholder="0.0000" style={{width:"100%",padding:"3px 5px",borderRadius:3,border:"1px solid rgba(20,184,166,0.25)",background:t.inputBg,color:t.inputText,fontSize:10,outline:"none",boxSizing:"border-box"}}/></div><button onClick={()=>{autoTps(newAmt);autoTvq(newAmt);}} style={{fontSize:9,padding:"2px 8px",borderRadius:3,border:"1px solid rgba(20,184,166,0.25)",background:"rgba(20,184,166,0.08)",color:"#0d9488",cursor:"pointer",gridColumn:"1/-1"}}>Auto-calculer depuis montant HT</button></div>)}
+      {amtBlurred&&newAmt!==""&&(()=>{const n=parseFloat(newAmt);return n<0?<div style={{fontSize:10,color:"#f97316",padding:"1px 0 2px"}}>{T.warnNegativeAmount}</div>:n>50000?<div style={{fontSize:10,color:"#f97316",padding:"1px 0 2px"}}>{T.warnHighAmount}</div>:null})()}<div style={{fontSize:9,color:t.textDim,marginTop:3}}>Tous les montants avant taxes (HT)</div></div>)}</div>);
 }
 
 // ── UPGRADE HINT BANNER ──
@@ -6370,6 +6382,7 @@ export default function App(){
                 {id:"comptabilite",     label:lang==="fr"?"Plan comptable":"Chart of Accounts"},
                 {id:"grandlivre",       label:lang==="fr"?"Grand livre":"General Ledger"},
                 {id:"banque",           label:lang==="fr"?"🏦 Banque":"🏦 Bank"},
+                {id:"taxperiod",        label:lang==="fr"?"🧾 TPS/TVQ":"🧾 GST/QST"},
                 {id:"donnees",          label:T.cfgData},
                 {id:"application",      label:T.cfgApplication},
                 ...(appMode==="franchiseur"?[{id:"succursales",label:T.cfgLocations},{id:"redevances",label:T.cfgRoyalties},{id:"marqueblanche",label:T.cfgWhiteLabel}]:[]),
@@ -6535,7 +6548,8 @@ export default function App(){
             {/*  GRAND LIVRE (General Ledger) — Sprint 2 Accounting Suite */}
             {configSubTab==="grandlivre"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><GrandLivreTabLazy lang={lang}/></Suspense>)}
             {/*  BANQUE (Bank Reconciliation) — Sprint 3 Accounting Suite */}
-            {configSubTab==="banque"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><BanqueTabLazy lang={lang}/></Suspense>)}</div></div>)}</div></div>{/* end scrollable */}</div>{/* end main area */}</div>
+            {configSubTab==="banque"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><BanqueTabLazy lang={lang}/></Suspense>)}
+            {configSubTab==="taxperiod"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><TaxPeriodTabLazy lang={lang}/></Suspense>)}</div></div>)}</div></div>{/* end scrollable */}</div>{/* end main area */}</div>
             {/* Global Search (Cmd+K) — top-level so it works from any tab */}
             {searchOpen&&(<Suspense fallback={null}><GlobalSearchLazy isOpen={searchOpen} onClose={()=>setSearchOpen(false)} onNavigate={handleSearchNavigate} lang={lang} isDark={themeName!=='warm'}/></Suspense>)}
             </ThemeCtx.Provider></LangCtx.Provider>

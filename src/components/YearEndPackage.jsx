@@ -232,7 +232,7 @@ async function buildTaxHTML(fiscalStart, fiscalEnd, liveData, suppliers, lang) {
   const qRows = [];
 
   for (const q of quarters) {
-    let qRev = 0, qTpsC = 0, qTvqC = 0;
+    let qRev = 0, qTpsC = 0, qTvqC = 0, qTpsCti = 0, qTvqRti = 0;
     for (const month of q.months) {
       const [my, mm] = month.split('-');
       const daysInMonth = new Date(parseInt(my), parseInt(mm), 0).getDate();
@@ -251,20 +251,40 @@ async function buildTaxHTML(fiscalStart, fiscalEnd, liveData, suppliers, lang) {
       qRev += monthRev;
       qTpsC += monthRev * 0.05;
       qTvqC += monthRev * 0.09975;
+
+      // Sum CTI/RTI from bill entries
+      for (const key of Object.keys(plData)) {
+        if (!key.endsWith('_bills')) continue;
+        const bills = plData[key];
+        if (!Array.isArray(bills)) continue;
+        for (const bill of bills) {
+          const pct = (parseFloat(bill.business_use_pct) || 100) / 100;
+          qTpsCti += (parseFloat(bill.tps_paid) || 0) * pct;
+          qTvqRti += (parseFloat(bill.tvq_paid) || 0) * pct;
+        }
+      }
     }
+    const qTpsNet = qTpsC - qTpsCti;
+    const qTvqNet = qTvqC - qTvqRti;
     totRev += qRev; totTpsC += qTpsC; totTvqC += qTvqC;
-    // Net = collected (input credits not tracked in bills — show 0)
-    totTpsN += qTpsC; totTvqN += qTvqC;
-    qRows.push({ label: q.label, rev: qRev, tpsC: qTpsC, tvqC: qTvqC, tpsNet: qTpsC, tvqNet: qTvqC });
+    totTpsN += qTpsNet; totTvqN += qTvqNet;
+    qRows.push({ label: q.label, rev: qRev, tpsC: qTpsC, tvqC: qTvqC, tpsCti: qTpsCti, tvqRti: qTvqRti, tpsNet: qTpsNet, tvqNet: qTvqNet });
   }
+  const totTpsCti = qRows.reduce((s, q) => s + q.tpsCti, 0);
+  const totTvqRti = qRows.reduce((s, q) => s + q.tvqRti, 0);
 
   const titleTax = lang === 'en' ? 'GST/QST Quarterly Summary' : 'Sommaire TPS/TVQ trimestriel';
   const disclaimer = lang === 'en'
     ? 'Estimate only. Validate with your accountant before filing.'
     : 'Estimation à titre indicatif. Validez avec votre comptable avant de produire vos déclarations.';
-  const creditsNote = lang === 'en'
-    ? '* Input tax credits not tracked — manual entry required in your accounting software (Acomba/Sage 50).'
-    : '* Crédits intrants non disponibles — saisie manuelle requise dans votre logiciel de comptabilité.';
+  const hasCti = totTpsCti > 0 || totTvqRti > 0;
+  const creditsNote = hasCti
+    ? (lang === 'en'
+        ? 'Input tax credits computed from bills with TPS/TVQ fields entered in monthly P&L.'
+        : 'Crédits de taxes sur intrants calculés à partir des factures avec TPS/TVQ dans le P&L mensuel.')
+    : (lang === 'en'
+        ? 'No input tax credits found. Add TPS/TVQ amounts to supplier bills in monthly P&L to enable CTI/RTI tracking.'
+        : 'Aucun CTI/RTI trouvé. Ajoutez les montants TPS/TVQ aux factures fournisseurs dans le P&L mensuel pour activer le suivi CTI/RTI.');
 
   let h = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${titleTax}</title><style>*{margin:0;padding:0;box-sizing:border-box}
 body{font:12px/1.5 Arial,sans-serif;color:#222;padding:24px}
@@ -283,19 +303,23 @@ td:not(:first-child){text-align:right}
 
   h += `<h2>TPS ${lang === 'en' ? '(GST)' : '(TPS)'}</h2><table><tr><th>${lang === 'en' ? 'Quarter' : 'Trimestre'}</th><th>${lang === 'en' ? 'Revenue' : 'Revenus'}</th><th>${lang === 'en' ? 'TPS Collected (5%)' : 'TPS collectée (5%)'}</th><th>${lang === 'en' ? 'Input Credits *' : 'Crédits intrants *'}</th><th>${lang === 'en' ? 'Net Owing' : 'Net à remettre'}</th></tr>`;
 
-  qRows.forEach(q => {
-    h += `<tr><td><strong>${q.label}</strong></td><td>${fmt(q.rev)}</td><td>${fmt(q.tpsC)}</td><td class="sub" style="text-align:right;color:#b45309">—*</td><td><strong>${fmt(q.tpsNet)}</strong></td></tr>`;
-  });
-
-  h += `<tr class="tot"><td>TOTAL</td><td>${fmt(totRev)}</td><td>${fmt(totTpsC)}</td><td>—*</td><td>${fmt(totTpsN)}</td></tr></table>`;
-
-  h += `<h2>TVQ ${lang === 'en' ? '(QST)' : '(TVQ)'}</h2><table><tr><th>${lang === 'en' ? 'Quarter' : 'Trimestre'}</th><th>${lang === 'en' ? 'Revenue' : 'Revenus'}</th><th>${lang === 'en' ? 'TVQ Collected (9.975%)' : 'TVQ collectée (9,975%)'}</th><th>${lang === 'en' ? 'Input Credits *' : 'Crédits intrants *'}</th><th>${lang === 'en' ? 'Net Owing' : 'Net à remettre'}</th></tr>`;
+  const ctiCell = (v) => v > 0
+    ? `<span style="color:#0d9488;font-weight:600">${fmt(v)}</span>`
+    : `<span style="color:#b45309;font-style:italic">${lang === 'en' ? 'none' : 'aucun'}</span>`;
 
   qRows.forEach(q => {
-    h += `<tr><td><strong>${q.label}</strong></td><td>${fmt(q.rev)}</td><td>${fmt(q.tvqC)}</td><td class="sub" style="text-align:right;color:#b45309">—*</td><td><strong>${fmt(q.tvqNet)}</strong></td></tr>`;
+    h += `<tr><td><strong>${q.label}</strong></td><td>${fmt(q.rev)}</td><td>${fmt(q.tpsC)}</td><td style="text-align:right">${ctiCell(q.tpsCti)}</td><td><strong>${fmt(q.tpsNet)}</strong></td></tr>`;
   });
 
-  h += `<tr class="tot"><td>TOTAL</td><td>${fmt(totRev)}</td><td>${fmt(totTvqC)}</td><td>—*</td><td>${fmt(totTvqN)}</td></tr></table>`;
+  h += `<tr class="tot"><td>TOTAL</td><td>${fmt(totRev)}</td><td>${fmt(totTpsC)}</td><td style="text-align:right">${ctiCell(totTpsCti)}</td><td>${fmt(totTpsN)}</td></tr></table>`;
+
+  h += `<h2>TVQ ${lang === 'en' ? '(QST)' : '(TVQ)'}</h2><table><tr><th>${lang === 'en' ? 'Quarter' : 'Trimestre'}</th><th>${lang === 'en' ? 'Revenue' : 'Revenus'}</th><th>${lang === 'en' ? 'TVQ Collected (9.975%)' : 'TVQ collectée (9,975%)'}</th><th>${lang === 'en' ? 'Input Credits (RTI)' : 'Crédits intrants (RTI)'}</th><th>${lang === 'en' ? 'Net Owing' : 'Net à remettre'}</th></tr>`;
+
+  qRows.forEach(q => {
+    h += `<tr><td><strong>${q.label}</strong></td><td>${fmt(q.rev)}</td><td>${fmt(q.tvqC)}</td><td style="text-align:right">${ctiCell(q.tvqRti)}</td><td><strong>${fmt(q.tvqNet)}</strong></td></tr>`;
+  });
+
+  h += `<tr class="tot"><td>TOTAL</td><td>${fmt(totRev)}</td><td>${fmt(totTvqC)}</td><td style="text-align:right">${ctiCell(totTvqRti)}</td><td>${fmt(totTvqN)}</td></tr></table>`;
 
   h += `<p class="note">${creditsNote}</p>`;
   h += `<p class="sub" style="margin-top:20px">BalanceIQ &nbsp;|&nbsp; ${today}</p></body></html>`;

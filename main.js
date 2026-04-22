@@ -58,6 +58,9 @@ const {
   bankTransactionsList, bankTransactionMatch, bankTransactionUnmatch, bankTransactionCategorize,
   bankReconcilePreview, bankReconcileClose, bankReconcileReopen,
   bankLearnedRulesList, bankLearnedRuleDelete,
+  taxPeriodCompute, taxPeriodSave, taxPeriodMarkFiled, taxPeriodList,
+  taxSuspenseList, taxSuspenseClassifyAsCashExpense, taxSuspenseReverseCategorization,
+  taxProfileList, taxProfileUpsert, taxProfileDelete,
 } = require('./src/db/database.js');
 
 const BACKUP_DIR = () => path.join(app.getPath('userData'), 'Backups');
@@ -1509,6 +1512,17 @@ ipcMain.handle('bank:reconcile:reopen',    (_e, bankAccountId, stmtId, reason) =
 
 ipcMain.handle('bank:learned:list',        ()                          => bankLearnedRulesList());
 ipcMain.handle('bank:learned:delete',      (_e, id)                    => bankLearnedRuleDelete(id));
+
+ipcMain.handle('tax:period:compute',            (_e, start, end)                        => taxPeriodCompute(start, end));
+ipcMain.handle('tax:period:save',               (_e, data)                              => taxPeriodSave(data));
+ipcMain.handle('tax:period:markFiled',          (_e, id, confirmNum, paidAmt)           => taxPeriodMarkFiled(id, confirmNum, paidAmt));
+ipcMain.handle('tax:period:list',               ()                                      => taxPeriodList());
+ipcMain.handle('tax:suspense:list',             (_e, opts)                              => taxSuspenseList(opts));
+ipcMain.handle('tax:suspense:classifyCash',     (_e, txId, coaId, reason)               => taxSuspenseClassifyAsCashExpense(txId, coaId, reason));
+ipcMain.handle('tax:suspense:reverse',          (_e, txId)                              => taxSuspenseReverseCategorization(txId));
+ipcMain.handle('tax:profile:list',              ()                                      => taxProfileList());
+ipcMain.handle('tax:profile:upsert',            (_e, data)                              => taxProfileUpsert(data));
+ipcMain.handle('tax:profile:delete',            (_e, id)                                => taxProfileDelete(id));
 
 // ── Global Search — covers every data source in the app ───────────────────────
 ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {

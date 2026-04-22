@@ -470,6 +470,56 @@ const MIGRATIONS = [
       database.prepare(`CREATE INDEX IF NOT EXISTS idx_bml_pattern ON bank_match_learned(description_pattern)`).run();
     },
   },
+  {
+    version: 11,
+    description: 'CTI/RTI Input Tax Credits — Sprint 4 Accounting Suite',
+    up: (database) => {
+      // Add tax tracking columns to bank_transactions
+      database.prepare(`ALTER TABLE bank_transactions ADD COLUMN tax_claimable INTEGER DEFAULT 0`).run();
+      database.prepare(`ALTER TABLE bank_transactions ADD COLUMN suspense_entry_id INTEGER`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS supplier_tax_profiles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        supplier_name TEXT NOT NULL,
+        tps_rate REAL DEFAULT 0.05,
+        tvq_rate REAL DEFAULT 0.09975,
+        applies_tps INTEGER DEFAULT 1,
+        applies_tvq INTEGER DEFAULT 1,
+        notes TEXT,
+        UNIQUE(supplier_name)
+      )`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS tax_periods (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        period_type TEXT NOT NULL DEFAULT 'quarterly',
+        period_start TEXT NOT NULL,
+        period_end TEXT NOT NULL,
+        tps_collected REAL DEFAULT 0,
+        tvq_collected REAL DEFAULT 0,
+        tps_cti REAL DEFAULT 0,
+        tvq_rti REAL DEFAULT 0,
+        net_tps_owed REAL DEFAULT 0,
+        net_tvq_owed REAL DEFAULT 0,
+        status TEXT DEFAULT 'open',
+        filed_at TEXT,
+        paid_at TEXT,
+        confirmation_number TEXT,
+        journal_entry_id INTEGER,
+        notes TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS tax_calc_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tax_period_id INTEGER,
+        calculation_type TEXT NOT NULL,
+        formula_version TEXT NOT NULL DEFAULT 'v1.0-2026',
+        input_snapshot TEXT,
+        result REAL NOT NULL,
+        calculated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -2067,8 +2117,6 @@ function glAuditLogList({ entityType = null, entityId = null, dateFrom = null, d
 
 // ── Bank Reconciliation ───────────────────────────────────────────────────────
 
-const crypto = require('crypto');
-
 function bankAccountsList() {
   const db = getDb();
   return db.prepare(`
@@ -2421,6 +2469,225 @@ function bankStatementsList(bankAccountId) {
   ).all(bankAccountId);
 }
 
+// ── CTI/RTI INPUT TAX CREDITS ─────────────────────────────────────────────────
+
+function _dayVenteNet(dayData) {
+  if (!dayData?.cashes) return 0;
+  return dayData.cashes.reduce((s, c) => {
+    if (c.finalCash != null && c.float != null) {
+      return s + (c.interac || 0) + (c.livraisons || 0) + (c.deposits || 0) + (c.finalCash || 0) - (c.float || 0);
+    }
+    return s;
+  }, 0);
+}
+
+function _monthsInRange(periodStart, periodEnd) {
+  const months = [];
+  const [sy, sm] = periodStart.split('-').map(Number);
+  const [ey, em] = periodEnd.split('-').map(Number);
+  let y = sy, m = sm;
+  while (y < ey || (y === ey && m <= em)) {
+    months.push(`${y}-${String(m).padStart(2, '0')}`);
+    m++;
+    if (m > 12) { m = 1; y++; }
+  }
+  return months;
+}
+
+function taxPeriodCompute(periodStart, periodEnd) {
+  const db = getDb();
+  const months = _monthsInRange(periodStart, periodEnd);
+
+  // Load daily data once
+  let liveData = {};
+  try {
+    const r = db.prepare(`SELECT value FROM kv_store WHERE key='dicann-v7'`).get();
+    if (r?.value) liveData = JSON.parse(r.value);
+  } catch (_) {}
+
+  let tpsCollected = 0, tvqCollected = 0, tpsCti = 0, tvqRti = 0;
+  const billIds = [];
+
+  for (const month of months) {
+    const [my, mm] = month.split('-');
+    const daysInMonth = new Date(parseInt(my), parseInt(mm), 0).getDate();
+
+    // Revenue from daily POS data
+    let monthRev = 0;
+    let plData = {};
+    try {
+      const r = db.prepare(`SELECT value FROM kv_store WHERE key=?`).get(`dicann-pl-${month}`);
+      if (r?.value) plData = JSON.parse(r.value);
+    } catch (_) {}
+
+    if (plData._revenueOverride != null) {
+      monthRev = plData._revenueOverride;
+    } else {
+      for (let d = 1; d <= daysInMonth; d++) {
+        const key = `${my}-${mm}-${String(d).padStart(2, '0')}`;
+        monthRev += _dayVenteNet(liveData[key]);
+      }
+    }
+
+    tpsCollected += monthRev * 0.05;
+    tvqCollected += monthRev * 0.09975;
+
+    // CTI/RTI from bill entries with tax fields
+    const allKeys = Object.keys(plData);
+    for (const key of allKeys) {
+      if (!key.endsWith('_bills')) continue;
+      const bills = plData[key];
+      if (!Array.isArray(bills)) continue;
+      for (const bill of bills) {
+        const tps = parseFloat(bill.tps_paid) || 0;
+        const tvq = parseFloat(bill.tvq_paid) || 0;
+        const pct = (parseFloat(bill.business_use_pct) || 100) / 100;
+        if (tps > 0 || tvq > 0) {
+          tpsCti += tps * pct;
+          tvqRti += tvq * pct;
+          billIds.push(`${month}/${key}/${bill.id}`);
+        }
+      }
+    }
+  }
+
+  const netTpsOwed = tpsCollected - tpsCti;
+  const netTvqOwed = tvqCollected - tvqRti;
+
+  // Check for suspense blockers
+  const suspenseCount = db.prepare(
+    `SELECT COUNT(*) AS cnt FROM bank_transactions
+     WHERE coa_account_id IS NOT NULL AND tax_claimable = 0
+       AND match_status IN ('manual','suggested') AND reconciled = 0`
+  ).get().cnt;
+
+  // Log calculation
+  const now = new Date().toISOString();
+  const logStmt = db.prepare(
+    `INSERT INTO tax_calc_log (tax_period_id, calculation_type, formula_version, input_snapshot, result, calculated_at)
+     VALUES (NULL, ?, 'v1.0-2026', ?, ?, ?)`
+  );
+  db.transaction(() => {
+    logStmt.run('tps_collected', JSON.stringify({ months, method: 'revenue_pct' }), tpsCollected, now);
+    logStmt.run('tvq_collected', JSON.stringify({ months, method: 'revenue_pct' }), tvqCollected, now);
+    logStmt.run('cti', JSON.stringify({ months, billIds }), tpsCti, now);
+    logStmt.run('rti', JSON.stringify({ months, billIds }), tvqRti, now);
+  })();
+
+  return {
+    tpsCollected, tvqCollected, tpsCti, tvqRti,
+    netTpsOwed, netTvqOwed,
+    suspenseCount,
+    billCount: billIds.length,
+    months,
+    blockers: suspenseCount > 0
+      ? [{ type: 'suspense', count: suspenseCount }]
+      : [],
+  };
+}
+
+function taxPeriodSave(data) {
+  const db = getDb();
+  const {
+    id, periodType = 'quarterly', periodStart, periodEnd,
+    tpsCollected = 0, tvqCollected = 0, tpsCti = 0, tvqRti = 0,
+    netTpsOwed = 0, netTvqOwed = 0, notes = null,
+  } = data;
+
+  if (id) {
+    db.prepare(
+      `UPDATE tax_periods SET tps_collected=?, tvq_collected=?, tps_cti=?, tvq_rti=?,
+       net_tps_owed=?, net_tvq_owed=?, notes=? WHERE id=?`
+    ).run(tpsCollected, tvqCollected, tpsCti, tvqRti, netTpsOwed, netTvqOwed, notes, id);
+    return db.prepare(`SELECT * FROM tax_periods WHERE id=?`).get(id);
+  }
+
+  const { lastInsertRowid } = db.prepare(
+    `INSERT INTO tax_periods (period_type, period_start, period_end, tps_collected, tvq_collected,
+     tps_cti, tvq_rti, net_tps_owed, net_tvq_owed, status, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)`
+  ).run(periodType, periodStart, periodEnd, tpsCollected, tvqCollected, tpsCti, tvqRti, netTpsOwed, netTvqOwed, notes);
+
+  return db.prepare(`SELECT * FROM tax_periods WHERE id=?`).get(lastInsertRowid);
+}
+
+function taxPeriodMarkFiled(id, confirmationNumber, paidAmount) {
+  const db = getDb();
+  const now = new Date().toISOString();
+  db.prepare(
+    `UPDATE tax_periods SET status='filed', filed_at=?, confirmation_number=?, paid_at=? WHERE id=?`
+  ).run(now, confirmationNumber || null, paidAmount != null ? now : null, id);
+  db.prepare(
+    `INSERT INTO audit_log (device_id, module, action, record_type, record_id, reason)
+     VALUES (?, 'tax', 'period_filed', 'tax_period', ?, ?)`
+  ).run(getDeviceId(), String(id), confirmationNumber || null);
+  return db.prepare(`SELECT * FROM tax_periods WHERE id=?`).get(id);
+}
+
+function taxPeriodList() {
+  return getDb().prepare(`SELECT * FROM tax_periods ORDER BY period_end DESC`).all();
+}
+
+function taxSuspenseList(opts = {}) {
+  const { dateFrom, dateTo } = opts;
+  let where = `coa_account_id IS NOT NULL AND tax_claimable = 0 AND match_status IN ('manual','suggested')`;
+  const params = [];
+  if (dateFrom) { where += ` AND transaction_date >= ?`; params.push(dateFrom); }
+  if (dateTo)   { where += ` AND transaction_date <= ?`; params.push(dateTo); }
+  return getDb().prepare(
+    `SELECT bt.*, ca.account_number, ca.name_fr AS coa_name_fr
+     FROM bank_transactions bt
+     LEFT JOIN chart_of_accounts ca ON ca.id = bt.coa_account_id
+     WHERE ${where}
+     ORDER BY bt.transaction_date DESC`
+  ).all(...params);
+}
+
+function taxSuspenseClassifyAsCashExpense(bankTxId, coaAccountId, reason) {
+  const db = getDb();
+  db.prepare(
+    `UPDATE bank_transactions SET tax_claimable = 0, coa_account_id = ?, notes = ? WHERE id=?`
+  ).run(coaAccountId, reason || null, bankTxId);
+  db.prepare(
+    `INSERT INTO audit_log (device_id, module, action, record_type, record_id, reason)
+     VALUES (?, 'tax', 'classify_cash_expense', 'bank_transaction', ?, ?)`
+  ).run(getDeviceId(), String(bankTxId), reason || null);
+  return true;
+}
+
+function taxSuspenseReverseCategorization(bankTxId) {
+  const db = getDb();
+  db.prepare(
+    `UPDATE bank_transactions SET coa_account_id = NULL, match_status = 'unmatched', tax_claimable = 0 WHERE id=?`
+  ).run(bankTxId);
+  return true;
+}
+
+function taxProfileList() {
+  return getDb().prepare(`SELECT * FROM supplier_tax_profiles ORDER BY supplier_name`).all();
+}
+
+function taxProfileUpsert(data) {
+  const db = getDb();
+  const { id, supplierName, tpsRate = 0.05, tvqRate = 0.09975, appliesTps = 1, appliesTvq = 1, notes = null } = data;
+  if (id) {
+    db.prepare(
+      `UPDATE supplier_tax_profiles SET supplier_name=?, tps_rate=?, tvq_rate=?, applies_tps=?, applies_tvq=?, notes=? WHERE id=?`
+    ).run(supplierName, tpsRate, tvqRate, appliesTps ? 1 : 0, appliesTvq ? 1 : 0, notes, id);
+    return db.prepare(`SELECT * FROM supplier_tax_profiles WHERE id=?`).get(id);
+  }
+  const { lastInsertRowid } = db.prepare(
+    `INSERT OR REPLACE INTO supplier_tax_profiles (supplier_name, tps_rate, tvq_rate, applies_tps, applies_tvq, notes)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(supplierName, tpsRate, tvqRate, appliesTps ? 1 : 0, appliesTvq ? 1 : 0, notes);
+  return db.prepare(`SELECT * FROM supplier_tax_profiles WHERE id=?`).get(lastInsertRowid);
+}
+
+function taxProfileDelete(id) {
+  getDb().prepare(`DELETE FROM supplier_tax_profiles WHERE id=?`).run(id);
+  return true;
+}
+
 module.exports = {
   storageGet, storageSet, storageGetAll, storageGetByPrefix,
   auditInsert, auditQuery, getDeviceId,
@@ -2467,4 +2734,7 @@ module.exports = {
   bankTransactionsList, bankTransactionMatch, bankTransactionUnmatch, bankTransactionCategorize,
   bankReconcilePreview, bankReconcileClose, bankReconcileReopen,
   bankLearnedRulesList, bankLearnedRuleDelete,
+  taxPeriodCompute, taxPeriodSave, taxPeriodMarkFiled, taxPeriodList,
+  taxSuspenseList, taxSuspenseClassifyAsCashExpense, taxSuspenseReverseCategorization,
+  taxProfileList, taxProfileUpsert, taxProfileDelete,
 };

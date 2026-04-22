@@ -281,4 +281,22 @@ contextBridge.exposeInMainWorld('api', {
       delete: (id) => ipcRenderer.invoke('bank:learned:delete', id),
     },
   },
+  tax: {
+    period: {
+      compute:    (start, end)                => ipcRenderer.invoke('tax:period:compute', start, end),
+      save:       (data)                      => ipcRenderer.invoke('tax:period:save', data),
+      markFiled:  (id, confirmNum, paidAmt)   => ipcRenderer.invoke('tax:period:markFiled', id, confirmNum, paidAmt),
+      list:       ()                          => ipcRenderer.invoke('tax:period:list'),
+    },
+    suspense: {
+      list:         (opts)                    => ipcRenderer.invoke('tax:suspense:list', opts),
+      classifyCash: (txId, coaId, reason)     => ipcRenderer.invoke('tax:suspense:classifyCash', txId, coaId, reason),
+      reverse:      (txId)                    => ipcRenderer.invoke('tax:suspense:reverse', txId),
+    },
+    profile: {
+      list:   ()      => ipcRenderer.invoke('tax:profile:list'),
+      upsert: (data)  => ipcRenderer.invoke('tax:profile:upsert', data),
+      delete: (id)    => ipcRenderer.invoke('tax:profile:delete', id),
+    },
+  },
 });
