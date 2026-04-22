@@ -10,6 +10,9 @@ const EcocontributionTabLazy   = lazy(() => import('./components/Ecocontribution
 const TipPoolModal      = lazy(() => import('./components/TipPoolModal.jsx'));
 const POSScanModal      = lazy(() => import('./components/POSScanModal.jsx'));
 const GlobalSearchLazy  = lazy(() => import('./components/GlobalSearch.jsx'));
+const ChartOfAccountsTabLazy = lazy(() => import('./components/ChartOfAccountsTab.jsx'));
+const GrandLivreTabLazy       = lazy(() => import('./components/GrandLivreTab.jsx'));
+const BanqueTabLazy           = lazy(() => import('./components/BanqueTab.jsx'));
 import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./config/features.js";
 import { calcRoyaltyFull } from "./utils/calculations.js";
@@ -6364,6 +6367,9 @@ export default function App(){
                 {id:"pl-fournisseurs",  label:T.cfgPLSuppliers},
                 {id:"operations",       label:T.cfgOperations||"Opérations"},
                 {id:"integrations",     label:T.cfgIntegrations},
+                {id:"comptabilite",     label:lang==="fr"?"Plan comptable":"Chart of Accounts"},
+                {id:"grandlivre",       label:lang==="fr"?"Grand livre":"General Ledger"},
+                {id:"banque",           label:lang==="fr"?"🏦 Banque":"🏦 Bank"},
                 {id:"donnees",          label:T.cfgData},
                 {id:"application",      label:T.cfgApplication},
                 ...(appMode==="franchiseur"?[{id:"succursales",label:T.cfgLocations},{id:"redevances",label:T.cfgRoyalties},{id:"marqueblanche",label:T.cfgWhiteLabel}]:[]),
@@ -6522,7 +6528,14 @@ export default function App(){
             {configSubTab==="redevances"&&appMode==="franchiseur"&&(<><RedevancesConfig royaltyConfig={royaltyConfig} saveRoyaltyConfig={saveRoyaltyConfig} facCategories={facCategories} facProduits={facProduits} perfTargets={perfTargets} savePerfTargets={savePerfTargets}/><AlertsConfigCard alertConfig={alertConfig} saveAlertConfig={saveAlertConfig}/></>)}
 
             {/*  MARQUE BLANCHE — franchiseur only */}
-            {configSubTab==="marqueblanche"&&appMode==="franchiseur"&&(<MarqueBlancheConfig whiteLabelConfig={whiteLabelConfig} saveWhiteLabel={saveWhiteLabel}/>)}</div></div>)}</div></div>{/* end scrollable */}</div>{/* end main area */}</div>
+            {configSubTab==="marqueblanche"&&appMode==="franchiseur"&&(<MarqueBlancheConfig whiteLabelConfig={whiteLabelConfig} saveWhiteLabel={saveWhiteLabel}/>)}
+
+            {/*  PLAN COMPTABLE (Chart of Accounts) — Sprint 1 Accounting Suite */}
+            {configSubTab==="comptabilite"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><ChartOfAccountsTabLazy/></Suspense>)}
+            {/*  GRAND LIVRE (General Ledger) — Sprint 2 Accounting Suite */}
+            {configSubTab==="grandlivre"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><GrandLivreTabLazy lang={lang}/></Suspense>)}
+            {/*  BANQUE (Bank Reconciliation) — Sprint 3 Accounting Suite */}
+            {configSubTab==="banque"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><BanqueTabLazy lang={lang}/></Suspense>)}</div></div>)}</div></div>{/* end scrollable */}</div>{/* end main area */}</div>
             {/* Global Search (Cmd+K) — top-level so it works from any tab */}
             {searchOpen&&(<Suspense fallback={null}><GlobalSearchLazy isOpen={searchOpen} onClose={()=>setSearchOpen(false)} onNavigate={handleSearchNavigate} lang={lang} isDark={themeName!=='warm'}/></Suspense>)}
             </ThemeCtx.Provider></LangCtx.Provider>

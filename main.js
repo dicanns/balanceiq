@@ -47,6 +47,17 @@ const {
   searchIngredients, searchForecastProducts, searchHistoryGet, searchHistorySave,
   searchWasteEntries,
   storageGetByPrefix,
+  coaList, coaCreate, coaUpdate, coaArchive, coaUnarchive, coaImportCSV, coaExportCSV, coaMappingSuggestions,
+  glDraftEntry, glUpdateDraft, glPostEntry, glReverseEntry, glCorrectEntry, glDeleteDraft,
+  glGetEntry, glListEntries, glGetAccountHistory,
+  trialBalance,
+  periodList, periodOpen, periodClose, periodReopen,
+  glAuditLogList,
+  bankAccountsList, bankAccountCreate, bankAccountUpdate, bankAccountArchive,
+  bankStatementImport, bankStatementsList,
+  bankTransactionsList, bankTransactionMatch, bankTransactionUnmatch, bankTransactionCategorize,
+  bankReconcilePreview, bankReconcileClose, bankReconcileReopen,
+  bankLearnedRulesList, bankLearnedRuleDelete,
 } = require('./src/db/database.js');
 
 const BACKUP_DIR = () => path.join(app.getPath('userData'), 'Backups');
@@ -1450,6 +1461,54 @@ ipcMain.handle('onboarding:reset',    ()         => onboardingReset());
 ipcMain.handle('plPriceIntel:record',    (_e, r)              => plInvoiceHistoryRecord(r));
 ipcMain.handle('plPriceIntel:getLast',   (_e, key, excludeId) => plInvoiceHistoryGetLast(key, excludeId));
 ipcMain.handle('plPriceIntel:getRecent', (_e, key, limit)     => plInvoiceHistoryGetRecent(key, limit));
+
+// ── Chart of Accounts ─────────────────────────────────────────────────────────
+ipcMain.handle('coa:list',               ()                   => coaList());
+ipcMain.handle('coa:create',             (_e, fields)         => coaCreate(fields));
+ipcMain.handle('coa:update',             (_e, id, fields)     => coaUpdate(id, fields));
+ipcMain.handle('coa:archive',            (_e, id)             => coaArchive(id));
+ipcMain.handle('coa:unarchive',          (_e, id)             => coaUnarchive(id));
+ipcMain.handle('coa:importCSV',          (_e, csv)            => coaImportCSV(csv));
+ipcMain.handle('coa:exportCSV',          ()                   => coaExportCSV());
+ipcMain.handle('coa:getMappingSuggestions', (_e, names)       => coaMappingSuggestions(names));
+
+// ── General Ledger IPC ────────────────────────────────────────────────────────
+ipcMain.handle('ledger:entry:draft',   (_e, data)              => glDraftEntry(data));
+ipcMain.handle('ledger:entry:update',  (_e, id, data)          => glUpdateDraft(id, data));
+ipcMain.handle('ledger:entry:post',    (_e, id)                => glPostEntry(id));
+ipcMain.handle('ledger:entry:reverse', (_e, id, reason)        => glReverseEntry(id, reason));
+ipcMain.handle('ledger:entry:correct', (_e, id, newData, reason) => glCorrectEntry(id, newData, reason));
+ipcMain.handle('ledger:entry:delete',  (_e, id)                => glDeleteDraft(id));
+ipcMain.handle('ledger:entry:get',     (_e, id)                => glGetEntry(id));
+ipcMain.handle('ledger:entry:list',    (_e, opts)              => glListEntries(opts));
+ipcMain.handle('ledger:account:history', (_e, accountId, opts) => glGetAccountHistory(accountId, opts));
+ipcMain.handle('ledger:trial_balance', (_e, asOfDate, opts)    => trialBalance(asOfDate, opts));
+ipcMain.handle('ledger:audit:list',    (_e, opts)              => glAuditLogList(opts));
+ipcMain.handle('period:list',          (_e, opts)              => periodList(opts));
+ipcMain.handle('period:open',          (_e, data)              => periodOpen(data));
+ipcMain.handle('period:close',         (_e, id)                => periodClose(id));
+ipcMain.handle('period:reopen',        (_e, id, reason)        => periodReopen(id, reason));
+
+// ── Bank Reconciliation (Sprint 3) ────────────────────────────────────────────
+ipcMain.handle('bank:accounts:list',       ()                          => bankAccountsList());
+ipcMain.handle('bank:accounts:create',     (_e, fields)                => bankAccountCreate(fields));
+ipcMain.handle('bank:accounts:update',     (_e, id, fields)            => bankAccountUpdate(id, fields));
+ipcMain.handle('bank:accounts:archive',    (_e, id)                    => bankAccountArchive(id));
+
+ipcMain.handle('bank:statement:import',    (_e, opts)                  => bankStatementImport(opts));
+ipcMain.handle('bank:statement:list',      (_e, bankAccountId)         => bankStatementsList(bankAccountId));
+
+ipcMain.handle('bank:transactions:list',   (_e, bankAccountId, opts)   => bankTransactionsList(bankAccountId, opts));
+ipcMain.handle('bank:transactions:match',  (_e, txId, etype, eid)      => bankTransactionMatch(txId, etype, eid));
+ipcMain.handle('bank:transactions:unmatch',(_e, txId)                  => bankTransactionUnmatch(txId));
+ipcMain.handle('bank:transactions:categorize', (_e, txId, coaId, notes) => bankTransactionCategorize(txId, coaId, notes));
+
+ipcMain.handle('bank:reconcile:preview',   (_e, bankAccountId, asOf)   => bankReconcilePreview(bankAccountId, asOf));
+ipcMain.handle('bank:reconcile:close',     (_e, bankAccountId, stmtId) => bankReconcileClose(bankAccountId, stmtId));
+ipcMain.handle('bank:reconcile:reopen',    (_e, bankAccountId, stmtId, reason) => bankReconcileReopen(bankAccountId, stmtId, reason));
+
+ipcMain.handle('bank:learned:list',        ()                          => bankLearnedRulesList());
+ipcMain.handle('bank:learned:delete',      (_e, id)                    => bankLearnedRuleDelete(id));
 
 // ── Global Search — covers every data source in the app ───────────────────────
 ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {

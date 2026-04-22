@@ -221,4 +221,64 @@ contextBridge.exposeInMainWorld('api', {
       delete:     (y, pid, lid)      => ipcRenderer.invoke('eco:usage:delete', y, pid, lid),
     },
   },
+  coa: {
+    list:                 ()             => ipcRenderer.invoke('coa:list'),
+    create:               (fields)       => ipcRenderer.invoke('coa:create', fields),
+    update:               (id, fields)   => ipcRenderer.invoke('coa:update', id, fields),
+    archive:              (id)           => ipcRenderer.invoke('coa:archive', id),
+    unarchive:            (id)           => ipcRenderer.invoke('coa:unarchive', id),
+    importCSV:            (csv)          => ipcRenderer.invoke('coa:importCSV', csv),
+    exportCSV:            ()             => ipcRenderer.invoke('coa:exportCSV'),
+    getMappingSuggestions:(names)        => ipcRenderer.invoke('coa:getMappingSuggestions', names),
+  },
+  ledger: {
+    entry: {
+      draft:   (data)                    => ipcRenderer.invoke('ledger:entry:draft', data),
+      update:  (id, data)               => ipcRenderer.invoke('ledger:entry:update', id, data),
+      post:    (id)                     => ipcRenderer.invoke('ledger:entry:post', id),
+      reverse: (id, reason)             => ipcRenderer.invoke('ledger:entry:reverse', id, reason),
+      correct: (id, newData, reason)    => ipcRenderer.invoke('ledger:entry:correct', id, newData, reason),
+      delete:  (id)                     => ipcRenderer.invoke('ledger:entry:delete', id),
+      get:     (id)                     => ipcRenderer.invoke('ledger:entry:get', id),
+      list:    (opts)                   => ipcRenderer.invoke('ledger:entry:list', opts),
+    },
+    account: {
+      history: (accountId, opts)        => ipcRenderer.invoke('ledger:account:history', accountId, opts),
+    },
+    trialBalance: (asOfDate, opts)      => ipcRenderer.invoke('ledger:trial_balance', asOfDate, opts),
+    audit:        { list: (opts)        => ipcRenderer.invoke('ledger:audit:list', opts) },
+  },
+  period: {
+    list:   (opts)          => ipcRenderer.invoke('period:list', opts),
+    open:   (data)          => ipcRenderer.invoke('period:open', data),
+    close:  (id)            => ipcRenderer.invoke('period:close', id),
+    reopen: (id, reason)    => ipcRenderer.invoke('period:reopen', id, reason),
+  },
+  bank: {
+    accounts: {
+      list:    ()             => ipcRenderer.invoke('bank:accounts:list'),
+      create:  (fields)       => ipcRenderer.invoke('bank:accounts:create', fields),
+      update:  (id, fields)   => ipcRenderer.invoke('bank:accounts:update', id, fields),
+      archive: (id)           => ipcRenderer.invoke('bank:accounts:archive', id),
+    },
+    statement: {
+      import: (opts)          => ipcRenderer.invoke('bank:statement:import', opts),
+      list:   (bankAccountId) => ipcRenderer.invoke('bank:statement:list', bankAccountId),
+    },
+    transactions: {
+      list:       (bankAccountId, opts)        => ipcRenderer.invoke('bank:transactions:list', bankAccountId, opts),
+      match:      (txId, entityType, entityId) => ipcRenderer.invoke('bank:transactions:match', txId, entityType, entityId),
+      unmatch:    (txId)                       => ipcRenderer.invoke('bank:transactions:unmatch', txId),
+      categorize: (txId, coaId, notes)         => ipcRenderer.invoke('bank:transactions:categorize', txId, coaId, notes),
+    },
+    reconcile: {
+      preview: (bankAccountId, asOf)           => ipcRenderer.invoke('bank:reconcile:preview', bankAccountId, asOf),
+      close:   (bankAccountId, stmtId)         => ipcRenderer.invoke('bank:reconcile:close', bankAccountId, stmtId),
+      reopen:  (bankAccountId, stmtId, reason) => ipcRenderer.invoke('bank:reconcile:reopen', bankAccountId, stmtId, reason),
+    },
+    learned: {
+      list:   ()   => ipcRenderer.invoke('bank:learned:list'),
+      delete: (id) => ipcRenderer.invoke('bank:learned:delete', id),
+    },
+  },
 });

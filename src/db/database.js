@@ -172,6 +172,206 @@ const MIGRATIONS = [
     },
   },
   {
+    version: 9,
+    description: 'General Ledger Core (Grand livre) — Sprint 2 Accounting Suite',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS accounting_periods (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        period_type TEXT NOT NULL,
+        fiscal_year INTEGER NOT NULL,
+        start_date TEXT NOT NULL,
+        end_date TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'open',
+        closed_at TEXT,
+        closed_by_device_uuid TEXT,
+        reopened_at TEXT,
+        reopened_by_device_uuid TEXT,
+        reopen_reason TEXT,
+        location_id INTEGER,
+        UNIQUE(period_type, start_date, end_date, location_id)
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_ap_year ON accounting_periods(fiscal_year, status)`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS journal_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entry_number TEXT UNIQUE NOT NULL,
+        entry_date TEXT NOT NULL,
+        posting_date TEXT,
+        period_id INTEGER NOT NULL,
+        description TEXT,
+        source_type TEXT NOT NULL,
+        source_id INTEGER,
+        source_formula_version TEXT,
+        status TEXT NOT NULL DEFAULT 'draft',
+        posted_at TEXT,
+        posted_by_device_uuid TEXT,
+        reversed_by_entry_id INTEGER,
+        reverses_entry_id INTEGER,
+        reversal_reason TEXT,
+        reversed_at TEXT,
+        reversed_by_device_uuid TEXT,
+        device_uuid TEXT NOT NULL,
+        location_id INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (period_id) REFERENCES accounting_periods(id),
+        FOREIGN KEY (reversed_by_entry_id) REFERENCES journal_entries(id),
+        FOREIGN KEY (reverses_entry_id) REFERENCES journal_entries(id)
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_je_period ON journal_entries(period_id, status)`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_je_source ON journal_entries(source_type, source_id)`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_je_date   ON journal_entries(entry_date)`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS journal_lines (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entry_id INTEGER NOT NULL,
+        line_number INTEGER NOT NULL,
+        account_id INTEGER NOT NULL,
+        debit_cents INTEGER NOT NULL DEFAULT 0,
+        credit_cents INTEGER NOT NULL DEFAULT 0,
+        memo TEXT,
+        location_id INTEGER,
+        contact_id INTEGER,
+        tax_code TEXT,
+        FOREIGN KEY (entry_id) REFERENCES journal_entries(id) ON DELETE CASCADE,
+        FOREIGN KEY (account_id) REFERENCES chart_of_accounts(id),
+        CHECK (debit_cents >= 0 AND credit_cents >= 0),
+        CHECK (debit_cents = 0 OR credit_cents = 0),
+        CHECK (debit_cents + credit_cents > 0)
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_jl_entry   ON journal_lines(entry_id)`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_jl_account ON journal_lines(account_id, entry_id)`).run();
+
+      // Trigger: reject any INSERT/UPDATE that would produce an imbalanced posted entry.
+      // The application layer validates first; this is the safety net.
+      database.prepare(`
+        CREATE TRIGGER IF NOT EXISTS trg_je_balance_insert
+        AFTER INSERT ON journal_lines
+        BEGIN
+          SELECT CASE
+            WHEN (
+              SELECT status FROM journal_entries WHERE id = NEW.entry_id
+            ) = 'posted'
+            AND (
+              SELECT ABS(SUM(debit_cents) - SUM(credit_cents))
+              FROM journal_lines WHERE entry_id = NEW.entry_id
+            ) > 0
+            THEN RAISE(ABORT, 'Écriture déséquilibrée: total débit ≠ total crédit')
+          END;
+        END
+      `).run();
+    },
+  },
+  {
+    version: 8,
+    description: 'Chart of Accounts (Plan comptable) — Sprint 1 Accounting Suite',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS chart_of_accounts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        account_number TEXT UNIQUE NOT NULL,
+        name_fr TEXT NOT NULL,
+        name_en TEXT NOT NULL,
+        type TEXT NOT NULL,
+        parent_account_id INTEGER,
+        is_contra INTEGER DEFAULT 0,
+        is_archived INTEGER DEFAULT 0,
+        is_system INTEGER DEFAULT 0,
+        is_simplified INTEGER DEFAULT 0,
+        tax_hint TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_coa_number ON chart_of_accounts(account_number)`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_coa_type ON chart_of_accounts(type)`).run();
+
+      // Seed all 70+ accounts. Columns: account_number, name_fr, name_en, type, is_contra, is_simplified, tax_hint
+      const ins = database.prepare(`INSERT OR IGNORE INTO chart_of_accounts
+        (account_number, name_fr, name_en, type, is_contra, is_simplified, is_system, tax_hint)
+        VALUES (?, ?, ?, ?, ?, ?, 1, ?)`);
+
+      const seed = [
+        // ── ACTIFS (assets) ──────────────────────────────────────────────────
+        ['1010','Encaisse (banque opération)','Cash (operating bank account)','asset',0,1,null],
+        ['1020','Encaisse (banque épargne)','Cash (savings account)','asset',0,0,null],
+        ['1030','Petite caisse','Petty cash','asset',0,0,null],
+        ['1100','Comptes clients','Accounts receivable','asset',0,1,null],
+        ['1110','Provision pour créances douteuses','Allowance for doubtful accounts','asset',1,0,null],
+        ['1200','Stock de marchandises','Merchandise inventory','asset',0,1,null],
+        ['1210','Stock de nourriture et boissons','Food and beverage inventory','asset',0,0,null],
+        ['1300','Frais payés d\'avance','Prepaid expenses','asset',0,0,null],
+        ['1400','TPS à recevoir (CTI)','GST receivable (ITC)','asset',0,1,'tps'],
+        ['1410','TVQ à recevoir (RTI)','QST receivable (ITR)','asset',0,1,'tvq'],
+        ['1500','Équipement de cuisine','Kitchen equipment','asset',0,1,null],
+        ['1510','Amortissement cumulé - équipement','Accumulated depreciation - equipment','asset',1,0,null],
+        ['1520','Améliorations locatives','Leasehold improvements','asset',0,0,null],
+        ['1530','Amortissement cumulé - améliorations','Accumulated depreciation - improvements','asset',1,0,null],
+        ['1540','Mobilier et agencements','Furniture and fixtures','asset',0,0,null],
+        ['1550','Amortissement cumulé - mobilier','Accumulated depreciation - furniture','asset',1,0,null],
+        ['1560','Véhicules','Vehicles','asset',0,0,null],
+        ['1570','Amortissement cumulé - véhicules','Accumulated depreciation - vehicles','asset',1,0,null],
+        // ── PASSIFS (liabilities) ────────────────────────────────────────────
+        ['2010','Comptes fournisseurs','Accounts payable','liability',0,1,null],
+        ['2100','TPS à payer','GST payable','liability',0,1,'tps'],
+        ['2110','TVQ à payer','QST payable','liability',0,1,'tvq'],
+        ['2120','Retenues à la source (salaires)','Payroll withholdings','liability',0,0,null],
+        ['2130','Cotisations employeur à payer','Employer contributions payable','liability',0,0,null],
+        ['2200','Marge de crédit','Line of credit','liability',0,0,null],
+        ['2210','Carte de crédit','Credit card','liability',0,1,null],
+        ['2300','Emprunts à court terme','Short-term loans','liability',0,0,null],
+        ['2400','Emprunts à long terme','Long-term loans','liability',0,0,null],
+        ['2500','Dépôts de clients (acomptes)','Customer deposits (deposits)','liability',0,0,null],
+        // ── CAPITAUX PROPRES (equity) ─────────────────────────────────────────
+        ['3000','Capital-actions','Share capital','equity',0,1,null],
+        ['3100','Bénéfices non répartis','Retained earnings','equity',0,1,null],
+        ['3200','Prélèvements du propriétaire','Owner drawings','equity',0,0,null],
+        ['3300','Mises de fonds du propriétaire','Owner contributions','equity',0,0,null],
+        // ── REVENUS (revenue) ────────────────────────────────────────────────
+        ['4000','Ventes - repas','Sales - meals','revenue',0,1,null],
+        ['4010','Ventes - boissons','Sales - beverages','revenue',0,0,null],
+        ['4020','Ventes - livraisons (brut)','Sales - delivery (gross)','revenue',0,1,null],
+        ['4030','Ventes - alcool','Sales - alcohol','revenue',0,0,null],
+        ['4040','Autres revenus','Other revenue','revenue',0,0,null],
+        ['4100','Remises et remboursements','Sales returns and allowances','revenue',1,0,null],
+        // ── COÛT DES MARCHANDISES VENDUES (cogs) ─────────────────────────────
+        ['5000','Achats - nourriture','Purchases - food','cogs',0,1,'both'],
+        ['5010','Achats - boissons non alcoolisées','Purchases - non-alcoholic beverages','cogs',0,0,'both'],
+        ['5020','Achats - alcool','Purchases - alcohol','cogs',0,0,'both'],
+        ['5030','Emballages et fournitures','Packaging and supplies','cogs',0,0,'both'],
+        ['5040','Commissions - livraisons','Delivery commissions (DoorDash, Uber, Skip)','cogs',0,1,'both'],
+        ['5100','Variation du stock','Inventory change (period adjustment)','cogs',0,0,null],
+        // ── FRAIS D\'EXPLOITATION (expense) ──────────────────────────────────
+        ['6000','Salaires et avantages (production)','Wages and benefits (production)','expense',0,1,null],
+        ['6010','Salaires et avantages (administration)','Wages and benefits (administration)','expense',0,0,null],
+        ['6020','CNESST','CNESST (workers\' compensation)','expense',0,0,null],
+        ['6030','Avantages sociaux','Employee benefits','expense',0,0,null],
+        ['6100','Loyer','Rent','expense',0,1,'both'],
+        ['6110','Hydro-Québec','Hydro-Quebec (electricity)','expense',0,1,'both'],
+        ['6120','Gaz naturel','Natural gas','expense',0,1,'both'],
+        ['6130','Télécommunications','Telecommunications','expense',0,0,'both'],
+        ['6140','Internet','Internet','expense',0,0,'both'],
+        ['6200','Entretien et réparations - équipement','Equipment maintenance and repairs','expense',0,1,'both'],
+        ['6210','Entretien et réparations - bâtiment','Building maintenance and repairs','expense',0,0,'both'],
+        ['6220','Nettoyage et buanderie','Cleaning and laundry','expense',0,0,'both'],
+        ['6300','Publicité et marketing','Advertising and marketing','expense',0,1,'both'],
+        ['6310','Cartes-cadeaux et promotions','Gift cards and promotions','expense',0,0,'both'],
+        ['6400','Frais bancaires','Bank charges','expense',0,1,null],
+        ['6410','Frais de cartes de crédit (merchant)','Merchant credit card fees','expense',0,0,null],
+        ['6420','Intérêts payés','Interest paid','expense',0,0,null],
+        ['6500','Assurances','Insurance','expense',0,1,null],
+        ['6510','Permis et licences','Permits and licences','expense',0,0,'both'],
+        ['6520','Honoraires professionnels','Professional fees (accountant, lawyer)','expense',0,0,'both'],
+        ['6530','Frais informatiques et logiciels','IT and software expenses','expense',0,0,'both'],
+        ['6600','Fournitures de bureau','Office supplies','expense',0,0,'both'],
+        ['6610','Fournitures d\'exploitation','Operating supplies','expense',0,0,'both'],
+        ['6700','Amortissement','Depreciation','expense',0,0,null],
+        ['6800','Déplacements et représentation','Travel and entertainment','expense',0,0,'both'],
+        ['6900','Divers','Miscellaneous','expense',0,1,'both'],
+      ];
+
+      database.transaction(() => {
+        for (const row of seed) ins.run(...row);
+      })();
+    },
+  },
+  {
     version: 7,
     description: 'Fix FTS5 forecast_products — UUID ids cannot be FTS5 rowids; switch to standalone table with fp_id column',
     up: (database) => {
@@ -201,6 +401,73 @@ const MIGRATIONS = [
         INSERT INTO fts_forecast_products(fts_forecast_products, rowid, fp_id, name, category)
           SELECT 'delete', rowid, fp_id, name, category FROM fts_forecast_products WHERE fp_id=old.id LIMIT 1;
       END`).run();
+    },
+  },
+  {
+    version: 10,
+    description: 'Bank Reconciliation (Rapprochement bancaire) — Sprint 3 Accounting Suite',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS bank_accounts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        account_type TEXT NOT NULL DEFAULT 'bank',
+        coa_account_id INTEGER NOT NULL,
+        opening_balance REAL NOT NULL DEFAULT 0,
+        opening_date TEXT NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'CAD',
+        csv_column_map TEXT,
+        is_archived INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (coa_account_id) REFERENCES chart_of_accounts(id)
+      )`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS bank_statements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        bank_account_id INTEGER NOT NULL,
+        period_start TEXT NOT NULL,
+        period_end TEXT NOT NULL,
+        ending_balance REAL NOT NULL,
+        imported_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        source_file_hash TEXT,
+        reconciled INTEGER NOT NULL DEFAULT 0,
+        reconciled_at TEXT,
+        FOREIGN KEY (bank_account_id) REFERENCES bank_accounts(id)
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_bs_account ON bank_statements(bank_account_id)`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS bank_transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        bank_account_id INTEGER NOT NULL,
+        bank_statement_id INTEGER,
+        transaction_date TEXT NOT NULL,
+        description TEXT NOT NULL,
+        amount REAL NOT NULL,
+        running_balance REAL,
+        match_status TEXT NOT NULL DEFAULT 'unmatched',
+        matched_entity_type TEXT,
+        matched_entity_id INTEGER,
+        coa_account_id INTEGER,
+        notes TEXT,
+        reconciled INTEGER NOT NULL DEFAULT 0,
+        journal_entry_id INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (bank_account_id) REFERENCES bank_accounts(id),
+        FOREIGN KEY (bank_statement_id) REFERENCES bank_statements(id),
+        FOREIGN KEY (coa_account_id) REFERENCES chart_of_accounts(id),
+        FOREIGN KEY (journal_entry_id) REFERENCES journal_entries(id)
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_bt_account_date ON bank_transactions(bank_account_id, transaction_date)`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_bt_status ON bank_transactions(match_status)`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS bank_match_learned (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        description_pattern TEXT NOT NULL,
+        coa_account_id INTEGER NOT NULL,
+        match_count INTEGER NOT NULL DEFAULT 1,
+        last_used_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(description_pattern, coa_account_id)
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_bml_pattern ON bank_match_learned(description_pattern)`).run();
     },
   },
 ];
@@ -1310,6 +1577,850 @@ function storageGetByPrefix(prefix) {
   } catch (_) { return []; }
 }
 
+// ── Chart of Accounts ─────────────────────────────────────────────────────────
+function coaList() {
+  return getDb().prepare(
+    `SELECT id, account_number, name_fr, name_en, type, parent_account_id,
+            is_contra, is_archived, is_system, is_simplified, tax_hint, created_at
+     FROM chart_of_accounts
+     ORDER BY account_number ASC`
+  ).all();
+}
+
+function coaCreate({ account_number, name_fr, name_en, type, parent_account_id = null, is_contra = 0, is_simplified = 0, tax_hint = null }) {
+  const existing = getDb().prepare('SELECT id FROM chart_of_accounts WHERE account_number = ?').get(account_number);
+  if (existing) throw new Error(`Numéro de compte ${account_number} déjà utilisé`);
+  const info = getDb().prepare(
+    `INSERT INTO chart_of_accounts (account_number, name_fr, name_en, type, parent_account_id, is_contra, is_simplified, tax_hint, is_system)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`
+  ).run(account_number, name_fr, name_en, type, parent_account_id, is_contra ? 1 : 0, is_simplified ? 1 : 0, tax_hint || null);
+  return { id: info.lastInsertRowid };
+}
+
+function coaUpdate(id, fields) {
+  const allowed = ['account_number', 'name_fr', 'name_en', 'type', 'parent_account_id', 'is_contra', 'is_simplified', 'tax_hint'];
+  const sets = [];
+  const vals = [];
+  for (const [k, v] of Object.entries(fields)) {
+    if (allowed.includes(k)) { sets.push(`${k} = ?`); vals.push(v); }
+  }
+  if (!sets.length) return false;
+  vals.push(id);
+  getDb().prepare(`UPDATE chart_of_accounts SET ${sets.join(', ')} WHERE id = ? AND is_system = 0`).run(...vals);
+  return true;
+}
+
+function coaArchive(id) {
+  getDb().prepare(`UPDATE chart_of_accounts SET is_archived = 1 WHERE id = ?`).run(id);
+  return true;
+}
+
+function coaUnarchive(id) {
+  getDb().prepare(`UPDATE chart_of_accounts SET is_archived = 0 WHERE id = ?`).run(id);
+  return true;
+}
+
+function coaImportCSV(csvString) {
+  const lines = csvString.split('\n').map(l => l.trim()).filter(Boolean);
+  let created = 0, skipped = 0;
+  const errors = [];
+  const db = getDb();
+  const upsert = db.prepare(
+    `INSERT OR IGNORE INTO chart_of_accounts (account_number, name_fr, name_en, type, tax_hint, is_system)
+     VALUES (?, ?, ?, ?, ?, 0)`
+  );
+  // Skip header row if present
+  const start = (lines[0] || '').toLowerCase().includes('account_number') ? 1 : 0;
+  const importMany = db.transaction((rows) => {
+    for (const line of rows) {
+      const cols = line.split(',').map(c => c.replace(/^"|"$/g, '').trim());
+      const [account_number, name_fr, name_en, type, tax_hint] = cols;
+      if (!account_number || !name_fr || !type) {
+        errors.push(`Ligne ignorée (données manquantes): ${line}`);
+        skipped++;
+        continue;
+      }
+      try {
+        const info = upsert.run(account_number, name_fr, name_en || name_fr, type, tax_hint || null);
+        if (info.changes > 0) created++; else skipped++;
+      } catch (e) {
+        errors.push(`${account_number}: ${e.message}`);
+        skipped++;
+      }
+    }
+  });
+  importMany(lines.slice(start));
+  return { created, skipped, errors };
+}
+
+function coaExportCSV() {
+  const rows = coaList();
+  const header = 'account_number,name_fr,name_en,type,tax_hint,is_simplified,is_system';
+  const lines = rows.map(r =>
+    [r.account_number, r.name_fr, r.name_en, r.type, r.tax_hint || '', r.is_simplified, r.is_system].join(',')
+  );
+  return [header, ...lines].join('\n');
+}
+
+// Returns keyword-matched COA suggestions for a list of category/expense names
+function coaMappingSuggestions(categoryNames) {
+  const accounts = coaList().filter(a => !a.is_archived);
+  const KEYWORDS = {
+    // food & beverage
+    'nourriture': '5010', 'aliment': '5010', 'food': '5010', 'épicerie': '5010',
+    'boisson': '5020', 'beverage': '5020', 'drink': '5020',
+    'emballage': '5030', 'packaging': '5030', 'contenant': '5030',
+    // payroll
+    'salaire': '6110', 'salary': '6110', 'paie': '6110', 'payroll': '6110', 'wage': '6110',
+    'avantage': '6120', 'benefit': '6120', 'assurance-emploi': '6120', 'reer': '6120',
+    'vacances': '6130', 'vacation': '6130', 'congé': '6130',
+    // occupancy
+    'loyer': '6210', 'rent': '6210', 'bail': '6210', 'local': '6210',
+    'électricité': '6220', 'electricit': '6220', 'hydro': '6220', 'énergie': '6220',
+    'gaz': '6230', 'gas': '6230', 'chauffage': '6230',
+    'eau': '6240', 'water': '6240',
+    // marketing
+    'publicité': '6310', 'advertising': '6310', 'marketing': '6310', 'promotion': '6310',
+    // admin
+    'bureau': '6410', 'office': '6410', 'fourniture': '6410', 'supply': '6410',
+    'téléphone': '6420', 'telephone': '6420', 'internet': '6420', 'cellulaire': '6420',
+    'comptabilité': '6430', 'accounting': '6430', 'légal': '6440', 'legal': '6440', 'honoraire': '6440',
+    'assurance': '6450', 'insurance': '6450',
+    'permis': '6460', 'license': '6460', 'licence': '6460',
+    // maintenance
+    'entretien': '6510', 'maintenance': '6510', 'réparation': '6510', 'repair': '6510',
+    'nettoyage': '6520', 'cleaning': '6520', 'ménage': '6520',
+    // finance
+    'intérêt': '6610', 'interest': '6610', 'frais bancaire': '6620', 'bank fee': '6620', 'frais de service': '6620',
+    'stripe': '6630', 'carte': '6630', 'transaction': '6630',
+    // royalties
+    'redevance': '6710', 'royalty': '6710', 'franchise': '6710',
+    // other
+    'divers': '6810', 'miscellaneous': '6810', 'autre': '6810', 'other': '6810',
+  };
+  const byNumber = {};
+  for (const a of accounts) byNumber[a.account_number] = a;
+  const suggestions = {};
+  for (const name of (categoryNames || [])) {
+    const lower = name.toLowerCase();
+    let matched = null;
+    for (const [kw, num] of Object.entries(KEYWORDS)) {
+      if (lower.includes(kw)) { matched = num; break; }
+    }
+    if (matched && byNumber[matched]) {
+      suggestions[name] = { account_number: matched, name_fr: byNumber[matched].name_fr };
+    }
+  }
+  return suggestions;
+}
+
+// ── General Ledger Core ───────────────────────────────────────────────────────
+
+function _nextEntryNumber(db, fiscalYear) {
+  const row = db.prepare(
+    `SELECT entry_number FROM journal_entries
+     WHERE entry_number LIKE ? ORDER BY entry_number DESC LIMIT 1`
+  ).get(`JE-${fiscalYear}-%`);
+  if (!row) return `JE-${fiscalYear}-000001`;
+  const seq = parseInt(row.entry_number.split('-')[2], 10) + 1;
+  return `JE-${fiscalYear}-${String(seq).padStart(6, '0')}`;
+}
+
+function _getDeviceUuid() {
+  return getDeviceId();
+}
+
+// Returns or auto-creates the open monthly period for a given date.
+function _ensurePeriod(db, entryDate, locationId = null) {
+  const d = new Date(entryDate);
+  const year = d.getUTCFullYear();
+  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const start = `${year}-${month}-01`;
+  const lastDay = new Date(year, d.getUTCMonth() + 1, 0).getDate();
+  const end = `${year}-${month}-${String(lastDay).padStart(2, '0')}`;
+  let period = db.prepare(
+    `SELECT * FROM accounting_periods WHERE period_type='month' AND start_date=? AND end_date=? AND (location_id IS ? OR location_id=?)`
+  ).get(start, end, locationId, locationId);
+  if (!period) {
+    const info = db.prepare(
+      `INSERT OR IGNORE INTO accounting_periods (period_type, fiscal_year, start_date, end_date, status, location_id)
+       VALUES ('month', ?, ?, ?, 'open', ?)`
+    ).run(year, start, end, locationId);
+    period = db.prepare(`SELECT * FROM accounting_periods WHERE id=?`).get(info.lastInsertRowid || db.prepare(
+      `SELECT id FROM accounting_periods WHERE period_type='month' AND start_date=? AND end_date=?`
+    ).get(start, end).id);
+    if (!period) period = db.prepare(
+      `SELECT * FROM accounting_periods WHERE period_type='month' AND start_date=? AND end_date=?`
+    ).get(start, end);
+  }
+  return period;
+}
+
+// Draft: save entry + lines without posting (no balance check).
+function glDraftEntry({ entry_date, description, source_type = 'manual', source_id = null, lines = [], location_id = null }) {
+  const db = getDb();
+  const uuid = _getDeviceUuid();
+  const year = new Date(entry_date).getUTCFullYear();
+  const period = _ensurePeriod(db, entry_date, location_id);
+  const entryNumber = _nextEntryNumber(db, year);
+
+  return db.transaction(() => {
+    const { lastInsertRowid: entryId } = db.prepare(
+      `INSERT INTO journal_entries (entry_number, entry_date, period_id, description, source_type, source_id, status, device_uuid, location_id)
+       VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?)`
+    ).run(entryNumber, entry_date, period.id, description || null, source_type, source_id || null, uuid, location_id || null);
+
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      db.prepare(
+        `INSERT INTO journal_lines (entry_id, line_number, account_id, debit_cents, credit_cents, memo, location_id, contact_id, tax_code)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(entryId, i + 1, l.account_id, l.debit_cents || 0, l.credit_cents || 0, l.memo || null, l.location_id || null, l.contact_id || null, l.tax_code || null);
+    }
+    return { entryId, entryNumber };
+  })();
+}
+
+// Update a draft entry's lines (replaces all lines).
+function glUpdateDraft(entryId, { entry_date, description, lines = [] }) {
+  const db = getDb();
+  const entry = db.prepare(`SELECT * FROM journal_entries WHERE id=?`).get(entryId);
+  if (!entry) throw new Error('Écriture introuvable');
+  if (entry.status !== 'draft') throw new Error('Seules les écritures en brouillon peuvent être modifiées');
+
+  return db.transaction(() => {
+    const updates = [];
+    const vals = [];
+    if (entry_date) { updates.push('entry_date=?'); vals.push(entry_date); }
+    if (description !== undefined) { updates.push('description=?'); vals.push(description || null); }
+    if (updates.length) { vals.push(entryId); db.prepare(`UPDATE journal_entries SET ${updates.join(',')} WHERE id=?`).run(...vals); }
+
+    db.prepare(`DELETE FROM journal_lines WHERE entry_id=?`).run(entryId);
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      db.prepare(
+        `INSERT INTO journal_lines (entry_id, line_number, account_id, debit_cents, credit_cents, memo, location_id, contact_id, tax_code)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(entryId, i + 1, l.account_id, l.debit_cents || 0, l.credit_cents || 0, l.memo || null, l.location_id || null, l.contact_id || null, l.tax_code || null);
+    }
+    return true;
+  })();
+}
+
+// Post: validate balance, flip status to posted.
+function glPostEntry(entryId) {
+  const db = getDb();
+  const entry = db.prepare(`SELECT * FROM journal_entries WHERE id=?`).get(entryId);
+  if (!entry) throw new Error('Écriture introuvable');
+  if (entry.status === 'posted') throw new Error('Écriture déjà comptabilisée');
+  if (entry.status === 'reversed') throw new Error('Écriture annulée — ne peut pas être comptabilisée');
+
+  const period = db.prepare(`SELECT * FROM accounting_periods WHERE id=?`).get(entry.period_id);
+  if (period && period.status === 'closed') throw new Error('La période est fermée — rouvrez-la avant de comptabiliser');
+
+  const lines = db.prepare(`SELECT * FROM journal_lines WHERE entry_id=?`).all(entryId);
+  if (!lines.length) throw new Error('Écriture sans lignes');
+
+  const totalDebits = lines.reduce((s, l) => s + l.debit_cents, 0);
+  const totalCredits = lines.reduce((s, l) => s + l.credit_cents, 0);
+  if (totalDebits !== totalCredits) {
+    throw new Error(`Déséquilibre: débit ${totalDebits}¢ ≠ crédit ${totalCredits}¢`);
+  }
+
+  const now = new Date().toISOString();
+  const uuid = _getDeviceUuid();
+  db.prepare(
+    `UPDATE journal_entries SET status='posted', posted_at=?, posted_by_device_uuid=?, posting_date=? WHERE id=?`
+  ).run(now, uuid, now.slice(0, 10), entryId);
+
+  return { entryNumber: entry.entry_number, postedAt: now };
+}
+
+// Reverse a posted entry: creates and immediately posts the mirror entry.
+function glReverseEntry(entryId, reason) {
+  const db = getDb();
+  const orig = db.prepare(`SELECT * FROM journal_entries WHERE id=?`).get(entryId);
+  if (!orig) throw new Error('Écriture introuvable');
+  if (orig.status !== 'posted') throw new Error('Seules les écritures comptabilisées peuvent être annulées');
+  if (orig.reversed_by_entry_id) throw new Error('Écriture déjà annulée');
+
+  const period = db.prepare(`SELECT * FROM accounting_periods WHERE id=?`).get(orig.period_id);
+  if (period && period.status === 'closed') throw new Error('La période est fermée — rouvrez-la avant d\'annuler');
+
+  const origLines = db.prepare(`SELECT * FROM journal_lines WHERE entry_id=? ORDER BY line_number`).all(entryId);
+  const now = new Date().toISOString();
+  const today = now.slice(0, 10);
+  const uuid = _getDeviceUuid();
+  const year = new Date(today).getUTCFullYear();
+  const reversalPeriod = _ensurePeriod(db, today, orig.location_id);
+
+  return db.transaction(() => {
+    const revNumber = _nextEntryNumber(db, year);
+    const { lastInsertRowid: revId } = db.prepare(
+      `INSERT INTO journal_entries (entry_number, entry_date, period_id, description, source_type, source_id, status, posted_at, posted_by_device_uuid, posting_date, reverses_entry_id, reversal_reason, device_uuid, location_id)
+       VALUES (?, ?, ?, ?, 'reversal', ?, 'posted', ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      revNumber, today, reversalPeriod.id,
+      `Annulation de ${orig.entry_number}${reason ? ': ' + reason : ''}`,
+      orig.source_id || null, now, uuid, today,
+      entryId, reason || null, uuid, orig.location_id || null
+    );
+
+    for (let i = 0; i < origLines.length; i++) {
+      const l = origLines[i];
+      db.prepare(
+        `INSERT INTO journal_lines (entry_id, line_number, account_id, debit_cents, credit_cents, memo, location_id, contact_id, tax_code)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(revId, i + 1, l.account_id, l.credit_cents, l.debit_cents, l.memo, l.location_id, l.contact_id, l.tax_code);
+    }
+
+    db.prepare(
+      `UPDATE journal_entries SET status='reversed', reversed_by_entry_id=?, reversed_at=?, reversed_by_device_uuid=? WHERE id=?`
+    ).run(revId, now, uuid, entryId);
+
+    return { reversalId: revId, reversalNumber: revNumber };
+  })();
+}
+
+// Correct: atomic reverse + new draft (caller posts the new draft after confirming lines).
+function glCorrectEntry(entryId, newData, reason) {
+  const { reversalId, reversalNumber } = glReverseEntry(entryId, reason || 'Correction');
+  const { entryId: newEntryId, entryNumber: newEntryNumber } = glDraftEntry(newData);
+  return { reversalId, reversalNumber, newEntryId, newEntryNumber };
+}
+
+function glDeleteDraft(entryId) {
+  const db = getDb();
+  const entry = db.prepare(`SELECT status FROM journal_entries WHERE id=?`).get(entryId);
+  if (!entry) throw new Error('Écriture introuvable');
+  if (entry.status !== 'draft') throw new Error('Seules les écritures en brouillon peuvent être supprimées');
+  db.prepare(`DELETE FROM journal_lines WHERE entry_id=?`).run(entryId);
+  db.prepare(`DELETE FROM journal_entries WHERE id=?`).run(entryId);
+  return true;
+}
+
+function glGetEntry(entryId) {
+  const db = getDb();
+  const entry = db.prepare(`SELECT * FROM journal_entries WHERE id=?`).get(entryId);
+  if (!entry) return null;
+  const lines = db.prepare(
+    `SELECT jl.*, coa.account_number, coa.name_fr, coa.name_en, coa.type
+     FROM journal_lines jl
+     JOIN chart_of_accounts coa ON coa.id = jl.account_id
+     WHERE jl.entry_id=? ORDER BY jl.line_number`
+  ).all(entryId);
+  return { ...entry, lines };
+}
+
+function glListEntries({ periodId = null, status = null, sourceType = null, dateFrom = null, dateTo = null, locationId = null, limit = 100, offset = 0 } = {}) {
+  const db = getDb();
+  const conditions = [];
+  const params = [];
+  if (periodId) { conditions.push('je.period_id=?'); params.push(periodId); }
+  if (status) { conditions.push('je.status=?'); params.push(status); }
+  if (sourceType) { conditions.push('je.source_type=?'); params.push(sourceType); }
+  if (dateFrom) { conditions.push('je.entry_date>=?'); params.push(dateFrom); }
+  if (dateTo) { conditions.push('je.entry_date<=?'); params.push(dateTo); }
+  if (locationId != null) { conditions.push('(je.location_id IS ? OR je.location_id=?)'); params.push(locationId, locationId); }
+  const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+  params.push(limit, offset);
+  const entries = db.prepare(
+    `SELECT je.*, ap.start_date AS period_start, ap.end_date AS period_end
+     FROM journal_entries je
+     LEFT JOIN accounting_periods ap ON ap.id = je.period_id
+     ${where}
+     ORDER BY je.entry_date DESC, je.id DESC
+     LIMIT ? OFFSET ?`
+  ).all(...params);
+
+  const total = db.prepare(
+    `SELECT COUNT(*) AS n FROM journal_entries je ${where.replace('LIMIT ? OFFSET ?', '')}`
+  ).get(...params.slice(0, -2))?.n || 0;
+
+  return { entries, total };
+}
+
+function glGetAccountHistory(accountId, { dateFrom = null, dateTo = null, locationId = null } = {}) {
+  const db = getDb();
+  const conds = ['jl.account_id=?', "je.status='posted'"];
+  const params = [accountId];
+  if (dateFrom) { conds.push('je.entry_date>=?'); params.push(dateFrom); }
+  if (dateTo) { conds.push('je.entry_date<=?'); params.push(dateTo); }
+  if (locationId != null) { conds.push('(je.location_id IS ? OR je.location_id=?)'); params.push(locationId, locationId); }
+  return db.prepare(
+    `SELECT je.entry_number, je.entry_date, je.description, je.source_type,
+            jl.debit_cents, jl.credit_cents, jl.memo,
+            coa.account_number, coa.name_fr
+     FROM journal_lines jl
+     JOIN journal_entries je ON je.id = jl.entry_id
+     JOIN chart_of_accounts coa ON coa.id = jl.account_id
+     WHERE ${conds.join(' AND ')}
+     ORDER BY je.entry_date ASC, je.id ASC`
+  ).all(...params);
+}
+
+function trialBalance(asOfDate, { locationId = null } = {}) {
+  const db = getDb();
+  const params = [asOfDate];
+  const locCond = locationId != null ? '(je.location_id IS ? OR je.location_id=?)' : '1=1';
+  if (locationId != null) params.push(locationId, locationId);
+
+  const rows = db.prepare(
+    `SELECT coa.id AS account_id, coa.account_number, coa.name_fr, coa.name_en, coa.type, coa.is_contra,
+            SUM(jl.debit_cents) AS total_debit_cents, SUM(jl.credit_cents) AS total_credit_cents
+     FROM journal_lines jl
+     JOIN journal_entries je ON je.id = jl.entry_id AND je.status='posted' AND je.entry_date <= ?
+     JOIN chart_of_accounts coa ON coa.id = jl.account_id
+     WHERE ${locCond}
+     GROUP BY jl.account_id
+     ORDER BY coa.account_number ASC`
+  ).all(...params);
+
+  return rows.map(r => ({
+    ...r,
+    balance_cents: r.total_debit_cents - r.total_credit_cents,
+  }));
+}
+
+// ── Accounting Periods ────────────────────────────────────────────────────────
+
+function periodList({ fiscalYear = null, locationId = null } = {}) {
+  const db = getDb();
+  const conds = [];
+  const params = [];
+  if (fiscalYear) { conds.push('fiscal_year=?'); params.push(fiscalYear); }
+  if (locationId != null) { conds.push('(location_id IS ? OR location_id=?)'); params.push(locationId, locationId); }
+  const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+  return db.prepare(`SELECT * FROM accounting_periods ${where} ORDER BY start_date ASC`).all(...params);
+}
+
+function periodOpen({ period_type = 'month', fiscal_year, start_date, end_date, location_id = null }) {
+  const db = getDb();
+  const info = db.prepare(
+    `INSERT OR IGNORE INTO accounting_periods (period_type, fiscal_year, start_date, end_date, status, location_id)
+     VALUES (?, ?, ?, ?, 'open', ?)`
+  ).run(period_type, fiscal_year, start_date, end_date, location_id || null);
+  if (!info.lastInsertRowid) {
+    // Already exists — just ensure it's open
+    const existing = db.prepare(
+      `SELECT id, status FROM accounting_periods WHERE period_type=? AND start_date=? AND end_date=? AND (location_id IS ? OR location_id=?)`
+    ).get(period_type, start_date, end_date, location_id, location_id);
+    if (existing && existing.status === 'closed') {
+      throw new Error('Période déjà fermée — utilisez "Rouvrir" pour la réouvrir');
+    }
+    return { periodId: existing?.id };
+  }
+  return { periodId: info.lastInsertRowid };
+}
+
+function periodClose(periodId) {
+  const db = getDb();
+  const period = db.prepare(`SELECT * FROM accounting_periods WHERE id=?`).get(periodId);
+  if (!period) throw new Error('Période introuvable');
+  if (period.status === 'closed') throw new Error('Période déjà fermée');
+
+  // Check for draft entries in this period
+  const drafts = db.prepare(
+    `SELECT COUNT(*) AS n FROM journal_entries WHERE period_id=? AND status='draft'`
+  ).get(periodId);
+  if (drafts.n > 0) {
+    return { success: false, blockers: [`${drafts.n} écriture(s) en brouillon doivent être comptabilisées ou supprimées avant la fermeture`] };
+  }
+
+  const now = new Date().toISOString();
+  const uuid = _getDeviceUuid();
+  db.prepare(
+    `UPDATE accounting_periods SET status='closed', closed_at=?, closed_by_device_uuid=? WHERE id=?`
+  ).run(now, uuid, periodId);
+  return { success: true };
+}
+
+function periodReopen(periodId, reason) {
+  const db = getDb();
+  const period = db.prepare(`SELECT * FROM accounting_periods WHERE id=?`).get(periodId);
+  if (!period) throw new Error('Période introuvable');
+  if (period.status !== 'closed') throw new Error('La période n\'est pas fermée');
+  if (!reason || !reason.trim()) throw new Error('Une raison est requise pour rouvrir une période');
+
+  const now = new Date().toISOString();
+  const uuid = _getDeviceUuid();
+  db.prepare(
+    `UPDATE accounting_periods SET status='reopened', reopened_at=?, reopened_by_device_uuid=?, reopen_reason=? WHERE id=?`
+  ).run(now, uuid, reason.trim(), periodId);
+  return { success: true };
+}
+
+function glAuditLogList({ entityType = null, entityId = null, dateFrom = null, dateTo = null, limit = 100 } = {}) {
+  // Reads from the existing audit_log table, filtered to GL-related actions
+  const db = getDb();
+  const conds = ["module IN ('GL','PERIOD','LEDGER')"];
+  const params = [];
+  if (entityType) { conds.push('record_type=?'); params.push(entityType); }
+  if (entityId) { conds.push('record_id=?'); params.push(String(entityId)); }
+  if (dateFrom) { conds.push('timestamp>=?'); params.push(dateFrom); }
+  if (dateTo) { conds.push('timestamp<=?'); params.push(dateTo); }
+  params.push(limit);
+  return db.prepare(
+    `SELECT * FROM audit_log WHERE ${conds.join(' AND ')} ORDER BY timestamp DESC LIMIT ?`
+  ).all(...params);
+}
+
+// ── Bank Reconciliation ───────────────────────────────────────────────────────
+
+const crypto = require('crypto');
+
+function bankAccountsList() {
+  const db = getDb();
+  return db.prepare(`
+    SELECT ba.*, ca.account_number, ca.name_fr AS coa_name_fr
+    FROM bank_accounts ba
+    LEFT JOIN chart_of_accounts ca ON ca.id = ba.coa_account_id
+    WHERE ba.is_archived = 0
+    ORDER BY ba.name
+  `).all();
+}
+
+function bankAccountCreate(fields) {
+  const db = getDb();
+  const { name, account_type, coa_account_id, opening_balance, opening_date, currency = 'CAD' } = fields;
+  const { lastInsertRowid } = db.prepare(
+    `INSERT INTO bank_accounts (name, account_type, coa_account_id, opening_balance, opening_date, currency)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(name, account_type || 'bank', coa_account_id, opening_balance || 0, opening_date, currency);
+  return db.prepare(`SELECT * FROM bank_accounts WHERE id=?`).get(lastInsertRowid);
+}
+
+function bankAccountUpdate(id, fields) {
+  const db = getDb();
+  const cols = ['name','account_type','coa_account_id','opening_balance','opening_date','currency','csv_column_map','is_archived'];
+  const sets = []; const vals = [];
+  for (const c of cols) {
+    if (fields[c] !== undefined) { sets.push(`${c}=?`); vals.push(fields[c]); }
+  }
+  if (!sets.length) return;
+  vals.push(id);
+  db.prepare(`UPDATE bank_accounts SET ${sets.join(',')} WHERE id=?`).run(...vals);
+  return db.prepare(`SELECT * FROM bank_accounts WHERE id=?`).get(id);
+}
+
+function bankAccountArchive(id) {
+  getDb().prepare(`UPDATE bank_accounts SET is_archived=1 WHERE id=?`).run(id);
+  return true;
+}
+
+// ── CSV / OFX import ─────────────────────────────────────────────────────────
+
+function _sha256(str) {
+  return crypto.createHash('sha256').update(str).digest('hex');
+}
+
+function _normDescription(desc) {
+  return (desc || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 100);
+}
+
+// Parse bank CSV: returns [{date, description, amount, running_balance}]
+function _parseBankCSV(csvText, columnMap) {
+  const lines = csvText.split(/\r?\n/).filter(l => l.trim());
+  if (!lines.length) return [];
+  const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim().toLowerCase());
+
+  // Auto-detect or use saved mapping
+  const map = columnMap || {};
+  const detect = (candidates) => {
+    for (const c of candidates) {
+      const idx = headers.findIndex(h => h.includes(c));
+      if (idx >= 0) return idx;
+    }
+    return -1;
+  };
+  const dateIdx   = map.date        !== undefined ? map.date        : detect(['date','dat']);
+  const descIdx   = map.description !== undefined ? map.description : detect(['description','libellé','libelle','memo','details','narrativ']);
+  const amtIdx    = map.amount      !== undefined ? map.amount      : detect(['amount','montant','debit/credit','transaction amount']);
+  const debitIdx  = map.debit       !== undefined ? map.debit       : detect(['debit','débit','withdrawals','sortie']);
+  const creditIdx = map.credit      !== undefined ? map.credit      : detect(['credit','crédit','deposits','entrée']);
+  const balIdx    = map.balance     !== undefined ? map.balance     : detect(['balance','solde','running balance','closing balance']);
+
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].match(/("(?:[^"]|"")*"|[^,]*)/g) || [];
+    const clean = cols.map(c => c.replace(/^"|"$/g, '').replace(/""/g, '"').trim());
+    if (!clean[dateIdx]) continue;
+
+    let amount = 0;
+    if (amtIdx >= 0 && clean[amtIdx]) {
+      amount = parseFloat(clean[amtIdx].replace(/[^0-9.\-]/g, '')) || 0;
+    } else if (debitIdx >= 0 || creditIdx >= 0) {
+      const debit  = debitIdx  >= 0 ? parseFloat((clean[debitIdx]  || '').replace(/[^0-9.]/g, '')) || 0 : 0;
+      const credit = creditIdx >= 0 ? parseFloat((clean[creditIdx] || '').replace(/[^0-9.]/g, '')) || 0 : 0;
+      amount = credit - debit;
+    }
+
+    rows.push({
+      transaction_date: clean[dateIdx] || '',
+      description: clean[descIdx] || '',
+      amount,
+      running_balance: balIdx >= 0 ? (parseFloat((clean[balIdx] || '').replace(/[^0-9.\-]/g, '')) || null) : null,
+    });
+  }
+  return rows;
+}
+
+// Parse OFX/QFX/QBO — lightweight regex (no full XML parser needed for stable OFX 1.x)
+function _parseBankOFX(text) {
+  const rows = [];
+  const txBlocks = text.split(/<STMTTRN>|<\/STMTTRN>/i).filter((_, i) => i % 2 === 1);
+  for (const block of txBlocks) {
+    const get = (tag) => { const m = block.match(new RegExp(`<${tag}>([^<\r\n]+)`, 'i')); return m ? m[1].trim() : ''; };
+    const dtRaw = get('DTPOSTED') || get('DTUSER');
+    if (!dtRaw) continue;
+    // OFX dates: YYYYMMDD[HHMMSS[...]]
+    const dateStr = dtRaw.length >= 8 ? `${dtRaw.slice(0,4)}-${dtRaw.slice(4,6)}-${dtRaw.slice(6,8)}` : dtRaw;
+    const amount = parseFloat(get('TRNAMT')) || 0;
+    rows.push({
+      transaction_date: dateStr,
+      description: get('NAME') || get('MEMO') || get('TRNTYPE'),
+      amount,
+      running_balance: null,
+    });
+  }
+  return rows;
+}
+
+// Run matching engine on newly imported rows
+function _runMatchingEngine(db, bankAccountId, txIds) {
+  const learned = db.prepare(`SELECT * FROM bank_match_learned ORDER BY match_count DESC`).all();
+  const learnedMap = {};
+  for (const l of learned) learnedMap[l.description_pattern] = l;
+
+  for (const txId of txIds) {
+    const tx = db.prepare(`SELECT * FROM bank_transactions WHERE id=?`).get(txId);
+    if (!tx) continue;
+
+    const normDesc = _normDescription(tx.description);
+
+    // Check learned rules — auto-match if count >= 3 and amount/date are within window
+    const rule = learnedMap[normDesc];
+    if (rule && rule.match_count >= 3) {
+      db.prepare(`UPDATE bank_transactions SET match_status='suggested', coa_account_id=? WHERE id=?`)
+        .run(rule.coa_account_id, txId);
+      continue;
+    }
+
+    // Partial description match against learned rules
+    for (const [pattern, lrule] of Object.entries(learnedMap)) {
+      if (normDesc.includes(pattern) || pattern.includes(normDesc)) {
+        db.prepare(`UPDATE bank_transactions SET match_status='suggested', coa_account_id=? WHERE id=?`)
+          .run(lrule.coa_account_id, txId);
+        break;
+      }
+    }
+  }
+}
+
+function bankStatementImport({ bankAccountId, fileText, fileName, fileType, periodStart, periodEnd, endingBalance }) {
+  const db = getDb();
+  const fileHash = _sha256(fileText);
+
+  // Duplicate file check
+  const existing = db.prepare(`SELECT id FROM bank_statements WHERE source_file_hash=? AND bank_account_id=?`).get(fileHash, bankAccountId);
+  if (existing) throw new Error('Ce relevé semble déjà importé (fichier identique).');
+
+  // Parse
+  const account = db.prepare(`SELECT * FROM bank_accounts WHERE id=?`).get(bankAccountId);
+  if (!account) throw new Error('Compte bancaire introuvable');
+  const savedMap = account.csv_column_map ? JSON.parse(account.csv_column_map) : null;
+
+  let rows = [];
+  const ft = (fileType || '').toLowerCase();
+  if (ft === 'ofx' || ft === 'qfx' || ft === 'qbo') {
+    rows = _parseBankOFX(fileText);
+  } else {
+    rows = _parseBankCSV(fileText, savedMap);
+  }
+
+  if (!rows.length) throw new Error('Aucune transaction trouvée dans le fichier.');
+
+  const start = periodStart || rows.reduce((mn, r) => r.transaction_date < mn ? r.transaction_date : mn, rows[0].transaction_date);
+  const end   = periodEnd   || rows.reduce((mx, r) => r.transaction_date > mx ? r.transaction_date : mx, rows[0].transaction_date);
+  const endBal = endingBalance !== undefined ? endingBalance : (rows[rows.length - 1].running_balance || 0);
+
+  return db.transaction(() => {
+    const { lastInsertRowid: stmtId } = db.prepare(
+      `INSERT INTO bank_statements (bank_account_id, period_start, period_end, ending_balance, source_file_hash)
+       VALUES (?, ?, ?, ?, ?)`
+    ).run(bankAccountId, start, end, endBal, fileHash);
+
+    let autoMatched = 0, suggested = 0, unmatched = 0, duplicateRows = 0;
+    const newTxIds = [];
+
+    for (const row of rows) {
+      // Per-row dedupe: same account + date + amount + description
+      const dupe = db.prepare(
+        `SELECT id FROM bank_transactions WHERE bank_account_id=? AND transaction_date=? AND amount=? AND description=?`
+      ).get(bankAccountId, row.transaction_date, row.amount, row.description);
+      if (dupe) { duplicateRows++; continue; }
+
+      const { lastInsertRowid: txId } = db.prepare(
+        `INSERT INTO bank_transactions (bank_account_id, bank_statement_id, transaction_date, description, amount, running_balance)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      ).run(bankAccountId, stmtId, row.transaction_date, row.description, row.amount, row.running_balance || null);
+      newTxIds.push(txId);
+    }
+
+    // Run matching engine
+    _runMatchingEngine(db, bankAccountId, newTxIds);
+
+    // Count results
+    for (const txId of newTxIds) {
+      const tx = db.prepare(`SELECT match_status FROM bank_transactions WHERE id=?`).get(txId);
+      if (tx.match_status === 'matched') autoMatched++;
+      else if (tx.match_status === 'suggested') suggested++;
+      else unmatched++;
+    }
+
+    return { statementId: stmtId, rowCount: newTxIds.length, autoMatched, suggested, unmatched, duplicateRows };
+  })();
+}
+
+function bankTransactionsList(bankAccountId, { dateFrom, dateTo, statusFilter, limit = 500 } = {}) {
+  const db = getDb();
+  const conds = ['bt.bank_account_id=?'];
+  const params = [bankAccountId];
+  if (dateFrom) { conds.push('bt.transaction_date>=?'); params.push(dateFrom); }
+  if (dateTo)   { conds.push('bt.transaction_date<=?'); params.push(dateTo); }
+  if (statusFilter && statusFilter !== 'all') { conds.push('bt.match_status=?'); params.push(statusFilter); }
+  params.push(limit);
+  return db.prepare(`
+    SELECT bt.*, ca.account_number, ca.name_fr AS coa_name_fr
+    FROM bank_transactions bt
+    LEFT JOIN chart_of_accounts ca ON ca.id = bt.coa_account_id
+    WHERE ${conds.join(' AND ')}
+    ORDER BY bt.transaction_date DESC, bt.id DESC
+    LIMIT ?
+  `).all(...params);
+}
+
+function bankTransactionMatch(txId, entityType, entityId) {
+  getDb().prepare(
+    `UPDATE bank_transactions SET match_status='matched', matched_entity_type=?, matched_entity_id=? WHERE id=?`
+  ).run(entityType, entityId, txId);
+  return true;
+}
+
+function bankTransactionUnmatch(txId) {
+  getDb().prepare(
+    `UPDATE bank_transactions SET match_status='unmatched', matched_entity_type=NULL, matched_entity_id=NULL, coa_account_id=NULL WHERE id=?`
+  ).run(txId);
+  return true;
+}
+
+function bankTransactionCategorize(txId, coaAccountId, notes) {
+  const db = getDb();
+  db.prepare(
+    `UPDATE bank_transactions SET match_status='manual', coa_account_id=?, notes=? WHERE id=?`
+  ).run(coaAccountId, notes || null, txId);
+
+  // Learn pattern: increment or insert
+  const tx = db.prepare(`SELECT * FROM bank_transactions WHERE id=?`).get(txId);
+  if (tx) {
+    const norm = _normDescription(tx.description);
+    db.prepare(
+      `INSERT INTO bank_match_learned (description_pattern, coa_account_id, match_count, last_used_at)
+       VALUES (?, ?, 1, CURRENT_TIMESTAMP)
+       ON CONFLICT(description_pattern, coa_account_id) DO UPDATE SET match_count=match_count+1, last_used_at=CURRENT_TIMESTAMP`
+    ).run(norm, coaAccountId);
+  }
+  return true;
+}
+
+function bankReconcilePreview(bankAccountId, asOfDate) {
+  const db = getDb();
+  const account = db.prepare(`SELECT * FROM bank_accounts WHERE id=?`).get(bankAccountId);
+  if (!account) throw new Error('Compte introuvable');
+
+  const lastStmt = db.prepare(
+    `SELECT * FROM bank_statements WHERE bank_account_id=? ORDER BY period_end DESC LIMIT 1`
+  ).get(bankAccountId);
+
+  const statementBalance = lastStmt ? lastStmt.ending_balance : account.opening_balance;
+
+  const sumRow = db.prepare(
+    `SELECT COALESCE(SUM(amount),0) AS total FROM bank_transactions
+     WHERE bank_account_id=? AND (reconciled=1 OR match_status IN ('matched','manual'))
+     AND transaction_date <= ?`
+  ).get(bankAccountId, asOfDate || new Date().toISOString().slice(0,10));
+  const biqBalance = account.opening_balance + (sumRow ? sumRow.total : 0);
+
+  const unreconciledCount = db.prepare(
+    `SELECT COUNT(*) AS cnt FROM bank_transactions
+     WHERE bank_account_id=? AND reconciled=0 AND match_status='unmatched'`
+  ).get(bankAccountId).cnt;
+
+  return {
+    statementBalance,
+    biqBalance,
+    ecart: parseFloat((statementBalance - biqBalance).toFixed(2)),
+    unreconciledCount,
+  };
+}
+
+function bankReconcileClose(bankAccountId, statementId) {
+  const db = getDb();
+  const stmt = db.prepare(`SELECT * FROM bank_statements WHERE id=? AND bank_account_id=?`).get(statementId, bankAccountId);
+  if (!stmt) throw new Error('Relevé introuvable');
+  if (stmt.reconciled) throw new Error('Relevé déjà réconcilié');
+
+  const preview = bankReconcilePreview(bankAccountId, stmt.period_end);
+  if (Math.abs(preview.ecart) > 0.02) {
+    return { success: false, ecart: preview.ecart, message: `Écart de ${preview.ecart.toFixed(2)} $ — réconciliez toutes les transactions avant de clôturer.` };
+  }
+
+  const now = new Date().toISOString();
+  db.transaction(() => {
+    db.prepare(`UPDATE bank_statements SET reconciled=1, reconciled_at=? WHERE id=?`).run(now, statementId);
+    db.prepare(
+      `UPDATE bank_transactions SET reconciled=1
+       WHERE bank_account_id=? AND transaction_date<=? AND match_status IN ('matched','manual','suggested')`
+    ).run(bankAccountId, stmt.period_end);
+  })();
+
+  return { success: true, ecart: 0 };
+}
+
+function bankReconcileReopen(bankAccountId, statementId, reason) {
+  const db = getDb();
+  db.prepare(`UPDATE bank_statements SET reconciled=0, reconciled_at=NULL WHERE id=? AND bank_account_id=?`).run(statementId, bankAccountId);
+  db.prepare(
+    `UPDATE bank_transactions SET reconciled=0
+     WHERE bank_account_id=? AND bank_statement_id=?`
+  ).run(bankAccountId, statementId);
+  db.prepare(
+    `INSERT INTO audit_log (device_id, module, action, record_type, record_id, reason)
+     VALUES (?, 'bank', 'reopen_reconciliation', 'bank_statement', ?, ?)`
+  ).run(getDeviceId(), String(statementId), reason || null);
+  return true;
+}
+
+function bankLearnedRulesList() {
+  return getDb().prepare(`
+    SELECT bml.*, ca.account_number, ca.name_fr AS coa_name_fr
+    FROM bank_match_learned bml
+    LEFT JOIN chart_of_accounts ca ON ca.id = bml.coa_account_id
+    ORDER BY bml.match_count DESC
+  `).all();
+}
+
+function bankLearnedRuleDelete(id) {
+  getDb().prepare(`DELETE FROM bank_match_learned WHERE id=?`).run(id);
+  return true;
+}
+
+function bankStatementsList(bankAccountId) {
+  return getDb().prepare(
+    `SELECT * FROM bank_statements WHERE bank_account_id=? ORDER BY period_end DESC`
+  ).all(bankAccountId);
+}
+
 module.exports = {
   storageGet, storageSet, storageGetAll, storageGetByPrefix,
   auditInsert, auditQuery, getDeviceId,
@@ -1345,4 +2456,15 @@ module.exports = {
   plInvoiceHistoryRecord, plInvoiceHistoryGetLast, plInvoiceHistoryGetRecent,
   searchIngredients, searchForecastProducts, searchHistoryGet, searchHistorySave,
   searchWasteEntries,
+  coaList, coaCreate, coaUpdate, coaArchive, coaUnarchive, coaImportCSV, coaExportCSV, coaMappingSuggestions,
+  glDraftEntry, glUpdateDraft, glPostEntry, glReverseEntry, glCorrectEntry, glDeleteDraft,
+  glGetEntry, glListEntries, glGetAccountHistory,
+  trialBalance,
+  periodList, periodOpen, periodClose, periodReopen,
+  glAuditLogList,
+  bankAccountsList, bankAccountCreate, bankAccountUpdate, bankAccountArchive,
+  bankStatementImport, bankStatementsList,
+  bankTransactionsList, bankTransactionMatch, bankTransactionUnmatch, bankTransactionCategorize,
+  bankReconcilePreview, bankReconcileClose, bankReconcileReopen,
+  bankLearnedRulesList, bankLearnedRuleDelete,
 };
