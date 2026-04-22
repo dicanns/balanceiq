@@ -61,6 +61,12 @@ const {
   taxPeriodCompute, taxPeriodSave, taxPeriodMarkFiled, taxPeriodList,
   taxSuspenseList, taxSuspenseClassifyAsCashExpense, taxSuspenseReverseCategorization,
   taxProfileList, taxProfileUpsert, taxProfileDelete,
+  supplierBillList, supplierBillCreate, supplierBillUpdate, supplierBillMarkPaid, supplierBillMarkUnpaid,
+  supplierPaymentsList, supplierPaymentCreate,
+  assetList, assetCreate, assetUpdate, assetDelete,
+  ccaClassesList, ccaComputeForAsset, ccaScheduleForYear,
+  buildBalanceSheet, getBalanceSheetBlockers,
+  balanceSheetSnapshotSave, balanceSheetSnapshotList, balanceSheetSnapshotGet,
 } = require('./src/db/database.js');
 
 const BACKUP_DIR = () => path.join(app.getPath('userData'), 'Backups');
@@ -1523,6 +1529,33 @@ ipcMain.handle('tax:suspense:reverse',          (_e, txId)                      
 ipcMain.handle('tax:profile:list',              ()                                      => taxProfileList());
 ipcMain.handle('tax:profile:upsert',            (_e, data)                              => taxProfileUpsert(data));
 ipcMain.handle('tax:profile:delete',            (_e, id)                                => taxProfileDelete(id));
+
+// ── Bilan (Balance Sheet) — Sprint 6 ─────────────────────────────────────────
+try {
+ipcMain.handle('bilan:compute',          (_e, asOfDate, opts)  => buildBalanceSheet(asOfDate, opts || {}));
+ipcMain.handle('bilan:blockers',         (_e, asOfDate)        => getBalanceSheetBlockers(asOfDate));
+ipcMain.handle('bilan:snapshot:save',    (_e, data)            => balanceSheetSnapshotSave(data));
+ipcMain.handle('bilan:snapshot:list',    ()                    => balanceSheetSnapshotList());
+ipcMain.handle('bilan:snapshot:get',     (_e, id)              => balanceSheetSnapshotGet(id));
+
+// ── Supplier Bills (AP) — Sprint 6 ───────────────────────────────────────────
+ipcMain.handle('supplier:bill:list',     (_e, opts)            => supplierBillList(opts || {}));
+ipcMain.handle('supplier:bill:create',   (_e, data)            => supplierBillCreate(data));
+ipcMain.handle('supplier:bill:update',   (_e, id, data)        => supplierBillUpdate(id, data));
+ipcMain.handle('supplier:bill:markPaid', (_e, id, payData)     => supplierBillMarkPaid(id, payData || {}));
+ipcMain.handle('supplier:bill:markUnpaid',(_e, id)             => supplierBillMarkUnpaid(id));
+ipcMain.handle('supplier:payments:list', (_e, billId)          => supplierPaymentsList(billId));
+ipcMain.handle('supplier:payments:create',(_e, data)           => supplierPaymentCreate(data));
+
+// ── Assets & CCA — Sprint 6 ───────────────────────────────────────────────────
+ipcMain.handle('asset:list',   (_e, opts)              => assetList(opts || {}));
+ipcMain.handle('asset:create', (_e, data)              => assetCreate(data));
+ipcMain.handle('asset:update', (_e, id, data)          => assetUpdate(id, data));
+ipcMain.handle('asset:delete', (_e, id)                => assetDelete(id));
+ipcMain.handle('cca:classes',  ()                      => ccaClassesList());
+ipcMain.handle('cca:compute',  (_e, assetId, year)     => ccaComputeForAsset(assetId, year));
+ipcMain.handle('cca:schedule', (_e, year)              => ccaScheduleForYear(year));
+} catch(e) { /* handlers already registered in hot-reload */ }
 
 // ── Global Search — covers every data source in the app ───────────────────────
 ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {

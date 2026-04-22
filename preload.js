@@ -299,4 +299,35 @@ contextBridge.exposeInMainWorld('api', {
       delete: (id)    => ipcRenderer.invoke('tax:profile:delete', id),
     },
   },
+  bilan: {
+    compute:  (asOfDate, opts) => ipcRenderer.invoke('bilan:compute', asOfDate, opts),
+    blockers: (asOfDate)       => ipcRenderer.invoke('bilan:blockers', asOfDate),
+    snapshot: {
+      save: (data)  => ipcRenderer.invoke('bilan:snapshot:save', data),
+      list: ()      => ipcRenderer.invoke('bilan:snapshot:list'),
+      get:  (id)    => ipcRenderer.invoke('bilan:snapshot:get', id),
+    },
+  },
+  supplierBills: {
+    list:      (opts)          => ipcRenderer.invoke('supplier:bill:list', opts),
+    create:    (data)          => ipcRenderer.invoke('supplier:bill:create', data),
+    update:    (id, data)      => ipcRenderer.invoke('supplier:bill:update', id, data),
+    markPaid:  (id, payData)   => ipcRenderer.invoke('supplier:bill:markPaid', id, payData),
+    markUnpaid:(id)            => ipcRenderer.invoke('supplier:bill:markUnpaid', id),
+  },
+  supplierPayments: {
+    list:   (billId) => ipcRenderer.invoke('supplier:payments:list', billId),
+    create: (data)   => ipcRenderer.invoke('supplier:payments:create', data),
+  },
+  assets: {
+    list:   (opts)        => ipcRenderer.invoke('asset:list', opts),
+    create: (data)        => ipcRenderer.invoke('asset:create', data),
+    update: (id, data)    => ipcRenderer.invoke('asset:update', id, data),
+    delete: (id)          => ipcRenderer.invoke('asset:delete', id),
+  },
+  cca: {
+    classes:  ()                  => ipcRenderer.invoke('cca:classes'),
+    compute:  (assetId, year)     => ipcRenderer.invoke('cca:compute', assetId, year),
+    schedule: (year)              => ipcRenderer.invoke('cca:schedule', year),
+  },
 });

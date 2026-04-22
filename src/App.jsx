@@ -13,6 +13,8 @@ const GlobalSearchLazy  = lazy(() => import('./components/GlobalSearch.jsx'));
 const ChartOfAccountsTabLazy = lazy(() => import('./components/ChartOfAccountsTab.jsx'));
 const GrandLivreTabLazy       = lazy(() => import('./components/GrandLivreTab.jsx'));
 const BanqueTabLazy           = lazy(() => import('./components/BanqueTab.jsx'));
+const BilanTabLazy            = lazy(() => import('./components/BilanTab.jsx'));
+const ImmobilisationsTabLazy  = lazy(() => import('./components/ImmobilisationsTab.jsx'));
 const TaxPeriodTabLazy        = lazy(() => import('./components/TaxPeriodTab.jsx'));
 import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./config/features.js";
@@ -6383,6 +6385,8 @@ export default function App(){
                 {id:"grandlivre",       label:lang==="fr"?"Grand livre":"General Ledger"},
                 {id:"banque",           label:lang==="fr"?"🏦 Banque":"🏦 Bank"},
                 {id:"taxperiod",        label:lang==="fr"?"🧾 TPS/TVQ":"🧾 GST/QST"},
+                {id:"bilan",            label:lang==="fr"?"📊 Bilan":"📊 Balance Sheet"},
+                {id:"immobilisations",  label:lang==="fr"?"🏗 DPA":"🏗 CCA"},
                 {id:"donnees",          label:T.cfgData},
                 {id:"application",      label:T.cfgApplication},
                 ...(appMode==="franchiseur"?[{id:"succursales",label:T.cfgLocations},{id:"redevances",label:T.cfgRoyalties},{id:"marqueblanche",label:T.cfgWhiteLabel}]:[]),
@@ -6549,7 +6553,11 @@ export default function App(){
             {configSubTab==="grandlivre"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><GrandLivreTabLazy lang={lang}/></Suspense>)}
             {/*  BANQUE (Bank Reconciliation) — Sprint 3 Accounting Suite */}
             {configSubTab==="banque"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><BanqueTabLazy lang={lang}/></Suspense>)}
-            {configSubTab==="taxperiod"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><TaxPeriodTabLazy lang={lang}/></Suspense>)}</div></div>)}</div></div>{/* end scrollable */}</div>{/* end main area */}</div>
+            {configSubTab==="taxperiod"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><TaxPeriodTabLazy lang={lang}/></Suspense>)}
+            {/*  BILAN (Balance Sheet) — Sprint 6 Accounting Suite */}
+            {configSubTab==="bilan"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><BilanTabLazy lang={lang} canUsePro={canUse("excelExport")} onUpgrade={()=>showUpgradePrompt("excelExport")}/></Suspense>)}
+            {/*  IMMOBILISATIONS (Fixed Assets + CCA) — Sprint 6 Accounting Suite */}
+            {configSubTab==="immobilisations"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><ImmobilisationsTabLazy lang={lang} canUsePro={canUse("excelExport")} onUpgrade={()=>showUpgradePrompt("excelExport")}/></Suspense>)}</div></div>)}</div></div>{/* end scrollable */}</div>{/* end main area */}</div>
             {/* Global Search (Cmd+K) — top-level so it works from any tab */}
             {searchOpen&&(<Suspense fallback={null}><GlobalSearchLazy isOpen={searchOpen} onClose={()=>setSearchOpen(false)} onNavigate={handleSearchNavigate} lang={lang} isDark={themeName!=='warm'}/></Suspense>)}
             </ThemeCtx.Provider></LangCtx.Provider>

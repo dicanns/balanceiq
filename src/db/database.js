@@ -520,6 +520,116 @@ const MIGRATIONS = [
       )`).run();
     },
   },
+  {
+    version: 12,
+    description: 'Balance Sheet + AP Tracking + CCA Depreciation — Sprint 6 Accounting Suite',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS supplier_bills (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        month_key TEXT NOT NULL,
+        supplier_name TEXT NOT NULL,
+        category TEXT,
+        amount REAL NOT NULL,
+        bill_date TEXT,
+        note TEXT DEFAULT '',
+        bill_id TEXT UNIQUE,
+        amount_before_tax REAL,
+        tps_paid REAL DEFAULT 0,
+        tvq_paid REAL DEFAULT 0,
+        tax_profile_id INTEGER,
+        coa_account_id INTEGER,
+        business_use_pct REAL DEFAULT 100.0,
+        vault_document_id INTEGER,
+        journal_entry_id INTEGER,
+        invoice_number TEXT,
+        due_date TEXT,
+        paid INTEGER DEFAULT 0,
+        payment_date TEXT,
+        payment_method TEXT,
+        bank_transaction_id INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_sb_month ON supplier_bills(month_key)`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_sb_paid  ON supplier_bills(paid, due_date)`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS supplier_payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        supplier_bill_id INTEGER NOT NULL,
+        amount REAL NOT NULL,
+        payment_date TEXT NOT NULL,
+        payment_method TEXT,
+        reference TEXT,
+        notes TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (supplier_bill_id) REFERENCES supplier_bills(id)
+      )`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS assets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        coa_account_id INTEGER NOT NULL,
+        cca_class TEXT NOT NULL,
+        acquisition_date TEXT NOT NULL,
+        acquisition_cost REAL NOT NULL,
+        personal_use_pct REAL DEFAULT 0,
+        disposal_date TEXT,
+        disposal_proceeds REAL,
+        notes TEXT,
+        source_document_id INTEGER,
+        is_archived INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (coa_account_id) REFERENCES chart_of_accounts(id)
+      )`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS cca_class_rates (
+        class TEXT PRIMARY KEY,
+        rate REAL,
+        method TEXT NOT NULL,
+        description_fr TEXT,
+        description_en TEXT,
+        first_year_rule TEXT,
+        effective_from TEXT,
+        effective_to TEXT
+      )`).run();
+
+      const ccaIns = database.prepare(
+        `INSERT OR IGNORE INTO cca_class_rates (class, rate, method, description_fr, description_en, first_year_rule, effective_from)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      );
+      ccaIns.run('8',  0.20, 'declining',    'Equipement divers (20%)',           'Miscellaneous equipment (20%)',  'half_year', '2024-01-01');
+      ccaIns.run('10', 0.30, 'declining',    'Vehicules automobiles (30%)',        'Automobiles and vehicles (30%)', 'half_year', '2024-01-01');
+      ccaIns.run('12', 1.00, 'full_year',    'Petits outils et uniformes (100%)',  'Small tools and uniforms (100%)','full_year', '2024-01-01');
+      ccaIns.run('13', null, 'straight_line','Ameliorations locatives',            'Leasehold improvements',         'pro_rata',  '2024-01-01');
+      ccaIns.run('50', 0.55, 'declining',    'Materiel informatique (55%)',        'Computer equipment (55%)',       'half_year', '2024-01-01');
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS asset_depreciation_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        asset_id INTEGER NOT NULL,
+        fiscal_year INTEGER NOT NULL,
+        ucc_opening REAL NOT NULL,
+        additions REAL DEFAULT 0,
+        disposals REAL DEFAULT 0,
+        cca_claimed REAL NOT NULL,
+        ucc_closing REAL NOT NULL,
+        formula_version TEXT NOT NULL,
+        calculated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (asset_id) REFERENCES assets(id)
+      )`).run();
+      database.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_adl_asset_year ON asset_depreciation_log(asset_id, fiscal_year)`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS balance_sheet_snapshots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        snapshot_date TEXT NOT NULL,
+        fiscal_year INTEGER,
+        status TEXT NOT NULL DEFAULT 'draft',
+        data TEXT NOT NULL,
+        total_assets_cents INTEGER,
+        total_liabilities_cents INTEGER,
+        total_equity_cents INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -1868,6 +1978,17 @@ function glPostEntry(entryId) {
   const period = db.prepare(`SELECT * FROM accounting_periods WHERE id=?`).get(entry.period_id);
   if (period && period.status === 'closed') throw new Error('La période est fermée — rouvrez-la avant de comptabiliser');
 
+  // An opening_balance entry must be unique per location — re-running a migration
+  // or user error must never result in two opening balance postings.
+  if (entry.source_type === 'opening_balance') {
+    const existing = db.prepare(
+      `SELECT id FROM journal_entries
+       WHERE source_type='opening_balance' AND status='posted'
+         AND (location_id IS ? OR location_id=?) AND id != ?`
+    ).get(entry.location_id, entry.location_id, entryId);
+    if (existing) throw new Error('Solde d\'ouverture déjà comptabilisé pour cet emplacement');
+  }
+
   const lines = db.prepare(`SELECT * FROM journal_lines WHERE entry_id=?`).all(entryId);
   if (!lines.length) throw new Error('Écriture sans lignes');
 
@@ -2688,6 +2809,357 @@ function taxProfileDelete(id) {
   return true;
 }
 
+// ── Supplier Bills (Relational AP) ────────────────────────────────────────────
+
+function supplierBillList({ monthKey = null, paid = null, supplierId = null } = {}) {
+  const db = getDb();
+  const conds = [];
+  const params = [];
+  if (monthKey) { conds.push('month_key=?'); params.push(monthKey); }
+  if (paid !== null) { conds.push('paid=?'); params.push(paid ? 1 : 0); }
+  const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+  return db.prepare(`SELECT * FROM supplier_bills ${where} ORDER BY bill_date DESC, id DESC`).all(...params);
+}
+
+function supplierBillCreate(data) {
+  const db = getDb();
+  const {
+    month_key, supplier_name, category = null, amount, bill_date = null, note = '',
+    bill_id = null, amount_before_tax = null, tps_paid = 0, tvq_paid = 0,
+    coa_account_id = null, business_use_pct = 100.0, invoice_number = null,
+    due_date = null,
+  } = data;
+  const { lastInsertRowid } = db.prepare(
+    `INSERT INTO supplier_bills (month_key, supplier_name, category, amount, bill_date, note, bill_id,
+       amount_before_tax, tps_paid, tvq_paid, coa_account_id, business_use_pct, invoice_number, due_date)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(month_key, supplier_name, category, amount, bill_date, note, bill_id || null,
+        amount_before_tax, tps_paid, tvq_paid, coa_account_id, business_use_pct, invoice_number, due_date);
+  return db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(lastInsertRowid);
+}
+
+function supplierBillUpdate(id, data) {
+  const db = getDb();
+  const allowed = ['supplier_name','category','amount','bill_date','note','amount_before_tax',
+    'tps_paid','tvq_paid','coa_account_id','business_use_pct','invoice_number','due_date','journal_entry_id'];
+  const sets = [];
+  const params = [];
+  for (const k of allowed) {
+    if (data[k] !== undefined) { sets.push(`${k}=?`); params.push(data[k]); }
+  }
+  if (!sets.length) throw new Error('Aucun champ a mettre a jour');
+  params.push(id);
+  db.prepare(`UPDATE supplier_bills SET ${sets.join(',')} WHERE id=?`).run(...params);
+  return db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(id);
+}
+
+function supplierBillMarkPaid(id, { payment_date, payment_method = null, bank_transaction_id = null } = {}) {
+  const db = getDb();
+  db.prepare(
+    `UPDATE supplier_bills SET paid=1, payment_date=?, payment_method=?, bank_transaction_id=? WHERE id=?`
+  ).run(payment_date || new Date().toISOString().slice(0, 10), payment_method, bank_transaction_id, id);
+  return db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(id);
+}
+
+function supplierBillMarkUnpaid(id) {
+  const db = getDb();
+  db.prepare(`UPDATE supplier_bills SET paid=0, payment_date=NULL, payment_method=NULL, bank_transaction_id=NULL WHERE id=?`).run(id);
+  return db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(id);
+}
+
+function supplierPaymentsList(billId) {
+  return getDb().prepare(`SELECT * FROM supplier_payments WHERE supplier_bill_id=? ORDER BY payment_date ASC`).all(billId);
+}
+
+function supplierPaymentCreate(data) {
+  const db = getDb();
+  const { supplier_bill_id, amount, payment_date, payment_method = null, reference = null, notes = null } = data;
+  const { lastInsertRowid } = db.prepare(
+    `INSERT INTO supplier_payments (supplier_bill_id, amount, payment_date, payment_method, reference, notes)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(supplier_bill_id, amount, payment_date, payment_method, reference, notes);
+  return db.prepare(`SELECT * FROM supplier_payments WHERE id=?`).get(lastInsertRowid);
+}
+
+// ── Assets & CCA ─────────────────────────────────────────────────────────────
+
+function assetList({ includeArchived = false } = {}) {
+  const db = getDb();
+  const where = includeArchived ? '' : 'WHERE is_archived=0';
+  return db.prepare(`SELECT a.*, c.account_number, c.name_fr AS coa_name_fr FROM assets a
+    LEFT JOIN chart_of_accounts c ON c.id=a.coa_account_id ${where} ORDER BY a.acquisition_date ASC`).all();
+}
+
+function assetCreate(data) {
+  const db = getDb();
+  const { name, coa_account_id, cca_class, acquisition_date, acquisition_cost, personal_use_pct = 0, disposal_date = null, disposal_proceeds = null, notes = null } = data;
+  const { lastInsertRowid } = db.prepare(
+    `INSERT INTO assets (name, coa_account_id, cca_class, acquisition_date, acquisition_cost, personal_use_pct, disposal_date, disposal_proceeds, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(name, coa_account_id, cca_class, acquisition_date, acquisition_cost, personal_use_pct, disposal_date, disposal_proceeds, notes);
+  return db.prepare(`SELECT * FROM assets WHERE id=?`).get(lastInsertRowid);
+}
+
+function assetUpdate(id, data) {
+  const db = getDb();
+  const allowed = ['name','coa_account_id','cca_class','acquisition_date','acquisition_cost','personal_use_pct','disposal_date','disposal_proceeds','notes'];
+  const sets = [];
+  const params = [];
+  for (const k of allowed) {
+    if (data[k] !== undefined) { sets.push(`${k}=?`); params.push(data[k]); }
+  }
+  if (!sets.length) throw new Error('Aucun champ a mettre a jour');
+  params.push(id);
+  db.prepare(`UPDATE assets SET ${sets.join(',')} WHERE id=?`).run(...params);
+  return db.prepare(`SELECT * FROM assets WHERE id=?`).get(id);
+}
+
+function assetDelete(id) {
+  getDb().prepare(`UPDATE assets SET is_archived=1 WHERE id=?`).run(id);
+  return true;
+}
+
+function ccaClassesList() {
+  return getDb().prepare(`SELECT * FROM cca_class_rates ORDER BY class ASC`).all();
+}
+
+function _ccaCompute(asset, ccaClass, fiscalYear) {
+  const acqYear = new Date(asset.acquisition_date).getFullYear();
+  const businessPct = (100 - (asset.personal_use_pct || 0)) / 100;
+
+  // Compute UCC at start of fiscalYear by replaying all prior years
+  let ucc = asset.acquisition_cost;
+  for (let y = acqYear; y < fiscalYear; y++) {
+    const isFirstYear = (y === acqYear);
+    const additionsThisYear = isFirstYear ? asset.acquisition_cost : 0;
+    const claim = _ccaClaimForYear(ccaClass, ucc, additionsThisYear, isFirstYear, asset.disposal_date ? new Date(asset.disposal_date).getFullYear() : null, y, asset.acquisition_date);
+    ucc = ucc - claim;
+    if (ucc < 0) ucc = 0;
+  }
+
+  // If already disposed before this fiscal year, no claim
+  if (asset.disposal_date && new Date(asset.disposal_date).getFullYear() < fiscalYear) {
+    return null;
+  }
+
+  const isFirstYear = (acqYear === fiscalYear);
+  const additions = isFirstYear ? asset.acquisition_cost : 0;
+  const disposalYear = asset.disposal_date ? new Date(asset.disposal_date).getFullYear() : null;
+  const rawClaim = _ccaClaimForYear(ccaClass, ucc, additions, isFirstYear, disposalYear, fiscalYear, asset.acquisition_date);
+  const claim = rawClaim * businessPct;
+  return {
+    asset_id: asset.id,
+    fiscal_year: fiscalYear,
+    ucc_opening: isFirstYear ? 0 : ucc,
+    additions,
+    disposals: disposalYear === fiscalYear ? (asset.disposal_proceeds || 0) : 0,
+    cca_claimed: Math.round(claim * 100) / 100,
+    ucc_closing: Math.round((ucc - claim) * 100) / 100,
+    formula_version: 'v1.0-2026',
+  };
+}
+
+function _ccaClaimForYear(ccaClass, uccOpening, additions, isFirstYear, disposalYear, fiscalYear, acquisitionDate) {
+  if (ccaClass.method === 'full_year') {
+    return isFirstYear ? additions : 0;
+  }
+  if (ccaClass.method === 'straight_line') {
+    // Straight-line: divide cost by term (default 5 years for leasehold if no term given)
+    const term = 5;
+    return additions ? additions / term : uccOpening / Math.max(1, term - (fiscalYear - new Date(acquisitionDate).getFullYear()));
+  }
+  // Declining balance
+  const rate = ccaClass.rate || 0;
+  const uccForCalc = uccOpening + (isFirstYear ? additions * 0.5 : 0); // half-year rule applies to net additions in first year
+  return uccForCalc * rate;
+}
+
+function ccaComputeForAsset(assetId, fiscalYear) {
+  const db = getDb();
+  const asset = db.prepare(`SELECT * FROM assets WHERE id=?`).get(assetId);
+  if (!asset) throw new Error('Immobilisation introuvable');
+  const ccaClass = db.prepare(`SELECT * FROM cca_class_rates WHERE class=?`).get(asset.cca_class);
+  if (!ccaClass) throw new Error(`Classe DPA ${asset.cca_class} introuvable`);
+  return _ccaCompute(asset, ccaClass, fiscalYear);
+}
+
+function ccaScheduleForYear(fiscalYear) {
+  const db = getDb();
+  const assets = db.prepare(`SELECT * FROM assets WHERE is_archived=0 AND strftime('%Y', acquisition_date) <= ?`).all(String(fiscalYear));
+  const classes = {};
+  db.prepare(`SELECT * FROM cca_class_rates`).all().forEach(c => { classes[c.class] = c; });
+  return assets.map(asset => {
+    const ccaClass = classes[asset.cca_class];
+    if (!ccaClass) return null;
+    return _ccaCompute(asset, ccaClass, fiscalYear);
+  }).filter(Boolean);
+}
+
+// ── Balance Sheet ─────────────────────────────────────────────────────────────
+
+const BS_CURRENT_ASSET_MAX   = '1499';
+const BS_LONGT_ASSET_MIN     = '1500';
+const BS_CURRENT_LIAB_MAX    = '2399';
+const BS_CURRENT_LIAB_MIN    = '2000';
+const BS_LONGT_LIAB_MIN      = '2400';
+const BS_LONGT_LIAB_MAX      = '2499';
+const BS_EQUITY_MIN          = '3000';
+const BS_EQUITY_MAX          = '3999';
+
+function buildBalanceSheet(asOfDate, { locationId = null } = {}) {
+  const db = getDb();
+  const params = [asOfDate];
+  const locCond = locationId != null ? '(je.location_id IS ? OR je.location_id=?)' : '1=1';
+  if (locationId != null) params.push(locationId, locationId);
+
+  const rows = db.prepare(
+    `SELECT coa.id AS account_id, coa.account_number, coa.name_fr, coa.name_en, coa.type, coa.is_contra,
+            SUM(jl.debit_cents) AS total_debit_cents, SUM(jl.credit_cents) AS total_credit_cents
+     FROM journal_lines jl
+     JOIN journal_entries je ON je.id = jl.entry_id AND je.status='posted' AND je.entry_date <= ?
+     JOIN chart_of_accounts coa ON coa.id = jl.account_id
+     WHERE ${locCond}
+     GROUP BY jl.account_id
+     ORDER BY coa.account_number ASC`
+  ).all(...params).map(r => ({
+    ...r,
+    balance_cents: r.total_debit_cents - r.total_credit_cents,
+  }));
+
+  const currentAssets  = [];
+  const longTermAssets = [];
+  const currentLiab    = [];
+  const longTermLiab   = [];
+  const equityAccounts = [];
+  let revenueCents = 0;
+  let expenseCents = 0;
+
+  for (const r of rows) {
+    const num = r.account_number;
+    if (r.type === 'asset') {
+      if (num >= BS_CURRENT_ASSET_MAX) {
+        longTermAssets.push(r);
+      } else {
+        currentAssets.push(r);
+      }
+    } else if (r.type === 'liability') {
+      if (num >= BS_LONGT_LIAB_MIN && num <= BS_LONGT_LIAB_MAX) {
+        longTermLiab.push(r);
+      } else {
+        currentLiab.push(r);
+      }
+    } else if (r.type === 'equity') {
+      equityAccounts.push(r);
+    } else if (r.type === 'revenue') {
+      revenueCents += r.balance_cents;
+    } else if (r.type === 'expense' || r.type === 'cogs') {
+      expenseCents += r.balance_cents;
+    }
+  }
+
+  const toAmount = cents => Math.round(cents) / 100;
+
+  const sumBalances = arr => arr.reduce((s, r) => s + r.balance_cents, 0);
+
+  const totalCurrentAssetsCents  = sumBalances(currentAssets);
+  const totalLongTermAssetsCents = sumBalances(longTermAssets);
+  const totalAssetsCents         = totalCurrentAssetsCents + totalLongTermAssetsCents;
+
+  const totalCurrentLiabCents  = -sumBalances(currentLiab);
+  const totalLongTermLiabCents = -sumBalances(longTermLiab);
+  const totalLiabCents         = totalCurrentLiabCents + totalLongTermLiabCents;
+
+  const totalEquityCents = -sumBalances(equityAccounts);
+  // net_income: revenue is CR (negative balance_cents), expenses are DR (positive balance_cents)
+  // net income = -revenueCents - expenseCents ... wait
+  // revenue balance_cents < 0 (credit balances), expense balance_cents > 0 (debit balances)
+  // net_income = revenue - expenses = (-revenueCents) - expenseCents
+  const netIncomeCents   = (-revenueCents) - expenseCents;
+  const totalCapitauxCents = totalEquityCents + netIncomeCents;
+
+  const trialBalanceCheck = rows.reduce((s, r) => s + r.balance_cents, 0);
+  const isBalanced = trialBalanceCheck === 0;
+
+  const blockers = getBalanceSheetBlockers(asOfDate, db);
+
+  return {
+    asOfDate,
+    isBalanced,
+    trialBalanceDiff: trialBalanceCheck,
+    status: (isBalanced && blockers.length === 0) ? 'final' : 'draft',
+    blockers,
+    sections: {
+      currentAssets:  { accounts: currentAssets.map(r => ({ account_number: r.account_number, name_fr: r.name_fr, name_en: r.name_en, is_contra: r.is_contra, balance: toAmount(r.balance_cents) })), total: toAmount(totalCurrentAssetsCents) },
+      longTermAssets: { accounts: longTermAssets.map(r => ({ account_number: r.account_number, name_fr: r.name_fr, name_en: r.name_en, is_contra: r.is_contra, balance: toAmount(r.balance_cents) })), total: toAmount(totalLongTermAssetsCents) },
+      totalAssets: toAmount(totalAssetsCents),
+      currentLiab:   { accounts: currentLiab.map(r => ({ account_number: r.account_number, name_fr: r.name_fr, name_en: r.name_en, balance: toAmount(-r.balance_cents) })), total: toAmount(totalCurrentLiabCents) },
+      longTermLiab:  { accounts: longTermLiab.map(r => ({ account_number: r.account_number, name_fr: r.name_fr, name_en: r.name_en, balance: toAmount(-r.balance_cents) })), total: toAmount(totalLongTermLiabCents) },
+      totalLiabilities: toAmount(totalLiabCents),
+      equity:        { accounts: equityAccounts.map(r => ({ account_number: r.account_number, name_fr: r.name_fr, name_en: r.name_en, balance: toAmount(-r.balance_cents) })), netIncome: toAmount(netIncomeCents), total: toAmount(totalCapitauxCents) },
+      totalLiabAndEquity: toAmount(totalLiabCents + totalCapitauxCents),
+    },
+  };
+}
+
+function getBalanceSheetBlockers(asOfDate, _db) {
+  const db = _db || getDb();
+  const blockers = [];
+
+  // 1. Draft journal entries in or before the period
+  const draftCount = db.prepare(
+    `SELECT COUNT(*) AS cnt FROM journal_entries WHERE status='draft' AND entry_date <= ?`
+  ).get(asOfDate);
+  if (draftCount.cnt > 0) {
+    blockers.push({ type: 'draft_entries', count: draftCount.cnt, label_fr: `${draftCount.cnt} ecriture(s) en brouillon`, label_en: `${draftCount.cnt} draft journal entr${draftCount.cnt === 1 ? 'y' : 'ies'}` });
+  }
+
+  // 2. No opening balance entry posted
+  const ob = db.prepare(`SELECT id FROM journal_entries WHERE source_type='opening_balance' AND status='posted'`).get();
+  if (!ob) {
+    blockers.push({ type: 'no_opening_balance', label_fr: 'Solde d\'ouverture non comptabilise', label_en: 'Opening balance not posted' });
+  }
+
+  // 3. Bank accounts with unreconciled statements in the period
+  try {
+    const unreconciled = db.prepare(
+      `SELECT COUNT(*) AS cnt FROM bank_statements WHERE reconciled=0 AND period_end <= ?`
+    ).get(asOfDate);
+    if (unreconciled.cnt > 0) {
+      blockers.push({ type: 'unreconciled_statements', count: unreconciled.cnt, label_fr: `${unreconciled.cnt} releve(s) bancaire(s) non rapproche(s)`, label_en: `${unreconciled.cnt} unreconciled bank statement${unreconciled.cnt === 1 ? '' : 's'}` });
+    }
+  } catch (_) {}
+
+  // 4. Unpaid supplier bills (AP subledger check — informational)
+  try {
+    const unpaidAp = db.prepare(`SELECT COUNT(*) AS cnt FROM supplier_bills WHERE paid=0 AND due_date IS NOT NULL AND due_date <= ?`).get(asOfDate);
+    if (unpaidAp.cnt > 0) {
+      blockers.push({ type: 'overdue_ap', count: unpaidAp.cnt, label_fr: `${unpaidAp.cnt} facture(s) fournisseur en souffrance`, label_en: `${unpaidAp.cnt} overdue supplier bill${unpaidAp.cnt === 1 ? '' : 's'}`, blocking: false });
+    }
+  } catch (_) {}
+
+  return blockers;
+}
+
+function balanceSheetSnapshotSave(data) {
+  const db = getDb();
+  const { snapshot_date, fiscal_year = null, status = 'draft', sections, total_assets_cents = null, total_liabilities_cents = null, total_equity_cents = null } = data;
+  const { lastInsertRowid } = db.prepare(
+    `INSERT INTO balance_sheet_snapshots (snapshot_date, fiscal_year, status, data, total_assets_cents, total_liabilities_cents, total_equity_cents)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(snapshot_date, fiscal_year, status, JSON.stringify(sections || data), total_assets_cents, total_liabilities_cents, total_equity_cents);
+  return db.prepare(`SELECT * FROM balance_sheet_snapshots WHERE id=?`).get(lastInsertRowid);
+}
+
+function balanceSheetSnapshotList() {
+  return getDb().prepare(`SELECT id, snapshot_date, fiscal_year, status, total_assets_cents, total_liabilities_cents, total_equity_cents, created_at FROM balance_sheet_snapshots ORDER BY snapshot_date DESC`).all();
+}
+
+function balanceSheetSnapshotGet(id) {
+  const row = getDb().prepare(`SELECT * FROM balance_sheet_snapshots WHERE id=?`).get(id);
+  if (row && row.data) { try { row.sections = JSON.parse(row.data); } catch (_) {} }
+  return row;
+}
+
 module.exports = {
   storageGet, storageSet, storageGetAll, storageGetByPrefix,
   auditInsert, auditQuery, getDeviceId,
@@ -2737,4 +3209,10 @@ module.exports = {
   taxPeriodCompute, taxPeriodSave, taxPeriodMarkFiled, taxPeriodList,
   taxSuspenseList, taxSuspenseClassifyAsCashExpense, taxSuspenseReverseCategorization,
   taxProfileList, taxProfileUpsert, taxProfileDelete,
+  supplierBillList, supplierBillCreate, supplierBillUpdate, supplierBillMarkPaid, supplierBillMarkUnpaid,
+  supplierPaymentsList, supplierPaymentCreate,
+  assetList, assetCreate, assetUpdate, assetDelete,
+  ccaClassesList, ccaComputeForAsset, ccaScheduleForYear,
+  buildBalanceSheet, getBalanceSheetBlockers,
+  balanceSheetSnapshotSave, balanceSheetSnapshotList, balanceSheetSnapshotGet,
 };
