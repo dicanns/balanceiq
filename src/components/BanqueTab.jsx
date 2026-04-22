@@ -235,36 +235,46 @@ export default function BanqueTab({ lang = 'fr' }) {
   // ── Data loading ────────────────────────────────────────────────────────────
   const loadAccounts = useCallback(async () => {
     if (!window.api?.bank) return;
-    const rows = await window.api.bank.accounts.list();
-    setAccounts(rows || []);
+    try {
+      const rows = await window.api.bank.accounts.list();
+      setAccounts(rows || []);
+    } catch (_) {}
   }, []);
 
   const loadCoa = useCallback(async () => {
     if (!window.api?.coa) return;
-    const rows = await window.api.coa.list();
-    setCoaList((rows || []).filter(a => !a.is_archived));
+    try {
+      const rows = await window.api.coa.list();
+      setCoaList((rows || []).filter(a => !a.is_archived));
+    } catch (_) {}
   }, []);
 
   const loadTransactions = useCallback(async () => {
     if (!window.api?.bank || !selectedAccount) return;
-    const rows = await window.api.bank.transactions.list(selectedAccount.id, {
-      statusFilter: txFilter !== 'all' ? txFilter : undefined,
-      dateFrom: txDateFrom || undefined,
-      dateTo:   txDateTo   || undefined,
-    });
-    setTransactions(rows || []);
+    try {
+      const rows = await window.api.bank.transactions.list(selectedAccount.id, {
+        statusFilter: txFilter !== 'all' ? txFilter : undefined,
+        dateFrom: txDateFrom || undefined,
+        dateTo:   txDateTo   || undefined,
+      });
+      setTransactions(rows || []);
+    } catch (_) {}
   }, [selectedAccount, txFilter, txDateFrom, txDateTo]);
 
   const loadStatements = useCallback(async () => {
     if (!window.api?.bank || !selectedAccount) return;
-    const rows = await window.api.bank.statement.list(selectedAccount.id);
-    setStatements(rows || []);
+    try {
+      const rows = await window.api.bank.statement.list(selectedAccount.id);
+      setStatements(rows || []);
+    } catch (_) {}
   }, [selectedAccount]);
 
   const loadLearnedRules = useCallback(async () => {
     if (!window.api?.bank) return;
-    const rows = await window.api.bank.learned.list();
-    setLearnedRules(rows || []);
+    try {
+      const rows = await window.api.bank.learned.list();
+      setLearnedRules(rows || []);
+    } catch (_) {}
   }, []);
 
   const loadRecPreview = useCallback(async () => {
@@ -316,20 +326,24 @@ export default function BanqueTab({ lang = 'fr' }) {
       opening_date: accountForm.opening_date,
     };
     if (!fields.name || !fields.coa_account_id || !fields.opening_date) return;
-    if (editingAccount) {
-      await window.api.bank.accounts.update(editingAccount.id, fields);
-    } else {
-      await window.api.bank.accounts.create(fields);
-    }
-    setShowAccountModal(false);
-    loadAccounts();
+    try {
+      if (editingAccount) {
+        await window.api.bank.accounts.update(editingAccount.id, fields);
+      } else {
+        await window.api.bank.accounts.create(fields);
+      }
+      setShowAccountModal(false);
+      loadAccounts();
+    } catch (_) {}
   };
 
   const archiveAccount = async (id) => {
     if (!window.confirm(T.confirmArchive)) return;
-    await window.api.bank.accounts.archive(id);
-    if (selectedAccount?.id === id) setSelectedAccount(null);
-    loadAccounts();
+    try {
+      await window.api.bank.accounts.archive(id);
+      if (selectedAccount?.id === id) setSelectedAccount(null);
+      loadAccounts();
+    } catch (_) {}
   };
 
   // ── Import ──────────────────────────────────────────────────────────────────
@@ -378,38 +392,48 @@ export default function BanqueTab({ lang = 'fr' }) {
 
   const saveCategorize = async () => {
     if (!categorizingTx || !categorizeCoaId) return;
-    await window.api.bank.transactions.categorize(categorizingTx.id, parseInt(categorizeCoaId, 10), categorizeNotes);
-    setCategorizingTx(null);
-    loadTransactions();
-    loadRecPreview();
+    try {
+      await window.api.bank.transactions.categorize(categorizingTx.id, parseInt(categorizeCoaId, 10), categorizeNotes);
+      setCategorizingTx(null);
+      loadTransactions();
+      loadRecPreview();
+    } catch (_) {}
   };
 
   const unmatch = async (txId) => {
-    await window.api.bank.transactions.unmatch(txId);
-    loadTransactions();
+    try {
+      await window.api.bank.transactions.unmatch(txId);
+      loadTransactions();
+    } catch (_) {}
   };
 
   // ── Reconciliation ──────────────────────────────────────────────────────────
   const closeReconciliation = async (stmtId) => {
     if (!selectedAccount) return;
-    const result = await window.api.bank.reconcile.close(selectedAccount.id, stmtId);
-    if (result.success) { loadStatements(); loadRecPreview(); }
-    else alert(result.message);
+    try {
+      const result = await window.api.bank.reconcile.close(selectedAccount.id, stmtId);
+      if (result.success) { loadStatements(); loadRecPreview(); }
+      else alert(result.message);
+    } catch (_) {}
   };
 
   const reopenReconciliation = async () => {
     if (!showReopenModal || !reopenReason.trim()) return;
-    await window.api.bank.reconcile.reopen(selectedAccount.id, showReopenModal.id, reopenReason.trim());
-    setShowReopenModal(null);
-    setReopenReason('');
-    loadStatements();
-    loadRecPreview();
+    try {
+      await window.api.bank.reconcile.reopen(selectedAccount.id, showReopenModal.id, reopenReason.trim());
+      setShowReopenModal(null);
+      setReopenReason('');
+      loadStatements();
+      loadRecPreview();
+    } catch (_) {}
   };
 
   const deleteLearnedRule = async (id) => {
     if (!window.confirm(T.deleteRule)) return;
-    await window.api.bank.learned.delete(id);
-    loadLearnedRules();
+    try {
+      await window.api.bank.learned.delete(id);
+      loadLearnedRules();
+    } catch (_) {}
   };
 
   // ── Status badge ─────────────────────────────────────────────────────────────
