@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 const T = {
   fr: {
@@ -122,6 +122,7 @@ export default function BilanTab({ lang = 'fr', canUsePro = false, onUpgrade }) 
   const [selMonth, setSelMonth] = useState(initDate.getMonth() + 1);
   const asOfDate = `${selYear}-${String(selMonth).padStart(2,'0')}-${String(endOfMonthDate(selYear, selMonth)).padStart(2,'0')}`;
 
+  const topRef = useRef(null);
   const [bilan, setBilan] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -137,11 +138,10 @@ export default function BilanTab({ lang = 'fr', canUsePro = false, onUpgrade }) 
   }
 
   function loadSnapshot(s) {
-    // Parse snapshot date and set the picker to that month, then compute
     const [y, m] = s.snapshot_date.slice(0, 7).split('-').map(Number);
     setSelYear(y); setSelMonth(m);
     setBilan(null); setSaved(false);
-    // Compute after state settles
+    topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     setTimeout(async () => {
       setLoading(true); setError(null);
       try {
@@ -213,7 +213,7 @@ export default function BilanTab({ lang = 'fr', canUsePro = false, onUpgrade }) 
   }
 
   return (
-    <div style={{ padding: '12px 0', maxWidth: 720 }}>
+    <div ref={topRef} style={{ padding: '12px 0', maxWidth: 720 }}>
       <div style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 16, fontWeight: 800, color: '#f1f5f9' }}>{L.title}</span>
@@ -285,8 +285,9 @@ export default function BilanTab({ lang = 'fr', canUsePro = false, onUpgrade }) 
           </div>
 
           {/* TOTAL */}
-          <div style={{ ...card, background: bilan.isBalanced ? 'rgba(34,197,94,0.05)' : 'rgba(239,68,68,0.05)', border: `1px solid ${bilan.isBalanced ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}` }}>
-            <SectionRow label={L.totalLiabEquity} value={bilan.sections.totalLiabAndEquity || 0} bold />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', borderRadius: 8, background: bilan.isBalanced ? '#14532d' : '#450a0a', border: `1px solid ${bilan.isBalanced ? '#166534' : '#7f1d1d'}` }}>
+            <span style={{ fontSize: 13, fontWeight: 800, color: bilan.isBalanced ? '#86efac' : '#fca5a5' }}>{L.totalLiabEquity}</span>
+            <span style={{ fontSize: 13, fontWeight: 800, color: bilan.isBalanced ? '#86efac' : '#fca5a5', fontVariantNumeric: 'tabular-nums', fontFamily: 'ui-monospace, monospace' }}>{fmtAmt(bilan.sections.totalLiabAndEquity || 0)}</span>
           </div>
 
           {/* Archive button */}
