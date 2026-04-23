@@ -3490,8 +3490,39 @@ function recurringPendingCount() {
 
 // ── Reminder Ladder ────────────────────────────────────────────────────────────
 
+function _seedDefaultLadderIfEmpty(db) {
+  const count = db.prepare(`SELECT COUNT(*) as n FROM reminder_ladder`).get().n;
+  if (count > 0) return;
+  const ladderId = db.prepare(
+    `INSERT INTO reminder_ladder (name, is_default, is_active) VALUES ('Défaut', 1, 1)`
+  ).run().lastInsertRowid;
+  const steps = [
+    { days: 3,  sfr: 'Rappel amical — Facture {numero}',       sen: 'Friendly reminder — Invoice {numero}',
+      bfr: 'Bonjour {client_name},\n\nNous vous rappelons que la facture {numero} d\'un montant de {amount_due} est due depuis {days_overdue} jour(s).\n\nMerci de votre règlement rapide.\n\n{company_name}',
+      ben: 'Hello {client_name},\n\nThis is a friendly reminder that invoice {numero} for {amount_due} has been due for {days_overdue} day(s).\n\nThank you for your prompt payment.\n\n{company_name}' },
+    { days: 7,  sfr: 'Rappel ferme — Facture {numero}',        sen: 'Payment reminder — Invoice {numero}',
+      bfr: 'Bonjour {client_name},\n\nNous n\'avons pas encore reçu le paiement de la facture {numero} ({amount_due}), maintenant en retard de {days_overdue} jour(s).\n\nVeuillez procéder au paiement dès que possible.\n\n{company_name}',
+      ben: 'Hello {client_name},\n\nWe have not yet received payment for invoice {numero} ({amount_due}), now {days_overdue} day(s) overdue.\n\nPlease arrange payment at your earliest convenience.\n\n{company_name}' },
+    { days: 14, sfr: 'Compte en retard — Facture {numero}',    sen: 'Past due — Invoice {numero}',
+      bfr: 'Bonjour {client_name},\n\nLa facture {numero} ({amount_due}) est maintenant en retard de {days_overdue} jours. Des intérêts peuvent s\'appliquer conformément à nos conditions.\n\nCommuniquez avec nous pour régulariser la situation.\n\n{company_name}',
+      ben: 'Hello {client_name},\n\nInvoice {numero} ({amount_due}) is now {days_overdue} days past due. Interest charges may apply per our terms.\n\nPlease contact us to resolve this matter.\n\n{company_name}' },
+    { days: 30, sfr: 'Dernier avis — Facture {numero}',        sen: 'Final notice — Invoice {numero}',
+      bfr: 'Bonjour {client_name},\n\nCeci est un dernier avis concernant la facture {numero} ({amount_due}), maintenant en retard de {days_overdue} jours.\n\nSans règlement sous 7 jours, nous devrons transmettre ce dossier à notre service de recouvrement.\n\n{company_name}',
+      ben: 'Hello {client_name},\n\nThis is a final notice regarding invoice {numero} ({amount_due}), now {days_overdue} days past due.\n\nIf payment is not received within 7 days, we will refer this matter to collections.\n\n{company_name}' },
+    { days: 60, sfr: 'Mise en demeure — Facture {numero}',     sen: 'Collection notice — Invoice {numero}',
+      bfr: 'Bonjour {client_name},\n\nMalgré nos rappels précédents, la facture {numero} ({amount_due}) demeure impayée depuis {days_overdue} jours.\n\nCe dossier sera remis à notre service juridique si aucun règlement n\'est effectué d\'ici 5 jours ouvrables.\n\n{company_name}',
+      ben: 'Hello {client_name},\n\nDespite previous notices, invoice {numero} ({amount_due}) remains unpaid for {days_overdue} days.\n\nThis matter will be referred to our legal department if payment is not received within 5 business days.\n\n{company_name}' },
+  ];
+  const ins = db.prepare(
+    `INSERT INTO reminder_steps (ladder_id, days_after_due, subject_fr, subject_en, body_fr, body_en, attach_pdf, include_payment_link)
+     VALUES (?, ?, ?, ?, ?, ?, 1, 1)`
+  );
+  for (const s of steps) ins.run(ladderId, s.days, s.sfr, s.sen, s.bfr, s.ben);
+}
+
 function reminderLadderList() {
   const db = getDb();
+  _seedDefaultLadderIfEmpty(db);
   const ladders = db.prepare(`SELECT * FROM reminder_ladder ORDER BY is_default DESC, name`).all();
   for (const l of ladders) {
     l.steps = db.prepare(`SELECT * FROM reminder_steps WHERE ladder_id=? ORDER BY days_after_due`).all(l.id);
