@@ -356,4 +356,30 @@ contextBridge.exposeInMainWorld('api', {
     history:      (ruleId)    => ipcRenderer.invoke('recurring:history', ruleId),
     checkDue:     (today)     => ipcRenderer.invoke('recurring:checkDue', today),
   },
+  reminders: {
+    ladder: {
+      list:   ()            => ipcRenderer.invoke('reminder:ladder:list'),
+      create: (data)        => ipcRenderer.invoke('reminder:ladder:create', data),
+      update: (id, data)    => ipcRenderer.invoke('reminder:ladder:update', id, data),
+      delete: (id)          => ipcRenderer.invoke('reminder:ladder:delete', id),
+    },
+    step: {
+      list:   (ladderId)    => ipcRenderer.invoke('reminder:step:list', ladderId),
+      create: (data)        => ipcRenderer.invoke('reminder:step:create', data),
+      update: (id, data)    => ipcRenderer.invoke('reminder:step:update', id, data),
+      delete: (id)          => ipcRenderer.invoke('reminder:step:delete', id),
+    },
+    log: {
+      list:   (opts)        => ipcRenderer.invoke('reminder:log:list', opts),
+      create: (data)        => ipcRenderer.invoke('reminder:log:create', data),
+    },
+    check:  (factures)      => ipcRenderer.invoke('reminder:check', factures),
+  },
+  deposits: {
+    list:          (commandeId)     => ipcRenderer.invoke('deposit:list', commandeId),
+    create:        (data)           => ipcRenderer.invoke('deposit:create', data),
+    update:        (id, data)       => ipcRenderer.invoke('deposit:update', id, data),
+    delete:        (id)             => ipcRenderer.invoke('deposit:delete', id),
+    markGenerated: (id, factureId)  => ipcRenderer.invoke('deposit:markGenerated', id, factureId),
+  },
 });

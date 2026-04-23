@@ -702,6 +702,83 @@ const MIGRATIONS = [
       database.prepare(`CREATE INDEX IF NOT EXISTS idx_rg_rule ON recurring_generated(rule_id, status)`).run();
     },
   },
+  {
+    version: 14,
+    description: 'Sprint 9 — Reminder Ladder + Deposit Schedules',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS reminder_ladder (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        is_default INTEGER DEFAULT 0,
+        applies_to_client_id INTEGER,
+        is_active INTEGER DEFAULT 1
+      )`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS reminder_steps (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ladder_id INTEGER NOT NULL,
+        days_after_due INTEGER NOT NULL,
+        subject_fr TEXT,
+        subject_en TEXT,
+        body_fr TEXT,
+        body_en TEXT,
+        attach_pdf INTEGER DEFAULT 1,
+        include_payment_link INTEGER DEFAULT 1,
+        FOREIGN KEY (ladder_id) REFERENCES reminder_ladder(id)
+      )`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS reminder_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_id TEXT NOT NULL,
+        step_id INTEGER NOT NULL,
+        sent_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        sent_to TEXT,
+        status TEXT
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_rl_invoice ON reminder_log(invoice_id)`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS deposit_schedules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        commande_id TEXT NOT NULL,
+        label TEXT NOT NULL,
+        percentage REAL,
+        fixed_amount REAL,
+        trigger_type TEXT NOT NULL,
+        trigger_date TEXT,
+        generated_invoice_id TEXT,
+        status TEXT DEFAULT 'pending',
+        sort_order INTEGER DEFAULT 0
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_ds_commande ON deposit_schedules(commande_id)`).run();
+
+      // Seed the default 5-step reminder ladder
+      const ladderId = database.prepare(
+        `INSERT INTO reminder_ladder (name, is_default, is_active) VALUES ('Défaut', 1, 1)`
+      ).run().lastInsertRowid;
+      const steps = [
+        { days: 3,  sfr: 'Rappel amical — Facture {numero}',          sen: 'Friendly reminder — Invoice {numero}',
+          bfr: 'Bonjour {client_name},\n\nNous vous rappelons que la facture {numero} d\'un montant de {amount_due} est due depuis {days_overdue} jour(s).\n\nMerci de votre règlement rapide.\n\n{company_name}',
+          ben: 'Hello {client_name},\n\nThis is a friendly reminder that invoice {numero} for {amount_due} has been due for {days_overdue} day(s).\n\nThank you for your prompt payment.\n\n{company_name}' },
+        { days: 7,  sfr: 'Rappel ferme — Facture {numero}',           sen: 'Payment reminder — Invoice {numero}',
+          bfr: 'Bonjour {client_name},\n\nNous n\'avons pas encore reçu le paiement de la facture {numero} ({amount_due}), maintenant en retard de {days_overdue} jour(s).\n\nVeuillez procéder au paiement dès que possible.\n\n{company_name}',
+          ben: 'Hello {client_name},\n\nWe have not yet received payment for invoice {numero} ({amount_due}), now {days_overdue} day(s) overdue.\n\nPlease arrange payment at your earliest convenience.\n\n{company_name}' },
+        { days: 14, sfr: 'Compte en retard — Facture {numero}',       sen: 'Past due — Invoice {numero}',
+          bfr: 'Bonjour {client_name},\n\nLa facture {numero} ({amount_due}) est maintenant en retard de {days_overdue} jours. Des intérêts peuvent s\'appliquer conformément à nos conditions.\n\nCommuniquez avec nous pour régulariser la situation.\n\n{company_name}',
+          ben: 'Hello {client_name},\n\nInvoice {numero} ({amount_due}) is now {days_overdue} days past due. Interest charges may apply per our terms.\n\nPlease contact us to resolve this matter.\n\n{company_name}' },
+        { days: 30, sfr: 'Dernier avis — Facture {numero}',           sen: 'Final notice — Invoice {numero}',
+          bfr: 'Bonjour {client_name},\n\nCeci est un dernier avis concernant la facture {numero} ({amount_due}), maintenant en retard de {days_overdue} jours.\n\nSans règlement sous 7 jours, nous devrons transmettre ce dossier à notre service de recouvrement.\n\n{company_name}',
+          ben: 'Hello {client_name},\n\nThis is a final notice regarding invoice {numero} ({amount_due}), now {days_overdue} days past due.\n\nIf payment is not received within 7 days, we will refer this matter to collections.\n\n{company_name}' },
+        { days: 60, sfr: 'Mise en demeure — Facture {numero}',        sen: 'Collection notice — Invoice {numero}',
+          bfr: 'Bonjour {client_name},\n\nMalgré nos rappels précédents, la facture {numero} ({amount_due}) demeure impayée depuis {days_overdue} jours.\n\nCe dossier sera remis à notre service juridique si aucun règlement n\'est effectué d\'ici 5 jours ouvrables.\n\n{company_name}',
+          ben: 'Hello {client_name},\n\nDespite previous notices, invoice {numero} ({amount_due}) remains unpaid for {days_overdue} days.\n\nThis matter will be referred to our legal department if payment is not received within 5 business days.\n\n{company_name}' },
+      ];
+      const ins = database.prepare(
+        `INSERT INTO reminder_steps (ladder_id, days_after_due, subject_fr, subject_en, body_fr, body_en, attach_pdf, include_payment_link)
+         VALUES (?, ?, ?, ?, ?, ?, 1, 1)`
+      );
+      for (const s of steps) ins.run(ladderId, s.days, s.sfr, s.sen, s.bfr, s.ben);
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -3411,6 +3488,192 @@ function recurringPendingCount() {
   return getDb().prepare(`SELECT COUNT(*) as c FROM recurring_generated WHERE status='pending'`).get().c;
 }
 
+// ── Reminder Ladder ────────────────────────────────────────────────────────────
+
+function reminderLadderList() {
+  const db = getDb();
+  const ladders = db.prepare(`SELECT * FROM reminder_ladder ORDER BY is_default DESC, name`).all();
+  for (const l of ladders) {
+    l.steps = db.prepare(`SELECT * FROM reminder_steps WHERE ladder_id=? ORDER BY days_after_due`).all(l.id);
+  }
+  return ladders;
+}
+
+function reminderLadderCreate({ name, isDefault = 0, appliesToClientId = null }) {
+  const db = getDb();
+  if (isDefault) db.prepare(`UPDATE reminder_ladder SET is_default=0`).run();
+  const id = db.prepare(
+    `INSERT INTO reminder_ladder (name, is_default, applies_to_client_id, is_active) VALUES (?,?,?,1)`
+  ).run(name, isDefault ? 1 : 0, appliesToClientId || null).lastInsertRowid;
+  return db.prepare(`SELECT * FROM reminder_ladder WHERE id=?`).get(id);
+}
+
+function reminderLadderUpdate(id, { name, isDefault, isActive, appliesToClientId }) {
+  const db = getDb();
+  if (isDefault) db.prepare(`UPDATE reminder_ladder SET is_default=0`).run();
+  const sets = [];
+  const vals = [];
+  if (name !== undefined) { sets.push('name=?'); vals.push(name); }
+  if (isDefault !== undefined) { sets.push('is_default=?'); vals.push(isDefault ? 1 : 0); }
+  if (isActive !== undefined) { sets.push('is_active=?'); vals.push(isActive ? 1 : 0); }
+  if (appliesToClientId !== undefined) { sets.push('applies_to_client_id=?'); vals.push(appliesToClientId || null); }
+  if (sets.length === 0) return;
+  vals.push(id);
+  db.prepare(`UPDATE reminder_ladder SET ${sets.join(',')} WHERE id=?`).run(...vals);
+  return db.prepare(`SELECT * FROM reminder_ladder WHERE id=?`).get(id);
+}
+
+function reminderLadderDelete(id) {
+  const db = getDb();
+  db.prepare(`DELETE FROM reminder_steps WHERE ladder_id=?`).run(id);
+  db.prepare(`DELETE FROM reminder_ladder WHERE id=?`).run(id);
+  return { ok: true };
+}
+
+function reminderStepList(ladderId) {
+  return getDb().prepare(`SELECT * FROM reminder_steps WHERE ladder_id=? ORDER BY days_after_due`).all(ladderId);
+}
+
+function reminderStepCreate({ ladderId, daysAfterDue, subjectFr, subjectEn, bodyFr, bodyEn, attachPdf = 1, includePaymentLink = 1 }) {
+  const db = getDb();
+  const id = db.prepare(
+    `INSERT INTO reminder_steps (ladder_id, days_after_due, subject_fr, subject_en, body_fr, body_en, attach_pdf, include_payment_link)
+     VALUES (?,?,?,?,?,?,?,?)`
+  ).run(ladderId, daysAfterDue, subjectFr || null, subjectEn || null, bodyFr || null, bodyEn || null, attachPdf ? 1 : 0, includePaymentLink ? 1 : 0).lastInsertRowid;
+  return db.prepare(`SELECT * FROM reminder_steps WHERE id=?`).get(id);
+}
+
+function reminderStepUpdate(id, { daysAfterDue, subjectFr, subjectEn, bodyFr, bodyEn, attachPdf, includePaymentLink }) {
+  const db = getDb();
+  const sets = [];
+  const vals = [];
+  if (daysAfterDue !== undefined) { sets.push('days_after_due=?'); vals.push(daysAfterDue); }
+  if (subjectFr !== undefined) { sets.push('subject_fr=?'); vals.push(subjectFr); }
+  if (subjectEn !== undefined) { sets.push('subject_en=?'); vals.push(subjectEn); }
+  if (bodyFr !== undefined) { sets.push('body_fr=?'); vals.push(bodyFr); }
+  if (bodyEn !== undefined) { sets.push('body_en=?'); vals.push(bodyEn); }
+  if (attachPdf !== undefined) { sets.push('attach_pdf=?'); vals.push(attachPdf ? 1 : 0); }
+  if (includePaymentLink !== undefined) { sets.push('include_payment_link=?'); vals.push(includePaymentLink ? 1 : 0); }
+  if (sets.length === 0) return;
+  vals.push(id);
+  db.prepare(`UPDATE reminder_steps SET ${sets.join(',')} WHERE id=?`).run(...vals);
+  return db.prepare(`SELECT * FROM reminder_steps WHERE id=?`).get(id);
+}
+
+function reminderStepDelete(id) {
+  getDb().prepare(`DELETE FROM reminder_steps WHERE id=?`).run(id);
+  return { ok: true };
+}
+
+function reminderLogList({ invoiceId, limit = 100 } = {}) {
+  const db = getDb();
+  if (invoiceId) {
+    return db.prepare(
+      `SELECT rl.*, rs.days_after_due, rs.subject_fr FROM reminder_log rl
+       LEFT JOIN reminder_steps rs ON rs.id=rl.step_id
+       WHERE rl.invoice_id=? ORDER BY rl.sent_at DESC LIMIT ?`
+    ).all(String(invoiceId), limit);
+  }
+  return db.prepare(
+    `SELECT rl.*, rs.days_after_due, rs.subject_fr FROM reminder_log rl
+     LEFT JOIN reminder_steps rs ON rs.id=rl.step_id
+     ORDER BY rl.sent_at DESC LIMIT ?`
+  ).all(limit);
+}
+
+function reminderLogCreate({ invoiceId, stepId, sentTo, status }) {
+  const db = getDb();
+  const id = db.prepare(
+    `INSERT INTO reminder_log (invoice_id, step_id, sent_to, status) VALUES (?,?,?,?)`
+  ).run(String(invoiceId), stepId, sentTo || null, status || 'sent').lastInsertRowid;
+  return db.prepare(`SELECT * FROM reminder_log WHERE id=?`).get(id);
+}
+
+// Returns {invoiceId, clientId, step} for invoices that need a reminder today.
+// factures is the JSON array from kv_store (passed from renderer context via IPC).
+function reminderCheckDue(factures, lang = 'fr') {
+  const db = getDb();
+  const today = new Date().toISOString().slice(0, 10);
+  const defaultLadder = db.prepare(`SELECT * FROM reminder_ladder WHERE is_default=1 AND is_active=1`).get();
+  if (!defaultLadder) return [];
+  const steps = db.prepare(`SELECT * FROM reminder_steps WHERE ladder_id=? ORDER BY days_after_due`).all(defaultLadder.id);
+  if (!steps.length) return [];
+
+  const result = [];
+  for (const fac of (factures || [])) {
+    if (!fac.dateEcheance || !fac.clientId) continue;
+    const statut = fac.statut || '';
+    if (statut === 'Payée' || statut === 'Annulée' || statut === 'Void') continue;
+    // Check if there's an outstanding balance
+    const totalPaid = (fac.paiements || []).reduce((s, p) => s + (parseFloat(p.montant) || 0), 0);
+    // Simple check: if any payments exist and total >= rough total, skip
+    if (fac.statut === 'Payée') continue;
+    const dueDate = new Date(fac.dateEcheance + 'T12:00:00');
+    const todayDate = new Date(today + 'T12:00:00');
+    const daysOverdue = Math.floor((todayDate - dueDate) / 86400000);
+    if (daysOverdue <= 0) continue;
+
+    // Find the applicable step (the one that just became due, not already sent)
+    for (const step of steps) {
+      if (daysOverdue < step.days_after_due) continue;
+      // Check not already sent for this step
+      const alreadySent = db.prepare(
+        `SELECT id FROM reminder_log WHERE invoice_id=? AND step_id=? AND status='sent'`
+      ).get(String(fac.id), step.id);
+      if (alreadySent) continue;
+      result.push({ invoiceId: fac.id, clientId: fac.clientId, step, daysOverdue });
+      break; // Only one step per invoice per run
+    }
+  }
+  return result;
+}
+
+// ── Deposit Schedules ──────────────────────────────────────────────────────────
+
+function depositScheduleList(commandeId) {
+  return getDb().prepare(
+    `SELECT * FROM deposit_schedules WHERE commande_id=? ORDER BY sort_order, id`
+  ).all(String(commandeId));
+}
+
+function depositScheduleCreate({ commandeId, label, percentage, fixedAmount, triggerType, triggerDate, sortOrder = 0 }) {
+  const db = getDb();
+  const id = db.prepare(
+    `INSERT INTO deposit_schedules (commande_id, label, percentage, fixed_amount, trigger_type, trigger_date, sort_order, status)
+     VALUES (?,?,?,?,?,?,?,'pending')`
+  ).run(String(commandeId), label, percentage || null, fixedAmount || null, triggerType, triggerDate || null, sortOrder).lastInsertRowid;
+  return db.prepare(`SELECT * FROM deposit_schedules WHERE id=?`).get(id);
+}
+
+function depositScheduleUpdate(id, { label, percentage, fixedAmount, triggerType, triggerDate, status, sortOrder }) {
+  const db = getDb();
+  const sets = [];
+  const vals = [];
+  if (label !== undefined) { sets.push('label=?'); vals.push(label); }
+  if (percentage !== undefined) { sets.push('percentage=?'); vals.push(percentage || null); }
+  if (fixedAmount !== undefined) { sets.push('fixed_amount=?'); vals.push(fixedAmount || null); }
+  if (triggerType !== undefined) { sets.push('trigger_type=?'); vals.push(triggerType); }
+  if (triggerDate !== undefined) { sets.push('trigger_date=?'); vals.push(triggerDate || null); }
+  if (status !== undefined) { sets.push('status=?'); vals.push(status); }
+  if (sortOrder !== undefined) { sets.push('sort_order=?'); vals.push(sortOrder); }
+  if (sets.length === 0) return;
+  vals.push(id);
+  db.prepare(`UPDATE deposit_schedules SET ${sets.join(',')} WHERE id=?`).run(...vals);
+  return db.prepare(`SELECT * FROM deposit_schedules WHERE id=?`).get(id);
+}
+
+function depositScheduleDelete(id) {
+  getDb().prepare(`DELETE FROM deposit_schedules WHERE id=?`).run(id);
+  return { ok: true };
+}
+
+function depositScheduleMarkGenerated(id, factureId) {
+  getDb().prepare(
+    `UPDATE deposit_schedules SET status='generated', generated_invoice_id=? WHERE id=?`
+  ).run(String(factureId), id);
+  return { ok: true };
+}
+
 module.exports = {
   storageGet, storageSet, storageGetAll, storageGetByPrefix,
   auditInsert, auditQuery, getDeviceId,
@@ -3470,4 +3733,8 @@ module.exports = {
   recurringRuleList, recurringRuleCreate, recurringRuleUpdate, recurringRuleDeactivate,
   recurringPendingList, recurringApprove, recurringSkip, recurringHistoryList,
   recurringCheckDue, recurringPendingCount,
+  reminderLadderList, reminderLadderCreate, reminderLadderUpdate, reminderLadderDelete,
+  reminderStepList, reminderStepCreate, reminderStepUpdate, reminderStepDelete,
+  reminderLogList, reminderLogCreate, reminderCheckDue,
+  depositScheduleList, depositScheduleCreate, depositScheduleUpdate, depositScheduleDelete, depositScheduleMarkGenerated,
 };

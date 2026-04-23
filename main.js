@@ -71,6 +71,10 @@ const {
   recurringRuleList, recurringRuleCreate, recurringRuleUpdate, recurringRuleDeactivate,
   recurringPendingList, recurringApprove, recurringSkip, recurringHistoryList,
   recurringCheckDue, recurringPendingCount,
+  reminderLadderList, reminderLadderCreate, reminderLadderUpdate, reminderLadderDelete,
+  reminderStepList, reminderStepCreate, reminderStepUpdate, reminderStepDelete,
+  reminderLogList, reminderLogCreate, reminderCheckDue,
+  depositScheduleList, depositScheduleCreate, depositScheduleUpdate, depositScheduleDelete, depositScheduleMarkGenerated,
 } = require('./src/db/database.js');
 
 const BACKUP_DIR = () => path.join(app.getPath('userData'), 'Backups');
@@ -2087,6 +2091,31 @@ ipcMain.handle('recurring:approve',    (_e, id)        => recurringApprove(id));
 ipcMain.handle('recurring:skip',       (_e, id)        => recurringSkip(id));
 ipcMain.handle('recurring:history',    (_e, ruleId)    => recurringHistoryList(ruleId));
 ipcMain.handle('recurring:checkDue',   (_e, today)     => recurringCheckDue(today));
+
+// ── Reminder Ladder ────────────────────────────────────────────────────────────
+
+ipcMain.handle('reminder:ladder:list',   ()                  => reminderLadderList());
+ipcMain.handle('reminder:ladder:create', (_e, data)          => reminderLadderCreate(data));
+ipcMain.handle('reminder:ladder:update', (_e, id, data)      => reminderLadderUpdate(id, data));
+ipcMain.handle('reminder:ladder:delete', (_e, id)            => reminderLadderDelete(id));
+
+ipcMain.handle('reminder:step:list',     (_e, ladderId)      => reminderStepList(ladderId));
+ipcMain.handle('reminder:step:create',   (_e, data)          => reminderStepCreate(data));
+ipcMain.handle('reminder:step:update',   (_e, id, data)      => reminderStepUpdate(id, data));
+ipcMain.handle('reminder:step:delete',   (_e, id)            => reminderStepDelete(id));
+
+ipcMain.handle('reminder:log:list',      (_e, opts)          => reminderLogList(opts || {}));
+ipcMain.handle('reminder:log:create',    (_e, data)          => reminderLogCreate(data));
+
+ipcMain.handle('reminder:check',         (_e, factures)      => reminderCheckDue(factures || []));
+
+// ── Deposit Schedules ──────────────────────────────────────────────────────────
+
+ipcMain.handle('deposit:list',           (_e, commandeId)    => depositScheduleList(commandeId));
+ipcMain.handle('deposit:create',         (_e, data)          => depositScheduleCreate(data));
+ipcMain.handle('deposit:update',         (_e, id, data)      => depositScheduleUpdate(id, data));
+ipcMain.handle('deposit:delete',         (_e, id)            => depositScheduleDelete(id));
+ipcMain.handle('deposit:markGenerated',  (_e, id, factureId) => depositScheduleMarkGenerated(id, factureId));
 
 // ── Supabase Proxy Fetch ───────────────────────────────────────────────────
 // Routes Supabase HTTP calls through Electron's net module (main process) to
