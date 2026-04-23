@@ -630,6 +630,78 @@ const MIGRATIONS = [
       )`).run();
     },
   },
+  {
+    version: 13,
+    description: 'Source Document Vault + Recurring Transactions — Sprint 7 Accounting Suite',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS source_documents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_type TEXT NOT NULL,
+        entity_id INTEGER NOT NULL,
+        file_name TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        mime_type TEXT,
+        size_bytes INTEGER,
+        sha256 TEXT NOT NULL,
+        ocr_text TEXT,
+        uploaded_to_cloud INTEGER DEFAULT 0,
+        cloud_url TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_sd_entity ON source_documents(entity_type, entity_id)`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_sd_sha256 ON source_documents(sha256)`).run();
+
+      database.prepare(`CREATE VIRTUAL TABLE IF NOT EXISTS document_search USING fts5(
+        file_name,
+        ocr_text,
+        content=source_documents,
+        content_rowid=id
+      )`).run();
+
+      database.prepare(`CREATE TRIGGER IF NOT EXISTS sd_ai AFTER INSERT ON source_documents BEGIN
+        INSERT INTO document_search(rowid, file_name, ocr_text) VALUES (new.id, new.file_name, new.ocr_text);
+      END`).run();
+      database.prepare(`CREATE TRIGGER IF NOT EXISTS sd_ad AFTER DELETE ON source_documents BEGIN
+        INSERT INTO document_search(document_search, rowid, file_name, ocr_text) VALUES ('delete', old.id, old.file_name, old.ocr_text);
+      END`).run();
+      database.prepare(`CREATE TRIGGER IF NOT EXISTS sd_au AFTER UPDATE ON source_documents BEGIN
+        INSERT INTO document_search(document_search, rowid, file_name, ocr_text) VALUES ('delete', old.id, old.file_name, old.ocr_text);
+        INSERT INTO document_search(rowid, file_name, ocr_text) VALUES (new.id, new.file_name, new.ocr_text);
+      END`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS recurring_rules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        rule_type TEXT NOT NULL,
+        name TEXT NOT NULL,
+        frequency TEXT NOT NULL,
+        start_date TEXT NOT NULL,
+        end_date TEXT,
+        day_of_month INTEGER,
+        day_of_week INTEGER,
+        template_json TEXT NOT NULL,
+        auto_approve INTEGER DEFAULT 0,
+        last_run_at TEXT,
+        next_run_at TEXT NOT NULL,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_rr_next_run ON recurring_rules(next_run_at, is_active)`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS recurring_generated (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        rule_id INTEGER NOT NULL,
+        scheduled_for TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        entity_type TEXT,
+        entity_id INTEGER,
+        template_snapshot TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        approved_at TEXT,
+        FOREIGN KEY (rule_id) REFERENCES recurring_rules(id)
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_rg_rule ON recurring_generated(rule_id, status)`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -3160,6 +3232,185 @@ function balanceSheetSnapshotGet(id) {
   return row;
 }
 
+// ── Source Document Vault ─────────────────────────────────────────────────────
+
+function vaultAttach({ entity_type, entity_id, file_name, file_path, mime_type, size_bytes, sha256, ocr_text }) {
+  const db = getDb();
+  const existing = db.prepare(`SELECT id FROM source_documents WHERE sha256=? AND entity_type=? AND entity_id=?`).get(sha256, entity_type, entity_id);
+  if (existing) return existing;
+  const { lastInsertRowid } = db.prepare(
+    `INSERT INTO source_documents (entity_type, entity_id, file_name, file_path, mime_type, size_bytes, sha256, ocr_text)
+     VALUES (?,?,?,?,?,?,?,?)`
+  ).run(entity_type, entity_id, file_name, file_path, mime_type || null, size_bytes || null, sha256, ocr_text || null);
+  return db.prepare(`SELECT * FROM source_documents WHERE id=?`).get(lastInsertRowid);
+}
+
+function vaultList(entity_type, entity_id) {
+  return getDb().prepare(`SELECT * FROM source_documents WHERE entity_type=? AND entity_id=? ORDER BY created_at DESC`).all(entity_type, entity_id);
+}
+
+function vaultListAll({ entity_type, year, month, limit = 200, offset = 0 } = {}) {
+  const db = getDb();
+  const conds = [];
+  const vals = [];
+  if (entity_type) { conds.push(`entity_type=?`); vals.push(entity_type); }
+  if (year)  { conds.push(`strftime('%Y', created_at)=?`); vals.push(String(year)); }
+  if (month) { conds.push(`strftime('%m', created_at)=?`); vals.push(String(month).padStart(2,'0')); }
+  const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+  const rows = db.prepare(`SELECT * FROM source_documents ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...vals, limit, offset);
+  const total = db.prepare(`SELECT COUNT(*) as c FROM source_documents ${where}`).get(...vals).c;
+  return { rows, total };
+}
+
+function vaultSearch(query) {
+  if (!query || !query.trim()) return [];
+  const db = getDb();
+  const ftsIds = db.prepare(`SELECT rowid FROM document_search WHERE document_search MATCH ? LIMIT 50`).all(query.trim() + '*');
+  if (!ftsIds.length) return [];
+  const ids = ftsIds.map(r => r.rowid);
+  return db.prepare(`SELECT * FROM source_documents WHERE id IN (${ids.map(() => '?').join(',')}) ORDER BY created_at DESC`).all(...ids);
+}
+
+function vaultDelete(id) {
+  const db = getDb();
+  const doc = db.prepare(`SELECT * FROM source_documents WHERE id=?`).get(id);
+  if (!doc) return { ok: false, error: 'Not found' };
+  db.prepare(`DELETE FROM source_documents WHERE id=?`).run(id);
+  return { ok: true, file_path: doc.file_path };
+}
+
+function vaultGetOrphans() {
+  return getDb().prepare(`SELECT * FROM source_documents WHERE entity_id IS NULL OR entity_id = 0 ORDER BY created_at DESC`).all();
+}
+
+function vaultReassign(id, entity_type, entity_id) {
+  getDb().prepare(`UPDATE source_documents SET entity_type=?, entity_id=? WHERE id=?`).run(entity_type, entity_id, id);
+  return getDb().prepare(`SELECT * FROM source_documents WHERE id=?`).get(id);
+}
+
+function vaultGetStats() {
+  const db = getDb();
+  const stats = db.prepare(`SELECT COUNT(*) as count, COALESCE(SUM(size_bytes),0) as total_bytes FROM source_documents`).get();
+  const byType = db.prepare(`SELECT entity_type, COUNT(*) as count FROM source_documents GROUP BY entity_type`).all();
+  return { ...stats, by_type: byType };
+}
+
+// ── Recurring Rules ───────────────────────────────────────────────────────────
+
+function recurringRuleList({ active_only = false } = {}) {
+  const where = active_only ? `WHERE is_active=1` : '';
+  return getDb().prepare(`SELECT * FROM recurring_rules ${where} ORDER BY next_run_at ASC`).all().map(r => {
+    try { r.template = JSON.parse(r.template_json); } catch (_) {}
+    return r;
+  });
+}
+
+function recurringRuleCreate(data) {
+  const db = getDb();
+  const { rule_type, name, frequency, start_date, end_date, day_of_month, day_of_week, template, auto_approve, next_run_at } = data;
+  const { lastInsertRowid } = db.prepare(
+    `INSERT INTO recurring_rules (rule_type, name, frequency, start_date, end_date, day_of_month, day_of_week, template_json, auto_approve, next_run_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`
+  ).run(rule_type, name, frequency, start_date, end_date || null, day_of_month || null, day_of_week || null,
+        JSON.stringify(template || {}), auto_approve ? 1 : 0, next_run_at);
+  return db.prepare(`SELECT * FROM recurring_rules WHERE id=?`).get(lastInsertRowid);
+}
+
+function recurringRuleUpdate(id, data) {
+  const db = getDb();
+  const fields = [];
+  const vals = [];
+  const allowed = ['name', 'frequency', 'start_date', 'end_date', 'day_of_month', 'day_of_week', 'auto_approve', 'next_run_at', 'is_active'];
+  for (const k of allowed) {
+    if (data[k] !== undefined) { fields.push(`${k}=?`); vals.push(data[k]); }
+  }
+  if (data.template !== undefined) { fields.push(`template_json=?`); vals.push(JSON.stringify(data.template)); }
+  if (!fields.length) return db.prepare(`SELECT * FROM recurring_rules WHERE id=?`).get(id);
+  db.prepare(`UPDATE recurring_rules SET ${fields.join(',')} WHERE id=?`).run(...vals, id);
+  return db.prepare(`SELECT * FROM recurring_rules WHERE id=?`).get(id);
+}
+
+function recurringRuleDeactivate(id) {
+  getDb().prepare(`UPDATE recurring_rules SET is_active=0 WHERE id=?`).run(id);
+  return { ok: true };
+}
+
+function recurringPendingList() {
+  const db = getDb();
+  const rows = db.prepare(
+    `SELECT rg.*, rr.name as rule_name, rr.rule_type, rr.template_json
+     FROM recurring_generated rg
+     JOIN recurring_rules rr ON rr.id = rg.rule_id
+     WHERE rg.status='pending'
+     ORDER BY rg.scheduled_for ASC`
+  ).all();
+  return rows.map(r => {
+    try { r.template = JSON.parse(r.template_snapshot || r.template_json); } catch (_) {}
+    return r;
+  });
+}
+
+function recurringApprove(generatedId) {
+  const db = getDb();
+  db.prepare(`UPDATE recurring_generated SET status='approved', approved_at=datetime('now','localtime') WHERE id=?`).run(generatedId);
+  return db.prepare(`SELECT * FROM recurring_generated WHERE id=?`).get(generatedId);
+}
+
+function recurringSkip(generatedId) {
+  getDb().prepare(`UPDATE recurring_generated SET status='skipped' WHERE id=?`).run(generatedId);
+  return { ok: true };
+}
+
+function recurringHistoryList(ruleId) {
+  return getDb().prepare(
+    `SELECT * FROM recurring_generated WHERE rule_id=? ORDER BY scheduled_for DESC LIMIT 50`
+  ).all(ruleId);
+}
+
+function _computeNextRun(frequency, from, day_of_month, day_of_week) {
+  const d = new Date(from);
+  switch (frequency) {
+    case 'daily':     d.setDate(d.getDate() + 1); break;
+    case 'weekly':    d.setDate(d.getDate() + 7); break;
+    case 'biweekly':  d.setDate(d.getDate() + 14); break;
+    case 'monthly': {
+      d.setMonth(d.getMonth() + 1);
+      if (day_of_month) { d.setDate(Math.min(day_of_month, new Date(d.getFullYear(), d.getMonth()+1, 0).getDate())); }
+      break;
+    }
+    case 'quarterly': d.setMonth(d.getMonth() + 3); break;
+    case 'annual':    d.setFullYear(d.getFullYear() + 1); break;
+    default:          d.setMonth(d.getMonth() + 1);
+  }
+  return d.toISOString().slice(0, 10);
+}
+
+function recurringCheckDue(today) {
+  const db = getDb();
+  const todayStr = today || new Date().toISOString().slice(0, 10);
+  const due = db.prepare(`SELECT * FROM recurring_rules WHERE is_active=1 AND next_run_at <= ?`).all(todayStr);
+  const fired = [];
+  for (const rule of due) {
+    if (rule.end_date && todayStr > rule.end_date) {
+      db.prepare(`UPDATE recurring_rules SET is_active=0 WHERE id=?`).run(rule.id);
+      continue;
+    }
+    try { rule.template = JSON.parse(rule.template_json); } catch (_) {}
+    const { lastInsertRowid } = db.prepare(
+      `INSERT INTO recurring_generated (rule_id, scheduled_for, status, template_snapshot)
+       VALUES (?,?,?,?)`
+    ).run(rule.id, rule.next_run_at, rule.auto_approve ? 'approved' : 'pending', rule.template_json);
+    const nextRun = _computeNextRun(rule.frequency, rule.next_run_at, rule.day_of_month, rule.day_of_week);
+    db.prepare(`UPDATE recurring_rules SET last_run_at=?, next_run_at=? WHERE id=?`).run(rule.next_run_at, nextRun, rule.id);
+    fired.push({ rule_id: rule.id, generated_id: lastInsertRowid, scheduled_for: rule.next_run_at, auto_approved: !!rule.auto_approve });
+  }
+  return fired;
+}
+
+function recurringPendingCount() {
+  return getDb().prepare(`SELECT COUNT(*) as c FROM recurring_generated WHERE status='pending'`).get().c;
+}
+
 module.exports = {
   storageGet, storageSet, storageGetAll, storageGetByPrefix,
   auditInsert, auditQuery, getDeviceId,
@@ -3215,4 +3466,8 @@ module.exports = {
   ccaClassesList, ccaComputeForAsset, ccaScheduleForYear,
   buildBalanceSheet, getBalanceSheetBlockers,
   balanceSheetSnapshotSave, balanceSheetSnapshotList, balanceSheetSnapshotGet,
+  vaultAttach, vaultList, vaultListAll, vaultSearch, vaultDelete, vaultGetOrphans, vaultReassign, vaultGetStats,
+  recurringRuleList, recurringRuleCreate, recurringRuleUpdate, recurringRuleDeactivate,
+  recurringPendingList, recurringApprove, recurringSkip, recurringHistoryList,
+  recurringCheckDue, recurringPendingCount,
 };

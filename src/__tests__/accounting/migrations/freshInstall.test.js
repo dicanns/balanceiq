@@ -2,10 +2,10 @@
  * MIG-001 — Fresh Install: Accounting Suite Migrations on Clean Database
  *
  * Simulates a brand-new BalanceIQ user (or a user whose DB is at v7 before
- * the accounting suite shipped). Runs migrations v8-v12 and asserts:
+ * the accounting suite shipped). Runs migrations v8-v13 and asserts:
  *   - All accounting tables are created
  *   - COA seed data is present (>= 70 accounts)
- *   - PRAGMA user_version reflects v12
+ *   - PRAGMA user_version reflects v13
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
@@ -75,6 +75,9 @@ describe('MIG-001 fresh accounting install', () => {
       'cca_class_rates',
       'asset_depreciation_log',
       'balance_sheet_snapshots',
+      'source_documents',
+      'recurring_rules',
+      'recurring_generated',
     ];
 
     for (const t of required) {
@@ -88,10 +91,10 @@ describe('MIG-001 fresh accounting install', () => {
     expect(count).toBeGreaterThanOrEqual(70);
   });
 
-  it('PRAGMA user_version is 12 after all accounting migrations run', () => {
+  it('PRAGMA user_version is 13 after all accounting migrations run', () => {
     runMigrations(db);
     const version = db.pragma('user_version', { simple: true });
-    expect(version).toBe(12);
+    expect(version).toBe(13);
   });
 
   it('running migrations again is a no-op (idempotency)', () => {
@@ -105,6 +108,6 @@ describe('MIG-001 fresh accounting install', () => {
     expect(countAfterSecond).toBe(countAfterFirst);
 
     const version = db.pragma('user_version', { simple: true });
-    expect(version).toBe(12);
+    expect(version).toBe(13);
   });
 });

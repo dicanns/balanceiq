@@ -6,7 +6,7 @@
  * v8-v11 and asserts:
  *   - All legacy tables exist with row counts unchanged
  *   - New ledger tables are created (empty — no auto-posted opening balance)
- *   - user_version advanced to 12
+ *   - user_version advanced to 13
  *   - Re-running migration is a no-op
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -115,7 +115,7 @@ describe('MIG-002 upgrade pre-ledger database', () => {
 
   it('user_version advances to 12 after migration', () => {
     runMigrations(db);
-    expect(db.pragma('user_version', { simple: true })).toBe(12);
+    expect(db.pragma("user_version", { simple: true })).toBe(13);
   });
 
   it('re-running migration is a no-op', () => {
@@ -126,6 +126,6 @@ describe('MIG-002 upgrade pre-ledger database', () => {
 
     const kvCount2 = db.prepare(`SELECT COUNT(*) AS n FROM kv_store`).get().n;
     expect(kvCount2).toBe(kvCount1);
-    expect(db.pragma('user_version', { simple: true })).toBe(12);
+    expect(db.pragma("user_version", { simple: true })).toBe(13);
   });
 });

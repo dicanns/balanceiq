@@ -67,6 +67,10 @@ const {
   ccaClassesList, ccaComputeForAsset, ccaScheduleForYear,
   buildBalanceSheet, getBalanceSheetBlockers,
   balanceSheetSnapshotSave, balanceSheetSnapshotList, balanceSheetSnapshotGet,
+  vaultAttach, vaultList, vaultListAll, vaultSearch, vaultDelete, vaultGetOrphans, vaultReassign, vaultGetStats,
+  recurringRuleList, recurringRuleCreate, recurringRuleUpdate, recurringRuleDeactivate,
+  recurringPendingList, recurringApprove, recurringSkip, recurringHistoryList,
+  recurringCheckDue, recurringPendingCount,
 } = require('./src/db/database.js');
 
 const BACKUP_DIR = () => path.join(app.getPath('userData'), 'Backups');
@@ -1922,6 +1926,150 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
 ipcMain.handle('search:save-history', async (_e, { query, result_type, result_id }) => {
   searchHistorySave(query, result_type, result_id);
 });
+
+// ── Source Document Vault ─────────────────────────────────────────────────────
+const crypto = require('crypto');
+
+const VAULT_ROOT = () => path.join(os.homedir(), 'Documents', 'BalanceIQ Vault');
+
+function vaultFilePath(year, month, sha256prefix, fileName) {
+  const dir = path.join(VAULT_ROOT(), String(year), String(month).padStart(2, '0'));
+  fs.mkdirSync(dir, { recursive: true });
+  const safe = path.basename(fileName).replace(/[^a-zA-Z0-9._\-]/g, '_');
+  return path.join(dir, `${sha256prefix.slice(0, 8)}_${safe}`);
+}
+
+ipcMain.handle('vault:attach', async (_e, { entity_type, entity_id, src_path, file_name, mime_type }) => {
+  try {
+    let filePath = src_path;
+    if (!filePath) {
+      const result = await dialog.showOpenDialog({ properties: ['openFile'], title: 'Sélectionner un document' });
+      if (result.canceled || !result.filePaths.length) return { ok: false, error: 'cancelled' };
+      filePath = result.filePaths[0];
+    }
+    const buf = fs.readFileSync(filePath);
+    const sha256 = crypto.createHash('sha256').update(buf).digest('hex');
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const fname = file_name || path.basename(filePath);
+    const dest = vaultFilePath(year, month, sha256, fname);
+    fs.copyFileSync(filePath, dest);
+    const relPath = path.relative(VAULT_ROOT(), dest);
+    const size_bytes = buf.length;
+    const mimeType = mime_type || (fname.endsWith('.pdf') ? 'application/pdf' : fname.match(/\.(jpg|jpeg)$/i) ? 'image/jpeg' : fname.endsWith('.png') ? 'image/png' : 'application/octet-stream');
+    const doc = vaultAttach({ entity_type, entity_id, file_name: fname, file_path: relPath, mime_type: mimeType, size_bytes, sha256 });
+    return { ok: true, doc };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('vault:attachFile', async (_e, { entity_type, entity_id, file_name, mime_type, data_base64 }) => {
+  try {
+    const buf = Buffer.from(data_base64, 'base64');
+    const sha256 = crypto.createHash('sha256').update(buf).digest('hex');
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const dest = vaultFilePath(year, month, sha256, file_name);
+    fs.writeFileSync(dest, buf);
+    const relPath = path.relative(VAULT_ROOT(), dest);
+    const doc = vaultAttach({ entity_type, entity_id, file_name, file_path: relPath, mime_type: mime_type || null, size_bytes: buf.length, sha256 });
+    return { ok: true, doc };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('vault:list',    (_e, entity_type, entity_id) => vaultList(entity_type, entity_id));
+ipcMain.handle('vault:listAll', (_e, opts) => vaultListAll(opts || {}));
+ipcMain.handle('vault:search',  (_e, query) => vaultSearch(query));
+ipcMain.handle('vault:stats',   () => vaultGetStats());
+ipcMain.handle('vault:orphans', () => vaultGetOrphans());
+ipcMain.handle('vault:reassign',(_e, id, entity_type, entity_id) => vaultReassign(id, entity_type, entity_id));
+
+ipcMain.handle('vault:open', (_e, docId) => {
+  const docs = vaultList(null, null);
+  const doc = vaultListAll({ limit: 1 }).rows.find ? vaultListAll().rows.find(d => d.id === docId) : null;
+  if (!doc) return { ok: false, error: 'Not found' };
+  const abs = path.join(VAULT_ROOT(), doc.file_path);
+  if (!fs.existsSync(abs)) return { ok: false, error: 'File not found on disk' };
+  shell.openPath(abs);
+  return { ok: true };
+});
+
+ipcMain.handle('vault:openById', (_e, docId) => {
+  const { rows } = vaultListAll({ limit: 9999 });
+  const doc = rows.find(d => d.id === docId);
+  if (!doc) return { ok: false, error: 'Not found' };
+  const abs = path.join(VAULT_ROOT(), doc.file_path);
+  if (!fs.existsSync(abs)) return { ok: false, error: 'File not found on disk' };
+  shell.openPath(abs);
+  return { ok: true };
+});
+
+ipcMain.handle('vault:delete', async (_e, docId) => {
+  try {
+    const result = vaultDelete(docId);
+    if (!result.ok) return result;
+    if (result.file_path) {
+      const abs = path.join(VAULT_ROOT(), result.file_path);
+      if (fs.existsSync(abs)) fs.unlinkSync(abs);
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('vault:exportYear', async (_e, year) => {
+  try {
+    const yearDir = path.join(VAULT_ROOT(), String(year));
+    if (!fs.existsSync(yearDir)) return { ok: false, error: 'No vault documents for this year' };
+    const { filePath } = await dialog.showSaveDialog({
+      title: `Exporter les documents ${year}`,
+      defaultPath: `BalanceIQ_Vault_${year}`,
+      properties: ['createDirectory'],
+    });
+    if (!filePath) return { ok: false, error: 'cancelled' };
+    fs.mkdirSync(filePath, { recursive: true });
+    const copyDir = (src, dest) => {
+      fs.mkdirSync(dest, { recursive: true });
+      for (const entry of fs.readdirSync(src)) {
+        const s = path.join(src, entry);
+        const d = path.join(dest, entry);
+        if (fs.statSync(s).isDirectory()) copyDir(s, d);
+        else fs.copyFileSync(s, d);
+      }
+    };
+    copyDir(yearDir, filePath);
+    shell.showItemInFolder(filePath);
+    return { ok: true, dest: filePath };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('vault:openRoot', () => {
+  const root = VAULT_ROOT();
+  fs.mkdirSync(root, { recursive: true });
+  shell.openPath(root);
+  return { ok: true };
+});
+
+// ── Recurring Rules ────────────────────────────────────────────────────────────
+
+ipcMain.handle('recurring:list',       (_e, opts)      => recurringRuleList(opts || {}));
+ipcMain.handle('recurring:create',     (_e, data)      => recurringRuleCreate(data));
+ipcMain.handle('recurring:update',     (_e, id, data)  => recurringRuleUpdate(id, data));
+ipcMain.handle('recurring:deactivate', (_e, id)        => recurringRuleDeactivate(id));
+ipcMain.handle('recurring:pending',    ()              => recurringPendingList());
+ipcMain.handle('recurring:pendingCount',()             => recurringPendingCount());
+ipcMain.handle('recurring:approve',    (_e, id)        => recurringApprove(id));
+ipcMain.handle('recurring:skip',       (_e, id)        => recurringSkip(id));
+ipcMain.handle('recurring:history',    (_e, ruleId)    => recurringHistoryList(ruleId));
+ipcMain.handle('recurring:checkDue',   (_e, today)     => recurringCheckDue(today));
 
 // ── Supabase Proxy Fetch ───────────────────────────────────────────────────
 // Routes Supabase HTTP calls through Electron's net module (main process) to

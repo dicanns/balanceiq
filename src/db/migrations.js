@@ -601,6 +601,78 @@ const MIGRATIONS = [
       )`).run();
     },
   },
+  {
+    version: 13,
+    description: 'Source Document Vault + Recurring Transactions — Sprint 7 Accounting Suite',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS source_documents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_type TEXT NOT NULL,
+        entity_id INTEGER NOT NULL,
+        file_name TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        mime_type TEXT,
+        size_bytes INTEGER,
+        sha256 TEXT NOT NULL,
+        ocr_text TEXT,
+        uploaded_to_cloud INTEGER DEFAULT 0,
+        cloud_url TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_sd_entity ON source_documents(entity_type, entity_id)`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_sd_sha256 ON source_documents(sha256)`).run();
+
+      database.prepare(`CREATE VIRTUAL TABLE IF NOT EXISTS document_search USING fts5(
+        file_name,
+        ocr_text,
+        content=source_documents,
+        content_rowid=id
+      )`).run();
+
+      database.prepare(`CREATE TRIGGER IF NOT EXISTS sd_ai AFTER INSERT ON source_documents BEGIN
+        INSERT INTO document_search(rowid, file_name, ocr_text) VALUES (new.id, new.file_name, new.ocr_text);
+      END`).run();
+      database.prepare(`CREATE TRIGGER IF NOT EXISTS sd_ad AFTER DELETE ON source_documents BEGIN
+        INSERT INTO document_search(document_search, rowid, file_name, ocr_text) VALUES ('delete', old.id, old.file_name, old.ocr_text);
+      END`).run();
+      database.prepare(`CREATE TRIGGER IF NOT EXISTS sd_au AFTER UPDATE ON source_documents BEGIN
+        INSERT INTO document_search(document_search, rowid, file_name, ocr_text) VALUES ('delete', old.id, old.file_name, old.ocr_text);
+        INSERT INTO document_search(rowid, file_name, ocr_text) VALUES (new.id, new.file_name, new.ocr_text);
+      END`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS recurring_rules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        rule_type TEXT NOT NULL,
+        name TEXT NOT NULL,
+        frequency TEXT NOT NULL,
+        start_date TEXT NOT NULL,
+        end_date TEXT,
+        day_of_month INTEGER,
+        day_of_week INTEGER,
+        template_json TEXT NOT NULL,
+        auto_approve INTEGER DEFAULT 0,
+        last_run_at TEXT,
+        next_run_at TEXT NOT NULL,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_rr_next_run ON recurring_rules(next_run_at, is_active)`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS recurring_generated (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        rule_id INTEGER NOT NULL,
+        scheduled_for TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        entity_type TEXT,
+        entity_id INTEGER,
+        template_snapshot TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        approved_at TEXT,
+        FOREIGN KEY (rule_id) REFERENCES recurring_rules(id)
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_rg_rule ON recurring_generated(rule_id, status)`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.

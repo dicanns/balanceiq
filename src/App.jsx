@@ -16,6 +16,8 @@ const BanqueTabLazy           = lazy(() => import('./components/BanqueTab.jsx'))
 const BilanTabLazy            = lazy(() => import('./components/BilanTab.jsx'));
 const ImmobilisationsTabLazy  = lazy(() => import('./components/ImmobilisationsTab.jsx'));
 const TaxPeriodTabLazy        = lazy(() => import('./components/TaxPeriodTab.jsx'));
+const VaultTabLazy            = lazy(() => import('./components/VaultTab.jsx'));
+const RecurringRulesTabLazy   = lazy(() => import('./components/RecurringRulesTab.jsx'));
 import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./config/features.js";
 import { calcRoyaltyFull } from "./utils/calculations.js";
@@ -5165,6 +5167,7 @@ export default function App(){
   const [showSectionTooltips,setShowSectionTooltips]=useState(true);
   const [dismissedBanners,setDismissedBanners]=useState(new Set());
   const [unreadDocsCount,setUnreadDocsCount]=useState(0);
+  const [recurringPendingCount,setRecurringPendingCount]=useState(0);
   const [pdfPreview,setPdfPreview]=useState(null);
   const [closedDays,setClosedDays]=useState({});// {[dateKey]: {closedAt: ISO string}}
   const [showCloseConfirm,setShowCloseConfirm]=useState(false);
@@ -5272,6 +5275,11 @@ export default function App(){
     }catch(_){}
     // Load recent invoice line items for price alert card
     try{const items=await window.api.invoiceLines.getRecent();setRecentLineItems(items||[]);}catch(_){}
+    // Check recurring rules due today + load pending count
+    setTimeout(async()=>{
+      try{await window.api.recurring.checkDue();}catch(_){}
+      try{const c=await window.api.recurring.pendingCount();setRecurringPendingCount(c||0);}catch(_){}
+    },3000);
     // Init cloud sync — non-blocking, won't affect app if offline
     setTimeout(async()=>{
       try{
@@ -6387,6 +6395,8 @@ export default function App(){
                 {id:"taxperiod",        label:lang==="fr"?"🧾 TPS/TVQ":"🧾 GST/QST"},
                 {id:"bilan",            label:lang==="fr"?"📊 Bilan":"📊 Balance Sheet"},
                 {id:"immobilisations",  label:lang==="fr"?"🏗 DPA":"🏗 CCA"},
+                {id:"coffre",           label:lang==="fr"?"📎 Coffre-fort":"📎 Vault"},
+                {id:"recurrences",      label:lang==="fr"?`🔄 Récurrences${recurringPendingCount>0?` (${recurringPendingCount})`:""}`:(`🔄 Recurring${recurringPendingCount>0?` (${recurringPendingCount})`:""}`)},
                 {id:"donnees",          label:T.cfgData},
                 {id:"application",      label:T.cfgApplication},
                 ...(appMode==="franchiseur"?[{id:"succursales",label:T.cfgLocations},{id:"redevances",label:T.cfgRoyalties},{id:"marqueblanche",label:T.cfgWhiteLabel}]:[]),
@@ -6557,7 +6567,9 @@ export default function App(){
             {/*  BILAN (Balance Sheet) — Sprint 6 Accounting Suite */}
             {configSubTab==="bilan"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><BilanTabLazy lang={lang} canUsePro={canUse("excelExport")} onUpgrade={()=>showUpgradePrompt("excelExport")}/></Suspense>)}
             {/*  IMMOBILISATIONS (Fixed Assets + CCA) — Sprint 6 Accounting Suite */}
-            {configSubTab==="immobilisations"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><ImmobilisationsTabLazy lang={lang} canUsePro={canUse("excelExport")} onUpgrade={()=>showUpgradePrompt("excelExport")}/></Suspense>)}</div></div>)}</div></div>{/* end scrollable */}</div>{/* end main area */}</div>
+            {configSubTab==="immobilisations"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><ImmobilisationsTabLazy lang={lang} canUsePro={canUse("excelExport")} onUpgrade={()=>showUpgradePrompt("excelExport")}/></Suspense>)}
+            {configSubTab==="coffre"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><VaultTabLazy lang={lang} canUsePro={canUse("excelExport")} onUpgrade={()=>showUpgradePrompt("excelExport")}/></Suspense>)}
+            {configSubTab==="recurrences"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><RecurringRulesTabLazy lang={lang} canUsePro={canUse("excelExport")} onUpgrade={()=>showUpgradePrompt("excelExport")}/></Suspense>)}</div></div>)}</div></div>{/* end scrollable */}</div>{/* end main area */}</div>
             {/* Global Search (Cmd+K) — top-level so it works from any tab */}
             {searchOpen&&(<Suspense fallback={null}><GlobalSearchLazy isOpen={searchOpen} onClose={()=>setSearchOpen(false)} onNavigate={handleSearchNavigate} lang={lang} isDark={themeName!=='warm'}/></Suspense>)}
             </ThemeCtx.Provider></LangCtx.Provider>
