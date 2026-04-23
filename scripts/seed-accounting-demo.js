@@ -177,7 +177,7 @@ console.log('📌 Posting opening balances (Dec 31 2025)...');
 postEntry({
   entry_date: '2025-12-31',
   description: 'Soldes d\'ouverture — 1er janvier 2026',
-  source_type: 'demo',
+  source_type: 'opening_balance',
   lines: [
     { account_id: A.cash_ops,   debit_cents: 4250000 },  // $42,500 bank
     { account_id: A.ar,         debit_cents:  380000 },  // $3,800 AR

@@ -225,12 +225,12 @@ export default function BilanTab({ lang = 'fr', canUsePro = false, onUpgrade }) 
             </span>
             <button onClick={() => shiftMonth(1)} style={{ background: '#1e293b', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '5px 11px', fontSize: 15, lineHeight: 1 }}>›</button>
           </div>
+          <span style={{ fontSize: 11, color: '#475569' }}>{lang === 'fr' ? `au ${asOfDate}` : `as of ${asOfDate}`}</span>
           <button onClick={compute} disabled={loading}
             style={{ ...btn, background: 'linear-gradient(135deg,#f97316,#ea580c)', color: '#fff', opacity: loading ? 0.6 : 1 }}>
             {loading ? L.computing : L.compute}
           </button>
         </div>
-        <p style={{ margin: '5px 0 0', fontSize: 11, color: '#475569' }}>{lang === 'fr' ? `Au ${asOfDate}` : `As of ${asOfDate}`}</p>
       </div>
 
       {error && <div style={{ padding: '8px 12px', borderRadius: 7, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: '#fca5a5', fontSize: 12, marginBottom: 12 }}>{error}</div>}
@@ -252,7 +252,7 @@ export default function BilanTab({ lang = 'fr', canUsePro = false, onUpgrade }) 
               {bilan.blockers.map((b, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid rgba(148,163,184,0.08)', fontSize: 11.5, color: '#94a3b8' }}>
                   <span>{lang === 'fr' ? b.label_fr : b.label_en}</span>
-                  <span style={{ fontSize: 10, color: b.blocking === false ? '#f59e0b' : '#ef4444', fontWeight: 600 }}>{b.blocking === false ? 'Avertissement' : 'Bloquant'}</span>
+                  <span style={{ fontSize: 10, color: b.blocking === false ? '#f59e0b' : '#ef4444', fontWeight: 600 }}>{b.blocking === false ? (lang === 'fr' ? 'Avertissement' : 'Warning') : (lang === 'fr' ? 'Bloquant' : 'Blocking')}</span>
                 </div>
               ))}
             </div>
