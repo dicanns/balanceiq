@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, useContext, createContext, lazy, Suspense } from "react";
 import Sidebar from "./components/Sidebar.jsx";
+import { sanitizeCPI, renderCPIHtml, hasInsecureUrls, resolveRenderValue, needsSnapshot, isSentAndDiffers, applyInitialSnapshot, applyReissueSnapshot, shouldWriteReissueAudit, buildSnapshotAuditEvent, buildSanitizeAuditEvent } from "./utils/cpiUtils.js";
 
 const DocumentsTabLazy = lazy(() =>import('./components/DocumentsTab.jsx'));
 const YearEndPackageLazy = lazy(() => import('./components/YearEndPackage.jsx'));
@@ -1586,7 +1587,7 @@ function FacturationDashboard({soumissions,commandes,factures,creditNotes,client
  const SH=({col,align,children})=>(<span onClick={()=>toggleSort(col)} style={{cursor:"pointer",userSelect:"none",fontSize:10,fontWeight:700,color:sortCol===col?"#f97316":t.textMuted,display:"block",textAlign:align||"left"}}>{children}{sortCol===col?(sortDir<0?" ↓":" ↑"):""}</span>);
  const FTABS=[{id:"tous",label:T.filterAll},{id:"soumission",label:T.filterQuotes},{id:"commande",label:T.filterOrders},{id:"facture",label:T.filterInvoices},{id:"creditnote",label:T.filterCreditNotes}];
  const countOf=type=>allDocs.filter(d=>d._type===type).length;
- return(<div style={{display:"flex",flexDirection:"column",gap:10}}>{/* Stats */}<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8}}>{[{label:T.facInvoicedMonth,val:fmt(stats.factureCeMois),color:"#f97316"},{label:T.facCollectedMonth,val:fmt(stats.encaisseCeMois),color:"#22c55e"},{label:T.facOutstanding,val:fmt(stats.enSouffrance),color:"#ef4444"},{label:T.facOverdue,val:`${stats.enRetard} facture${stats.enRetard!==1?"s":""}`,color:stats.enRetard>0?"#ef4444":t.textMuted}].map(s=>(<div key={s.label} style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:"10px 14px"}}><div style={{fontSize:9.5,color:t.textMuted,marginBottom:3,textTransform:"uppercase",letterSpacing:"0.5px"}}>{s.label}</div><div style={{fontSize:15,fontWeight:900,color:s.color,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{s.val}</div></div>))}</div>{/* Filter tabs + search */}<div style={{display:"flex",gap:1,borderBottom:`1px solid ${t.dividerMid}`,alignItems:"flex-end",flexWrap:"wrap"}}>{FTABS.map(ft=>(<button key={ft.id} onClick={()=>setFilterType(ft.id)} style={{background:"none",border:"none",color:filterType===ft.id?"#f97316":t.textMuted,fontSize:11,fontWeight:600,padding:"5px 10px",cursor:"pointer",borderBottom:filterType===ft.id?"2px solid #f97316":"2px solid transparent",whiteSpace:"nowrap"}}>
+ return(<div style={{display:"flex",flexDirection:"column",gap:10}}>{/* Stats */}<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8}}>{[{label:T.facInvoicedMonth,val:fmt(stats.factureCeMois),color:"#f97316"},{label:T.facCollectedMonth,val:fmt(stats.encaisseCeMois),color:"#22c55e"},{label:T.facOutstanding,val:fmt(stats.enSouffrance),color:"#ef4444"},{label:T.facOverdue,val:`${stats.enRetard} ${T===EN?(stats.enRetard!==1?"invoices":"invoice"):(stats.enRetard!==1?"factures":"facture")}`,color:stats.enRetard>0?"#ef4444":t.textMuted}].map(s=>(<div key={s.label} style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:"10px 14px"}}><div style={{fontSize:9.5,color:t.textMuted,marginBottom:3,textTransform:"uppercase",letterSpacing:"0.5px"}}>{s.label}</div><div style={{fontSize:15,fontWeight:900,color:s.color,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{s.val}</div></div>))}</div>{/* Filter tabs + search */}<div style={{display:"flex",gap:1,borderBottom:`1px solid ${t.dividerMid}`,alignItems:"flex-end",flexWrap:"wrap"}}>{FTABS.map(ft=>(<button key={ft.id} onClick={()=>setFilterType(ft.id)} style={{background:"none",border:"none",color:filterType===ft.id?"#f97316":t.textMuted,fontSize:11,fontWeight:600,padding:"5px 10px",cursor:"pointer",borderBottom:filterType===ft.id?"2px solid #f97316":"2px solid transparent",whiteSpace:"nowrap"}}>
  {ft.label}{ft.id!=="tous"&&<span style={{fontSize:9,marginLeft:3,color:t.textDim}}>({countOf(ft.id)})</span>}</button>))}<div style={{flex:1}}/><button onClick={exportCSV} style={{fontSize:10,padding:"3px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,marginBottom:3}}>⬇ CSV</button><button onClick={()=>setShowCompta(true)} style={{fontSize:10,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,marginBottom:3}}>{T.exportAccounting}</button></div>{showCompta&&<ComptabiliteExport factures={factures} clients={clients} produits={produits} categories={categories} companyInfo={companyInfo} showUpgradePrompt={showUpgradePrompt} onClose={()=>setShowCompta(false)} glAccounts={glAccounts}/>}
  {/* Search + date range */}<div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}><input value={search} onChange={e=>setSearch(e.target.value)} placeholder={T.facSearchDoc} style={{...inputS,flex:"1 1 160px"}}/><span style={{fontSize:10,color:t.textMuted}}>Du</span><input type="date"value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={{...inputS,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}/><span style={{fontSize:10,color:t.textMuted}}>au</span><input type="date"value={dateTo} onChange={e=>setDateTo(e.target.value)} style={{...inputS,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}/>
  {(search||dateFrom||dateTo)&&<button onClick={()=>{setSearch("");setDateFrom("");setDateTo("");}} style={{fontSize:10,padding:"3px 8px",borderRadius:5,border:"none",background:"rgba(239,68,68,0.08)",color:"#ef4444",cursor:"pointer",fontWeight:600}}>{" "+T.reset}</button>}</div>{/* Table */}
@@ -2232,7 +2233,7 @@ function calcDateEcheance(dateStr,conditions,nbJours){
  const days=conditions==="Net 15"?15:conditions==="Net 30"?30:conditions==="Net 45"?45:conditions==="Net 60"?60:conditions==="Personnalisé"?(parseInt(nbJours)||0):0;
  d.setDate(d.getDate()+days);return dk(d);
 }
-function buildFactureHTML({numero,date,dateEcheance,statut,client,referenceClient,lignes,notes,totals,companyInfo,sourceNumero,sourceType,montantPaye,acomptes=[],invoiceTemplate={},paymentUrl=null,qrCodeDataUrl=null,feeDisclosure=null}){
+function buildFactureHTML({numero,date,dateEcheance,statut,client,referenceClient,lignes,notes,totals,companyInfo,sourceNumero,sourceType,montantPaye,acomptes=[],invoiceTemplate={},paymentUrl=null,qrCodeDataUrl=null,feeDisclosure=null,customPaymentInstructions=null}){
  const fd=d=>{if(!d)return"—";const dt=new Date(d+"T12:00:00");return`${dt.getDate()} ${["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"][dt.getMonth()]} ${dt.getFullYear()}`};
  const fc=n=>(n||0).toLocaleString("fr-CA",{style:"currency",currency:"CAD"});
  const tpl={...DEFAULT_INVOICE_TEMPLATE,...(invoiceTemplate||{})};const ac=tpl.accentColor;const logoAlign=tpl.logoPosition==='centre'?'center':tpl.logoPosition==='droite'?'right':'left';const fallbackName=tpl.whiteLabelEnabled&&tpl.whiteLabelName?tpl.whiteLabelName:"BIQ";const biqCredit=tpl.whiteLabelEnabled?`<div style="margin-top:6px;font-size:9px;color:#bbb">Propulsé par BalanceIQ</div>`:"";const logo=companyInfo.logo?`<div style="text-align:${logoAlign}"><img src="${companyInfo.logo}"style="max-height:55px;max-width:110px;object-fit:contain;"alt="Logo"/></div>`:`<div style="font-size:${fallbackName==="BIQ"?24:16}px;font-weight:900;color:${ac};letter-spacing:${fallbackName==="BIQ"?2:0}px">${escapeHtml(fallbackName)}</div>`;
@@ -2242,7 +2243,10 @@ function buildFactureHTML({numero,date,dateEcheance,statut,client,referenceClien
  const solde=totals.total-totalAcomptes-(montantPaye||0);
  const depotSection=acomptes.length>0?`<div style="margin-top:6px;border-top:1px dashed #ccc;padding-top:6px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Dépôts / Acomptes</div>${acomptes.map(a=>`<div class="tr"style="color:#16a34a"><span>Dépôt reçu — ${escapeHtml(a.date||"")}${a.mode?` (${escapeHtml(a.mode)})`:""}</span><span>−${fc(a.montant||0)}</span></div>`).join("")}</div>`:"";
  const paymentSection=paymentUrl?`<div style="margin-top:20px;padding:14px;border:2px solid ${ac};border-radius:8px;display:flex;justify-content:space-between;align-items:center;gap:16px"><div><div style="font-size:13px;font-weight:700;color:#1a1a1a;margin-bottom:4px">Payer en ligne / Pay online</div><div style="font-size:11px;color:#555;margin-bottom:8px">${escapeHtml(paymentUrl)}</div><a href="${escapeHtml(paymentUrl)}"style="display:inline-block;padding:8px 20px;background:${ac};color:#fff;border-radius:6px;text-decoration:none;font-weight:700;font-size:13px">Payer maintenant / Pay now →</a>${feeDisclosure?`<div style="margin-top:6px;font-size:10px;color:#888">${escapeHtml(feeDisclosure)}</div>`:""}</div>${qrCodeDataUrl?`<div style="text-align:center;flex-shrink:0"><img src="${qrCodeDataUrl}"width="100"height="100"alt="QR"/><div style="font-size:9px;color:#888;margin-top:3px">Payer / Pay</div></div>`:""}</div>`:"";
- return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Facture ${numero}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}table{width:100%;border-collapse:collapse}th{background:#f97316;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.tot{margin-left:auto;width:280px;margin-top:12px}.tr{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}.tf{font-weight:900;font-size:15px;border-top:2px solid #1a1a1a;margin-top:4px;padding-top:4px}.due{background:#fff3cd;border:1px solid #f97316;borderRadius:4px;padding:6px 10px;margin-bottom:12px;font-size:12px;font-weight:700}.notes{background:#f9f9f9;border-left:3px solid #f97316;padding:10px 12px;margin-top:16px;font-size:12px}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}th{background:${ac}}th{background:${ac}}.notes{border-left-color:${ac}}.title{color:${ac}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${escapeHtml(companyInfo.nom||"")}</div><div style="font-size:11px;color:#555">${[companyInfo.adresse,companyInfo.ville,companyInfo.province].filter(Boolean).map(escapeHtml).join(", ")}</div>${companyInfo.telephone?`<div style="font-size:11px;color:#555">${escapeHtml(companyInfo.telephone)}</div>`:""}${companyInfo.courriel?`<div style="font-size:11px;color:#555">${escapeHtml(companyInfo.courriel)}</div>`:""}</div><div style="text-align:right"><div style="font-size:30px;font-weight:900;color:#f97316;letter-spacing:2px">FACTURE</div><div style="font-size:18px;font-weight:700;margin-top:4px"># ${escapeHtml(numero)}</div><div style="font-size:11px;color:#555;margin-top:3px">Date: ${fd(date)}</div><div style="font-size:12px;font-weight:700;color:${statut==="En retard"?"#ef4444":"#1a1a1a"};margin-top:4px;padding:4px 8px;background:${statut==="En retard"?"#fee2e2":"#f3f4f6"};borderRadius:4px;display:inline-block">Échéance: ${fd(dateEcheance)}</div><div style="font-size:11px;color:#555;margin-top:3px">Statut:<strong>${escapeHtml(statut)}</strong></div>${referenceClient?`<div style="font-size:11px;color:#555">Réf.: ${escapeHtml(referenceClient)}</div>`:""}${sourceNumero?`<div style="font-size:11px;color:#555">${sourceType==="commande"?"Commande":"Soumission"}: ${escapeHtml(sourceNumero)}</div>`:""}</div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Facturé à</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>Description</th><th style="width:55px;text-align:center">Qté</th><th style="width:100px;text-align:right">Prix unit.</th><th style="width:65px;text-align:center">Remise</th><th style="width:100px;text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><div class="tot"><div class="tr"><span>Sous-total</span><span>${fc(totals.sousTotal)}</span></div><div class="tr"><span>TPS (5%)</span><span>${fc(totals.tpsTotal)}</span></div><div class="tr"><span>TVQ (9.975%)</span><span>${fc(totals.tvqTotal)}</span></div><div class="tr tf"><span>TOTAL</span><span>${fc(totals.total)}</span></div>${depotSection}${(montantPaye||0)>0?`<div class="tr"style="color:#22c55e"><span>Paiements reçus</span><span>−${fc(montantPaye)}</span></div>`:""}<div class="tr tf"style="color:#ef4444"><span>SOLDE DÛ</span><span>${fc(Math.max(0,solde))}</span></div></div>${notes?`<div class="notes"><strong>Notes</strong><br/>${escapeHtml(notes)}</div>`:""}${paymentSection}<div class="ftr">${tpl.showTaxNumbers&&companyInfo.numeroTPS?`N° TPS: ${escapeHtml(companyInfo.numeroTPS)}`:""}${tpl.showTaxNumbers&&companyInfo.numeroTVQ?` &nbsp;|&nbsp; N° TVQ: ${escapeHtml(companyInfo.numeroTVQ)}`:""}${tpl.footerText?`<div style="margin-top:3px">${escapeHtml(tpl.footerText)}</div>`:""}${biqCredit}</div></body></html>`;
+ const cpiText=customPaymentInstructions||"";
+ const cpiLabel=paymentUrl?"Autres moyens de paiement / Other payment methods":"Autres instructions de paiement / Other payment instructions";
+ const cpiSection=cpiText?`<div style="margin-top:${paymentUrl?8:20}px;padding:12px 14px;border:1px solid #d1d5db;border-radius:6px;background:#f9fafb">${paymentUrl?`<div style="margin-bottom:6px;border-top:1px solid #e5e7eb;padding-top:8px">`:""}<div style="font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">${cpiLabel}</div><div style="font-size:12px;color:#1a1a1a;line-height:1.6">${renderCPIHtml(cpiText)}</div>${paymentUrl?"</div>":""}</div>`:"";
+ return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Facture ${numero}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}table{width:100%;border-collapse:collapse}th{background:#f97316;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.tot{margin-left:auto;width:280px;margin-top:12px}.tr{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}.tf{font-weight:900;font-size:15px;border-top:2px solid #1a1a1a;margin-top:4px;padding-top:4px}.due{background:#fff3cd;border:1px solid #f97316;borderRadius:4px;padding:6px 10px;margin-bottom:12px;font-size:12px;font-weight:700}.notes{background:#f9f9f9;border-left:3px solid #f97316;padding:10px 12px;margin-top:16px;font-size:12px}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}th{background:${ac}}th{background:${ac}}.notes{border-left-color:${ac}}.title{color:${ac}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${escapeHtml(companyInfo.nom||"")}</div><div style="font-size:11px;color:#555">${[companyInfo.adresse,companyInfo.ville,companyInfo.province].filter(Boolean).map(escapeHtml).join(", ")}</div>${companyInfo.telephone?`<div style="font-size:11px;color:#555">${escapeHtml(companyInfo.telephone)}</div>`:""}${companyInfo.courriel?`<div style="font-size:11px;color:#555">${escapeHtml(companyInfo.courriel)}</div>`:""}</div><div style="text-align:right"><div style="font-size:30px;font-weight:900;color:#f97316;letter-spacing:2px">FACTURE</div><div style="font-size:18px;font-weight:700;margin-top:4px"># ${escapeHtml(numero)}</div><div style="font-size:11px;color:#555;margin-top:3px">Date: ${fd(date)}</div><div style="font-size:12px;font-weight:700;color:${statut==="En retard"?"#ef4444":"#1a1a1a"};margin-top:4px;padding:4px 8px;background:${statut==="En retard"?"#fee2e2":"#f3f4f6"};borderRadius:4px;display:inline-block">Échéance: ${fd(dateEcheance)}</div><div style="font-size:11px;color:#555;margin-top:3px">Statut:<strong>${escapeHtml(statut)}</strong></div>${referenceClient?`<div style="font-size:11px;color:#555">Réf.: ${escapeHtml(referenceClient)}</div>`:""}${sourceNumero?`<div style="font-size:11px;color:#555">${sourceType==="commande"?"Commande":"Soumission"}: ${escapeHtml(sourceNumero)}</div>`:""}</div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Facturé à</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>Description</th><th style="width:55px;text-align:center">Qté</th><th style="width:100px;text-align:right">Prix unit.</th><th style="width:65px;text-align:center">Remise</th><th style="width:100px;text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><div class="tot"><div class="tr"><span>Sous-total</span><span>${fc(totals.sousTotal)}</span></div><div class="tr"><span>TPS (5%)</span><span>${fc(totals.tpsTotal)}</span></div><div class="tr"><span>TVQ (9.975%)</span><span>${fc(totals.tvqTotal)}</span></div><div class="tr tf"><span>TOTAL</span><span>${fc(totals.total)}</span></div>${depotSection}${(montantPaye||0)>0?`<div class="tr"style="color:#22c55e"><span>Paiements reçus</span><span>−${fc(montantPaye)}</span></div>`:""}<div class="tr tf"style="color:#ef4444"><span>SOLDE DÛ</span><span>${fc(Math.max(0,solde))}</span></div></div>${notes?`<div class="notes"><strong>Notes</strong><br/>${escapeHtml(notes)}</div>`:""}${paymentSection}${cpiSection}<div class="ftr">${tpl.showTaxNumbers&&companyInfo.numeroTPS?`N° TPS: ${escapeHtml(companyInfo.numeroTPS)}`:""}${tpl.showTaxNumbers&&companyInfo.numeroTVQ?` &nbsp;|&nbsp; N° TVQ: ${escapeHtml(companyInfo.numeroTVQ)}`:""}${tpl.footerText?`<div style="margin-top:3px">${escapeHtml(tpl.footerText)}</div>`:""}${biqCredit}</div></body></html>`;
 }
 function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums,factures,saveFactures,commandes,soumissions,onBack,onBackToClient,onBackToList,initClientId,onEnregistrerPaiement,onCreditNote,apiConfig,showUpgradePrompt,invoiceTemplate,onOpenDoc}){
  const t=useT();
@@ -2263,6 +2267,11 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
  const [stripeSession,setStripeSession]=useState(facture?.stripeSessionId?{sessionId:facture.stripeSessionId,url:facture.stripePaymentUrl}:null);
  const [stripeWorking,setStripeWorking]=useState(false);
  const [stripeStatus,setStripeStatus]=useState(null);
+ const [cpiOpen,setCpiOpen]=useState(!!(facture?.customPaymentInstructions||facture?.customPaymentInstructionsSnapshot));
+ const [cpiDraft,setCpiDraft]=useState(facture?.customPaymentInstructions||"");
+ const [cpiSnapshot,setCpiSnapshot]=useState(facture?.customPaymentInstructionsSnapshot??null);
+ const [cpiReissueOpen,setCpiReissueOpen]=useState(false);
+ const [cpiReissueReason,setCpiReissueReason]=useState("");
  const totalAcomptes=useMemo(()=>acomptes.reduce((s,a)=>s+(a.montant||0),0),[acomptes]);
  const totals=useMemo(()=>computeSoumTotals(lignes),[lignes]);
  const client=clients.find(c=>c.id===form.clientId);
@@ -2306,7 +2315,10 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
  saveDocNums({...docNums,facture:docNums.facture+1});
  setSavedId(id);setSavedNumero(numero);
  }
- const doc={...form,id,numero,lignes,acomptes};
+ const {text:cpiSanitized,sanitized:cpiWasStripped,error:cpiError}=sanitizeCPI(cpiDraft);
+ if(cpiError==='too_long'){alert(T===EN?"Payment instructions exceed 500 characters. Please shorten before saving.":"Les instructions de paiement dépassent 500 caractères. Veuillez les raccourcir avant d'enregistrer.");return;}
+ if(cpiWasStripped)window.api?.audit?.log?.(buildSanitizeAuditEvent({invoiceId:id,originalLength:cpiDraft.length,sanitizedLength:cpiSanitized.length}));
+ const doc={...form,id,numero,lignes,acomptes,customPaymentInstructions:cpiSanitized||null,customPaymentInstructionsSnapshot:cpiSnapshot};
  saveFactures(factures.some(f=>f.id===id)?factures.map(f=>f.id===id?doc:f):[...factures,doc]);
  if(isNew)logCreate('invoice','facture',id,doc);
  else logUpdate('invoice','facture',id,'document',null,JSON.stringify(doc));
@@ -2319,6 +2331,24 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
  logVoid('invoice','facture',savedId,reason);
  saveFactures(factures.map(f=>f.id===savedId?{...f,statut:"Annulée",voidReason:reason,voidDate:dk(new Date())}:f));
  onBack();
+ };
+ const doReissue=()=>{
+ if(!cpiReissueReason.trim()){return;}
+ const {text:newText}=sanitizeCPI(cpiDraft);
+ const {invoice:newInv,error}=applyReissueSnapshot(
+   {id:savedId,customPaymentInstructions:newText,customPaymentInstructionsSnapshot:cpiSnapshot},
+   newText,cpiReissueReason
+ );
+ if(error)return;
+ if(shouldWriteReissueAudit(cpiSnapshot,newText)){
+   window.api?.audit?.log?.(buildSnapshotAuditEvent({invoiceId:savedId,trigger:'reissue',newText,oldSnapshot:cpiSnapshot,reason:cpiReissueReason}));
+ }
+ setCpiSnapshot(newText||null);
+ setCpiReissueOpen(false);setCpiReissueReason("");
+ if(savedId){
+   const updated=factures.map(f=>f.id===savedId?{...f,customPaymentInstructionsSnapshot:newText||null}:f);
+   saveFactures(updated);
+ }
  };
  const stripeKey=apiConfig?.stripeSecretKey||"";
  const stripeFeesOn=!!(apiConfig?.stripeFeesEnabled&&stripeKey);
@@ -2361,7 +2391,8 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
  try{const qr=await window.api.stripe.generateQR(paymentUrl,180);qrCodeDataUrl=qr.dataUrl;}catch(_){}
  if(stripeFeesOn)feeDisclosure=(T===EN?(EN.stripeFeeDisclosure||((r)=>`Processing fee of ${r}%`))(stripeFeeRate.toFixed(1)):(FR.stripeFeeDisclosure||((r)=>`Frais de traitement de ${r}%`))(stripeFeeRate.toFixed(1)));
  }
- openPDF(buildFactureHTML({...form,numero,lignes,totals,client,companyInfo,montantPaye,acomptes,invoiceTemplate,paymentUrl,qrCodeDataUrl,feeDisclosure}));
+ const resolvedCPI=resolveRenderValue({customPaymentInstructions:sanitizeCPI(cpiDraft).text||null,customPaymentInstructionsSnapshot:cpiSnapshot},'preview');
+ openPDF(buildFactureHTML({...form,numero,lignes,totals,client,companyInfo,montantPaye,acomptes,invoiceTemplate,paymentUrl,qrCodeDataUrl,feeDisclosure,customPaymentInstructions:resolvedCPI}));
  };
  const openEmailModal=async()=>{
  if(!client?.courriel)return;
@@ -2373,7 +2404,18 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
  try{const qr=await window.api.stripe.generateQR(paymentUrl,180);qrCodeDataUrl=qr.dataUrl;}catch(_){}
  if(stripeFeesOn)feeDisclosure=(T===EN?EN.stripeFeeDisclosure:FR.stripeFeeDisclosure)(stripeFeeRate.toFixed(1));
  }
- const html=buildFactureHTML({...form,numero:num,lignes,totals,client,companyInfo,montantPaye,acomptes,invoiceTemplate,paymentUrl,qrCodeDataUrl,feeDisclosure});
+ // Snapshot on first send (CPI-011)
+ let snapshotForEmail=cpiSnapshot;
+ if(snapshotForEmail===null&&savedId){
+   const {text:cpiForSnap}=sanitizeCPI(cpiDraft);
+   snapshotForEmail=cpiForSnap||null;
+   setCpiSnapshot(snapshotForEmail);
+   const snapDoc=factures.find(f=>f.id===savedId);
+   if(snapDoc){saveFactures(factures.map(f=>f.id===savedId?{...f,customPaymentInstructionsSnapshot:snapshotForEmail}:f));}
+   if(snapshotForEmail!==null){window.api?.audit?.log?.(buildSnapshotAuditEvent({invoiceId:savedId,trigger:'initial_send',newText:snapshotForEmail,oldSnapshot:null}));}
+ }
+ const cpiForHtml=resolveRenderValue({customPaymentInstructions:snapshotForEmail,customPaymentInstructionsSnapshot:snapshotForEmail},'sent');
+ const html=buildFactureHTML({...form,numero:num,lignes,totals,client,companyInfo,montantPaye,acomptes,invoiceTemplate,paymentUrl,qrCodeDataUrl,feeDisclosure,customPaymentInstructions:cpiForHtml});
  const payLinkLine=paymentUrl?`\n\n${T===EN?"Pay online:":"Payer en ligne:"} ${paymentUrl}`:"";
  setEmailModal({
  initTo:client.courriel,
@@ -2392,6 +2434,38 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
  {stripeStatus==="paid"&&<div style={{background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.3)",borderRadius:6,padding:"8px 12px",fontSize:12,color:"#16a34a",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}><span>✓ {T.stripeSessionPaid||"Payé via Stripe"}</span><button onClick={doApplyStripePayment} style={{padding:"4px 12px",borderRadius:5,border:"none",background:"#16a34a",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>{T===EN?"Mark as Paid":"Marquer comme payée"}</button></div>}
  {stripeStatus==="open"&&<div style={{background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.3)",borderRadius:6,padding:"6px 12px",fontSize:11,color:"#d97706"}}>{T.stripeSessionOpen||"En attente du paiement"}</div>}
  {stripeStatus==="expired"&&<div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:6,padding:"6px 12px",fontSize:11,color:"#ef4444",display:"flex",alignItems:"center",gap:8}}><span>{T.stripeSessionExpired||"Lien expiré"}</span><button onClick={()=>{setStripeSession(null);setStripeStatus(null);}} style={{padding:"3px 8px",borderRadius:4,border:"none",background:"#ef4444",color:"#fff",cursor:"pointer",fontSize:10,fontWeight:700}}>{T===EN?"New link":"Nouveau lien"}</button></div>}
+ {/* Custom payment instructions (3.5.6 v2) */}
+ {(()=>{
+  const cpiSentAndDiffers=isSentAndDiffers({customPaymentInstructionsSnapshot:cpiSnapshot},cpiDraft);
+  const cpiHasHttp=hasInsecureUrls(cpiDraft);
+  return(<div style={{border:`1px solid ${t.cardBorder}`,borderRadius:7,overflow:"hidden"}}>
+   <button onClick={()=>setCpiOpen(o=>!o)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 12px",background:cpiOpen?t.section:t.card,border:"none",cursor:"pointer",color:t.textSub,fontSize:11,fontWeight:600,textAlign:"left"}}>
+    <span>{T.invPaymentInstructionsHeader||"Autres instructions de paiement (optionnel)"}</span>
+    <span style={{fontSize:10,opacity:0.6}}>{cpiOpen?"▲":"▼"}</span>
+   </button>
+   {cpiOpen&&<div style={{padding:"10px 12px",background:t.card,borderTop:`1px solid ${t.divider}`}}>
+    {cpiSentAndDiffers&&<div style={{background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.3)",borderRadius:5,padding:"6px 10px",marginBottom:8,fontSize:11,color:"#d97706"}}>{T.invPaymentInstructionsSentWarning||"Cette facture a déjà été envoyée. Vos modifications ne seront visibles qu'après un renvoi."}</div>}
+    <div style={{position:"relative"}}>
+     <textarea value={cpiDraft} onChange={e=>{if(e.target.value.length<=500)setCpiDraft(e.target.value);}} rows={4} placeholder={T.invPaymentInstructionsPlaceholder||"Ex: Lien Square, PayPal, coordonnées bancaires…"} style={{...inputS,width:"100%",boxSizing:"border-box",resize:"vertical",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontSize:11,paddingBottom:18}}/>
+     <span style={{position:"absolute",bottom:4,right:6,fontSize:10,color:cpiDraft.length>=490?"#ef4444":t.textDim,pointerEvents:"none",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{cpiDraft.length}/500</span>
+    </div>
+    {cpiHasHttp&&<div style={{marginTop:4,fontSize:10,color:"#d97706"}}>{T.invPaymentInstructionsHttpWarning||"Les liens http non sécurisés ne seront pas cliquables. Utilisez https."}</div>}
+    <div style={{fontSize:10,color:t.textMuted,marginTop:4,lineHeight:1.5}}>{T.invPaymentInstructionsHelper||"Ce texte s'affiche sur la facture. BalanceIQ ne suit pas ces paiements."}</div>
+    {cpiSentAndDiffers&&savedId&&<div style={{marginTop:8,borderTop:`1px solid ${t.divider}`,paddingTop:8}}>
+     {cpiReissueOpen
+      ?<div style={{display:"flex",flexDirection:"column",gap:5}}>
+        <div style={{fontSize:11,fontWeight:700,color:t.text}}>{T.invPaymentInstructionsReissueReasonLabel||"Raison du renvoi"}</div>
+        <input value={cpiReissueReason} onChange={e=>setCpiReissueReason(e.target.value)} placeholder={T===EN?"E.g. Updated bank details":"Ex: Coordonnées bancaires mises à jour"} style={{...inputS,width:"100%",boxSizing:"border-box",fontSize:11}}/>
+        <div style={{display:"flex",gap:6}}>
+         <button onClick={doReissue} disabled={!cpiReissueReason.trim()} style={{padding:"4px 12px",borderRadius:5,border:"none",background:cpiReissueReason.trim()?"#f97316":"#ccc",color:"#fff",cursor:cpiReissueReason.trim()?"pointer":"default",fontWeight:700,fontSize:11}}>{T===EN?"Confirm reissue":"Confirmer le renvoi"}</button>
+         <button onClick={()=>{setCpiReissueOpen(false);setCpiReissueReason("");}} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>{T.back||"Annuler"}</button>
+        </div>
+       </div>
+      :<button onClick={()=>setCpiReissueOpen(true)} style={{padding:"5px 12px",borderRadius:6,border:"1px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:600,fontSize:11}}>{T.invPaymentInstructionsReissueButton||"Renvoyer la facture"}</button>}
+    </div>}
+   </div>}
+  </div>);
+ })()}
  {/* Document chain */}
  {form.sourceNumero&&(<div style={{background:"rgba(249,115,22,0.06)",border:"1px solid rgba(249,115,22,0.2)",borderRadius:6,padding:"6px 12px",fontSize:11,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginTop:4}}><span></span><span style={{color:t.textSub}}>{T.facCreatedFrom}</span><button onClick={()=>{
  const srcType=form.sourceType;

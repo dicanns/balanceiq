@@ -386,6 +386,18 @@ export const FR = {
  etransferSelectClient:  "Sélectionner un client",
  etransferSelectInvoice: "Sélectionner une facture",
 
+ // ── SPRINT 10 — Custom payment instructions (3.5.6) ──
+ invPaymentInstructionsHeader:      "Autres instructions de paiement (optionnel)",
+ invPaymentInstructionsPlaceholder: "Ex: Lien Square, PayPal, coordonnées bancaires, adresse pour chèque. Texte brut seulement.",
+ invPaymentInstructionsHelper:      "Ce texte s'affiche sur la facture. BalanceIQ ne suit ni ne réconcilie les paiements reçus par ces moyens. Utilisez la conciliation bancaire ou l'appariement Interac pour enregistrer les paiements entrants.",
+ invPaymentInstructionsPdfLabel:    "Autres instructions de paiement",
+ invPaymentInstructionsBothLabel:   "Autres moyens de paiement",
+ invPaymentInstructionsSentWarning:      "Cette facture a déjà été envoyée. Vos modifications ne seront visibles qu'après un renvoi de facture.",
+ invPaymentInstructionsReissueButton:    "Renvoyer la facture",
+ invPaymentInstructionsReissueReasonLabel: "Raison du renvoi",
+ invPaymentInstructionsExternalDisclosure: "Lien de paiement externe fourni par le commerçant. BalanceIQ ne vérifie pas ces liens.",
+ invPaymentInstructionsHttpWarning:      "Les liens http non sécurisés ne seront pas cliquables. Utilisez https.",
+
  // ── SPRINT 9 — Statement batch ──
  stmtMonthEnd:        "Envoi mensuel",
  stmtMonthEndHint:    "Envoyer l'état de compte à tous les clients ayant un solde impayé",
@@ -2462,6 +2474,18 @@ export const EN = {
   etransferApplied:       "Payment applied",
   etransferSelectClient:  "Select a client",
   etransferSelectInvoice: "Select an invoice",
+
+  // ── SPRINT 10 — Custom payment instructions (3.5.6) ──
+  invPaymentInstructionsHeader:      "Other payment instructions (optional)",
+  invPaymentInstructionsPlaceholder: "E.g. Square link, PayPal, banking details, cheque mailing address. Plain text only.",
+  invPaymentInstructionsHelper:      "This text appears on the invoice. BalanceIQ does not track or reconcile payments received through these methods. Use bank reconciliation or e-transfer matching to record incoming payments.",
+  invPaymentInstructionsPdfLabel:    "Other payment instructions",
+  invPaymentInstructionsBothLabel:   "Other payment methods",
+  invPaymentInstructionsSentWarning:      "This invoice has already been sent. Your changes will not be visible until you reissue.",
+  invPaymentInstructionsReissueButton:    "Reissue invoice",
+  invPaymentInstructionsReissueReasonLabel: "Reason for reissue",
+  invPaymentInstructionsExternalDisclosure: "External payment link provided by the merchant. BalanceIQ does not verify these links.",
+  invPaymentInstructionsHttpWarning:      "Insecure http links will not be clickable. Use https.",
 
   // ── SPRINT 9 — Statement batch ──
   stmtMonthEnd:        "Month-end send",
