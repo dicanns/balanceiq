@@ -94,12 +94,12 @@ function SectionRow({ label, value, bold, indent = 0, light }) {
   );
 }
 
-function Section({ title, accounts = [], total, indent = 1 }) {
+function Section({ title, accounts = [], total, indent = 1, lang = 'fr' }) {
   return (
     <div style={{ marginBottom: 8 }}>
       <div style={{ fontSize: 10.5, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4, paddingLeft: indent * 12 }}>{title}</div>
       {accounts.map((a, i) => (
-        <SectionRow key={i} label={`${a.account_number} — ${a.name_fr}`} value={a.balance} indent={indent + 1} />
+        <SectionRow key={i} label={`${a.account_number} — ${lang === 'en' && a.name_en ? a.name_en : a.name_fr}`} value={a.balance} indent={indent + 1} />
       ))}
       <SectionRow label={`Total — ${title}`} value={total} bold indent={indent} />
     </div>
@@ -261,16 +261,16 @@ export default function BilanTab({ lang = 'fr', canUsePro = false, onUpgrade }) 
           {/* ACTIFS */}
           <div style={card}>
             <div style={{ fontSize: 12.5, fontWeight: 800, color: '#f1f5f9', marginBottom: 10, borderBottom: '1px solid rgba(148,163,184,0.2)', paddingBottom: 6 }}>{L.assets}</div>
-            <Section title={L.currentAssets} accounts={bilan.sections.currentAssets?.accounts || []} total={bilan.sections.currentAssets?.total || 0} />
-            <Section title={L.longTermAssets} accounts={bilan.sections.longTermAssets?.accounts || []} total={bilan.sections.longTermAssets?.total || 0} />
+            <Section title={L.currentAssets} accounts={bilan.sections.currentAssets?.accounts || []} total={bilan.sections.currentAssets?.total || 0} lang={lang} />
+            <Section title={L.longTermAssets} accounts={bilan.sections.longTermAssets?.accounts || []} total={bilan.sections.longTermAssets?.total || 0} lang={lang} />
             <SectionRow label={L.totalAssets} value={bilan.sections.totalAssets || 0} bold />
           </div>
 
           {/* PASSIFS */}
           <div style={card}>
             <div style={{ fontSize: 12.5, fontWeight: 800, color: '#f1f5f9', marginBottom: 10, borderBottom: '1px solid rgba(148,163,184,0.2)', paddingBottom: 6 }}>{L.liabilities}</div>
-            <Section title={L.currentLiab} accounts={bilan.sections.currentLiab?.accounts || []} total={bilan.sections.currentLiab?.total || 0} />
-            <Section title={L.longTermLiab} accounts={bilan.sections.longTermLiab?.accounts || []} total={bilan.sections.longTermLiab?.total || 0} />
+            <Section title={L.currentLiab} accounts={bilan.sections.currentLiab?.accounts || []} total={bilan.sections.currentLiab?.total || 0} lang={lang} />
+            <Section title={L.longTermLiab} accounts={bilan.sections.longTermLiab?.accounts || []} total={bilan.sections.longTermLiab?.total || 0} lang={lang} />
             <SectionRow label={L.totalLiab} value={bilan.sections.totalLiabilities || 0} bold />
           </div>
 
@@ -278,7 +278,7 @@ export default function BilanTab({ lang = 'fr', canUsePro = false, onUpgrade }) 
           <div style={card}>
             <div style={{ fontSize: 12.5, fontWeight: 800, color: '#f1f5f9', marginBottom: 10, borderBottom: '1px solid rgba(148,163,184,0.2)', paddingBottom: 6 }}>{L.equity}</div>
             {(bilan.sections.equity?.accounts || []).map((a, i) => (
-              <SectionRow key={i} label={`${a.account_number} — ${a.name_fr}`} value={a.balance} indent={1} />
+              <SectionRow key={i} label={`${a.account_number} — ${lang === 'en' && a.name_en ? a.name_en : a.name_fr}`} value={a.balance} indent={1} />
             ))}
             <SectionRow label={L.netIncome} value={bilan.sections.equity?.netIncome || 0} indent={1} />
             <SectionRow label={L.totalEquity} value={bilan.sections.equity?.total || 0} bold />
