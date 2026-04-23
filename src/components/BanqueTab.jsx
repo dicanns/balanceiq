@@ -505,25 +505,25 @@ export default function BanqueTab({ lang = 'fr' }) {
       {/* ── TRANSACTIONS ─────────────────────────────────────────────────────── */}
       {subTab === 'transactions' && (
         <div>
-          <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-            <h3 style={{ margin: 0, fontSize: 15, color: '#f1f5f9', flex: 1 }}>📋 {T.tabTransactions}</h3>
-            {/* Account selector */}
-            <select value={selectedAccount?.id || ''} onChange={e => {
-              const acc = accounts.find(a => a.id === parseInt(e.target.value, 10));
-              setSelectedAccount(acc || null);
-            }} style={selectStyle}>
-              <option value=''>{T.selectAccount}</option>
-              {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
-            <select value={txFilter} onChange={e => setTxFilter(e.target.value)} style={selectStyle}>
-              <option value='all'>{T.allStatuses}</option>
-              <option value='unmatched'>{T.statusUnmatched}</option>
-              <option value='suggested'>{T.statusSuggested}</option>
-              <option value='matched'>{T.statusMatched}</option>
-              <option value='manual'>{T.statusManual}</option>
-            </select>
-            <input type='date' value={txDateFrom} onChange={e => setTxDateFrom(e.target.value)} style={inputStyle} />
-            <input type='date' value={txDateTo}   onChange={e => setTxDateTo(e.target.value)}   style={inputStyle} />
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
+              <select value={selectedAccount?.id || ''} onChange={e => {
+                const acc = accounts.find(a => a.id === parseInt(e.target.value, 10));
+                setSelectedAccount(acc || null);
+              }} style={selectStyle}>
+                <option value=''>{T.selectAccount}</option>
+                {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+              <select value={txFilter} onChange={e => setTxFilter(e.target.value)} style={selectStyle}>
+                <option value='all'>{T.allStatuses}</option>
+                <option value='unmatched'>{T.statusUnmatched}</option>
+                <option value='suggested'>{T.statusSuggested}</option>
+                <option value='matched'>{T.statusMatched}</option>
+                <option value='manual'>{T.statusManual}</option>
+              </select>
+              <input type='date' value={txDateFrom} onChange={e => setTxDateFrom(e.target.value)} style={inputStyle} />
+              <input type='date' value={txDateTo}   onChange={e => setTxDateTo(e.target.value)}   style={inputStyle} />
+            </div>
           </div>
 
           {!selectedAccount ? (
@@ -550,7 +550,7 @@ export default function BanqueTab({ lang = 'fr' }) {
                       <td style={{ ...td, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={tx.description}>{tx.description}</td>
                       <td style={{ ...td, textAlign: 'right', color: tx.amount < 0 ? '#f87171' : '#86efac', fontWeight: 600 }}>{fmt(tx.amount)}</td>
                       <td style={td}><StatusBadge status={tx.match_status} /></td>
-                      <td style={{ ...td, fontSize: 12, color: '#94a3b8' }}>{tx.account_number ? `${tx.account_number} ${tx.coa_name_fr}` : '—'}</td>
+                      <td style={{ ...td, fontSize: 12, color: '#94a3b8' }}>{tx.account_number ? `${tx.account_number} ${lang === 'en' && tx.coa_name_en ? tx.coa_name_en : tx.coa_name_fr}` : '—'}</td>
                       <td style={td}>
                         <div style={{ display: 'flex', gap: 6 }}>
                           {tx.match_status !== 'matched' && (
@@ -810,7 +810,7 @@ const selectStyle   = { background: '#0f1724', color: '#e2e8f0', border: '1px so
 const inputStyle    = { background: '#0f1724', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 6, padding: '5px 10px', fontSize: 12 };
 const inputFull     = { width: '100%', boxSizing: 'border-box', background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 6, padding: '7px 10px', fontSize: 13, marginBottom: 10 };
 const labelStyle    = { display: 'block', fontSize: 12, color: '#64748b', marginBottom: 4 };
-const th            = { textAlign: 'left', padding: '8px 10px', fontWeight: 600, fontSize: 12 };
-const td            = { padding: '7px 10px', verticalAlign: 'middle' };
+const th            = { textAlign: 'left', padding: '8px 10px', fontWeight: 600, fontSize: 12, color: '#94a3b8' };
+const td            = { padding: '7px 10px', verticalAlign: 'middle', color: '#e2e8f0' };
 const kpiLabel      = { fontSize: 11, color: '#64748b', marginBottom: 2 };
 const kpiVal        = { fontSize: 16, fontWeight: 700, color: '#f1f5f9' };
