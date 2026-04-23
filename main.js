@@ -1989,11 +1989,21 @@ ipcMain.handle('vault:stats',   () => vaultGetStats());
 ipcMain.handle('vault:orphans', () => vaultGetOrphans());
 ipcMain.handle('vault:reassign',(_e, id, entity_type, entity_id) => vaultReassign(id, entity_type, entity_id));
 
+// Returns the resolved absolute path only if it stays inside the vault root.
+// Guards all vault file ops against path traversal via malicious DB values or IPC args.
+function resolveVaultPath(relOrAbs) {
+  const root = path.resolve(VAULT_ROOT());
+  const resolved = path.resolve(path.join(root, relOrAbs));
+  if (!resolved.startsWith(root + path.sep) && resolved !== root) return null;
+  return resolved;
+}
+
 ipcMain.handle('vault:open', (_e, docId) => {
-  const docs = vaultList(null, null);
-  const doc = vaultListAll({ limit: 1 }).rows.find ? vaultListAll().rows.find(d => d.id === docId) : null;
+  const { rows } = vaultListAll({ limit: 9999 });
+  const doc = rows.find(d => d.id === docId);
   if (!doc) return { ok: false, error: 'Not found' };
-  const abs = path.join(VAULT_ROOT(), doc.file_path);
+  const abs = resolveVaultPath(doc.file_path);
+  if (!abs) return { ok: false, error: 'Invalid document path' };
   if (!fs.existsSync(abs)) return { ok: false, error: 'File not found on disk' };
   shell.openPath(abs);
   return { ok: true };
@@ -2003,7 +2013,8 @@ ipcMain.handle('vault:openById', (_e, docId) => {
   const { rows } = vaultListAll({ limit: 9999 });
   const doc = rows.find(d => d.id === docId);
   if (!doc) return { ok: false, error: 'Not found' };
-  const abs = path.join(VAULT_ROOT(), doc.file_path);
+  const abs = resolveVaultPath(doc.file_path);
+  if (!abs) return { ok: false, error: 'Invalid document path' };
   if (!fs.existsSync(abs)) return { ok: false, error: 'File not found on disk' };
   shell.openPath(abs);
   return { ok: true };
@@ -2014,8 +2025,8 @@ ipcMain.handle('vault:delete', async (_e, docId) => {
     const result = vaultDelete(docId);
     if (!result.ok) return result;
     if (result.file_path) {
-      const abs = path.join(VAULT_ROOT(), result.file_path);
-      if (fs.existsSync(abs)) fs.unlinkSync(abs);
+      const abs = resolveVaultPath(result.file_path);
+      if (abs && fs.existsSync(abs)) fs.unlinkSync(abs);
     }
     return { ok: true };
   } catch (err) {
@@ -2025,11 +2036,17 @@ ipcMain.handle('vault:delete', async (_e, docId) => {
 
 ipcMain.handle('vault:exportYear', async (_e, year) => {
   try {
-    const yearDir = path.join(VAULT_ROOT(), String(year));
+    // Reject anything that is not a 4-digit calendar year (2000-2099).
+    const yearNum = parseInt(String(year), 10);
+    if (isNaN(yearNum) || yearNum < 2000 || yearNum > 2099) {
+      return { ok: false, error: 'Invalid year' };
+    }
+    const yearDir = resolveVaultPath(String(yearNum));
+    if (!yearDir) return { ok: false, error: 'Invalid year path' };
     if (!fs.existsSync(yearDir)) return { ok: false, error: 'No vault documents for this year' };
     const { filePath } = await dialog.showSaveDialog({
-      title: `Exporter les documents ${year}`,
-      defaultPath: `BalanceIQ_Vault_${year}`,
+      title: `Exporter les documents ${yearNum}`,
+      defaultPath: `BalanceIQ_Vault_${yearNum}`,
       properties: ['createDirectory'],
     });
     if (!filePath) return { ok: false, error: 'cancelled' };
