@@ -106,14 +106,51 @@ function Section({ title, accounts = [], total, indent = 1 }) {
   );
 }
 
+function endOfMonthDate(y, m) {
+  return new Date(y, m, 0).getDate();
+}
+
+function monthLabelBS(y, m, lang) {
+  return new Date(y, m - 1, 1).toLocaleString(lang === 'fr' ? 'fr-CA' : 'en-CA', { month: 'long', year: 'numeric' });
+}
+
 export default function BilanTab({ lang = 'fr', canUsePro = false, onUpgrade }) {
   const L = T[lang] || T.fr;
-  const [asOfDate, setAsOfDate] = useState(lastMonthEnd());
+  // Default to last complete month
+  const initDate = new Date(); initDate.setDate(0);
+  const [selYear,  setSelYear]  = useState(initDate.getFullYear());
+  const [selMonth, setSelMonth] = useState(initDate.getMonth() + 1);
+  const asOfDate = `${selYear}-${String(selMonth).padStart(2,'0')}-${String(endOfMonthDate(selYear, selMonth)).padStart(2,'0')}`;
+
   const [bilan, setBilan] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [snapshots, setSnapshots] = useState([]);
   const [saved, setSaved] = useState(false);
+
+  function shiftMonth(delta) {
+    let m = selMonth + delta, y = selYear;
+    if (m > 12) { m = 1; y++; }
+    if (m < 1)  { m = 12; y--; }
+    setSelMonth(m); setSelYear(y);
+    setBilan(null); setSaved(false);
+  }
+
+  function loadSnapshot(s) {
+    // Parse snapshot date and set the picker to that month, then compute
+    const [y, m] = s.snapshot_date.slice(0, 7).split('-').map(Number);
+    setSelYear(y); setSelMonth(m);
+    setBilan(null); setSaved(false);
+    // Compute after state settles
+    setTimeout(async () => {
+      setLoading(true); setError(null);
+      try {
+        const result = await window.api.bilan.compute(s.snapshot_date);
+        setBilan(result);
+      } catch (e) { setError(e.message || 'Error'); }
+      setLoading(false);
+    }, 0);
+  }
 
   const loadSnapshots = useCallback(async () => {
     try {
@@ -177,15 +214,23 @@ export default function BilanTab({ lang = 'fr', canUsePro = false, onUpgrade }) 
 
   return (
     <div style={{ padding: '12px 0', maxWidth: 720 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <span style={{ fontSize: 16, fontWeight: 800, color: '#f1f5f9' }}>{L.title}</span>
-        <span style={{ fontSize: 12, color: '#64748b' }}>{L.asOf}</span>
-        <input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)}
-          style={{ background: '#0f172a', border: '1px solid rgba(148,163,184,0.2)', borderRadius: 6, color: '#f1f5f9', fontSize: 12, padding: '4px 8px', outline: 'none' }} />
-        <button onClick={compute} disabled={loading}
-          style={{ ...btn, background: 'linear-gradient(135deg,#f97316,#ea580c)', color: '#fff', opacity: loading ? 0.6 : 1 }}>
-          {loading ? L.computing : L.compute}
-        </button>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 16, fontWeight: 800, color: '#f1f5f9' }}>{L.title}</span>
+          <span style={{ fontSize: 12, color: '#64748b' }}>{L.asOf}</span>
+          <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #334155', borderRadius: 8, overflow: 'hidden' }}>
+            <button onClick={() => shiftMonth(-1)} style={{ background: '#1e293b', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '5px 11px', fontSize: 15, lineHeight: 1 }}>‹</button>
+            <span style={{ background: '#1e293b', color: '#f1f5f9', fontSize: 13, fontWeight: 600, padding: '5px 14px', minWidth: 150, textAlign: 'center', userSelect: 'none' }}>
+              {monthLabelBS(selYear, selMonth, lang)}
+            </span>
+            <button onClick={() => shiftMonth(1)} style={{ background: '#1e293b', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '5px 11px', fontSize: 15, lineHeight: 1 }}>›</button>
+          </div>
+          <button onClick={compute} disabled={loading}
+            style={{ ...btn, background: 'linear-gradient(135deg,#f97316,#ea580c)', color: '#fff', opacity: loading ? 0.6 : 1 }}>
+            {loading ? L.computing : L.compute}
+          </button>
+        </div>
+        <p style={{ margin: '5px 0 0', fontSize: 11, color: '#475569' }}>{lang === 'fr' ? `Au ${asOfDate}` : `As of ${asOfDate}`}</p>
       </div>
 
       {error && <div style={{ padding: '8px 12px', borderRadius: 7, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: '#fca5a5', fontSize: 12, marginBottom: 12 }}>{error}</div>}
@@ -263,10 +308,12 @@ export default function BilanTab({ lang = 'fr', canUsePro = false, onUpgrade }) 
         <div style={{ marginTop: 20 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', marginBottom: 8 }}>{L.snapshots}</div>
           {snapshots.map(s => (
-            <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 10px', borderRadius: 6, background: '#0f172a', border: '1px solid rgba(148,163,184,0.1)', marginBottom: 4, fontSize: 11.5, color: '#94a3b8' }}>
-              <span>{s.snapshot_date}</span>
+            <div key={s.id} onClick={() => loadSnapshot(s)} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 12px', borderRadius: 6, background: '#0f172a', border: '1px solid rgba(148,163,184,0.1)', marginBottom: 4, fontSize: 11.5, color: '#94a3b8', cursor: 'pointer', transition: 'border-color 0.15s' }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = '#f97316'}
+              onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(148,163,184,0.1)'}>
+              <span style={{ fontWeight: 600, color: '#cbd5e1' }}>{s.snapshot_date}</span>
               <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtAmt((s.total_assets_cents || 0) / 100)}</span>
-              <span style={{ fontSize: 10, color: s.status === 'final' ? '#86efac' : '#fdba74', fontWeight: 600 }}>{s.status}</span>
+              <span style={{ fontSize: 10, color: s.status === 'final' ? '#86efac' : '#fdba74', fontWeight: 600 }}>{s.status} ↗</span>
             </div>
           ))}
         </div>
