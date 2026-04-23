@@ -109,6 +109,8 @@ const UI = {
     closedAt:         'Fermé le',
     periodType:       { month: 'Mensuelle', quarter: 'Trimestrielle', year: 'Annuelle' },
     noPeriods:        'Aucune période créée. Les périodes sont créées automatiquement à la première écriture du mois.',
+    prev:             '← Préc.',
+    next:             'Suiv. →',
     disclaimer:       'BalanceIQ produit ces calculs à titre indicatif. La responsabilité de la conformité fiscale incombe au contribuable. Consultez votre comptable avant toute déclaration.',
   },
   en: {
@@ -172,6 +174,8 @@ const UI = {
     closedAt:         'Closed on',
     periodType:       { month: 'Monthly', quarter: 'Quarterly', year: 'Annual' },
     noPeriods:        'No periods yet. Periods are created automatically on first entry of each month.',
+    prev:             '← Prev.',
+    next:             'Next →',
     disclaimer:       'BalanceIQ produces these calculations for informational purposes. Tax compliance responsibility rests with the taxpayer. Consult your accountant before filing.',
   },
 };
@@ -602,9 +606,9 @@ function JournalTab({ lang, accounts }) {
       {/* Pagination */}
       {total > LIMIT && (
         <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'center' }}>
-          {offset > 0 && <button onClick={() => load(offset - LIMIT)} style={btnSecondary}>← Préc.</button>}
+          {offset > 0 && <button onClick={() => load(offset - LIMIT)} style={btnSecondary}>{t.prev}</button>}
           <span style={{ color: '#94a3b8', fontSize: 13, alignSelf: 'center' }}>{offset + 1}–{Math.min(offset + LIMIT, total)} / {total}</span>
-          {offset + LIMIT < total && <button onClick={() => load(offset + LIMIT)} style={btnSecondary}>Suiv. →</button>}
+          {offset + LIMIT < total && <button onClick={() => load(offset + LIMIT)} style={btnSecondary}>{t.next}</button>}
         </div>
       )}
 
