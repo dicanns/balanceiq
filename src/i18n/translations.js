@@ -294,7 +294,14 @@ export const FR = {
  rappelLogStatus:     "Statut",
  rappelLogEmpty:      "Aucun rappel envoyé.",
  rappelCheckNow:      "Vérifier maintenant",
- rappelVarsHint:      "Variables: {client_name} {invoice_number} {amount_due} {days_overdue} {payment_link} {company_name}",
+ rappelVarsHint:      "Ces balises sont remplacées automatiquement lors de l'envoi :",
+ rappelVarDefs: [
+   ["{client_name}",    "Nom du contact ou de l'entreprise"],
+   ["{invoice_number}", "Numéro de la facture (ex. F-0042)"],
+   ["{amount_due}",     "Solde impayé"],
+   ["{days_overdue}",   "Nombre de jours de retard"],
+   ["{company_name}",   "Nom de votre entreprise"],
+ ],
 
  // ── SPRINT 9 — Interest on Overdue ──
  interestTitle:       "Intérêts sur comptes en souffrance",
@@ -326,6 +333,7 @@ export const FR = {
  depositPending:      "En attente",
  depositProGate:      "Les calendriers d'acomptes sont disponibles avec BalanceIQ Pro.",
  depositTaxNote:      "La TPS/TVQ est appliquée à chaque acompte (Revenu Québec — obligation au moment de la perception).",
+ depositDesc:         "Générez des factures d'acompte à envoyer au client avant la livraison. Différent du bouton « Enregistrer un dépôt » qui enregistre un paiement déjà reçu. L'acompte payé sera appliqué comme crédit sur la facture finale.",
 
  // ── SPRINT 9 — Per-client settings ──
  clientReminderEnabled:  "Rappels automatiques actifs pour ce client",
@@ -2316,7 +2324,14 @@ export const EN = {
   rappelLogStatus:     "Status",
   rappelLogEmpty:      "No reminders sent yet.",
   rappelCheckNow:      "Check now",
-  rappelVarsHint:      "Variables: {client_name} {invoice_number} {amount_due} {days_overdue} {payment_link} {company_name}",
+  rappelVarsHint:      "These placeholders are replaced automatically when the email is sent:",
+  rappelVarDefs: [
+    ["{client_name}",    "Contact or company name"],
+    ["{invoice_number}", "Invoice number (e.g. F-0042)"],
+    ["{amount_due}",     "Outstanding balance"],
+    ["{days_overdue}",   "Number of days past due"],
+    ["{company_name}",   "Your company name"],
+  ],
 
   // ── SPRINT 9 — Interest on Overdue ──
   interestTitle:       "Interest on overdue accounts",
@@ -2348,6 +2363,7 @@ export const EN = {
   depositPending:      "Pending",
   depositProGate:      "Deposit schedules are available with BalanceIQ Pro.",
   depositTaxNote:      "TPS/TVQ applies to each deposit (Revenu Québec — tax owed at time of collection).",
+  depositDesc:         "Generate deposit invoices to send to the client before delivery. This is different from \"Record a Deposit\" which logs a payment already received. The paid deposit will be applied as a credit on the final invoice.",
 
   // ── SPRINT 9 — Per-client settings ──
   clientReminderEnabled:  "Automated reminders enabled for this client",
