@@ -2260,6 +2260,25 @@ function glListEntries({ periodId = null, status = null, sourceType = null, date
   return { entries, total };
 }
 
+function glExportLines({ dateFrom = null, dateTo = null, status = 'posted', locationId = null } = {}) {
+  const db = getDb();
+  const conds = ['je.status=?'];
+  const params = [status];
+  if (dateFrom) { conds.push('je.entry_date>=?'); params.push(dateFrom); }
+  if (dateTo) { conds.push('je.entry_date<=?'); params.push(dateTo); }
+  if (locationId != null) { conds.push('(je.location_id IS ? OR je.location_id=?)'); params.push(locationId, locationId); }
+  return db.prepare(
+    `SELECT je.id AS entry_id, je.entry_number, je.entry_date, je.description, je.source_type,
+            jl.line_number, jl.debit_cents, jl.credit_cents, jl.memo AS line_memo,
+            coa.account_number, coa.name_fr AS account_name_fr, coa.name_en AS account_name_en
+     FROM journal_entries je
+     JOIN journal_lines jl ON jl.entry_id = je.id
+     JOIN chart_of_accounts coa ON coa.id = jl.account_id
+     WHERE ${conds.join(' AND ')}
+     ORDER BY je.entry_date ASC, je.id ASC, jl.line_number ASC`
+  ).all(...params);
+}
+
 function glGetAccountHistory(accountId, { dateFrom = null, dateTo = null, locationId = null } = {}) {
   const db = getDb();
   const conds = ['jl.account_id=?', "je.status='posted'"];
@@ -3742,7 +3761,7 @@ module.exports = {
   searchWasteEntries,
   coaList, coaCreate, coaUpdate, coaArchive, coaUnarchive, coaImportCSV, coaExportCSV, coaMappingSuggestions,
   glDraftEntry, glUpdateDraft, glPostEntry, glReverseEntry, glCorrectEntry, glDeleteDraft,
-  glGetEntry, glListEntries, glGetAccountHistory,
+  glGetEntry, glListEntries, glGetAccountHistory, glExportLines,
   trialBalance,
   periodList, periodOpen, periodClose, periodReopen,
   glAuditLogList,

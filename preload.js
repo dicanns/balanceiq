@@ -382,4 +382,16 @@ contextBridge.exposeInMainWorld('api', {
     delete:        (id)             => ipcRenderer.invoke('deposit:delete', id),
     markGenerated: (id, factureId)  => ipcRenderer.invoke('deposit:markGenerated', id, factureId),
   },
+  stripe: {
+    createCheckout: (opts)          => ipcRenderer.invoke('stripe:createCheckout', opts),
+    checkSession:   (opts)          => ipcRenderer.invoke('stripe:checkSession', opts),
+    testKey:        (opts)          => ipcRenderer.invoke('stripe:testKey', opts),
+    generateQR:     (url, size)     => ipcRenderer.invoke('stripe:generateQR', { url, size }),
+  },
+  ledgerExport: {
+    acomba: (opts) => ipcRenderer.invoke('ledger:exportAcomba', opts),
+  },
+  file: {
+    save: (opts) => ipcRenderer.invoke('file:save', opts),
+  },
 });

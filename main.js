@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, net, dialog, shell, nativeImage, Tray, Menu } = require('electron');
+const QRCode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -2116,6 +2117,114 @@ ipcMain.handle('deposit:create',         (_e, data)          => depositScheduleC
 ipcMain.handle('deposit:update',         (_e, id, data)      => depositScheduleUpdate(id, data));
 ipcMain.handle('deposit:delete',         (_e, id)            => depositScheduleDelete(id));
 ipcMain.handle('deposit:markGenerated',  (_e, id, factureId) => depositScheduleMarkGenerated(id, factureId));
+
+// ── Stripe Merchant Payments ───────────────────────────────────────────────
+// Uses the restaurant owner's own Stripe secret key (stored in apiConfig).
+// Desktop-safe: no inbound webhook needed — status is polled on demand.
+
+ipcMain.handle('stripe:createCheckout', async (_e, { secretKey, invoiceId, invoiceNum, amountCents, clientEmail, currency = 'cad' }) => {
+  if (!secretKey || !amountCents) throw new Error('Missing secretKey or amountCents');
+  const body = new URLSearchParams({
+    mode: 'payment',
+    'line_items[0][price_data][currency]': currency,
+    'line_items[0][price_data][unit_amount]': String(Math.round(amountCents)),
+    'line_items[0][price_data][product_data][name]': `Facture ${invoiceNum || invoiceId}`,
+    'success_url': 'https://balanceiq.ca/payment-success?session_id={CHECKOUT_SESSION_ID}',
+    'cancel_url': 'https://balanceiq.ca/payment-cancel',
+    'metadata[invoice_id]': invoiceId || '',
+    'metadata[invoice_num]': invoiceNum || '',
+  });
+  if (clientEmail) body.append('customer_email', clientEmail);
+  const res = await net.fetch('https://api.stripe.com/v1/checkout/sessions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${secretKey}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error?.message || `Stripe error ${res.status}`);
+  return { sessionId: data.id, url: data.url };
+});
+
+ipcMain.handle('stripe:checkSession', async (_e, { secretKey, sessionId }) => {
+  if (!secretKey || !sessionId) throw new Error('Missing params');
+  const res = await net.fetch(`https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}`, {
+    headers: { 'Authorization': `Bearer ${secretKey}` },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error?.message || `Stripe error ${res.status}`);
+  return { status: data.status, paymentStatus: data.payment_status, amountTotal: data.amount_total, currency: data.currency };
+});
+
+ipcMain.handle('stripe:testKey', async (_e, { secretKey }) => {
+  if (!secretKey) throw new Error('No key provided');
+  const res = await net.fetch('https://api.stripe.com/v1/account', {
+    headers: { 'Authorization': `Bearer ${secretKey}` },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error?.message || `Stripe error ${res.status}`);
+  return { valid: true, businessName: data.business_profile?.name || data.display_name || data.id };
+});
+
+ipcMain.handle('stripe:generateQR', async (_e, { url, size = 180 }) => {
+  const dataUrl = await QRCode.toDataURL(url, { width: size, margin: 1, errorCorrectionLevel: 'M' });
+  return { dataUrl };
+});
+
+// ── Accounting Export (Acomba / Sage 50 / QuickBooks) ─────────────────────
+
+ipcMain.handle('ledger:exportAcomba', (_e, opts = {}) => {
+  const { glExportLines } = require('./src/db/database.js');
+  const rows = glExportLines(opts);
+  const format = opts.format || 'acomba';
+  let csv = '';
+  let rowCount = 0;
+
+  if (format === 'acomba') {
+    csv = 'Date,No. compte,Description,Débit,Crédit,Projet,Taxe\n';
+    for (const r of rows) {
+      const debit  = r.debit_cents  > 0 ? (r.debit_cents  / 100).toFixed(2) : '';
+      const credit = r.credit_cents > 0 ? (r.credit_cents / 100).toFixed(2) : '';
+      const desc   = (r.line_memo || r.description || '').replace(/"/g, '""');
+      csv += `${r.entry_date},${r.account_number},"${desc}",${debit},${credit},,\n`;
+      rowCount++;
+    }
+  } else if (format === 'sage50') {
+    csv = 'Réf,Date,No. compte,Nom du compte,Débit,Crédit,Description\n';
+    for (const r of rows) {
+      const debit  = (r.debit_cents  / 100).toFixed(2);
+      const credit = (r.credit_cents / 100).toFixed(2);
+      const acctName = (r.account_name_fr || '').replace(/"/g, '""');
+      const desc = (r.description || '').replace(/"/g, '""');
+      csv += `${r.entry_number || r.entry_id},${r.entry_date},${r.account_number},"${acctName}",${debit},${credit},"${desc}"\n`;
+      rowCount++;
+    }
+  } else if (format === 'qb') {
+    csv = '!TRNS\tTRNSTYPE\tDATE\tACCNT\tAMOUNT\tMEMO\n!SPL\tTRNSTYPE\tDATE\tACCNT\tAMOUNT\tMEMO\n!ENDTRNS\n';
+    let prevEntryId = null;
+    for (const r of rows) {
+      const isFirst = r.entry_id !== prevEntryId;
+      const amount = ((r.debit_cents - r.credit_cents) / 100).toFixed(2);
+      const acctName = r.account_name_en || r.account_name_fr || '';
+      const tag = isFirst ? 'TRNS' : 'SPL';
+      csv += `${tag}\tGENERAL JOURNAL\t${r.entry_date}\t${acctName}\t${amount}\t${r.description || ''}\n`;
+      if (isFirst && prevEntryId !== null) csv += 'ENDTRNS\n';
+      prevEntryId = r.entry_id;
+      rowCount++;
+    }
+    if (prevEntryId !== null) csv += 'ENDTRNS\n';
+  }
+
+  return { csv, rowCount };
+});
+
+// ── File Save Dialog ───────────────────────────────────────────────────────
+
+ipcMain.handle('file:save', async (_e, { defaultPath, content }) => {
+  const { filePath } = await dialog.showSaveDialog({ defaultPath });
+  if (!filePath) return null;
+  fs.writeFileSync(filePath, content, 'utf8');
+  return { filePath };
+});
 
 // ── Supabase Proxy Fetch ───────────────────────────────────────────────────
 // Routes Supabase HTTP calls through Electron's net module (main process) to

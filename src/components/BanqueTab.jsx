@@ -89,6 +89,11 @@ const UI = {
     badgeManual:      'Manuel',
     badgeUnmatched:   'Non apparié',
     autoLabel:        '✓ auto',
+    etransferBadge:   'Virement Interac',
+    etransferMatch:   'Matcher',
+    etransferSender:  'Expéditeur',
+    etransferHint:    'Enregistrez le paiement sur la facture dans Facturation après avoir catégorisé cette transaction.',
+    etransferMatchBtn:'Catégoriser vers Comptes clients (1100)',
   },
   en: {
     tabComptes:       'Accounts',
@@ -177,6 +182,11 @@ const UI = {
     badgeManual:      'Manual',
     badgeUnmatched:   'Unmatched',
     autoLabel:        '✓ auto',
+    etransferBadge:   'Interac E-Transfer',
+    etransferMatch:   'Match',
+    etransferSender:  'Sender',
+    etransferHint:    'After categorizing this transaction, record the payment on the invoice in Facturation.',
+    etransferMatchBtn:'Categorize to Accounts Receivable (1100)',
   },
 };
 
@@ -220,6 +230,7 @@ export default function BanqueTab({ lang = 'fr' }) {
   const [categorizingTx, setCategorizingTx]       = useState(null);
   const [categorizeCoaId, setCategorizeCoaId]     = useState('');
   const [categorizeNotes, setCategorizeNotes]     = useState('');
+  const [etransferTx, setEtransferTx]             = useState(null);
 
   const [statements, setStatements]               = useState([]);
   const [recPreview, setRecPreview]               = useState(null);
@@ -436,6 +447,27 @@ export default function BanqueTab({ lang = 'fr' }) {
     } catch (_) {}
   };
 
+  // ── E-transfer detection ──────────────────────────────────────────────────────
+  const detectEtransfer = (description = '') => {
+    const up = description.toUpperCase();
+    if (!up.includes('INTERAC') && !up.includes('E-TFR') && !up.includes('ETFR')) return null;
+    const patterns = [/VIREMENT INTERAC\s+(.+?)(?:\s+\d|$)/i, /INTERAC\s+(.+?)(?:\s+\d|$)/i, /E-TFR\s+(.+?)(?:\s+\d|$)/i];
+    for (const p of patterns) { const m = description.match(p); if (m?.[1]) return m[1].trim(); }
+    return '—';
+  };
+
+  const doEtransferCategorize = async () => {
+    if (!etransferTx) return;
+    const arAccount = coa.find(a => a.account_number === '1100' || (a.name_fr || '').toLowerCase().includes('clients'));
+    const coaId = arAccount?.id;
+    if (!coaId) { alert(lang === 'fr' ? 'Compte Comptes clients (1100) introuvable.' : 'Accounts Receivable (1100) account not found.'); return; }
+    try {
+      await window.api.bank.transactions.categorize(etransferTx.id, coaId, lang === 'fr' ? 'Virement Interac' : 'Interac E-Transfer');
+      setEtransferTx(null);
+      loadTransactions();
+    } catch (e) { alert(e.message); }
+  };
+
   // ── Status badge ─────────────────────────────────────────────────────────────
   const StatusBadge = ({ status }) => {
     const color = status === 'matched' ? '#22c55e' : status === 'suggested' ? '#f59e0b' : status === 'manual' ? '#a78bfa' : '#ef4444';
@@ -543,10 +575,15 @@ export default function BanqueTab({ lang = 'fr' }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {transactions.map(tx => (
+                  {transactions.map(tx => {
+                    const etSender = detectEtransfer(tx.description);
+                    return (
                     <tr key={tx.id} style={{ borderBottom: '1px solid #0f172a' }}>
                       <td style={{ ...td, whiteSpace: 'nowrap', fontSize: 12 }}>{fmtDate(tx.transaction_date)}</td>
-                      <td style={{ ...td, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 0 }} title={tx.description}>{tx.description}</td>
+                      <td style={{ ...td, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 0 }} title={tx.description}>
+                        {tx.description}
+                        {etSender && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, color: '#a78bfa', background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.25)', borderRadius: 3, padding: '1px 5px' }}>{T.etransferBadge}</span>}
+                      </td>
                       <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap', color: tx.amount < 0 ? '#f87171' : '#86efac', fontWeight: 600 }}>{fmt(tx.amount)}</td>
                       <td style={td}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -557,7 +594,10 @@ export default function BanqueTab({ lang = 'fr' }) {
                         </div>
                       </td>
                       <td style={{ ...td, textAlign: 'center' }}>
-                        <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+                        <div style={{ display: 'flex', gap: 4, justifyContent: 'center', flexWrap: 'wrap' }}>
+                          {etSender && tx.match_status !== 'matched' && (
+                            <button onClick={() => setEtransferTx({ ...tx, etSender })} style={{ ...btnSmall, background: 'rgba(167,139,250,0.12)', color: '#a78bfa', border: '1px solid rgba(167,139,250,0.25)' }}>{T.etransferMatch}</button>
+                          )}
                           {tx.match_status !== 'matched' && (
                             <button onClick={() => openCategorize(tx)} style={btnSmall}>{T.categorize}</button>
                           )}
@@ -567,7 +607,8 @@ export default function BanqueTab({ lang = 'fr' }) {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -772,6 +813,26 @@ export default function BanqueTab({ lang = 'fr' }) {
           <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
             <button onClick={saveCategorize} disabled={!categorizeCoaId} style={btnStyle('#f97316')}>{T.saveCategorize}</button>
             <button onClick={() => setCategorizingTx(null)} style={btnStyle('#374151')}>{T.cancel}</button>
+          </div>
+        </ModalOverlay>
+      )}
+
+      {/* ── E-TRANSFER MATCH MODAL ──────────────────────────────────────────── */}
+      {etransferTx && (
+        <ModalOverlay onClose={() => setEtransferTx(null)}>
+          <h3 style={{ margin: '0 0 10px', color: '#a78bfa' }}>{T.etransferBadge}</h3>
+          <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 14 }}>
+            <strong style={{ color: '#f1f5f9' }}>{etransferTx.description}</strong><br />
+            {fmtDate(etransferTx.transaction_date)} · <span style={{ color: '#86efac', fontWeight: 700 }}>{fmt(etransferTx.amount)}</span>
+          </div>
+          <div style={{ marginBottom: 12, padding: '6px 10px', background: 'rgba(167,139,250,0.07)', border: '1px solid rgba(167,139,250,0.2)', borderRadius: 6 }}>
+            <span style={{ fontSize: 11, color: '#94a3b8' }}>{T.etransferSender}: </span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#a78bfa' }}>{etransferTx.etSender}</span>
+          </div>
+          <div style={{ fontSize: 11, color: '#f59e0b', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 5, padding: '6px 10px', marginBottom: 14 }}>{T.etransferHint}</div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+            <button onClick={doEtransferCategorize} style={btnStyle('#a78bfa')}>{T.etransferMatchBtn}</button>
+            <button onClick={() => setEtransferTx(null)} style={btnStyle('#374151')}>{T.cancel}</button>
           </div>
         </ModalOverlay>
       )}

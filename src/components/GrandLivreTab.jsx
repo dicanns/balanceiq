@@ -61,6 +61,17 @@ const UI = {
     tabJournal:       'Journal',
     tabBalance:       'Balance de vérification',
     tabPeriods:       'Périodes',
+    tabExport:        'Exporter',
+    ledgerExport:     'Exporter le journal',
+    ledgerExportDateFrom: 'Du',
+    ledgerExportDateTo:   'Au',
+    ledgerExportFormat:   'Format',
+    ledgerExportAcomba:   'Acomba',
+    ledgerExportSage50:   'Sage 50',
+    ledgerExportQB:       'QuickBooks (IIF)',
+    ledgerExportBtn:      'Télécharger',
+    ledgerExportDone:     (n) => `${n} ligne(s) exportée(s)`,
+    ledgerExportNone:     'Aucune écriture trouvée pour cette période',
     newEntry:         '+ Nouvelle écriture',
     search:           'Rechercher…',
     statusAll:        'Tous',
@@ -129,6 +140,17 @@ const UI = {
     tabJournal:       'Journal',
     tabBalance:       'Trial Balance',
     tabPeriods:       'Periods',
+    tabExport:        'Export',
+    ledgerExport:     'Export journal',
+    ledgerExportDateFrom: 'From',
+    ledgerExportDateTo:   'To',
+    ledgerExportFormat:   'Format',
+    ledgerExportAcomba:   'Acomba',
+    ledgerExportSage50:   'Sage 50',
+    ledgerExportQB:       'QuickBooks (IIF)',
+    ledgerExportBtn:      'Download',
+    ledgerExportDone:     (n) => `${n} line(s) exported`,
+    ledgerExportNone:     'No entries found for this period',
     newEntry:         '+ New entry',
     search:           'Search…',
     statusAll:        'All',
@@ -911,6 +933,59 @@ function PeriodsTab({ lang }) {
 
 // ── Main GrandLivreTab ─────────────────────────────────────────────────────────
 
+// ── Export Tab (Acomba / Sage 50 / QuickBooks) ─────────────────────────────
+
+function ExportTab({ lang = 'fr' }) {
+  const t = UI[lang];
+  const today = todayStr();
+  const firstOfMonth = today.slice(0, 7) + '-01';
+  const [dateFrom, setDateFrom] = useState(firstOfMonth);
+  const [dateTo,   setDateTo]   = useState(today);
+  const [format,   setFormat]   = useState('acomba');
+  const [working,  setWorking]  = useState(false);
+  const [result,   setResult]   = useState(null);
+
+  const doExport = async () => {
+    setWorking(true); setResult(null);
+    try {
+      const { csv, rowCount } = await window.api.ledgerExport.acomba({ dateFrom, dateTo, format });
+      if (!rowCount) { setResult({ err: t.ledgerExportNone || 'Aucune écriture trouvée' }); setWorking(false); return; }
+      const ext = format === 'qb' ? '.iif' : '.csv';
+      const filename = `BalanceIQ_${format}_${dateFrom}_${dateTo}${ext}`;
+      const saved = await window.api.file.save({ defaultPath: filename, content: csv });
+      if (saved) setResult({ ok: true, rowCount, filePath: saved.filePath });
+      else setResult(null);
+    } catch (e) { setResult({ err: e.message }); }
+    setWorking(false);
+  };
+
+  const FORMATS = [
+    ['acomba', t.ledgerExportAcomba || 'Acomba'],
+    ['sage50', t.ledgerExportSage50 || 'Sage 50'],
+    ['qb',     t.ledgerExportQB    || 'QuickBooks (IIF)'],
+  ];
+
+  return (
+    <div style={{ maxWidth: 520, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', marginBottom: 2 }}>{t.ledgerExport || 'Exporter le journal'}</div>
+      <div style={{ fontSize: 11, color: '#94a3b8' }}>{lang === 'fr' ? 'Exporte toutes les écritures comptabilisées vers Acomba, Sage 50 ou QuickBooks pour votre comptable.' : 'Exports all posted journal entries to Acomba, Sage 50, or QuickBooks for your accountant.'}</div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div><div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 3 }}>{t.ledgerExportDateFrom || 'Du'}</div><input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 5, color: '#e2e8f0', padding: '5px 8px', fontSize: 12 }} /></div>
+        <div><div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 3 }}>{t.ledgerExportDateTo || 'Au'}</div><input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 5, color: '#e2e8f0', padding: '5px 8px', fontSize: 12 }} /></div>
+        <div><div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 3 }}>{t.ledgerExportFormat || 'Format'}</div>
+          <select value={format} onChange={e => setFormat(e.target.value)} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 5, color: '#e2e8f0', padding: '5px 8px', fontSize: 12 }}>
+            {FORMATS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+          </select></div>
+      </div>
+      <button onClick={doExport} disabled={working || !dateFrom || !dateTo} style={{ alignSelf: 'flex-start', padding: '8px 20px', borderRadius: 6, border: 'none', background: working ? '#334155' : 'linear-gradient(135deg,#f97316,#ea580c)', color: '#fff', cursor: working ? 'default' : 'pointer', fontWeight: 700, fontSize: 12, opacity: working ? 0.6 : 1 }}>
+        {working ? '…' : (t.ledgerExportBtn || 'Télécharger')}
+      </button>
+      {result?.ok && <div style={{ fontSize: 11, color: '#22c55e', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 6, padding: '6px 12px' }}>{typeof t.ledgerExportDone === 'function' ? t.ledgerExportDone(result.rowCount) : `${result.rowCount} lignes exportées`}</div>}
+      {result?.err && <div style={{ fontSize: 11, color: '#ef4444', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '6px 12px' }}>{result.err}</div>}
+    </div>
+  );
+}
+
 export default function GrandLivreTab({ lang = 'fr' }) {
   const t = UI[lang];
   const [subTab, setSubTab] = useState('journal');
@@ -929,6 +1004,7 @@ export default function GrandLivreTab({ lang = 'fr' }) {
           ['journal', t.tabJournal],
           ['balance', t.tabBalance],
           ['periods', t.tabPeriods],
+          ['export',  t.tabExport],
         ].map(([key, label]) => (
           <button key={key} onClick={() => setSubTab(key)}
             style={{
@@ -946,6 +1022,7 @@ export default function GrandLivreTab({ lang = 'fr' }) {
       {subTab === 'journal' && <JournalTab lang={lang} accounts={accounts} />}
       {subTab === 'balance' && <TrialBalanceTab lang={lang} />}
       {subTab === 'periods' && <PeriodsTab lang={lang} />}
+      {subTab === 'export'  && <ExportTab lang={lang} />}
     </div>
   );
 }
