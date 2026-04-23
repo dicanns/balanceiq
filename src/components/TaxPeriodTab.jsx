@@ -404,11 +404,11 @@ export default function TaxPeriodTab({ lang }) {
   };
 
   return (
-    <div style={{ padding: '0 0 24px', maxWidth: 700, fontFamily: "'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif" }}>
+    <div style={{ padding: '0 0 24px', width: '100%', minWidth: 0, fontFamily: "'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif" }}>
       {/* Header */}
       <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 2 }}>{T.title}</div>
-        <div style={{ fontSize: 11, color: '#64748b' }}>{T.subtitle}</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', marginBottom: 2 }}>{T.title}</div>
+        <div style={{ fontSize: 11, color: '#475569' }}>{T.subtitle}</div>
       </div>
 
       {/* Disclaimer */}

@@ -213,7 +213,7 @@ export default function BilanTab({ lang = 'fr', canUsePro = false, onUpgrade }) 
   }
 
   return (
-    <div ref={topRef} style={{ padding: '12px 0', maxWidth: 720 }}>
+    <div ref={topRef} style={{ padding: '12px 0', width: '100%', minWidth: 0 }}>
       <div style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 16, fontWeight: 800, color: '#f1f5f9' }}>{L.title}</span>

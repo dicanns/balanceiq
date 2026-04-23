@@ -6391,19 +6391,19 @@ export default function App(){
                 {id:"integrations",     label:T.cfgIntegrations},
                 {id:"comptabilite",     label:lang==="fr"?"Plan comptable":"Chart of Accounts"},
                 {id:"grandlivre",       label:lang==="fr"?"Grand livre":"General Ledger"},
-                {id:"banque",           label:lang==="fr"?"🏦 Banque":"🏦 Bank"},
-                {id:"taxperiod",        label:lang==="fr"?"🧾 TPS/TVQ":"🧾 GST/QST"},
-                {id:"bilan",            label:lang==="fr"?"📊 Bilan":"📊 Balance Sheet"},
-                {id:"immobilisations",  label:lang==="fr"?"🏗 DPA":"🏗 CCA"},
-                {id:"coffre",           label:lang==="fr"?"📎 Coffre-fort":"📎 Vault"},
-                {id:"recurrences",      label:lang==="fr"?`🔄 Récurrences${recurringPendingCount>0?` (${recurringPendingCount})`:""}`:(`🔄 Recurring${recurringPendingCount>0?` (${recurringPendingCount})`:""}`)},
+                {id:"banque",           label:lang==="fr"?"Banque":"Bank"},
+                {id:"taxperiod",        label:lang==="fr"?"TPS/TVQ":"GST/QST"},
+                {id:"bilan",            label:lang==="fr"?"Bilan":"Balance Sheet"},
+                {id:"immobilisations",  label:lang==="fr"?"DPA":"CCA"},
+                {id:"coffre",           label:lang==="fr"?"Coffre-fort":"Vault"},
+                {id:"recurrences",      label:lang==="fr"?`Récurrences${recurringPendingCount>0?` (${recurringPendingCount})`:""}`:(`Recurring${recurringPendingCount>0?` (${recurringPendingCount})`:""}`)}  ,
                 {id:"donnees",          label:T.cfgData},
                 {id:"application",      label:T.cfgApplication},
                 ...(appMode==="franchiseur"?[{id:"succursales",label:T.cfgLocations},{id:"redevances",label:T.cfgRoyalties},{id:"marqueblanche",label:T.cfgWhiteLabel}]:[]),
               ];
               return(<div style={{display:"flex",gap:2,borderBottom:`1px solid ${t.dividerMid}`,overflowX:"auto",paddingBottom:1,marginBottom:4,flexShrink:0}}>{CTABS.map(({id,label})=>(<button key={id} onClick={()=>setConfigSubTab(id)} style={{background:"none",border:"none",color:configSubTab===id?"#f97316":t.textMuted,fontSize:11,fontWeight:configSubTab===id?700:500,padding:"5px 11px",cursor:"pointer",borderBottom:configSubTab===id?"2px solid #f97316":"2px solid transparent",whiteSpace:"nowrap",flexShrink:0,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>
  {label}</button>))}</div>);
- })()}<div style={{maxWidth:600}}>{/* ENTREPRISE */}
+ })()}<div style={{width:'100%',minWidth:0}}>{/* ENTREPRISE */}
  {configSubTab==="entreprise"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}><CfgCard id="companyInfo" title={""+T.cfgCompanyInfo} cfgExpanded={cfgExpanded} onToggle={toggleCfg}><div style={{display:"flex",flexDirection:"column",gap:6}}>{/* Logo */}<div style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0",borderBottom:`1px solid ${t.divider}`,marginBottom:2}}><div style={{width:56,height:56,borderRadius:7,border:`1px dashed ${t.cardBorder}`,background:t.section,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",flexShrink:0}}>{companyInfo.logo
  ?<img src={companyInfo.logo} alt="Logo" style={{width:"100%",height:"100%",objectFit:"contain"}}/>:<span style={{fontSize:20}}></span>}</div><div><div style={{fontSize:11.5,fontWeight:600,color:t.text,marginBottom:4}}>{T.cfgCompanyLogo}</div><div style={{display:"flex",gap:6}}><label style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T.cfgChooseImage}<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>saveCompanyInfo({...companyInfo,logo:ev.target.result});reader.readAsDataURL(file);e.target.value="";}}/></label>{companyInfo.logo&&<button onClick={()=>saveCompanyInfo({...companyInfo,logo:null})} style={{padding:"4px 10px",borderRadius:5,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:600,fontSize:11}}>Supprimer</button>}</div><div style={{fontSize:9.5,color:t.textMuted,marginTop:3}}>{T.cfgLogoHint}</div></div></div>{/* Text fields */}
                 {[

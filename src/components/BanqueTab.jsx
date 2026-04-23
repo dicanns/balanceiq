@@ -531,28 +531,33 @@ export default function BanqueTab({ lang = 'fr' }) {
           ) : transactions.length === 0 ? (
             <p style={{ color: '#64748b', textAlign: 'center', marginTop: 40 }}>{T.noTransactions}</p>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
+            <div style={{ overflowX: 'auto', background: '#0f172a', borderRadius: 8, padding: '0 0 4px' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid #1e293b', color: '#64748b' }}>
-                    <th style={th}>{T.colDate}</th>
+                    <th style={{ ...th, whiteSpace: 'nowrap', width: 90 }}>{T.colDate}</th>
                     <th style={th}>{T.colDesc}</th>
-                    <th style={{ ...th, textAlign: 'right' }}>{T.colAmount}</th>
-                    <th style={th}>{T.colStatus}</th>
-                    <th style={th}>{T.colCoa}</th>
-                    <th style={th}>{T.colActions}</th>
+                    <th style={{ ...th, textAlign: 'right', width: 100 }}>{T.colAmount}</th>
+                    <th style={{ ...th, width: 160 }}>{T.colStatus}</th>
+                    <th style={{ ...th, width: 90, textAlign: 'center' }}>{T.colActions}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {transactions.map(tx => (
                     <tr key={tx.id} style={{ borderBottom: '1px solid #0f172a' }}>
-                      <td style={td}>{fmtDate(tx.transaction_date)}</td>
-                      <td style={{ ...td, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={tx.description}>{tx.description}</td>
-                      <td style={{ ...td, textAlign: 'right', color: tx.amount < 0 ? '#f87171' : '#86efac', fontWeight: 600 }}>{fmt(tx.amount)}</td>
-                      <td style={td}><StatusBadge status={tx.match_status} /></td>
-                      <td style={{ ...td, fontSize: 12, color: '#94a3b8' }}>{tx.account_number ? `${tx.account_number} ${lang === 'en' && tx.coa_name_en ? tx.coa_name_en : tx.coa_name_fr}` : '—'}</td>
+                      <td style={{ ...td, whiteSpace: 'nowrap', fontSize: 12 }}>{fmtDate(tx.transaction_date)}</td>
+                      <td style={{ ...td, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 0 }} title={tx.description}>{tx.description}</td>
+                      <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap', color: tx.amount < 0 ? '#f87171' : '#86efac', fontWeight: 600 }}>{fmt(tx.amount)}</td>
                       <td style={td}>
-                        <div style={{ display: 'flex', gap: 6 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          <StatusBadge status={tx.match_status} />
+                          {tx.account_number && (
+                            <span style={{ fontSize: 10, color: '#64748b' }}>{tx.account_number} {lang === 'en' && tx.coa_name_en ? tx.coa_name_en : tx.coa_name_fr}</span>
+                          )}
+                        </div>
+                      </td>
+                      <td style={{ ...td, textAlign: 'center' }}>
+                        <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
                           {tx.match_status !== 'matched' && (
                             <button onClick={() => openCategorize(tx)} style={btnSmall}>{T.categorize}</button>
                           )}

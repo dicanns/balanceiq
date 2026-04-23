@@ -176,9 +176,9 @@ export default function ImmobilisationsTab({ lang = 'fr', canUsePro = false, onU
   }
 
   return (
-    <div style={{ padding: '12px 0', maxWidth: 760 }}>
+    <div style={{ padding: '12px 0', width: '100%', minWidth: 0 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <span style={{ fontSize: 16, fontWeight: 800, color: '#f1f5f9' }}>{L.title}</span>
+        <span style={{ fontSize: 16, fontWeight: 800, color: '#0f172a' }}>{L.title}</span>
         {!form && (
           <button onClick={() => { setForm({ ...BLANK }); setEditId(null); }}
             style={{ ...btn, background: 'linear-gradient(135deg,#f97316,#ea580c)', color: '#fff' }}>
