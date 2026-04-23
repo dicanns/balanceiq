@@ -674,9 +674,10 @@ function JournalTab({ lang, accounts }) {
 
 function TrialBalanceTab({ lang }) {
   const t = UI[lang];
-  const today = new Date();
-  const [selYear,  setSelYear]  = useState(today.getFullYear());
-  const [selMonth, setSelMonth] = useState(today.getMonth() + 1);
+  // Default to previous month — last fully-closed period is more useful than mid-current-month
+  const prevMonth = new Date(); prevMonth.setDate(1); prevMonth.setMonth(prevMonth.getMonth() - 1);
+  const [selYear,  setSelYear]  = useState(prevMonth.getFullYear());
+  const [selMonth, setSelMonth] = useState(prevMonth.getMonth() + 1);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [generated, setGenerated] = useState(false);
@@ -727,17 +728,23 @@ function TrialBalanceTab({ lang }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
-        <span style={{ color: '#94a3b8', fontSize: 14 }}>{t.asOf}</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 0, border: '1px solid #334155', borderRadius: 8, overflow: 'hidden' }}>
-          <button onClick={() => shiftMonth(-1)} style={{ background: '#1e293b', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '6px 12px', fontSize: 16, lineHeight: 1 }}>‹</button>
-          <span style={{ background: '#1e293b', color: '#f1f5f9', fontSize: 13, fontWeight: 600, padding: '6px 14px', minWidth: 150, textAlign: 'center', userSelect: 'none' }}>
-            {monthLabel(selYear, selMonth, lang)}
-          </span>
-          <button onClick={() => shiftMonth(1)} style={{ background: '#1e293b', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '6px 12px', fontSize: 16, lineHeight: 1 }}>›</button>
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ color: '#94a3b8', fontSize: 14 }}>{t.asOf}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 0, border: '1px solid #334155', borderRadius: 8, overflow: 'hidden' }}>
+            <button onClick={() => shiftMonth(-1)} style={{ background: '#1e293b', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '6px 12px', fontSize: 16, lineHeight: 1 }}>‹</button>
+            <span style={{ background: '#1e293b', color: '#f1f5f9', fontSize: 13, fontWeight: 600, padding: '6px 14px', minWidth: 150, textAlign: 'center', userSelect: 'none' }}>
+              {monthLabel(selYear, selMonth, lang)}
+            </span>
+            <button onClick={() => shiftMonth(1)} style={{ background: '#1e293b', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '6px 12px', fontSize: 16, lineHeight: 1 }}>›</button>
+          </div>
+          <button onClick={generate} disabled={loading} style={btnPrimary}>{loading ? '…' : t.generate}</button>
         </div>
-        <span style={{ color: '#475569', fontSize: 12 }}>{asOf}</span>
-        <button onClick={generate} disabled={loading} style={btnPrimary}>{loading ? '…' : t.generate}</button>
+        <p style={{ margin: '6px 0 0', fontSize: 11, color: '#475569' }}>
+          {lang === 'fr'
+            ? `Soldes cumulatifs de tous les comptes au ${asOf} (depuis l'ouverture des livres)`
+            : `Cumulative balances of all accounts as of ${asOf} (since books opened)`}
+        </p>
       </div>
 
       {generated && rows.length === 0 && <p style={{ color: '#64748b', fontSize: 13 }}>{t.noData}</p>}
