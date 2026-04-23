@@ -45,6 +45,15 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function endOfMonth(yyyy, mm) {
+  return new Date(yyyy, mm, 0).getDate();
+}
+
+function monthLabel(yyyy, mm, lang) {
+  const d = new Date(yyyy, mm - 1, 1);
+  return d.toLocaleString(lang === 'fr' ? 'fr-CA' : 'en-CA', { month: 'long', year: 'numeric' });
+}
+
 // ── UI strings ─────────────────────────────────────────────────────────────────
 
 const UI = {
@@ -111,6 +120,9 @@ const UI = {
     noPeriods:        'Aucune période créée. Les périodes sont créées automatiquement à la première écriture du mois.',
     prev:             '← Préc.',
     next:             'Suiv. →',
+    thisMonth:        'Ce mois',
+    lastMonth:        'Mois préc.',
+    allEntries:       'Tout',
     disclaimer:       'BalanceIQ produit ces calculs à titre indicatif. La responsabilité de la conformité fiscale incombe au contribuable. Consultez votre comptable avant toute déclaration.',
   },
   en: {
@@ -176,6 +188,9 @@ const UI = {
     noPeriods:        'No periods yet. Periods are created automatically on first entry of each month.',
     prev:             '← Prev.',
     next:             'Next →',
+    thisMonth:        'This month',
+    lastMonth:        'Last month',
+    allEntries:       'All',
     disclaimer:       'BalanceIQ produces these calculations for informational purposes. Tax compliance responsibility rests with the taxpayer. Consult your accountant before filing.',
   },
 };
@@ -543,6 +558,24 @@ function JournalTab({ lang, accounts }) {
               style={{ ...btnFilter, ...(statusFilter === v ? btnFilterActive : {}) }}>{label}</button>
           ))}
         </div>
+        {/* Quick date range presets */}
+        {[
+          [t.allEntries,  () => { setDateFrom(''); setDateTo(''); }],
+          [t.thisMonth,   () => {
+            const n = new Date();
+            const y = n.getFullYear(), m = n.getMonth() + 1;
+            setDateFrom(`${y}-${String(m).padStart(2,'0')}-01`);
+            setDateTo(`${y}-${String(m).padStart(2,'0')}-${String(endOfMonth(y,m)).padStart(2,'0')}`);
+          }],
+          [t.lastMonth,   () => {
+            const n = new Date(); n.setDate(1); n.setMonth(n.getMonth() - 1);
+            const y = n.getFullYear(), m = n.getMonth() + 1;
+            setDateFrom(`${y}-${String(m).padStart(2,'0')}-01`);
+            setDateTo(`${y}-${String(m).padStart(2,'0')}-${String(endOfMonth(y,m)).padStart(2,'0')}`);
+          }],
+        ].map(([label, fn]) => (
+          <button key={label} onClick={fn} style={{ ...btnFilter, fontSize: 11, padding: '4px 10px' }}>{label}</button>
+        ))}
         <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={{ ...inputStyle, width: 140, margin: 0 }} />
         <span style={{ color: '#64748b' }}>–</span>
         <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={{ ...inputStyle, width: 140, margin: 0 }} />
@@ -641,10 +674,23 @@ function JournalTab({ lang, accounts }) {
 
 function TrialBalanceTab({ lang }) {
   const t = UI[lang];
-  const [asOf, setAsOf] = useState(todayStr());
+  const today = new Date();
+  const [selYear,  setSelYear]  = useState(today.getFullYear());
+  const [selMonth, setSelMonth] = useState(today.getMonth() + 1);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [generated, setGenerated] = useState(false);
+
+  const asOf = `${selYear}-${String(selMonth).padStart(2,'0')}-${String(endOfMonth(selYear, selMonth)).padStart(2,'0')}`;
+
+  function shiftMonth(delta) {
+    let m = selMonth + delta;
+    let y = selYear;
+    if (m > 12) { m = 1; y++; }
+    if (m < 1)  { m = 12; y--; }
+    setSelMonth(m); setSelYear(y);
+    setGenerated(false);
+  }
 
   async function generate() {
     setLoading(true);
@@ -681,9 +727,16 @@ function TrialBalanceTab({ lang }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 20 }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
         <span style={{ color: '#94a3b8', fontSize: 14 }}>{t.asOf}</span>
-        <input type="date" value={asOf} onChange={e => setAsOf(e.target.value)} style={{ ...inputStyle, width: 160, margin: 0 }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 0, border: '1px solid #334155', borderRadius: 8, overflow: 'hidden' }}>
+          <button onClick={() => shiftMonth(-1)} style={{ background: '#1e293b', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '6px 12px', fontSize: 16, lineHeight: 1 }}>‹</button>
+          <span style={{ background: '#1e293b', color: '#f1f5f9', fontSize: 13, fontWeight: 600, padding: '6px 14px', minWidth: 150, textAlign: 'center', userSelect: 'none' }}>
+            {monthLabel(selYear, selMonth, lang)}
+          </span>
+          <button onClick={() => shiftMonth(1)} style={{ background: '#1e293b', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '6px 12px', fontSize: 16, lineHeight: 1 }}>›</button>
+        </div>
+        <span style={{ color: '#475569', fontSize: 12 }}>{asOf}</span>
         <button onClick={generate} disabled={loading} style={btnPrimary}>{loading ? '…' : t.generate}</button>
       </div>
 
