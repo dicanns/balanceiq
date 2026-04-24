@@ -451,6 +451,7 @@ export const FR = {
  numResetSeq:            "Réinitialiser la séquence à 1",
  numConflictWarn:        "Ce modèle produirait des conflits avec des numéros existants",
  numCustomToggle:        "Numérotation personnalisée (Pro)",
+ numCustomEnable:        "Activer la numérotation personnalisée",
  numSeparateSeq:         "Séquence séparée par type de document",
  numStartingSeq:         "Numéro de départ",
  // ── SPRINT 12 — Sections ──
@@ -2651,6 +2652,7 @@ export const EN = {
   numResetSeq:            "Reset sequence to 1",
   numConflictWarn:        "This pattern would produce conflicts with existing numbers",
   numCustomToggle:        "Custom numbering (Pro)",
+  numCustomEnable:        "Enable custom numbering",
   numSeparateSeq:         "Separate sequence per document type",
   numStartingSeq:         "Starting sequence",
   // ── SPRINT 12 — Sections ──
