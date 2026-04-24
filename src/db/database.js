@@ -779,6 +779,34 @@ const MIGRATIONS = [
       for (const s of steps) ins.run(ladderId, s.days, s.sfr, s.sen, s.bfr, s.ben);
     },
   },
+  {
+    version: 15,
+    description: 'Sprint 12 — Document Number Registry + Payment Plans',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS document_number_registry (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        document_type TEXT NOT NULL,
+        document_number TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(document_type, document_number)
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_dnr_type ON document_number_registry(document_type)`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS payment_plans (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        parent_invoice_id TEXT UNIQUE NOT NULL,
+        total_installments INTEGER NOT NULL,
+        cadence TEXT NOT NULL,
+        start_date TEXT NOT NULL,
+        use_pad INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'active',
+        notes TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_pp_parent ON payment_plans(parent_invoice_id)`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -3724,6 +3752,69 @@ function depositScheduleMarkGenerated(id, factureId) {
   return { ok: true };
 }
 
+// ── Document Number Registry ───────────────────────────────────────────────────
+
+function docNumRegister(documentType, documentNumber, entityId) {
+  try {
+    getDb().prepare(
+      `INSERT OR IGNORE INTO document_number_registry (document_type, document_number, entity_id)
+       VALUES (?,?,?)`
+    ).run(documentType, documentNumber, String(entityId));
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+function docNumCheckConflicts(documentType, numbersList) {
+  const db = getDb();
+  const conflicts = [];
+  for (const num of numbersList) {
+    const row = db.prepare(
+      `SELECT entity_id FROM document_number_registry WHERE document_type=? AND document_number=?`
+    ).get(documentType, num);
+    if (row) conflicts.push({ number: num, existingEntityId: row.entity_id });
+  }
+  return conflicts;
+}
+
+function docNumList(documentType) {
+  return getDb().prepare(
+    `SELECT document_number, entity_id, created_at FROM document_number_registry WHERE document_type=? ORDER BY id DESC LIMIT 500`
+  ).all(documentType);
+}
+
+// ── Payment Plans ─────────────────────────────────────────────────────────────
+
+function paymentPlanCreate({ parentInvoiceId, totalInstallments, cadence, startDate, usePad = 0, notes }) {
+  const db = getDb();
+  const id = db.prepare(
+    `INSERT OR REPLACE INTO payment_plans (parent_invoice_id, total_installments, cadence, start_date, use_pad, notes)
+     VALUES (?,?,?,?,?,?)`
+  ).run(String(parentInvoiceId), totalInstallments, cadence, startDate, usePad ? 1 : 0, notes || null).lastInsertRowid;
+  return db.prepare(`SELECT * FROM payment_plans WHERE id=?`).get(id);
+}
+
+function paymentPlanGet(parentInvoiceId) {
+  return getDb().prepare(`SELECT * FROM payment_plans WHERE parent_invoice_id=?`).get(String(parentInvoiceId));
+}
+
+function paymentPlanUpdate(parentInvoiceId, { status, notes }) {
+  const db = getDb();
+  const sets = [];
+  const vals = [];
+  if (status !== undefined) { sets.push('status=?'); vals.push(status); }
+  if (notes !== undefined) { sets.push('notes=?'); vals.push(notes || null); }
+  if (sets.length === 0) return paymentPlanGet(parentInvoiceId);
+  vals.push(String(parentInvoiceId));
+  db.prepare(`UPDATE payment_plans SET ${sets.join(',')} WHERE parent_invoice_id=?`).run(...vals);
+  return paymentPlanGet(parentInvoiceId);
+}
+
+function paymentPlanCancel(parentInvoiceId) {
+  return paymentPlanUpdate(parentInvoiceId, { status: 'cancelled' });
+}
+
 module.exports = {
   storageGet, storageSet, storageGetAll, storageGetByPrefix,
   auditInsert, auditQuery, getDeviceId,
@@ -3787,4 +3878,6 @@ module.exports = {
   reminderStepList, reminderStepCreate, reminderStepUpdate, reminderStepDelete,
   reminderLogList, reminderLogCreate, reminderCheckDue,
   depositScheduleList, depositScheduleCreate, depositScheduleUpdate, depositScheduleDelete, depositScheduleMarkGenerated,
+  docNumRegister, docNumCheckConflicts, docNumList,
+  paymentPlanCreate, paymentPlanGet, paymentPlanUpdate, paymentPlanCancel,
 };

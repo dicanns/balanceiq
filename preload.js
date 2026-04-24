@@ -406,4 +406,15 @@ contextBridge.exposeInMainWorld('api', {
     chargeMandate: (opts) => ipcRenderer.invoke('pad:chargeMandate', opts),
     saveConfig:    (opts) => ipcRenderer.invoke('pad:saveConfig', opts),
   },
+  docnum: {
+    register:       (docType, number, entityId) => ipcRenderer.invoke('docnum:register', docType, number, entityId),
+    checkConflicts: (docType, numbersList)       => ipcRenderer.invoke('docnum:checkConflicts', docType, numbersList),
+    list:           (docType)                    => ipcRenderer.invoke('docnum:list', docType),
+  },
+  paymentPlan: {
+    create: (data)                    => ipcRenderer.invoke('paymentPlan:create', data),
+    get:    (parentInvoiceId)         => ipcRenderer.invoke('paymentPlan:get', parentInvoiceId),
+    update: (parentInvoiceId, data)   => ipcRenderer.invoke('paymentPlan:update', parentInvoiceId, data),
+    cancel: (parentInvoiceId)         => ipcRenderer.invoke('paymentPlan:cancel', parentInvoiceId),
+  },
 });

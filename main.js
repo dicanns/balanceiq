@@ -76,6 +76,8 @@ const {
   reminderStepList, reminderStepCreate, reminderStepUpdate, reminderStepDelete,
   reminderLogList, reminderLogCreate, reminderCheckDue,
   depositScheduleList, depositScheduleCreate, depositScheduleUpdate, depositScheduleDelete, depositScheduleMarkGenerated,
+  docNumRegister, docNumCheckConflicts, docNumList,
+  paymentPlanCreate, paymentPlanGet, paymentPlanUpdate, paymentPlanCancel,
 } = require('./src/db/database.js');
 
 const BACKUP_DIR = () => path.join(app.getPath('userData'), 'Backups');
@@ -2117,6 +2119,17 @@ ipcMain.handle('deposit:create',         (_e, data)          => depositScheduleC
 ipcMain.handle('deposit:update',         (_e, id, data)      => depositScheduleUpdate(id, data));
 ipcMain.handle('deposit:delete',         (_e, id)            => depositScheduleDelete(id));
 ipcMain.handle('deposit:markGenerated',  (_e, id, factureId) => depositScheduleMarkGenerated(id, factureId));
+
+// ── Document Number Registry ──────────────────────────────────────────────
+ipcMain.handle('docnum:register',        (_e, docType, number, entityId) => docNumRegister(docType, number, entityId));
+ipcMain.handle('docnum:checkConflicts',  (_e, docType, numbersList)      => docNumCheckConflicts(docType, numbersList));
+ipcMain.handle('docnum:list',            (_e, docType)                   => docNumList(docType));
+
+// ── Payment Plans ─────────────────────────────────────────────────────────
+ipcMain.handle('paymentPlan:create',     (_e, data)              => paymentPlanCreate(data));
+ipcMain.handle('paymentPlan:get',        (_e, parentInvoiceId)   => paymentPlanGet(parentInvoiceId));
+ipcMain.handle('paymentPlan:update',     (_e, parentInvoiceId, data) => paymentPlanUpdate(parentInvoiceId, data));
+ipcMain.handle('paymentPlan:cancel',     (_e, parentInvoiceId)   => paymentPlanCancel(parentInvoiceId));
 
 // ── Stripe Merchant Payments ───────────────────────────────────────────────
 // Uses the restaurant owner's own Stripe secret key (stored in apiConfig).
