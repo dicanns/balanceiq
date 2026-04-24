@@ -417,4 +417,12 @@ contextBridge.exposeInMainWorld('api', {
     update: (parentInvoiceId, data)   => ipcRenderer.invoke('paymentPlan:update', parentInvoiceId, data),
     cancel: (parentInvoiceId)         => ipcRenderer.invoke('paymentPlan:cancel', parentInvoiceId),
   },
+  inventory: {
+    deduct: {
+      upsert:    (args)       => ipcRenderer.invoke('inventory:deduct:upsert', args),
+      delete:    (invoiceId)  => ipcRenderer.invoke('inventory:deduct:delete', invoiceId),
+      byProduct: (productId)  => ipcRenderer.invoke('inventory:deduct:byProduct', productId),
+      byDate:    (date)       => ipcRenderer.invoke('inventory:deduct:byDate', date),
+    },
+  },
 });

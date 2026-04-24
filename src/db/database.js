@@ -807,6 +807,26 @@ const MIGRATIONS = [
       database.prepare(`CREATE INDEX IF NOT EXISTS idx_pp_parent ON payment_plans(parent_invoice_id)`).run();
     },
   },
+  {
+    version: 16,
+    description: 'Sprint 13 — Invoice Inventory Deductions',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS invoice_inventory_deductions (
+        id TEXT PRIMARY KEY,
+        invoice_id TEXT NOT NULL,
+        invoice_numero TEXT,
+        product_id TEXT NOT NULL,
+        quantity REAL NOT NULL,
+        revenue REAL DEFAULT 0,
+        sale_date TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        UNIQUE(invoice_id, product_id)
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_iid_product ON invoice_inventory_deductions(product_id)`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_iid_date ON invoice_inventory_deductions(sale_date)`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_iid_invoice ON invoice_inventory_deductions(invoice_id)`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -3815,6 +3835,23 @@ function paymentPlanCancel(parentInvoiceId) {
   return paymentPlanUpdate(parentInvoiceId, { status: 'cancelled' });
 }
 
+function inventoryDeductUpsert({ invoice_id, invoice_numero, product_id, quantity, revenue, sale_date }) {
+  const id = `${invoice_id}_${product_id}`;
+  getDb().prepare(
+    `INSERT OR REPLACE INTO invoice_inventory_deductions (id, invoice_id, invoice_numero, product_id, quantity, revenue, sale_date)
+     VALUES (?,?,?,?,?,?,?)`
+  ).run(String(id), String(invoice_id), invoice_numero || null, String(product_id), quantity, revenue || 0, sale_date);
+}
+function inventoryDeductDeleteByInvoice(invoiceId) {
+  getDb().prepare(`DELETE FROM invoice_inventory_deductions WHERE invoice_id=?`).run(String(invoiceId));
+}
+function inventoryDeductListByProduct(productId) {
+  return getDb().prepare(`SELECT * FROM invoice_inventory_deductions WHERE product_id=? ORDER BY sale_date DESC`).all(String(productId));
+}
+function inventoryDeductSummaryByDate(date) {
+  return getDb().prepare(`SELECT product_id, SUM(quantity) as total_quantity, SUM(revenue) as total_revenue FROM invoice_inventory_deductions WHERE sale_date=? GROUP BY product_id`).all(date);
+}
+
 module.exports = {
   storageGet, storageSet, storageGetAll, storageGetByPrefix,
   auditInsert, auditQuery, getDeviceId,
@@ -3880,4 +3917,5 @@ module.exports = {
   depositScheduleList, depositScheduleCreate, depositScheduleUpdate, depositScheduleDelete, depositScheduleMarkGenerated,
   docNumRegister, docNumCheckConflicts, docNumList,
   paymentPlanCreate, paymentPlanGet, paymentPlanUpdate, paymentPlanCancel,
+  inventoryDeductUpsert, inventoryDeductDeleteByInvoice, inventoryDeductListByProduct, inventoryDeductSummaryByDate,
 };

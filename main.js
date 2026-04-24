@@ -78,6 +78,7 @@ const {
   depositScheduleList, depositScheduleCreate, depositScheduleUpdate, depositScheduleDelete, depositScheduleMarkGenerated,
   docNumRegister, docNumCheckConflicts, docNumList,
   paymentPlanCreate, paymentPlanGet, paymentPlanUpdate, paymentPlanCancel,
+  inventoryDeductUpsert, inventoryDeductDeleteByInvoice, inventoryDeductListByProduct, inventoryDeductSummaryByDate,
 } = require('./src/db/database.js');
 
 const BACKUP_DIR = () => path.join(app.getPath('userData'), 'Backups');
@@ -2130,6 +2131,10 @@ ipcMain.handle('paymentPlan:create',     (_e, data)              => paymentPlanC
 ipcMain.handle('paymentPlan:get',        (_e, parentInvoiceId)   => paymentPlanGet(parentInvoiceId));
 ipcMain.handle('paymentPlan:update',     (_e, parentInvoiceId, data) => paymentPlanUpdate(parentInvoiceId, data));
 ipcMain.handle('paymentPlan:cancel',     (_e, parentInvoiceId)   => paymentPlanCancel(parentInvoiceId));
+ipcMain.handle('inventory:deduct:upsert',   (_e, args)           => inventoryDeductUpsert(args));
+ipcMain.handle('inventory:deduct:delete',   (_e, invoiceId)      => inventoryDeductDeleteByInvoice(invoiceId));
+ipcMain.handle('inventory:deduct:byProduct',(_e, productId)      => inventoryDeductListByProduct(productId));
+ipcMain.handle('inventory:deduct:byDate',   (_e, date)           => inventoryDeductSummaryByDate(date));
 
 // ── Stripe Merchant Payments ───────────────────────────────────────────────
 // Uses the restaurant owner's own Stripe secret key (stored in apiConfig).
