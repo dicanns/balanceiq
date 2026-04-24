@@ -2582,7 +2582,7 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
  }
  }
  },[form.clientId,form.date,client]);
- const doSave=()=>{
+ const doSave=async()=>{
  if(canUse('creditLimits')&&client?.credit_limit_enabled&&client?.credit_limit&&form.statut!=="Brouillon"&&form.statut!=="Annulée"&&!isProforma){
   const action=client.credit_limit_action||"warn";
   const projected=openAR+totals.total;
