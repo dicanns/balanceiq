@@ -1640,8 +1640,34 @@ function FacturationDashboard({soumissions,commandes,factures,creditNotes,client
 }
 
 // ── ÉTAT DE COMPTE ──
-function buildEtatDeCompteHTML({client,factures,creditNotes,dateFrom,dateTo,companyInfo,invoiceTemplate={}}){
- const fd=s=>s?new Date(s+"T12:00:00").toLocaleDateString("fr-CA",{year:"numeric",month:"long",day:"numeric"}):"";
+function buildEtatDeCompteHTML({client,factures,creditNotes,dateFrom,dateTo,companyInfo,invoiceTemplate={},lang}){
+ const docLang=lang||(client?.langue==="English"?"en":"fr");
+ const isEN=docLang==="en";
+ const L={
+   title:          isEN?"ACCOUNT STATEMENT":"ÉTAT DE COMPTE",
+   period:         isEN?"Period":"Période",
+   issued:         isEN?"Issued":"Émis le",
+   clientLabel:    isEN?"Client":"Client",
+   colDate:        isEN?"Date":"Date",
+   colType:        isEN?"Type":"Type",
+   colRef:         isEN?"Reference":"Référence",
+   colDebit:       isEN?"Debit":"Débit",
+   colCredit:      isEN?"Credit":"Crédit",
+   colBalance:     isEN?"Running Balance":"Solde courant",
+   noTx:           isEN?"No transactions in this period.":"Aucune transaction dans cette période.",
+   agingSummary:   isEN?"Aging Summary as of":"Sommaire de vieillissement au",
+   current:        isEN?"Current":"Courant",
+   days30:         isEN?"30 days":"30 jours",
+   days60:         isEN?"60 days":"60 jours",
+   days90:         isEN?"90+ days":"90+ jours",
+   totalDue:       isEN?"Total Due":"Total dû",
+   payMsg:         isEN?`Please remit payment at your earliest convenience. For any questions, contact us at ${escapeHtml(companyInfo.courriel||"")}.`:`Veuillez faire parvenir votre paiement à votre plus tôt. Pour toute question, communiquez avec nous à ${escapeHtml(companyInfo.courriel||"")}.`,
+   noBalance:      isEN?"No balance due — account in good standing.":"Aucun solde impayé — compte en règle.",
+   txInvoice:      isEN?"Invoice":"Facture",
+   txPayment:      isEN?"Payment":"Paiement",
+   txCredit:       isEN?"Credit Note":"Note de crédit",
+ };
+ const fd=s=>s?new Date(s+"T12:00:00").toLocaleDateString(isEN?"en-CA":"fr-CA",{year:"numeric",month:"long",day:"numeric"}):"";
  const fc=v=>`$${Math.abs(v).toFixed(2)}`;
  const tpl={...DEFAULT_INVOICE_TEMPLATE,...(invoiceTemplate||{})};const ac=tpl.accentColor;
  const logoAlign=tpl.logoPosition==='centre'?'center':tpl.logoPosition==='droite'?'right':'left';
@@ -1654,14 +1680,14 @@ function buildEtatDeCompteHTML({client,factures,creditNotes,dateFrom,dateTo,comp
  const txns=[];
  for(const fac of factures.filter(f=>f.clientId===client?.id&&!["Annulée","Brouillon"].includes(f.statut)&&f.documentType!=="proforma")){
  const tot=computeSoumTotals(fac.lignes).total;
- if(fac.date>=dateFrom&&fac.date<=dateTo)txns.push({date:fac.date,type:"Facture",ref:fac.numero,debit:tot,credit:0});
+ if(fac.date>=dateFrom&&fac.date<=dateTo)txns.push({date:fac.date,type:L.txInvoice,ref:fac.numero,debit:tot,credit:0});
  for(const p of (fac.paiements||[])){
- if(p.date>=dateFrom&&p.date<=dateTo)txns.push({date:p.date,type:"Paiement",ref:p.numero||"—",debit:0,credit:p.montant||0});
+ if(p.date>=dateFrom&&p.date<=dateTo)txns.push({date:p.date,type:L.txPayment,ref:p.numero||"—",debit:0,credit:p.montant||0});
  }
  }
  for(const cn of (creditNotes||[]).filter(c=>c.clientId===client?.id&&!["Annulée"].includes(c.statut))){
  const tot=computeSoumTotals(cn.lignes).total;
- if(cn.date>=dateFrom&&cn.date<=dateTo)txns.push({date:cn.date,type:"Note de crédit",ref:cn.numero,debit:0,credit:tot});
+ if(cn.date>=dateFrom&&cn.date<=dateTo)txns.push({date:cn.date,type:L.txCredit,ref:cn.numero,debit:0,credit:tot});
  }
  txns.sort((a,b)=>a.date.localeCompare(b.date));
 
@@ -1684,20 +1710,20 @@ function buildEtatDeCompteHTML({client,factures,creditNotes,dateFrom,dateTo,comp
  }
  const totalDu=courant+j30+j60+j90;
 
- return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>État de compte — ${client?.entreprise||""}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}table{width:100%;border-collapse:collapse}th{background:#f97316;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.aging{display:flex;gap:0;margin-top:12px;border:1px solid #eee;border-radius:4px;overflow:hidden}.aging-cell{flex:1;padding:8px;text-align:center;border-right:1px solid #eee}.aging-cell:last-child{border-right:none}.aging-label{font-size:10px;color:#888;margin-bottom:2px}.aging-val{font-size:14px;font-weight:700}.msg{background:#fff9e6;border-left:4px solid #f97316;padding:12px 16px;margin-top:20px;font-size:12px;color:#555}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}th{background:${ac}}th{background:${ac}}.notes{border-left-color:${ac}}.title{color:${ac}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${escapeHtml(companyInfo.nom||"")}</div><div style="font-size:11px;color:#555">${[companyInfo.adresse,companyInfo.ville].filter(Boolean).map(escapeHtml).join(", ")}</div>${companyInfo.telephone?`<div style="font-size:11px">${escapeHtml(companyInfo.telephone)}</div>`:""}${companyInfo.courriel?`<div style="font-size:11px">${escapeHtml(companyInfo.courriel)}</div>`:""}</div><div style="text-align:right"><div style="font-size:22px;font-weight:900;color:#f97316">ÉTAT DE COMPTE</div><div style="font-size:11px;color:#555;margin-top:4px">Période: ${fd(dateFrom)} au ${fd(dateTo)}</div><div style="font-size:11px;color:#555;margin-top:2px">Émis le: ${fd(dk(new Date()))}</div></div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;margin-bottom:4px">Client</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>Date</th><th>Type</th><th>Référence</th><th style="text-align:right">Débit</th><th style="text-align:right">Crédit</th><th style="text-align:right">Solde courant</th></tr></thead><tbody>${rows||"<tr><td colspan='6' style='padding:12px;text-align:center;color:#888'>Aucune transaction dans cette période.</td></tr>"}</tbody></table>${totalDu>0.005?`<div style="margin-top:16px"><div style="font-size:11px;font-weight:700;color:#555;margin-bottom:6px;text-transform:uppercase">Sommaire de vieillissement au ${fd(dateTo)}</div><div class="aging"><div class="aging-cell"><div class="aging-label">Courant</div><div class="aging-val"style="color:#22c55e">$${courant.toFixed(2)}</div></div><div class="aging-cell"><div class="aging-label">30 jours</div><div class="aging-val"style="color:#eab308">$${j30.toFixed(2)}</div></div><div class="aging-cell"><div class="aging-label">60 jours</div><div class="aging-val"style="color:#f97316">$${j60.toFixed(2)}</div></div><div class="aging-cell"><div class="aging-label">90+ jours</div><div class="aging-val"style="color:#ef4444">$${j90.toFixed(2)}</div></div><div class="aging-cell"style="background:#f97316;color:#fff"><div class="aging-label"style="color:rgba(255,255,255,0.8)">Total dû</div><div class="aging-val">$${totalDu.toFixed(2)}</div></div></div><div class="msg">Veuillez faire parvenir votre paiement à votre plus tôt. Pour toute question, communiquez avec nous à ${escapeHtml(companyInfo.courriel||"")}.</div></div>`:"<div style='margin-top:12px;padding:10px;background:#f0fdf4;border-left:4px solid #22c55e;font-size:12px;color:#166534'>Aucun solde impayé — compte en règle.</div>"}<div class="ftr">${companyInfo.numeroTPS?`N° TPS: ${escapeHtml(companyInfo.numeroTPS)}`:""}${companyInfo.numeroTVQ?` | N° TVQ: ${escapeHtml(companyInfo.numeroTVQ)}`:""}${biqCredit}</div></body></html>`;
+ return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${L.title} — ${client?.entreprise||""}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}table{width:100%;border-collapse:collapse}th{background:#f97316;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.aging{display:flex;gap:0;margin-top:12px;border:1px solid #eee;border-radius:4px;overflow:hidden}.aging-cell{flex:1;padding:8px;text-align:center;border-right:1px solid #eee}.aging-cell:last-child{border-right:none}.aging-label{font-size:10px;color:#888;margin-bottom:2px}.aging-val{font-size:14px;font-weight:700}.msg{background:#fff9e6;border-left:4px solid #f97316;padding:12px 16px;margin-top:20px;font-size:12px;color:#555}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}th{background:${ac}}th{background:${ac}}.notes{border-left-color:${ac}}.title{color:${ac}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${escapeHtml(companyInfo.nom||"")}</div><div style="font-size:11px;color:#555">${[companyInfo.adresse,companyInfo.ville].filter(Boolean).map(escapeHtml).join(", ")}</div>${companyInfo.telephone?`<div style="font-size:11px">${escapeHtml(companyInfo.telephone)}</div>`:""}${companyInfo.courriel?`<div style="font-size:11px">${escapeHtml(companyInfo.courriel)}</div>`:""}</div><div style="text-align:right"><div style="font-size:22px;font-weight:900;color:#f97316">${L.title}</div><div style="font-size:11px;color:#555;margin-top:4px">${L.period}: ${fd(dateFrom)} ${isEN?"to":"au"} ${fd(dateTo)}</div><div style="font-size:11px;color:#555;margin-top:2px">${L.issued}: ${fd(dk(new Date()))}</div></div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;margin-bottom:4px">${L.clientLabel}</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>${L.colDate}</th><th>${L.colType}</th><th>${L.colRef}</th><th style="text-align:right">${L.colDebit}</th><th style="text-align:right">${L.colCredit}</th><th style="text-align:right">${L.colBalance}</th></tr></thead><tbody>${rows||`<tr><td colspan='6' style='padding:12px;text-align:center;color:#888'>${L.noTx}</td></tr>`}</tbody></table>${totalDu>0.005?`<div style="margin-top:16px"><div style="font-size:11px;font-weight:700;color:#555;margin-bottom:6px;text-transform:uppercase">${L.agingSummary} ${fd(dateTo)}</div><div class="aging"><div class="aging-cell"><div class="aging-label">${L.current}</div><div class="aging-val"style="color:#22c55e">$${courant.toFixed(2)}</div></div><div class="aging-cell"><div class="aging-label">${L.days30}</div><div class="aging-val"style="color:#eab308">$${j30.toFixed(2)}</div></div><div class="aging-cell"><div class="aging-label">${L.days60}</div><div class="aging-val"style="color:#f97316">$${j60.toFixed(2)}</div></div><div class="aging-cell"><div class="aging-label">${L.days90}</div><div class="aging-val"style="color:#ef4444">$${j90.toFixed(2)}</div></div><div class="aging-cell"style="background:#f97316;color:#fff"><div class="aging-label"style="color:rgba(255,255,255,0.8)">${L.totalDue}</div><div class="aging-val">$${totalDu.toFixed(2)}</div></div></div><div class="msg">${L.payMsg}</div></div>`:`<div style='margin-top:12px;padding:10px;background:#f0fdf4;border-left:4px solid #22c55e;font-size:12px;color:#166534'>${L.noBalance}</div>`}<div class="ftr">${companyInfo.numeroTPS?`N° TPS: ${escapeHtml(companyInfo.numeroTPS)}`:""}${companyInfo.numeroTVQ?` | N° TVQ: ${escapeHtml(companyInfo.numeroTVQ)}`:""}${biqCredit}</div></body></html>`;
 }
 
 function EtatDeCompteViewer({clientId,clients,factures,creditNotes,companyInfo,invoiceTemplate,onBack}){
  const t=useT();
  const T=useL();
- const client=clients.find(c=>c.id===clientId);
+ const client=clients.find(c=>String(c.id)===String(clientId));
  const now=dk(new Date());
  const firstOfYear=now.slice(0,4)+"-01-01";
  const [dateFrom,setDateFrom]=useState(firstOfYear);
  const [dateTo,setDateTo]=useState(now);
  const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:11,padding:"3px 6px",outline:"none",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"};
  const html=useMemo(()=>buildEtatDeCompteHTML({client,factures,creditNotes,dateFrom,dateTo,companyInfo,invoiceTemplate}),[client,factures,creditNotes,dateFrom,dateTo,companyInfo,invoiceTemplate]);
- return(<div style={{display:"flex",flexDirection:"column",gap:10}}><div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}><button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.back}</button><span style={{fontSize:14,fontWeight:700,color:t.text}}>État de compte</span>{client&&<span style={{fontSize:12,color:t.textMuted}}>— {client.entreprise}</span>}</div><div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:8,padding:"8px 12px"}}><span style={{fontSize:11,color:t.textMuted}}>Période :</span><input type="date"value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={inputS}/><span style={{fontSize:11,color:t.textMuted}}>au</span><input type="date"value={dateTo} onChange={e=>setDateTo(e.target.value)} style={inputS}/><button onClick={()=>openPDF(html)} style={{marginLeft:"auto",padding:"5px 14px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}> Imprimer / PDF</button></div><div style={{border:`1px solid ${t.cardBorder}`,borderRadius:8,overflow:"hidden",background:"#fff"}}><iframe srcDoc={html} style={{width:"100%",height:520,border:"none"}} title="État de compte"/></div></div>);
+ return(<div style={{display:"flex",flexDirection:"column",gap:10}}><div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}><button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.back}</button><span style={{fontSize:14,fontWeight:700,color:t.text}}>{T.etatTitle}</span>{client&&<span style={{fontSize:12,color:t.textMuted}}>— {client.entreprise}</span>}</div><div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:8,padding:"8px 12px"}}><span style={{fontSize:11,color:t.textMuted}}>{T.etatPeriod}</span><input type="date"value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={inputS}/><span style={{fontSize:11,color:t.textMuted}}>{T.etatTo}</span><input type="date"value={dateTo} onChange={e=>setDateTo(e.target.value)} style={inputS}/><button onClick={()=>openPDF(html)} style={{marginLeft:"auto",padding:"5px 14px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T.etatPrintPDF}</button></div><div style={{border:`1px solid ${t.cardBorder}`,borderRadius:8,overflow:"hidden",background:"#fff"}}><iframe srcDoc={html} style={{width:"100%",height:520,border:"none"}} title={T.etatTitle}/></div></div>);
 }
 
 // ── AGING REPORT ──
@@ -1755,26 +1781,37 @@ function AgingReport({factures,clients,creditNotes,companyInfo,apiConfig,showUpg
  setSelClients(new Set(sorted.map(r=>r.clientId)));
  };
 
- const sendBulkStatements=async()=>{
+ const sendBulkStatements=async(overrideRows)=>{
  if(!isBulkEmail){if(showUpgradePrompt)showUpgradePrompt("bulkEmailStatements");return;}
  const resendKey=apiConfig?.resendKey;
- if(!resendKey){alert("Clé API Resend non configurée. Ajoutez-la dans Paramètres > Courriel.");return;}
+ if(!resendKey){alert(T.agingNoResendKey);return;}
  const fromAddr=apiConfig?.resendFrom||"noreply@balanceiq.ca";
- const toSend=sorted.filter(r=>selClients.has(r.clientId)&&r.client?.courriel);
- const noEmail=sorted.filter(r=>selClients.has(r.clientId)&&!r.client?.courriel);
- if(!toSend.length){alert(noEmail.length?"Les clients sélectionnés n'ont pas d'adresse courriel.":"Sélectionnez au moins un client.");return;}
+ const candidateRows=overrideRows||sorted.filter(r=>selClients.has(r.clientId));
+ const toSend=candidateRows.filter(r=>r.client?.courriel);
+ const noEmail=candidateRows.filter(r=>!r.client?.courriel);
+ if(!toSend.length){alert(noEmail.length?T.agingNoEmailSel:T.agingSelectOne);return;}
  setBulkStatus({sending:true,current:0,total:toSend.length});
- const sent=[];const failed=[...noEmail.map(r=>({client:r.client,reason:"Pas de courriel"}))];
+ const sent=[];const failed=[...noEmail.map(r=>({client:r.client,reason:T===EN?"No email":"Pas de courriel"}))];
  const now=dk(new Date());
  const firstOfYear=now.slice(0,4)+"-01-01";
  for(let i=0;i<toSend.length;i++){
  const row=toSend[i];
  setBulkStatus({sending:true,current:i+1,total:toSend.length});
  try{
+ const isEN=row.client?.langue==="English";
  const html=buildEtatDeCompteHTML({client:row.client,factures,creditNotes:creditNotes||[],dateFrom:firstOfYear,dateTo:now,companyInfo});
- const subject=`État de compte — ${companyInfo.nom||"BalanceIQ"} — ${now}`;
- const body=`<p>Bonjour,</p><p>Veuillez trouver ci-joint votre état de compte au ${now}.</p><p>Solde dû :<strong>$${row.montantDu.toFixed(2)}</strong></p><p>Pour toute question, communiquez avec nous.</p><p>Cordialement,<br/>${companyInfo.nom||""}</p>`;
- const r=await window.api.email.sendResend({apiKey:resendKey,from:fromAddr,to:row.client.courriel,subject,html:body+`\n<hr/>\n${html}`,attachments:[]});
+ // Build PDF attachments for unpaid invoices
+ const attachments=[];
+ for(const fac of row.factures){
+  try{
+   const facHtml=buildFactureHTML({numero:fac.numero,date:fac.date,dateEcheance:fac.dateEcheance,statut:fac.statut,client:row.client,referenceClient:fac.referenceClient,lignes:fac.lignes||[],notes:fac.notes,totals:computeSoumTotals(fac.lignes||[]),companyInfo,invoiceTemplate,montantPaye:(fac.paiements||[]).reduce((s,p)=>s+(p.montant||0),0),acomptes:fac.acomptes||[]});
+   const b64=await window.api.pdf.toPDF(facHtml);
+   if(b64)attachments.push({filename:`${isEN?"Invoice":"Facture"}-${fac.numero||"draft"}.pdf`,content:b64,type:"application/pdf",disposition:"attachment"});
+  }catch(_){}
+ }
+ const subject=isEN?`Account Statement — ${companyInfo.nom||"BalanceIQ"} — ${now}`:`État de compte — ${companyInfo.nom||"BalanceIQ"} — ${now}`;
+ const body=isEN?`<p>Hello,</p><p>Please find attached your account statement as of ${now}.</p><p>Balance Due: <strong>$${row.montantDu.toFixed(2)}</strong></p>${attachments.length?`<p>${attachments.length} unpaid invoice${attachments.length!==1?"s":""} attached.</p>`:""}<p>For any questions, please contact us.</p><p>Best regards,<br/>${companyInfo.nom||""}</p>`:`<p>Bonjour,</p><p>Veuillez trouver ci-joint votre état de compte au ${now}.</p><p>Solde dû : <strong>$${row.montantDu.toFixed(2)}</strong></p>${attachments.length?`<p>${attachments.length} facture${attachments.length!==1?"s":""} impayée${attachments.length!==1?"s":""} jointe${attachments.length!==1?"s":""}.</p>`:""}<p>Pour toute question, communiquez avec nous.</p><p>Cordialement,<br/>${companyInfo.nom||""}</p>`;
+ const r=await window.api.email.sendResend({apiKey:resendKey,from:fromAddr,to:row.client.courriel,subject,html:body+`\n<hr/>\n${html}`,attachments});
  if(r?.success)sent.push(row.client);
  else failed.push({client:row.client,reason:r?.error||"Erreur inconnue"});
  }catch(e){failed.push({client:row.client,reason:e.message||"Erreur"});}
@@ -1791,16 +1828,16 @@ function AgingReport({factures,clients,creditNotes,companyInfo,apiConfig,showUpg
  const sendAllStatements=async()=>{
   if(!isBulkEmail){if(showUpgradePrompt)showUpgradePrompt("bulkEmailStatements");return;}
   const withEmail=sorted.filter(r=>r.client?.courriel);
-  if(!withEmail.length){alert("Aucun client avec adresse courriel.");return;}
-  if(!window.confirm(`Envoyer un état de compte à ${withEmail.length} client(s) avec un solde impayé?`))return;
+  if(!withEmail.length){alert(T.agingNoClientEmail);return;}
+  if(!window.confirm(T.agingConfirmSend(withEmail.length)))return;
   setSelClients(new Set(withEmail.map(r=>r.clientId)));
-  await sendBulkStatements();
+  await sendBulkStatements(withEmail);
  };
- return(<div style={{display:"flex",flexDirection:"column",gap:10}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}><span style={{fontSize:13.5,fontWeight:700,color:t.text}}>{T.agingTitle}</span><div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>{isBulkEmail&&selClients.size>0&&(<button onClick={sendBulkStatements} style={{padding:"4px 12px",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:10.5,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>Envoyer les états de compte ({selClients.size})</button>)}
- {isBulkEmail&&sorted.length>0&&selClients.size===0&&(<button onClick={sendAllStatements} style={{padding:"4px 12px",borderRadius:5,border:"1px solid rgba(249,115,22,0.35)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontWeight:600,fontSize:10.5}}>Envoi groupé fin de mois</button>)}
+ return(<div style={{display:"flex",flexDirection:"column",gap:10}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}><span style={{fontSize:13.5,fontWeight:700,color:t.text}}>{T.agingTitle}</span><div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>{isBulkEmail&&selClients.size>0&&(<button onClick={sendBulkStatements} style={{padding:"4px 12px",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:10.5,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T.agingBulkSend(selClients.size)}</button>)}
+ {isBulkEmail&&sorted.length>0&&selClients.size===0&&(<button onClick={sendAllStatements} style={{padding:"4px 12px",borderRadius:5,border:"1px solid rgba(249,115,22,0.35)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontWeight:600,fontSize:10.5}}>{T.agingEndOfMonth}</button>)}
  {!isBulkEmail&&sorted.length>0&&(<button onClick={()=>showUpgradePrompt&&showUpgradePrompt("bulkEmailStatements")} style={{padding:"4px 12px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"pointer",fontWeight:600,fontSize:10.5}}>
- États de compte</button>)}<div style={{display:"flex",gap:4}}><TabBtn active={viewMode==="sommaire"} onClick={()=>setViewMode("sommaire")}>{T.agingSummary}</TabBtn><TabBtn active={viewMode==="detail"} onClick={switchToDetail}>{T.agingDetailed}{!isDetailed&&" "}</TabBtn></div><span style={{fontSize:11,color:t.textMuted}}>au :</span><input type="date"value={asOf} onChange={e=>setAsOf(e.target.value)} style={inputS}/></div></div>{/* Bulk send status */}
- {bulkStatus?.sending&&<div style={{background:"rgba(249,115,22,0.08)",border:"1px solid rgba(249,115,22,0.2)",borderRadius:7,padding:"8px 12px",fontSize:11,color:"#f97316"}}>Envoi {bulkStatus.current}/{bulkStatus.total}…</div>}
+ {T.facAccountStatement}</button>)}<div style={{display:"flex",gap:4}}><TabBtn active={viewMode==="sommaire"} onClick={()=>setViewMode("sommaire")}>{T.agingSummary}</TabBtn><TabBtn active={viewMode==="detail"} onClick={switchToDetail}>{T.agingDetailed}{!isDetailed&&" "}</TabBtn></div><span style={{fontSize:11,color:t.textMuted}}>au :</span><input type="date"value={asOf} onChange={e=>setAsOf(e.target.value)} style={inputS}/></div></div>{/* Bulk send status */}
+ {bulkStatus?.sending&&<div style={{background:"rgba(249,115,22,0.08)",border:"1px solid rgba(249,115,22,0.2)",borderRadius:7,padding:"8px 12px",fontSize:11,color:"#f97316"}}>{T.agingSendingProg(bulkStatus.current,bulkStatus.total)}</div>}
  {bulkStatus?.done&&<div style={{background:"rgba(34,197,94,0.08)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:7,padding:"8px 12px",fontSize:11}}><span style={{color:"#22c55e",fontWeight:700}}>{bulkStatus.sent} envoyé{bulkStatus.sent!==1?"s":""}</span>{bulkStatus.failed.length>0&&<span style={{color:"#ef4444",marginLeft:10}}>{bulkStatus.failed.length} échec{bulkStatus.failed.length!==1?"s":""}: {bulkStatus.failed.map(f=>`${f.client?.entreprise||"?"} (${f.reason})`).join(", ")}</span>}<button onClick={()=>setBulkStatus(null)} style={{marginLeft:10,background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:11}}></button></div>}
  {sorted.length===0
  ?<div style={{textAlign:"center",padding:"32px 0",color:t.textMuted,fontSize:12}}>{T.agingNoUnpaid(asOf)}</div>:<div style={{overflowX:"auto"}}>{viewMode==="sommaire"?<table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}><thead><tr style={{borderBottom:`2px solid ${t.dividerMid}`}}>{isBulkEmail&&<th style={{width:28,padding:"5px 4px"}}><input type="checkbox"checked={sorted.length>0&&selClients.size===sorted.length} onChange={e=>e.target.checked?selectAll():setSelClients(new Set())} style={{accentColor:"#f97316"}}/></th>}<th style={{textAlign:"left",padding:"5px 8px"}}><SortHd col="client">Client</SortHd></th><th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="montantDu"align="right">{T.agingAmountDue}</SortHd></th><th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="courant"align="right"color="#9ca3af">{T.agingCurrent}</SortHd></th><th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="j30"align="right"color="#eab308">{T.aging30}</SortHd></th><th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="j60"align="right"color="#f97316">{T.aging60}</SortHd></th><th style={{textAlign:"right",padding:"5px 8px"}}><SortHd col="j90"align="right"color="#ef4444">{T.aging90}</SortHd></th><th style={{width:60,padding:"5px 4px"}}/></tr></thead><tbody>{sorted.map(row=>(<tr key={row.clientId} style={{borderBottom:`1px solid ${t.divider}`}}>{isBulkEmail&&<td style={{padding:"4px",textAlign:"center"}}><input type="checkbox"checked={selClients.has(row.clientId)} onChange={()=>toggleClientSel(row.clientId)} style={{accentColor:"#f97316",cursor:"pointer"}}/></td>}<td style={{padding:"6px 8px",color:t.text,fontWeight:600}}>{row.client?.entreprise||"Client inconnu"}<span style={{fontSize:9,color:t.textMuted,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",marginLeft:5}}>{row.client?.code||""}</span></td><td style={{padding:"6px 8px",textAlign:"right",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontWeight:700,color:t.text}}>{fmt(row.montantDu)}</td><MonoCell val={row.courant} color={t.textSub}/><MonoCell val={row.j30} color="#eab308"bold={row.j30>0}/><MonoCell val={row.j60} color="#f97316"bold={row.j60>0}/><MonoCell val={row.j90} color="#ef4444"bold={row.j90>0}/><td style={{padding:"4px 6px",textAlign:"right"}}><button onClick={()=>setEtatClient(row.clientId)} style={{fontSize:9,padding:"2px 7px",borderRadius:4,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600}}>{T.facAccountStatement}</button></td></tr>))}</tbody><tfoot><tr style={{borderTop:`2px solid ${t.dividerMid}`,background:t.section}}>{isBulkEmail&&<td/>}<td style={{padding:"6px 8px",fontWeight:700,fontSize:12,color:t.text}}>TOTAL</td><td style={{padding:"6px 8px",textAlign:"right",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontWeight:900,fontSize:12,color:t.text}}>{fmt(totals.montantDu)}</td><MonoCell val={totals.courant} color={t.textSub} bold/><MonoCell val={totals.j30} color="#eab308"bold/><MonoCell val={totals.j60} color="#f97316"bold/><MonoCell val={totals.j90} color="#ef4444"bold/><td/></tr></tfoot></table>:<table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}><thead><tr style={{borderBottom:`2px solid ${t.dividerMid}`}}><th style={{textAlign:"left",padding:"5px 8px",color:t.textMuted,fontWeight:600,fontSize:10}}>Client / # Facture</th><th style={{textAlign:"left",padding:"5px 8px",color:t.textMuted,fontWeight:600,fontSize:10}}>Date</th><th style={{textAlign:"right",padding:"5px 8px",color:t.textMuted,fontWeight:600,fontSize:10}}>Total</th><th style={{textAlign:"right",padding:"5px 8px",color:"#9ca3af",fontWeight:600,fontSize:10}}>{T.agingCurrent}</th><th style={{textAlign:"right",padding:"5px 8px",color:"#eab308",fontWeight:600,fontSize:10}}>{T.aging30}</th><th style={{textAlign:"right",padding:"5px 8px",color:"#f97316",fontWeight:600,fontSize:10}}>{T.aging60}</th><th style={{textAlign:"right",padding:"5px 8px",color:"#ef4444",fontWeight:600,fontSize:10}}>{T.aging90}</th></tr></thead><tbody>{sorted.map(row=>{
