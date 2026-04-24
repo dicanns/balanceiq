@@ -367,10 +367,12 @@ const PLATFORM_COLUMN_HINTS={
  ubereats:{dateHints:['date','payment date','payout date'],amountHints:['payout','total','net payout','amount']},
  skip:{dateHints:['date','payment date','payout date'],amountHints:['net payout','payout','amount','total']},
 };
+const CSV_FORMULA_RE=/^[=+\-@\t\r]/;
+function sanitizeCSVCell(v){return CSV_FORMULA_RE.test(v)?`'${v}`:v;}
 function parseCSVText(text){
  const lines=text.split(/\r?\n/).filter(l=>l.trim());
  if(lines.length<2)return{headers:[],rows:[]};
- const parseRow=line=>{const r=[];let cur='',inQ=false;for(const ch of line){if(ch==='"'){inQ=!inQ;}else if(ch===','&&!inQ){r.push(cur.trim());cur='';}else cur+=ch;}r.push(cur.trim());return r;};
+ const parseRow=line=>{const r=[];let cur='',inQ=false;for(const ch of line){if(ch==='"'){inQ=!inQ;}else if(ch===','&&!inQ){r.push(sanitizeCSVCell(cur.trim()));cur='';}else cur+=ch;}r.push(sanitizeCSVCell(cur.trim()));return r;};
   const headers=parseRow(lines[0]).map(h=>h.replace(/^"|"$/g,'').trim());
   const rows=lines.slice(1).map(l=>{const vals=parseRow(l);const obj={};headers.forEach((h,i)=>{obj[h]=(vals[i]??'').replace(/^"|"$/g,'').trim();});return obj;});
   return{headers,rows};
@@ -444,6 +446,7 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
   };
   const handleFile=e=>{
     const file=e.target.files[0];if(!file)return;e.target.value='';
+    if(file.size>10*1024*1024){setImportMsg('Fichier trop volumineux (max 10 Mo).');return;}
     const pid=pidRef.current;
     const reader=new FileReader();
     reader.onload=ev=>{
@@ -1366,7 +1369,7 @@ function ComptabiliteExport({factures,clients,produits,categories,companyInfo,on
   const buildFacRows=()=>{
     const hdr=["Date","# Facture","Code client","Nom client","Code produit","Catégorie","# Compte revenu","Description","Quantité","Prix unitaire","Remise %","Sous-total","TPS","TVQ","Total"];
     const data=[];
-    const facs=factures.filter(f=>!["Annulée","Brouillon"].includes(f.statut)&&(!dateFrom||f.date>=dateFrom)&&(!dateTo||f.date<=dateTo));
+    const facs=factures.filter(f=>!["Annulée","Brouillon"].includes(f.statut)&&f.documentType!=="proforma"&&(!dateFrom||f.date>=dateFrom)&&(!dateTo||f.date<=dateTo));
     for(const fac of facs){const cl=clients.find(c=>c.id===fac.clientId);for(const l of fac.lignes||[]){const prod=produits.find(p=>p.id===l.produitId);const cat=categories.find(c=>c.id===prod?.categorieId);const st=(l.prixUnitaire||0)*(l.quantite||0)*(1-(l.remise||0)/100);const tps=l.tps!==false?st*0.05:0;const tvq=l.tvq!==false?st*0.09975:0;data.push([fac.date||"",fac.numero||"",cl?.code||"",cl?.entreprise||"",prod?.code||"",cat?.nom||"",cat?.compteRevenu||"",l.description||"",l.quantite||0,parseFloat((l.prixUnitaire||0).toFixed(2)),parseFloat((l.remise||0).toFixed(1)),parseFloat(st.toFixed(2)),parseFloat(tps.toFixed(2)),parseFloat(tvq.toFixed(2)),parseFloat((st+tps+tvq).toFixed(2))]);}}
     return{hdr,data};
   };
@@ -1382,7 +1385,7 @@ function ComptabiliteExport({factures,clients,produits,categories,companyInfo,on
     const clientIds=[...new Set(factures.map(f=>f.clientId))];
     for(const cid of clientIds){
       const cl=clients.find(c=>c.id===cid);
-      const facs=factures.filter(f=>f.clientId===cid&&!["Annulée","Brouillon"].includes(f.statut));
+      const facs=factures.filter(f=>f.clientId===cid&&!["Annulée","Brouillon"].includes(f.statut)&&f.documentType!=="proforma");
       let soldOuv=0;if(dateFrom){for(const f of facs){if(f.date>=dateFrom)continue;const tot=computeSoumTotals(f.lignes||[]).total;const pBefore=(f.paiements||[]).filter(p=>p.date<dateFrom).reduce((s,p)=>s+(p.montant||0),0);soldOuv+=tot-pBefore;}}
       const facture=facs.filter(f=>(!dateFrom||f.date>=dateFrom)&&(!dateTo||f.date<=dateTo)).reduce((s,f)=>s+computeSoumTotals(f.lignes||[]).total,0);
       const credited=facs.reduce((s,f)=>s+(f.paiements||[]).filter(p=>p.fromCredit&&(!dateFrom||p.date>=dateFrom)&&(!dateTo||p.date<=dateTo)).reduce((ss,p)=>ss+(p.montant||0),0),0);
@@ -1399,7 +1402,7 @@ function ComptabiliteExport({factures,clients,produits,categories,companyInfo,on
   const buildAcombaRows=()=>{
     const hdr=["Date","Journal","Référence","Description","Compte GL","Débit","Crédit","Note"];
     const data=[];
-    const facs=factures.filter(f=>!["Annulée","Brouillon"].includes(f.statut)&&(!dateFrom||f.date>=dateFrom)&&(!dateTo||f.date<=dateTo));
+    const facs=factures.filter(f=>!["Annulée","Brouillon"].includes(f.statut)&&f.documentType!=="proforma"&&(!dateFrom||f.date>=dateFrom)&&(!dateTo||f.date<=dateTo));
     for(const fac of facs){
       const cl=clients.find(c=>c.id===fac.clientId);
       const clName=cl?.entreprise||"";
@@ -1432,7 +1435,7 @@ function ComptabiliteExport({factures,clients,produits,categories,companyInfo,on
   const buildSage50Rows=()=>{
     const hdr=["Date","Source","Comment","Account Number","Account Description","Debit","Credit"];
     const data=[];
-    const facs=factures.filter(f=>!["Annulée","Brouillon"].includes(f.statut)&&(!dateFrom||f.date>=dateFrom)&&(!dateTo||f.date<=dateTo));
+    const facs=factures.filter(f=>!["Annulée","Brouillon"].includes(f.statut)&&f.documentType!=="proforma"&&(!dateFrom||f.date>=dateFrom)&&(!dateTo||f.date<=dateTo));
     for(const fac of facs){
       const cl=clients.find(c=>c.id===fac.clientId);
       const clName=cl?.entreprise||"";
@@ -1649,7 +1652,7 @@ function buildEtatDeCompteHTML({client,factures,creditNotes,dateFrom,dateTo,comp
 
  // Build transaction list in date order
  const txns=[];
- for(const fac of factures.filter(f=>f.clientId===client?.id&&!["Annulée","Brouillon"].includes(f.statut))){
+ for(const fac of factures.filter(f=>f.clientId===client?.id&&!["Annulée","Brouillon"].includes(f.statut)&&f.documentType!=="proforma")){
  const tot=computeSoumTotals(fac.lignes).total;
  if(fac.date>=dateFrom&&fac.date<=dateTo)txns.push({date:fac.date,type:"Facture",ref:fac.numero,debit:tot,credit:0});
  for(const p of (fac.paiements||[])){
@@ -1672,7 +1675,7 @@ function buildEtatDeCompteHTML({client,factures,creditNotes,dateFrom,dateTo,comp
  // Aging summary as of dateTo
  const asOfDate=new Date(dateTo+"T12:00:00");
  let courant=0,j30=0,j60=0,j90=0;
- for(const fac of factures.filter(f=>f.clientId===client?.id&&!["Payée","Créditée","Annulée","Brouillon"].includes(f.statut))){
+ for(const fac of factures.filter(f=>f.clientId===client?.id&&!["Payée","Créditée","Annulée","Brouillon"].includes(f.statut)&&f.documentType!=="proforma")){
  const paye=(fac.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);
  const solde=computeSoumTotals(fac.lignes).total-paye;
  if(solde<=0.005)continue;
@@ -7185,7 +7188,7 @@ export default function App(){
  {label}</button>))}</div>);
  })()}<div style={{width:'100%',minWidth:0}}>{/* ENTREPRISE */}
  {configSubTab==="entreprise"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}><CfgCard id="companyInfo" title={""+T.cfgCompanyInfo} cfgExpanded={cfgExpanded} onToggle={toggleCfg}><div style={{display:"flex",flexDirection:"column",gap:6}}>{/* Logo */}<div style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0",borderBottom:`1px solid ${t.divider}`,marginBottom:2}}><div style={{width:56,height:56,borderRadius:7,border:`1px dashed ${t.cardBorder}`,background:t.section,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",flexShrink:0}}>{companyInfo.logo
- ?<img src={companyInfo.logo} alt="Logo" style={{width:"100%",height:"100%",objectFit:"contain"}}/>:<span style={{fontSize:20}}></span>}</div><div><div style={{fontSize:11.5,fontWeight:600,color:t.text,marginBottom:4}}>{T.cfgCompanyLogo}</div><div style={{display:"flex",gap:6}}><label style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T.cfgChooseImage}<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>saveCompanyInfo({...companyInfo,logo:ev.target.result});reader.readAsDataURL(file);e.target.value="";}}/></label>{companyInfo.logo&&<button onClick={()=>saveCompanyInfo({...companyInfo,logo:null})} style={{padding:"4px 10px",borderRadius:5,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:600,fontSize:11}}>Supprimer</button>}</div><div style={{fontSize:9.5,color:t.textMuted,marginTop:3}}>{T.cfgLogoHint}</div></div></div>{/* Text fields */}
+ ?<img src={companyInfo.logo} alt="Logo" style={{width:"100%",height:"100%",objectFit:"contain"}}/>:<span style={{fontSize:20}}></span>}</div><div><div style={{fontSize:11.5,fontWeight:600,color:t.text,marginBottom:4}}>{T.cfgCompanyLogo}</div><div style={{display:"flex",gap:6}}><label style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T.cfgChooseImage}<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const file=e.target.files[0];if(!file)return;if(file.size>2*1024*1024){alert('Image trop volumineuse (max 2 Mo).');e.target.value="";return;}const reader=new FileReader();reader.onload=ev=>saveCompanyInfo({...companyInfo,logo:ev.target.result});reader.readAsDataURL(file);e.target.value="";}}/></label>{companyInfo.logo&&<button onClick={()=>saveCompanyInfo({...companyInfo,logo:null})} style={{padding:"4px 10px",borderRadius:5,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:600,fontSize:11}}>Supprimer</button>}</div><div style={{fontSize:9.5,color:t.textMuted,marginTop:3}}>{T.cfgLogoHint}</div></div></div>{/* Text fields */}
                 {[
                   [T.cfgCompanyName,"nom","text",true],
                   [T.cfgAddress,"adresse","text",false],

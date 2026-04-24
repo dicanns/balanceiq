@@ -72,6 +72,17 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'invalid_signature' }, 400);
   }
 
+  // Dedup: reject if this event ID was already processed
+  const { error: dedupErr } = await supabase
+    .from('pad_webhook_events')
+    .insert({ event_id: event.id })
+    .single();
+  if (dedupErr) {
+    // Unique constraint violation = already processed
+    console.log('Duplicate webhook event ignored:', event.id);
+    return json({ received: true, duplicate: true });
+  }
+
   try {
     switch (event.type) {
       case 'checkout.session.completed': {
