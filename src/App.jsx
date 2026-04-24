@@ -1733,7 +1733,8 @@ function AgingReport({factures,clients,creditNotes,companyInfo,apiConfig,showUpg
  const [asOf,setAsOf]=useState(dk(new Date()));
  const [sortCol,setSortCol]=useState("montantDu");
  const [sortDir,setSortDir]=useState(-1);
- const [viewMode,setViewMode]=useState("sommaire"); //"sommaire"|"detail"const [expanded,setExpanded]=useState(new Set());
+ const [viewMode,setViewMode]=useState("sommaire");
+ const [expanded,setExpanded]=useState(new Set());
  const [etatClient,setEtatClient]=useState(null); // {clientId, client} | null — show état de compte viewer
  const [selClients,setSelClients]=useState(new Set()); // selected for bulk email
  const [bulkStatus,setBulkStatus]=useState(null); // null | {sending,current,total} | {done,sent,failed:[]}
@@ -1786,7 +1787,7 @@ function AgingReport({factures,clients,creditNotes,companyInfo,apiConfig,showUpg
  const resendKey=apiConfig?.resendKey;
  if(!resendKey){alert(T.agingNoResendKey);return;}
  const fromAddr=apiConfig?.resendFrom||"noreply@balanceiq.ca";
- const candidateRows=overrideRows||sorted.filter(r=>selClients.has(r.clientId));
+ const candidateRows=Array.isArray(overrideRows)?overrideRows:sorted.filter(r=>selClients.has(r.clientId));
  const toSend=candidateRows.filter(r=>r.client?.courriel);
  const noEmail=candidateRows.filter(r=>!r.client?.courriel);
  if(!toSend.length){alert(noEmail.length?T.agingNoEmailSel:T.agingSelectOne);return;}
@@ -1833,7 +1834,7 @@ function AgingReport({factures,clients,creditNotes,companyInfo,apiConfig,showUpg
   setSelClients(new Set(withEmail.map(r=>r.clientId)));
   await sendBulkStatements(withEmail);
  };
- return(<div style={{display:"flex",flexDirection:"column",gap:10}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}><span style={{fontSize:13.5,fontWeight:700,color:t.text}}>{T.agingTitle}</span><div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>{isBulkEmail&&selClients.size>0&&(<button onClick={sendBulkStatements} style={{padding:"4px 12px",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:10.5,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T.agingBulkSend(selClients.size)}</button>)}
+ return(<div style={{display:"flex",flexDirection:"column",gap:10}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}><span style={{fontSize:13.5,fontWeight:700,color:t.text}}>{T.agingTitle}</span><div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>{isBulkEmail&&selClients.size>0&&(<button onClick={()=>sendBulkStatements()} style={{padding:"4px 12px",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:10.5,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T.agingBulkSend(selClients.size)}</button>)}
  {isBulkEmail&&sorted.length>0&&selClients.size===0&&(<button onClick={sendAllStatements} style={{padding:"4px 12px",borderRadius:5,border:"1px solid rgba(249,115,22,0.35)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontWeight:600,fontSize:10.5}}>{T.agingEndOfMonth}</button>)}
  {!isBulkEmail&&sorted.length>0&&(<button onClick={()=>showUpgradePrompt&&showUpgradePrompt("bulkEmailStatements")} style={{padding:"4px 12px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"pointer",fontWeight:600,fontSize:10.5}}>
  {T.facAccountStatement}</button>)}<div style={{display:"flex",gap:4}}><TabBtn active={viewMode==="sommaire"} onClick={()=>setViewMode("sommaire")}>{T.agingSummary}</TabBtn><TabBtn active={viewMode==="detail"} onClick={switchToDetail}>{T.agingDetailed}{!isDetailed&&" "}</TabBtn></div><span style={{fontSize:11,color:t.textMuted}}>au :</span><input type="date"value={asOf} onChange={e=>setAsOf(e.target.value)} style={inputS}/></div></div>{/* Bulk send status */}
