@@ -59,6 +59,7 @@ const UI = {
     closeAction: 'Fermer la période',
     periodSaved: 'Période enregistrée.',
     periodFiled: 'Déclaration marquée comme produite.',
+    vaultBlocker: (n) => `Fermeture bloquée : ${n} facture(s) d'achat >100 $ avec CTI sans document au coffre-fort. Joignez les pièces justificatives avant de continuer.`,
   },
   en: {
     title: 'GST/QST Filings',
@@ -118,6 +119,7 @@ const UI = {
     closeAction: 'Close period',
     periodSaved: 'Period saved.',
     periodFiled: 'Filing marked as submitted.',
+    vaultBlocker: (n) => `Close blocked: ${n} bill(s) over $100 with ITC claimed have no vault document. Attach supporting documents before continuing.`,
   },
 };
 
@@ -247,7 +249,8 @@ export default function TaxPeriodTab({ lang }) {
   useEffect(() => {
     if (!taxAvailable) return;
     loadPeriods();
-  }, [loadPeriods, taxAvailable]);
+    loadSuspense();
+  }, [loadPeriods, loadSuspense, taxAvailable]);
 
   useEffect(() => {
     if (!taxAvailable) return;
@@ -271,6 +274,28 @@ export default function TaxPeriodTab({ lang }) {
 
   const doSave = useCallback(async () => {
     if (!window.api?.tax || !computed) return;
+
+    // Hard-block: CTI bills >$100 without a vault document
+    try {
+      const bills = await window.api.bills.list({ paid: null });
+      if (Array.isArray(bills)) {
+        const blocked = bills.filter(b => {
+          if ((parseFloat(b.tps_paid) || 0) + (parseFloat(b.tvq_paid) || 0) <= 0) return false;
+          if ((parseFloat(b.amount) || 0) <= 100) return false;
+          if (b.vault_document_id) return false;
+          // Only bills in the period range
+          const d = b.bill_date || b.created_at || '';
+          const ym = d.slice(0, 7);
+          return ym >= pStart && ym <= pEnd;
+        });
+        if (blocked.length > 0) {
+          setFlash(T.vaultBlocker(blocked.length));
+          setTimeout(() => setFlash(''), 8000);
+          return;
+        }
+      }
+    } catch (_) {}
+
     setLoading(true);
     try {
       await window.api.tax.period.save({
@@ -415,6 +440,20 @@ export default function TaxPeriodTab({ lang }) {
       <div style={{ fontSize: 10, color: '#94a3b8', padding: '7px 10px', borderRadius: 5, background: 'rgba(249,115,22,0.06)', border: '1px solid rgba(249,115,22,0.18)', marginBottom: 12, lineHeight: 1.5 }}>
         {T.disclaimer}
       </div>
+
+      {/* Suspense balance widget */}
+      {suspense.length > 0 && (
+        <div
+          onClick={() => setSubTab('suspense')}
+          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 6, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', marginBottom: 12, cursor: 'pointer' }}>
+          <span style={{ fontSize: 18, fontWeight: 900, color: '#f59e0b', fontVariantNumeric: 'tabular-nums' }}>{suspense.length}</span>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b' }}>{T.suspenseCount}</div>
+            <div style={{ fontSize: 10, color: '#78716c' }}>{T.suspenseDesc?.slice(0, 80)}…</div>
+          </div>
+          <span style={{ marginLeft: 'auto', fontSize: 11, color: '#f59e0b' }}>→</span>
+        </div>
+      )}
 
       {/* Flash */}
       {flash && <div style={{ fontSize: 11, color: '#10b981', padding: '5px 10px', borderRadius: 5, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', marginBottom: 10 }}>{flash}</div>}

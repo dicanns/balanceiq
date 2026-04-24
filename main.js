@@ -2331,6 +2331,22 @@ ipcMain.handle('pad:saveConfig', async (_e, { org_id, webhook_secret }) => {
   }
 });
 
+ipcMain.handle('pad:runFollowup', async (_e, { org_id, resend_api_key, resend_from, operator_email }) => {
+  if (!SUPABASE_URL) return { error: 'no_supabase' };
+  try {
+    const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+    const res = await net.fetch(`${PAD_BASE_URL}/pad-followup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${anonKey}` },
+      body: JSON.stringify({ org_id, resend_api_key, resend_from, operator_email }),
+    });
+    if (!res.ok) { const t = await res.text(); return { error: 'request_failed', message: t }; }
+    return await res.json();
+  } catch (e) {
+    return { error: 'network_error', message: String(e?.message || e) };
+  }
+});
+
 // ── Accounting Export (Acomba / Sage 50 / QuickBooks) ─────────────────────
 
 ipcMain.handle('ledger:exportAcomba', (_e, opts = {}) => {

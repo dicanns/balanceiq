@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 
 const T = {
   fr: {
+    disclaimer: 'BalanceIQ produit ces calculs à titre indicatif. La responsabilité de la conformité fiscale incombe au contribuable. Consultez votre comptable avant toute déclaration.',
     title: 'Immobilisations & DPA',
     addAsset: 'Ajouter un bien',
     noAssets: 'Aucune immobilisation enregistree',
@@ -40,6 +41,7 @@ const T = {
     },
   },
   en: {
+    disclaimer: 'BalanceIQ produces these calculations for informational purposes. Tax compliance responsibility rests with the taxpayer. Consult your accountant before filing.',
     title: 'Fixed Assets & CCA',
     addAsset: 'Add asset',
     noAssets: 'No assets recorded',
@@ -185,6 +187,11 @@ export default function ImmobilisationsTab({ lang = 'fr', canUsePro = false, onU
             + {L.addAsset}
           </button>
         )}
+      </div>
+
+      {/* Disclaimer */}
+      <div style={{ fontSize: 10, color: '#94a3b8', padding: '7px 10px', borderRadius: 5, background: 'rgba(249,115,22,0.06)', border: '1px solid rgba(249,115,22,0.18)', marginBottom: 12, lineHeight: 1.5 }}>
+        {L.disclaimer}
       </div>
 
       {/* Add/Edit form */}

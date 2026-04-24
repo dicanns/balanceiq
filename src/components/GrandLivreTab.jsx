@@ -60,6 +60,7 @@ const UI = {
   fr: {
     tabJournal:       'Journal',
     tabBalance:       'Balance de vérification',
+    tabControl:       'Comptes de contrôle',
     tabPeriods:       'Périodes',
     tabExport:        'Exporter',
     ledgerExport:     'Exporter le journal',
@@ -139,6 +140,7 @@ const UI = {
   en: {
     tabJournal:       'Journal',
     tabBalance:       'Trial Balance',
+    tabControl:       'Control Accounts',
     tabPeriods:       'Periods',
     tabExport:        'Export',
     ledgerExport:     'Export journal',
@@ -931,6 +933,151 @@ function PeriodsTab({ lang }) {
   );
 }
 
+// ── Control Account Variance Report ───────────────────────────────────────────
+
+function ControlVarianceTab({ lang }) {
+  const isFr = lang !== 'en';
+  const [asOfDate, setAsOfDate] = useState(todayStr());
+  const [rows, setRows] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  async function generate() {
+    setLoading(true);
+    try {
+      const glData = await window.api.ledger.trialBalance(asOfDate) || [];
+      const glMap = {};
+      for (const r of glData) glMap[r.account_number] = r.balance_cents;
+
+      // AR subledger: sum open invoice balances
+      let arCents = null;
+      try {
+        const raw = await window.api.storage.get('dicann-fac-factures');
+        if (raw?.value) {
+          const factures = JSON.parse(raw.value);
+          let sum = 0;
+          for (const f of factures) {
+            if (['Payée','Créditée','Annulée','Brouillon'].includes(f.statut)) continue;
+            if (f.documentType === 'proforma') continue;
+            let lineSub = 0;
+            for (const l of (f.lignes || [])) {
+              const u = parseFloat(l.prixUnitaire) || 0;
+              const q = parseFloat(l.qte) || 0;
+              const base = u * q;
+              const tps = l.tps !== false ? base * 0.05 : 0;
+              const tvq = l.tvq !== false ? base * 0.09975 : 0;
+              lineSub += base + tps + tvq;
+            }
+            const paid = (f.paiements || []).reduce((s, p) => s + (parseFloat(p.montant) || 0), 0);
+            sum += Math.max(0, lineSub - paid);
+          }
+          arCents = Math.round(sum * 100);
+        }
+      } catch (_) {}
+
+      // AP subledger: sum unpaid bills
+      let apCents = null;
+      try {
+        const bills = await window.api.bills.list({ paid: false });
+        if (Array.isArray(bills)) {
+          apCents = Math.round(bills.reduce((s, b) => s + (parseFloat(b.amount) || 0), 0) * 100);
+        }
+      } catch (_) {}
+
+      const ACCOUNTS = [
+        { num: '1100', fr: 'Comptes clients (AR)',         en: 'Accounts Receivable (AR)',    sub: arCents,  type: 'asset',     expectZero: false },
+        { num: '2010', fr: 'Comptes fournisseurs (AP)',     en: 'Accounts Payable (AP)',        sub: apCents,  type: 'liability', expectZero: false },
+        { num: '1010', fr: 'Encaisse (banque opération)',   en: 'Cash (operating bank)',        sub: null,     type: 'asset',     expectZero: false },
+        { num: '1050', fr: 'Effacement Stripe',             en: 'Stripe Clearing',             sub: null,     type: 'asset',     expectZero: true  },
+        { num: '1090', fr: 'Suspense caisse',               en: 'Cash Expense Suspense',       sub: null,     type: 'asset',     expectZero: true  },
+        { num: '2300', fr: 'Acomptes clients',              en: 'Customer Deposits',           sub: null,     type: 'liability', expectZero: false },
+      ];
+
+      const result = ACCOUNTS.map(a => {
+        const gl = a.num in glMap ? glMap[a.num] : null;
+        // For liabilities: GL balance_cents is debit−credit (negative = credit-normal = healthy)
+        // For comparison we use absolute value for AP
+        let variance = null;
+        if (gl !== null && a.sub !== null) {
+          const glComparable = a.type === 'liability' ? -gl : gl;
+          variance = glComparable - a.sub;
+        }
+        let status = 'na';
+        if (gl !== null && a.sub !== null) status = variance === 0 ? 'match' : 'variance';
+        if (gl !== null && a.sub === null && a.expectZero) status = gl === 0 ? 'zero' : 'nonzero';
+        return { ...a, gl, variance, status };
+      });
+
+      setRows(result);
+    } catch (_) {}
+    setLoading(false);
+  }
+
+  function fmtC(cents) {
+    if (cents === null) return '—';
+    const abs = Math.abs(cents / 100);
+    const s = abs.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    return cents < 0 ? `(${s})` : s;
+  }
+
+  const th = { fontSize: 11, fontWeight: 700, color: '#94a3b8', padding: '6px 10px', textAlign: 'left', borderBottom: '1px solid #2d3148', whiteSpace: 'nowrap' };
+  const td = { fontSize: 12, padding: '7px 10px', borderBottom: '1px solid #1e293b' };
+
+  return (
+    <div>
+      <div style={{ fontSize: 10, color: '#94a3b8', padding: '7px 10px', borderRadius: 5, background: 'rgba(249,115,22,0.06)', border: '1px solid rgba(249,115,22,0.18)', marginBottom: 14, lineHeight: 1.5 }}>
+        {isFr ? 'BalanceIQ produit ces calculs à titre indicatif. La responsabilité de la conformité fiscale incombe au contribuable. Consultez votre comptable avant toute déclaration.' : 'BalanceIQ produces these calculations for informational purposes. Tax compliance responsibility rests with the taxpayer. Consult your accountant before filing.'}
+      </div>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+        <label style={{ color: '#94a3b8', fontSize: 13 }}>{isFr ? 'Au' : 'As of'}</label>
+        <input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)}
+          style={{ background: '#0f1117', border: '1px solid #2d3148', borderRadius: 6, color: '#f1f5f9', padding: '6px 10px', fontSize: 13 }} />
+        <button onClick={generate} disabled={loading} style={btnPrimary}>{loading ? '…' : (isFr ? 'Générer' : 'Generate')}</button>
+      </div>
+
+      {rows && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={th}>{isFr ? 'Compte' : 'Account'}</th>
+                <th style={{ ...th, textAlign: 'right' }}>{isFr ? 'Solde GL' : 'GL Balance'}</th>
+                <th style={{ ...th, textAlign: 'right' }}>{isFr ? 'Sous-livre' : 'Subledger'}</th>
+                <th style={{ ...th, textAlign: 'right' }}>{isFr ? 'Écart' : 'Variance'}</th>
+                <th style={th}>{isFr ? 'État' : 'Status'}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(r => {
+                const glDisplay = r.type === 'liability' ? (r.gl !== null ? -r.gl : null) : r.gl;
+                let statusEl;
+                if (r.status === 'match')    statusEl = <span style={{ color: '#22c55e', fontWeight: 700 }}>✓ {isFr ? 'Équilibré' : 'Match'}</span>;
+                else if (r.status === 'variance') statusEl = <span style={{ color: '#ef4444', fontWeight: 700 }}>⚠ {isFr ? 'Écart' : 'Variance'}</span>;
+                else if (r.status === 'zero')  statusEl = <span style={{ color: '#22c55e', fontWeight: 700 }}>✓ {isFr ? 'Zéro' : 'Zero'}</span>;
+                else if (r.status === 'nonzero') statusEl = <span style={{ color: '#f59e0b', fontWeight: 700 }}>⚠ {isFr ? 'Non-zéro' : 'Non-zero'}</span>;
+                else statusEl = <span style={{ color: '#64748b' }}>—</span>;
+                return (
+                  <tr key={r.num}>
+                    <td style={td}><span style={{ color: '#64748b', marginRight: 6 }}>{r.num}</span>{isFr ? r.fr : r.en}</td>
+                    <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: glDisplay === null ? '#334155' : '#f1f5f9' }}>{fmtC(glDisplay)}</td>
+                    <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: r.sub === null ? '#334155' : '#f1f5f9' }}>{fmtC(r.sub)}</td>
+                    <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: r.variance === null ? '#334155' : r.variance === 0 ? '#22c55e' : '#ef4444' }}>{r.variance !== null ? fmtC(r.variance) : '—'}</td>
+                    <td style={td}>{statusEl}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <p style={{ fontSize: 10, color: '#475569', marginTop: 10, fontStyle: 'italic' }}>
+            {isFr
+              ? 'Sous-livre AR calculé depuis les factures ouvertes. AP calculé depuis les factures fournisseurs non payées. Stripe Clearing et Suspense doivent tendre vers zéro.'
+              : 'AR subledger computed from open invoices. AP computed from unpaid supplier bills. Stripe Clearing and Suspense should trend to zero.'}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main GrandLivreTab ─────────────────────────────────────────────────────────
 
 // ── Export Tab (Acomba / Sage 50 / QuickBooks) ─────────────────────────────
@@ -1003,6 +1150,7 @@ export default function GrandLivreTab({ lang = 'fr' }) {
         {[
           ['journal', t.tabJournal],
           ['balance', t.tabBalance],
+          ['control', t.tabControl],
           ['periods', t.tabPeriods],
           ['export',  t.tabExport],
         ].map(([key, label]) => (
@@ -1019,10 +1167,11 @@ export default function GrandLivreTab({ lang = 'fr' }) {
         ))}
       </div>
 
-      {subTab === 'journal' && <JournalTab lang={lang} accounts={accounts} />}
-      {subTab === 'balance' && <TrialBalanceTab lang={lang} />}
-      {subTab === 'periods' && <PeriodsTab lang={lang} />}
-      {subTab === 'export'  && <ExportTab lang={lang} />}
+      {subTab === 'journal'  && <JournalTab lang={lang} accounts={accounts} />}
+      {subTab === 'balance'  && <TrialBalanceTab lang={lang} />}
+      {subTab === 'control'  && <ControlVarianceTab lang={lang} />}
+      {subTab === 'periods'  && <PeriodsTab lang={lang} />}
+      {subTab === 'export'   && <ExportTab lang={lang} />}
     </div>
   );
 }

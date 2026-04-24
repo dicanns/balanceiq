@@ -153,15 +153,22 @@ Deno.serve(async (req: Request) => {
       case 'payment_intent.payment_failed': {
         const pi = event.data.object as Stripe.PaymentIntent;
         const mandateId = pi.metadata?.mandate_id;
+        const invoiceId = pi.metadata?.invoice_id || null;
 
         if (mandateId) {
           const reason = pi.last_payment_error?.message || pi.last_payment_error?.code || 'payment_failed';
           await supabase
             .from('pad_mandates')
-            .update({ status: 'nsf', updated_at: new Date().toISOString() })
+            .update({
+              status: 'nsf',
+              nsf_invoice_id: invoiceId,
+              nsf_reason: reason,
+              nsf_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
             .eq('id', mandateId);
 
-          console.log('PAD payment failed (NSF):', pi.id, 'mandate:', mandateId, reason);
+          console.log('PAD payment failed (NSF):', pi.id, 'mandate:', mandateId, 'invoice:', invoiceId, reason);
         }
         break;
       }

@@ -591,6 +591,9 @@ export default function BanqueTab({ lang = 'fr' }) {
                           {tx.account_number && (
                             <span style={{ fontSize: 10, color: '#64748b' }}>{tx.account_number} {lang === 'en' && tx.coa_name_en ? tx.coa_name_en : tx.coa_name_fr}</span>
                           )}
+                          {tx.match_status === 'suggested' && tx.match_reason && (
+                            <span style={{ fontSize: 9, color: '#78716c', fontStyle: 'italic' }}>{tx.match_reason}</span>
+                          )}
                         </div>
                       </td>
                       <td style={{ ...td, textAlign: 'center' }}>

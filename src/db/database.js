@@ -827,6 +827,13 @@ const MIGRATIONS = [
       database.prepare(`CREATE INDEX IF NOT EXISTS idx_iid_invoice ON invoice_inventory_deductions(invoice_id)`).run();
     },
   },
+  {
+    version: 17,
+    description: 'Sprint 15 — Bank match reason label',
+    up: (database) => {
+      try { database.prepare(`ALTER TABLE bank_transactions ADD COLUMN match_reason TEXT`).run(); } catch (_) {}
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -2586,16 +2593,16 @@ function _runMatchingEngine(db, bankAccountId, txIds) {
     // Check learned rules — auto-match if count >= 3 and amount/date are within window
     const rule = learnedMap[normDesc];
     if (rule && rule.match_count >= 3) {
-      db.prepare(`UPDATE bank_transactions SET match_status='suggested', coa_account_id=? WHERE id=?`)
-        .run(rule.coa_account_id, txId);
+      db.prepare(`UPDATE bank_transactions SET match_status='suggested', coa_account_id=?, match_reason=? WHERE id=?`)
+        .run(rule.coa_account_id, `Description exacte (${rule.match_count}× utilisé)`, txId);
       continue;
     }
 
     // Partial description match against learned rules
     for (const [pattern, lrule] of Object.entries(learnedMap)) {
       if (normDesc.includes(pattern) || pattern.includes(normDesc)) {
-        db.prepare(`UPDATE bank_transactions SET match_status='suggested', coa_account_id=? WHERE id=?`)
-          .run(lrule.coa_account_id, txId);
+        db.prepare(`UPDATE bank_transactions SET match_status='suggested', coa_account_id=?, match_reason=? WHERE id=?`)
+          .run(lrule.coa_account_id, `Description partielle correspondante`, txId);
         break;
       }
     }

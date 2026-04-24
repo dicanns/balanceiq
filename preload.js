@@ -405,6 +405,7 @@ contextBridge.exposeInMainWorld('api', {
     cancelMandate: (opts) => ipcRenderer.invoke('pad:cancelMandate', opts),
     chargeMandate: (opts) => ipcRenderer.invoke('pad:chargeMandate', opts),
     saveConfig:    (opts) => ipcRenderer.invoke('pad:saveConfig', opts),
+    runFollowup:   (opts) => ipcRenderer.invoke('pad:runFollowup', opts),
   },
   docnum: {
     register:       (docType, number, entityId) => ipcRenderer.invoke('docnum:register', docType, number, entityId),
