@@ -2170,6 +2170,149 @@ ipcMain.handle('stripe:generateQR', async (_e, { url, size = 180 }) => {
   return { dataUrl };
 });
 
+// ── Quote E-Acceptance (spec 3.9) ──────────────────────────────────────────
+
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || '';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const ACCEPTANCE_BASE_URL = `${SUPABASE_URL}/functions/v1/accept-quote`;
+
+function generateAcceptanceToken() {
+  const { randomBytes } = require('crypto');
+  return randomBytes(16).toString('hex'); // 128-bit
+}
+
+// Send quote for acceptance: create token via edge function (has service role), return acceptance URL
+ipcMain.handle('soumission:sendAcceptance', async (_e, { quoteId, quoteNumber, quoteHtml, clientName, clientEmail, operatorEmail, orgId, expiresAt }) => {
+  if (!SUPABASE_URL) return { error: 'no_supabase', message: 'Supabase not configured.' };
+  try {
+    const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+    const token = generateAcceptanceToken();
+    const res = await net.fetch(`${ACCEPTANCE_BASE_URL}?action=create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${anonKey}` },
+      body: JSON.stringify({ token, org_id: orgId, quote_id: quoteId, quote_number: quoteNumber, quote_html: quoteHtml, client_name: clientName || null, client_email: clientEmail || null, operator_email: operatorEmail || null, expires_at: expiresAt }),
+    });
+    if (!res.ok) { const text = await res.text(); return { error: 'insert_failed', message: text }; }
+    const acceptanceUrl = `https://biq-accept-quote.sweet-bird-4d5f.workers.dev?token=${token}`;
+    return { ok: true, token, acceptanceUrl };
+  } catch (e) {
+    return { error: 'network_error', message: String(e?.message || e) };
+  }
+});
+
+// Check acceptance status: poll via edge function
+ipcMain.handle('soumission:checkAcceptance', async (_e, { token }) => {
+  if (!SUPABASE_URL) return { error: 'no_supabase' };
+  try {
+    const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+    const res = await net.fetch(`${ACCEPTANCE_BASE_URL}?action=check&token=${encodeURIComponent(token)}`, {
+      headers: { 'apikey': anonKey, 'Authorization': `Bearer ${anonKey}` },
+    });
+    if (!res.ok) return { error: 'fetch_failed' };
+    return await res.json();
+  } catch (e) {
+    return { error: 'network_error', message: String(e?.message || e) };
+  }
+});
+
+// Revoke token: mark as expired via edge function
+ipcMain.handle('soumission:revokeToken', async (_e, { token }) => {
+  if (!SUPABASE_URL) return { error: 'no_supabase' };
+  try {
+    const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+    const res = await net.fetch(`${ACCEPTANCE_BASE_URL}?action=revoke&token=${encodeURIComponent(token)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${anonKey}` },
+    });
+    return res.ok ? { ok: true } : { error: 'revoke_failed' };
+  } catch (e) {
+    return { error: 'network_error', message: String(e?.message || e) };
+  }
+});
+
+// ── PAD / ACSS Debit (spec 3.11) ──────────────────────────────────────────
+
+const PAD_BASE_URL = `${SUPABASE_URL}/functions/v1`;
+
+ipcMain.handle('pad:createMandate', async (_e, { org_id, client_id, client_name, client_email, operator_email, followup_enabled, stripe_secret_key }) => {
+  if (!SUPABASE_URL) return { error: 'no_supabase', message: 'Supabase not configured.' };
+  try {
+    const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+    const res = await net.fetch(`${PAD_BASE_URL}/create-pad-mandate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${anonKey}` },
+      body: JSON.stringify({ org_id, client_id, client_name, client_email, operator_email, followup_enabled, stripe_secret_key }),
+    });
+    if (!res.ok) { const t = await res.text(); return { error: 'request_failed', message: t }; }
+    return await res.json();
+  } catch (e) {
+    return { error: 'network_error', message: String(e?.message || e) };
+  }
+});
+
+ipcMain.handle('pad:listMandates', async (_e, { org_id, client_id }) => {
+  if (!SUPABASE_URL) return { error: 'no_supabase' };
+  try {
+    const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+    let url = `${SUPABASE_URL}/rest/v1/pad_mandates?org_id=eq.${encodeURIComponent(org_id)}&order=created_at.desc`;
+    if (client_id) url += `&client_id=eq.${encodeURIComponent(client_id)}`;
+    const res = await net.fetch(url, {
+      headers: { 'apikey': anonKey, 'Authorization': `Bearer ${anonKey}`, 'Accept': 'application/json' },
+    });
+    if (!res.ok) return { error: 'request_failed' };
+    return { ok: true, mandates: await res.json() };
+  } catch (e) {
+    return { error: 'network_error', message: String(e?.message || e) };
+  }
+});
+
+ipcMain.handle('pad:cancelMandate', async (_e, { org_id, mandate_id }) => {
+  if (!SUPABASE_URL) return { error: 'no_supabase' };
+  try {
+    const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+    const res = await net.fetch(`${SUPABASE_URL}/rest/v1/pad_mandates?id=eq.${encodeURIComponent(mandate_id)}&org_id=eq.${encodeURIComponent(org_id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${anonKey}`, 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ status: 'cancelled', updated_at: new Date().toISOString() }),
+    });
+    return res.ok ? { ok: true } : { error: 'cancel_failed' };
+  } catch (e) {
+    return { error: 'network_error', message: String(e?.message || e) };
+  }
+});
+
+ipcMain.handle('pad:chargeMandate', async (_e, { org_id, mandate_id, amount_cents, invoice_id, description }) => {
+  if (!SUPABASE_URL) return { error: 'no_supabase' };
+  try {
+    const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+    const res = await net.fetch(`${PAD_BASE_URL}/charge-pad-mandate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${anonKey}` },
+      body: JSON.stringify({ org_id, mandate_id, amount_cents, invoice_id, description }),
+    });
+    if (!res.ok) { const t = await res.text(); return { error: 'request_failed', message: t }; }
+    return await res.json();
+  } catch (e) {
+    return { error: 'network_error', message: String(e?.message || e) };
+  }
+});
+
+ipcMain.handle('pad:saveConfig', async (_e, { org_id, webhook_secret }) => {
+  if (!SUPABASE_URL) return { error: 'no_supabase' };
+  try {
+    const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+    const res = await net.fetch(`${PAD_BASE_URL}/set-pad-config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${anonKey}` },
+      body: JSON.stringify({ org_id, webhook_secret }),
+    });
+    if (!res.ok) { const t = await res.text(); return { error: 'request_failed', message: t }; }
+    return await res.json();
+  } catch (e) {
+    return { error: 'network_error', message: String(e?.message || e) };
+  }
+});
+
 // ── Accounting Export (Acomba / Sage 50 / QuickBooks) ─────────────────────
 
 ipcMain.handle('ledger:exportAcomba', (_e, opts = {}) => {

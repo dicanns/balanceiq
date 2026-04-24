@@ -394,4 +394,16 @@ contextBridge.exposeInMainWorld('api', {
   file: {
     save: (opts) => ipcRenderer.invoke('file:save', opts),
   },
+  soumissions: {
+    sendAcceptance:  (opts) => ipcRenderer.invoke('soumission:sendAcceptance', opts),
+    checkAcceptance: (opts) => ipcRenderer.invoke('soumission:checkAcceptance', opts),
+    revokeToken:     (opts) => ipcRenderer.invoke('soumission:revokeToken', opts),
+  },
+  pad: {
+    createMandate: (opts) => ipcRenderer.invoke('pad:createMandate', opts),
+    listMandates:  (opts) => ipcRenderer.invoke('pad:listMandates', opts),
+    cancelMandate: (opts) => ipcRenderer.invoke('pad:cancelMandate', opts),
+    chargeMandate: (opts) => ipcRenderer.invoke('pad:chargeMandate', opts),
+    saveConfig:    (opts) => ipcRenderer.invoke('pad:saveConfig', opts),
+  },
 });
