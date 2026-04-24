@@ -460,6 +460,7 @@ export const FR = {
  sectionRemove:          "Retirer la section",
  // ── SPRINT 12 — Payment Plans ──
  ppToggle:               "Plan de paiement",
+ ppConfigure:            "Configurer",
  ppInstallments:         "Nombre de versements",
  ppCadence:              "Fréquence",
  ppStartDate:            "Date du premier versement",
@@ -2659,6 +2660,7 @@ export const EN = {
   sectionRemove:          "Remove section",
   // ── SPRINT 12 — Payment Plans ──
   ppToggle:               "Payment plan",
+  ppConfigure:            "Configure",
   ppInstallments:         "Number of installments",
   ppCadence:              "Frequency",
   ppStartDate:            "First payment date",

@@ -3786,12 +3786,12 @@ function docNumList(documentType) {
 
 // ── Payment Plans ─────────────────────────────────────────────────────────────
 
-function paymentPlanCreate({ parentInvoiceId, totalInstallments, cadence, startDate, usePad = 0, notes }) {
+function paymentPlanCreate({ parent_invoice_id, total_installments, cadence, start_date, use_pad = 0, notes }) {
   const db = getDb();
   const id = db.prepare(
     `INSERT OR REPLACE INTO payment_plans (parent_invoice_id, total_installments, cadence, start_date, use_pad, notes)
      VALUES (?,?,?,?,?,?)`
-  ).run(String(parentInvoiceId), totalInstallments, cadence, startDate, usePad ? 1 : 0, notes || null).lastInsertRowid;
+  ).run(String(parent_invoice_id), total_installments, cadence, start_date, use_pad ? 1 : 0, notes || null).lastInsertRowid;
   return db.prepare(`SELECT * FROM payment_plans WHERE id=?`).get(id);
 }
 
