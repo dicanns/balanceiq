@@ -2762,12 +2762,12 @@ export const EN = {
   creditLimitProGate:      "Per-client credit limits — Pro feature",
 
   // ── SPRINT 13 — Inventory Invoice Bridge (3.12) ──
-  invBridgeTitle:          "Prévisions Connection",
-  invBridgeToggle:         "Deduct invoiced sales from Prévisions stock",
+  invBridgeTitle:          "Forecasting Connection",
+  invBridgeToggle:         "Deduct invoiced sales from Forecasting stock",
   invBridgeOnStockout:     "If stock insufficient",
   invBridgeWarn:           "Warn (allow save)",
   invBridgeBlock:          "Block (prevent save)",
-  invBridgeProduct:        "Prévisions product",
+  invBridgeProduct:        "Forecasting product",
   invBridgeProductPH:      "Link a product…",
   invBridgeNegWarn:        (name) => `⚠ Negative stock for "${name}" — verify before sending.`,
   invBridgeSaved:          "Stock deductions recorded",
