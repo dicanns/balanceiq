@@ -19,7 +19,11 @@
     "pretest:e2e": "npx @electron/rebuild -f -w better-sqlite3",
     "test:e2e": "playwright test --project=electron",
     "stress-test": "bash scripts/stress-test.sh",
-    "test:chaos": "npm rebuild better-sqlite3 --quiet && vitest run src/__tests__/chaos/userBehavior.test.js"
+    "test:chaos": "npm rebuild better-sqlite3 --quiet && vitest run src/__tests__/chaos/userBehavior.test.js",
+    "test:backup-parity": "npm rebuild better-sqlite3 --quiet && vitest run src/__tests__/safety/backupSchemaParity.test.js",
+    "check:edge-auth": "bash scripts/check-edge-function-auth.sh",
+    "audit": "npm audit --production --audit-level=critical",
+    "scan:semgrep": "npx semgrep --config .semgrep.yml src/"
   },
   "dependencies": {
     "@sentry/electron": "^7.10.0",
@@ -44,6 +48,8 @@
     "dotenv": "^17.3.1",
     "electron": "^31.0.0",
     "electron-builder": "^24.13.3",
+    "eslint": "^10.2.1",
+    "eslint-plugin-security": "^4.0.0",
     "playwright": "^1.58.2",
     "vite": "^5.3.5",
     "vitest": "^4.1.1",

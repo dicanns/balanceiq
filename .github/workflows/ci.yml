@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Rebuild better-sqlite3
+        run: npm rebuild better-sqlite3 --quiet
+
+      - name: Run tests
+        run: npm test
+
+      - name: Backup schema parity
+        run: npm run test:backup-parity
+
+      - name: Edge function auth check
+        run: npm run check:edge-auth
+
+      - name: npm audit (production, high+)
+        run: npm run audit

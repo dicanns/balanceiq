@@ -1,0 +1,22 @@
+{
+  "plugins": ["security"],
+  "extends": ["plugin:security/recommended"],
+  "env": {
+    "browser": true,
+    "node": true,
+    "es2022": true
+  },
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module",
+    "ecmaFeatures": {
+      "jsx": true
+    }
+  },
+  "ignorePatterns": [
+    "node_modules/",
+    "dist/",
+    "release/",
+    "build/"
+  ]
+}
