@@ -23,7 +23,7 @@
     "test:backup-parity": "npm rebuild better-sqlite3 --quiet && vitest run src/__tests__/safety/backupSchemaParity.test.js",
     "check:edge-auth": "bash scripts/check-edge-function-auth.sh",
     "audit": "npm audit --production --audit-level=critical",
-    "scan:semgrep": "npx semgrep --config .semgrep.yml src/"
+    "scan:semgrep": "semgrep --config .semgrep.yml src/"
   },
   "dependencies": {
     "@sentry/electron": "^7.10.0",
