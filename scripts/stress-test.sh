@@ -21,6 +21,10 @@ echo -e "${BOLD}${CYAN}🧪 BalanceIQ Stress Test Suite${RESET}"
 echo -e "${CYAN}================================${RESET}"
 echo ""
 
+# Ensure better-sqlite3 is compiled for system Node (vitest steps 1–2 need NMV 141).
+# Steps 1–2 bypass the npm pretest hook, so rebuild explicitly here.
+npm rebuild better-sqlite3 --quiet 2>&1
+
 # ── 1/4 Business Logic Tests ──────────────────────────────────────────────────
 echo -e "${BOLD}1/4 Business logic tests (financial calculations)...${RESET}"
 if npx vitest run src/__tests__/calculations.test.js --reporter=verbose 2>&1; then
@@ -45,14 +49,19 @@ echo ""
 
 # ── 3/4 Electron Smoke Tests ──────────────────────────────────────────────────
 echo -e "${BOLD}3/4 Electron smoke tests (Playwright)...${RESET}"
-echo -e "${YELLOW}⚠  Requires a built app (npm run build:mac) or running dev server${RESET}"
+# Rebuild better-sqlite3 for Electron's NMV (prebuilt binary for Electron 31).
+# Restore to system-Node build afterwards so any post-suite vitest calls still work.
+echo -e "${YELLOW}  Rebuilding better-sqlite3 for Electron runtime...${RESET}"
+npx @electron/rebuild -f -w better-sqlite3 2>&1 | tail -3
 if npx playwright test --project=electron --reporter=list 2>&1; then
   echo -e "${GREEN}✅ Electron smoke tests passed${RESET}"
   ((PASS++))
 else
-  echo -e "${YELLOW}⚠  Electron smoke tests incomplete (may need running app)${RESET}"
+  echo -e "${RED}❌ Electron smoke tests FAILED${RESET}"
   ((FAIL++))
 fi
+echo -e "${YELLOW}  Restoring better-sqlite3 for system Node...${RESET}"
+npm rebuild better-sqlite3 --quiet 2>&1
 echo ""
 
 # ── 4/4 Build Verification ────────────────────────────────────────────────────
