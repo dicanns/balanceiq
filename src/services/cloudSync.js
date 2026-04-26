@@ -156,12 +156,19 @@ export async function requestPasswordReset(email) {
 }
 
 // ── PUSH DATA ──────────────────────────────────────────────────────────────
-export function schedulePush(key, value) {
+// Queue is durable: persisted to SQLite via IPC, survives app restarts.
+export async function schedulePush(key, value) {
   if (!_session || !_orgId || !_locationId) return;
-  if (_plan === 'free') return; // network plan syncs — paid by franchisor
+  if (_plan === 'free') return;
 
-  _offlineQueue = _offlineQueue.filter(q => q.key !== key);
-  _offlineQueue.push({ key, value });
+  const serialized = typeof value === 'string' ? value : JSON.stringify(value);
+  if (window.api?.syncQueue) {
+    await window.api.syncQueue.push(key, serialized);
+  } else {
+    // Fallback for non-Electron / test contexts
+    _offlineQueue = _offlineQueue.filter(q => q.key !== key);
+    _offlineQueue.push({ key, value });
+  }
 
   if (_syncDebounceTimer) clearTimeout(_syncDebounceTimer);
   _syncDebounceTimer = setTimeout(_flushQueue, 5000);
@@ -169,35 +176,46 @@ export function schedulePush(key, value) {
 }
 
 async function _flushQueue() {
-  if (!_offlineQueue.length) return;
   if (!_session || !_orgId || !_locationId) return;
 
-  const batch = [..._offlineQueue];
-  _offlineQueue = [];
-
-  try {
-    const rows = batch.map(({ key, value }) => ({
-      org_id: _orgId,
-      location_id: _locationId,
-      key,
-      value: typeof value === 'string' ? JSON.parse(value) : value,
-      updated_at: new Date().toISOString(),
-    }));
-
-    const { error } = await supabase
-      .from('synced_data')
-      .upsert(rows, { onConflict: 'location_id,key' });
-
-    if (error) {
-      _offlineQueue = [...batch, ..._offlineQueue];
-      setStatus('error');
-    } else {
-      setStatus('synced');
-    }
-  } catch (_e) {
-    _offlineQueue = [...batch, ..._offlineQueue];
-    setStatus('offline');
+  let batch;
+  if (window.api?.syncQueue) {
+    batch = await window.api.syncQueue.peek(50);
+    if (!batch || batch.length === 0) return;
+  } else {
+    if (!_offlineQueue.length) return;
+    batch = _offlineQueue.map((item, i) => ({ id: i, key: item.key, value: typeof item.value === 'string' ? item.value : JSON.stringify(item.value) }));
+    _offlineQueue = [];
   }
+
+  for (const item of batch) {
+    try {
+      const parsedValue = (() => {
+        try { return JSON.parse(item.value); } catch { return item.value; }
+      })();
+      const { error } = await supabase
+        .from('synced_data')
+        .upsert({
+          org_id: _orgId,
+          location_id: _locationId,
+          key: item.key,
+          value: parsedValue,
+        }, { onConflict: 'location_id,key' });
+
+      if (error) {
+        if (window.api?.syncQueue) await window.api.syncQueue.incrementAttempts(item.id);
+        setStatus('error');
+      } else {
+        if (window.api?.syncQueue) await window.api.syncQueue.delete(item.id);
+      }
+    } catch (_e) {
+      if (window.api?.syncQueue) await window.api.syncQueue.incrementAttempts(item.id);
+      setStatus('offline');
+    }
+  }
+
+  const remaining = window.api?.syncQueue ? await window.api.syncQueue.length() : _offlineQueue.length;
+  if (remaining === 0) setStatus('synced');
 }
 
 // ── PULL DATA ──────────────────────────────────────────────────────────────

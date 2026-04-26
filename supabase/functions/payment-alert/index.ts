@@ -8,8 +8,17 @@ const supabase = createClient(
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')!;
 const TO_EMAIL = 'info@dicanns.ca';
+const CRON_SECRET = Deno.env.get('CRON_SECRET') || '';
 
-serve(async () => {
+serve(async (req: Request) => {
+  const secret = req.headers.get('x-cron-secret') || '';
+  if (!CRON_SECRET || secret !== CRON_SECRET) {
+    return new Response(JSON.stringify({ error: 'unauthorized' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   try {
     const { data: failedOrgs, error } = await supabase
       .from('organizations')

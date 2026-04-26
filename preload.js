@@ -242,6 +242,8 @@ contextBridge.exposeInMainWorld('api', {
       get:     (id)                     => ipcRenderer.invoke('ledger:entry:get', id),
       list:    (opts)                   => ipcRenderer.invoke('ledger:entry:list', opts),
     },
+    invoicePost:    (opts) => ipcRenderer.invoke('ledger:invoice:post', opts),
+    creditNotePost: (opts) => ipcRenderer.invoke('ledger:creditnote:post', opts),
     account: {
       history: (accountId, opts)        => ipcRenderer.invoke('ledger:account:history', accountId, opts),
     },
@@ -425,5 +427,12 @@ contextBridge.exposeInMainWorld('api', {
       byProduct: (productId)  => ipcRenderer.invoke('inventory:deduct:byProduct', productId),
       byDate:    (date)       => ipcRenderer.invoke('inventory:deduct:byDate', date),
     },
+  },
+  syncQueue: {
+    push:             (key, value) => ipcRenderer.invoke('syncQueue:push', key, value),
+    peek:             (limit)      => ipcRenderer.invoke('syncQueue:peek', limit),
+    delete:           (id)         => ipcRenderer.invoke('syncQueue:delete', id),
+    incrementAttempts:(id)         => ipcRenderer.invoke('syncQueue:incrementAttempts', id),
+    length:           ()           => ipcRenderer.invoke('syncQueue:length'),
   },
 });

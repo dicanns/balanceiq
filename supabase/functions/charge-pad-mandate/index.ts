@@ -11,6 +11,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import Stripe from 'https://esm.sh/stripe@14';
+import { requireOrgMember } from '../_shared/auth.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, { apiVersion: '2024-04-10' });
 
@@ -40,6 +41,9 @@ Deno.serve(async (req: Request) => {
     if (!Number.isInteger(amount_cents) || amount_cents <= 0) {
       return json({ error: 'invalid_amount' }, 400);
     }
+
+    try { await requireOrgMember(req, org_id); }
+    catch (resp) { return resp as Response; }
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,

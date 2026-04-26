@@ -9,6 +9,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { requireOrgMember } from '../_shared/auth.ts';
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -33,6 +34,13 @@ Deno.serve(async (req: Request) => {
   const { org_id, webhook_secret } = body;
   if (!org_id || !webhook_secret) return json({ error: 'missing_fields' }, 400);
   if (!webhook_secret.startsWith('whsec_')) return json({ error: 'invalid_secret_format' }, 400);
+
+  try {
+    const { role } = await requireOrgMember(req, org_id);
+    if (role !== 'admin' && role !== 'owner') {
+      return json({ error: 'forbidden', detail: 'admin or owner required' }, 403);
+    }
+  } catch (resp) { return resp as Response; }
 
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,

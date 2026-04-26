@@ -9,6 +9,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { requireOrgMember } from '../_shared/auth.ts';
 
 // ── Rate limiter (in-memory, per token, resets on cold start) ─────────────────
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -194,6 +195,8 @@ Deno.serve(async (req) => {
     if (!newToken || !org_id || !quote_id || !quote_html || !expires_at) {
       return jsonResp({ error: 'missing_params' }, 400);
     }
+    try { await requireOrgMember(req, org_id); }
+    catch (resp) { return resp as Response; }
     const { error } = await admin.from('quote_acceptance_tokens').insert({
       token: newToken, org_id, quote_id, quote_number: quote_number || null,
       quote_html, client_name: client_name || null, client_email: client_email || null,

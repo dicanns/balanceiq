@@ -834,6 +834,20 @@ const MIGRATIONS = [
       try { database.prepare(`ALTER TABLE bank_transactions ADD COLUMN match_reason TEXT`).run(); } catch (_) {}
     },
   },
+  {
+    version: 18,
+    description: 'Security sprint — durable cloud sync queue',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS sync_queue (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        key TEXT NOT NULL,
+        value TEXT NOT NULL,
+        queued_at TEXT NOT NULL DEFAULT (datetime('now')),
+        attempts INTEGER NOT NULL DEFAULT 0
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_sq_key ON sync_queue(key)`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -2090,7 +2104,14 @@ function _nextEntryNumber(db, fiscalYear) {
   return `JE-${fiscalYear}-${String(seq).padStart(6, '0')}`;
 }
 
-function _getDeviceUuid() {
+function _getDeviceUuid(_db) {
+  if (_db) {
+    const row = _db.prepare('SELECT value FROM kv_store WHERE key = ?').get('balanceiq-device-id');
+    if (row) return row.value;
+    const id = crypto.randomUUID();
+    _db.prepare('INSERT INTO kv_store (key, value) VALUES (?, ?)').run('balanceiq-device-id', id);
+    return id;
+  }
   return getDeviceId();
 }
 
@@ -2121,9 +2142,9 @@ function _ensurePeriod(db, entryDate, locationId = null) {
 }
 
 // Draft: save entry + lines without posting (no balance check).
-function glDraftEntry({ entry_date, description, source_type = 'manual', source_id = null, lines = [], location_id = null }) {
-  const db = getDb();
-  const uuid = _getDeviceUuid();
+function glDraftEntry({ entry_date, description, source_type = 'manual', source_id = null, lines = [], location_id = null }, _db) {
+  const db = _db || getDb();
+  const uuid = _getDeviceUuid(_db);
   const year = new Date(entry_date).getUTCFullYear();
   const period = _ensurePeriod(db, entry_date, location_id);
   const entryNumber = _nextEntryNumber(db, year);
@@ -2172,8 +2193,8 @@ function glUpdateDraft(entryId, { entry_date, description, lines = [] }) {
 }
 
 // Post: validate balance, flip status to posted.
-function glPostEntry(entryId) {
-  const db = getDb();
+function glPostEntry(entryId, _db) {
+  const db = _db || getDb();
   const entry = db.prepare(`SELECT * FROM journal_entries WHERE id=?`).get(entryId);
   if (!entry) throw new Error('Écriture introuvable');
   if (entry.status === 'posted') throw new Error('Écriture déjà comptabilisée');
@@ -2203,7 +2224,7 @@ function glPostEntry(entryId) {
   }
 
   const now = new Date().toISOString();
-  const uuid = _getDeviceUuid();
+  const uuid = _getDeviceUuid(_db);
   db.prepare(
     `UPDATE journal_entries SET status='posted', posted_at=?, posted_by_device_uuid=?, posting_date=? WHERE id=?`
   ).run(now, uuid, now.slice(0, 10), entryId);
@@ -2725,8 +2746,13 @@ function bankTransactionCategorize(txId, coaAccountId, notes) {
   return true;
 }
 
-function bankReconcilePreview(bankAccountId, asOfDate) {
-  const db = getDb();
+// Statuses that are considered cleared and included in the reconciled balance.
+// 'suggested' is intentionally excluded — it is a pending auto-match that the
+// user has not confirmed, so it must not silently close with a statement.
+const RECONCILABLE_STATUSES = ['matched', 'manual'];
+
+function bankReconcilePreview(bankAccountId, asOfDate, _db) {
+  const db = _db || getDb();
   const account = db.prepare(`SELECT * FROM bank_accounts WHERE id=?`).get(bankAccountId);
   if (!account) throw new Error('Compte introuvable');
 
@@ -2736,17 +2762,21 @@ function bankReconcilePreview(bankAccountId, asOfDate) {
 
   const statementBalance = lastStmt ? lastStmt.ending_balance : account.opening_balance;
 
+  const reconPlaceholders = RECONCILABLE_STATUSES.map(() => '?').join(',');
   const sumRow = db.prepare(
     `SELECT COALESCE(SUM(amount),0) AS total FROM bank_transactions
-     WHERE bank_account_id=? AND (reconciled=1 OR match_status IN ('matched','manual'))
+     WHERE bank_account_id=? AND (reconciled=1 OR match_status IN (${reconPlaceholders}))
      AND transaction_date <= ?`
-  ).get(bankAccountId, asOfDate || new Date().toISOString().slice(0,10));
+  ).get(bankAccountId, ...RECONCILABLE_STATUSES, asOfDate || new Date().toISOString().slice(0,10));
   const biqBalance = account.opening_balance + (sumRow ? sumRow.total : 0);
 
+  // unreconciledCount: anything NOT in RECONCILABLE_STATUSES and not yet reconciled,
+  // including 'suggested' (pending auto-match) and 'unmatched'.
+  const notReconPlaceholders = RECONCILABLE_STATUSES.map(() => '?').join(',');
   const unreconciledCount = db.prepare(
     `SELECT COUNT(*) AS cnt FROM bank_transactions
-     WHERE bank_account_id=? AND reconciled=0 AND match_status='unmatched'`
-  ).get(bankAccountId).cnt;
+     WHERE bank_account_id=? AND reconciled=0 AND match_status NOT IN (${notReconPlaceholders})`
+  ).get(bankAccountId, ...RECONCILABLE_STATUSES).cnt;
 
   return {
     statementBalance,
@@ -2756,24 +2786,25 @@ function bankReconcilePreview(bankAccountId, asOfDate) {
   };
 }
 
-function bankReconcileClose(bankAccountId, statementId) {
-  const db = getDb();
+function bankReconcileClose(bankAccountId, statementId, _db) {
+  const db = _db || getDb();
   const stmt = db.prepare(`SELECT * FROM bank_statements WHERE id=? AND bank_account_id=?`).get(statementId, bankAccountId);
   if (!stmt) throw new Error('Relevé introuvable');
   if (stmt.reconciled) throw new Error('Relevé déjà réconcilié');
 
-  const preview = bankReconcilePreview(bankAccountId, stmt.period_end);
+  const preview = bankReconcilePreview(bankAccountId, stmt.period_end, db);
   if (Math.abs(preview.ecart) > 0.02) {
     return { success: false, ecart: preview.ecart, message: `Écart de ${preview.ecart.toFixed(2)} $ — réconciliez toutes les transactions avant de clôturer.` };
   }
 
+  const placeholders = RECONCILABLE_STATUSES.map(() => '?').join(',');
   const now = new Date().toISOString();
   db.transaction(() => {
     db.prepare(`UPDATE bank_statements SET reconciled=1, reconciled_at=? WHERE id=?`).run(now, statementId);
     db.prepare(
       `UPDATE bank_transactions SET reconciled=1
-       WHERE bank_account_id=? AND transaction_date<=? AND match_status IN ('matched','manual','suggested')`
-    ).run(bankAccountId, stmt.period_end);
+       WHERE bank_account_id=? AND transaction_date<=? AND match_status IN (${placeholders})`
+    ).run(bankAccountId, stmt.period_end, ...RECONCILABLE_STATUSES);
   })();
 
   return { success: true, ecart: 0 };
@@ -3034,12 +3065,13 @@ function taxProfileDelete(id) {
 
 // ── Supplier Bills (Relational AP) ────────────────────────────────────────────
 
-function supplierBillList({ monthKey = null, paid = null, supplierId = null } = {}) {
+function supplierBillList({ monthKey = null, paid = null, supplierName = null } = {}) {
   const db = getDb();
   const conds = [];
   const params = [];
   if (monthKey) { conds.push('month_key=?'); params.push(monthKey); }
   if (paid !== null) { conds.push('paid=?'); params.push(paid ? 1 : 0); }
+  if (supplierName !== null) { conds.push('supplier_name=?'); params.push(supplierName); }
   const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
   return db.prepare(`SELECT * FROM supplier_bills ${where} ORDER BY bill_date DESC, id DESC`).all(...params);
 }
@@ -3859,8 +3891,84 @@ function inventoryDeductSummaryByDate(date) {
   return getDb().prepare(`SELECT product_id, SUM(quantity) as total_quantity, SUM(revenue) as total_revenue FROM invoice_inventory_deductions WHERE sale_date=? GROUP BY product_id`).all(date);
 }
 
+// ── Cloud Sync Queue (durable offline queue) ────────────────────────────────
+
+function syncQueuePush(key, value) {
+  const db = getDb();
+  // Deduplicate by key — only keep the latest value per key
+  db.prepare(`DELETE FROM sync_queue WHERE key=?`).run(key);
+  db.prepare(`INSERT INTO sync_queue (key, value) VALUES (?, ?)`).run(key, typeof value === 'string' ? value : JSON.stringify(value));
+}
+
+function syncQueuePeek(limit = 50) {
+  return getDb().prepare(`SELECT * FROM sync_queue ORDER BY id ASC LIMIT ?`).all(limit);
+}
+
+function syncQueueDelete(id) {
+  getDb().prepare(`DELETE FROM sync_queue WHERE id=?`).run(id);
+}
+
+function syncQueueIncrementAttempts(id) {
+  getDb().prepare(`UPDATE sync_queue SET attempts=attempts+1 WHERE id=?`).run(id);
+}
+
+function syncQueueLength() {
+  return getDb().prepare(`SELECT COUNT(*) AS n FROM sync_queue`).get().n;
+}
+
+// ── Backup / Restore helpers ─────────────────────────────────────────────────
+
+function getAllTablesForBackup(_db) {
+  const db = _db || getDb();
+  const schemaVersion = db.pragma('user_version', { simple: true });
+  // Identify virtual table names so we can exclude their shadow tables
+  const virtualNames = new Set(
+    db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND sql LIKE 'CREATE VIRTUAL%'`)
+      .all().map(r => r.name)
+  );
+  const tables = db.prepare(
+    `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND (sql NOT LIKE 'CREATE VIRTUAL%')`
+  ).all().map(r => r.name).filter(name => {
+    // Exclude FTS shadow tables (named as <virtual_table>_<suffix>)
+    for (const vt of virtualNames) {
+      if (name.startsWith(vt + '_')) return false;
+    }
+    return true;
+  });
+  const sqlite = {};
+  for (const t of tables) {
+    sqlite[t] = db.prepare(`SELECT * FROM ${t}`).all();
+  }
+  return { schemaVersion, sqlite };
+}
+
+function restoreAllTablesFromBackup(data, expectedSchemaVersion, _db) {
+  const db = _db || getDb();
+  const currentVersion = expectedSchemaVersion ?? db.pragma('user_version', { simple: true });
+  if (data.schemaVersion !== currentVersion) {
+    const err = new Error(`schema_version_mismatch`);
+    err.backupVersion = data.schemaVersion;
+    err.currentVersion = currentVersion;
+    throw err;
+  }
+  db.transaction(() => {
+    for (const [table, rows] of Object.entries(data.sqlite || {})) {
+      if (!rows || rows.length === 0) continue;
+      const cols = Object.keys(rows[0]);
+      const colList = cols.join(', ');
+      const placeholders = cols.map(() => '?').join(', ');
+      const stmt = db.prepare(`INSERT OR REPLACE INTO "${table}" (${colList}) VALUES (${placeholders})`);
+      for (const row of rows) {
+        stmt.run(...cols.map(c => row[c]));
+      }
+    }
+  })();
+}
+
 module.exports = {
   storageGet, storageSet, storageGetAll, storageGetByPrefix,
+  getAllTablesForBackup, restoreAllTablesFromBackup,
+  syncQueuePush, syncQueuePeek, syncQueueDelete, syncQueueIncrementAttempts, syncQueueLength,
   auditInsert, auditQuery, getDeviceId,
   snapshotSave, snapshotGetByDate, snapshotGetLatest, snapshotListDates,
   forecastClearAll,

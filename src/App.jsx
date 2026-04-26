@@ -2661,10 +2661,16 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
  const {text:cpiSanitized,sanitized:cpiWasStripped,error:cpiError}=sanitizeCPI(cpiDraft);
  if(cpiError==='too_long'){alert(T===EN?"Payment instructions exceed 500 characters. Please shorten before saving.":"Les instructions de paiement dépassent 500 caractères. Veuillez les raccourcir avant d'enregistrer.");return;}
  if(cpiWasStripped)window.api?.audit?.log?.(buildSanitizeAuditEvent({invoiceId:id,originalLength:cpiDraft.length,sanitizedLength:cpiSanitized.length}));
+ const prevStatut=factures.find(f=>f.id===id)?.statut||'Brouillon';
  const doc={...form,id,numero,lignes,acomptes,customPaymentInstructions:cpiSanitized||null,customPaymentInstructionsSnapshot:cpiSnapshot};
  saveFactures(factures.some(f=>f.id===id)?factures.map(f=>f.id===id?doc:f):[...factures,doc]);
  if(isNew)logCreate('invoice','facture',id,doc);
  else logUpdate('invoice','facture',id,'document',null,JSON.stringify(doc));
+ const isFinalize=!isProforma&&form.statut!=='Brouillon'&&form.statut!=='Annulée'&&(isNew||prevStatut==='Brouillon')&&!form.glEntryId;
+ if(isFinalize&&window.api?.ledger?.invoicePost){
+  const taxExempt=!!(clients.find(c=>c.id===form.clientId)?.taxExempt);
+  window.api.ledger.invoicePost({invoiceId:id,invoiceDate:form.date||dk(new Date()),subtotalCents:Math.round((totals.sousTotal||0)*100),tpsCents:Math.round((totals.tpsTotal||0)*100),tvqCents:Math.round((totals.tvqTotal||0)*100),totalCents:Math.round((totals.total||0)*100),taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(f=>f.id===id?{...f,glEntryId:res.entryId}:f));}).catch(()=>{});
+ }
  setCreditLimitBanner(null);setCreditLimitOverrideGranted(false);
  if(invBridgeConfig.enabled&&!isProforma&&form.statut!=="Brouillon"&&form.statut!=="Annulée"){
   const negWarns=[];
@@ -2893,6 +2899,7 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
  if(savedId){
  const doc={...form,statut:newStatut,id:savedId,numero:savedNumero,lignes,acomptes};
  saveFactures(factures.some(f=>f.id===savedId)?factures.map(f=>f.id===savedId?doc:f):[...factures,doc]);
+ if(!form.glEntryId&&!isProforma&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients.find(c=>c.id===form.clientId)?.taxExempt);window.api.ledger.invoicePost({invoiceId:savedId,invoiceDate:form.date||dk(new Date()),subtotalCents:Math.round((totals.sousTotal||0)*100),tpsCents:Math.round((totals.tpsTotal||0)*100),tvqCents:Math.round((totals.tvqTotal||0)*100),totalCents:Math.round((totals.total||0)*100),taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(f=>f.id===savedId?{...f,glEntryId:res.entryId}:f));}).catch(()=>{});}
  }
  }
  }} onClose={()=>setEmailModal(null)}/>}

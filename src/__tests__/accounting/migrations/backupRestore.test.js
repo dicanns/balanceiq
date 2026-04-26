@@ -11,10 +11,12 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
+import { buildAccountingDb } from '../helpers/testSchema.js';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
 const { runMigrations } = require('../../../db/migrations.js');
+const { getAllTablesForBackup, restoreAllTablesFromBackup } = require('../../../db/database.js');
 
 function buildLegacyDb() {
   const db = new Database(':memory:');
@@ -132,5 +134,72 @@ describe('MIG-007 backup and restore', () => {
     const kvCount2 = restored.prepare(`SELECT COUNT(*) AS n FROM kv_store`).get().n;
     expect(kvCount2).toBe(kvCount1);
     expect(restored.pragma('user_version', { simple: true })).toBe(13);
+  });
+});
+
+// ── MIG-007-B: Full SQLite table backup/restore (C3) ─────────────────────────
+
+describe('MIG-007-B full SQLite backup and restore across accounting tables', () => {
+  let db1;
+  let db2;
+
+  beforeEach(() => {
+    db1 = buildAccountingDb();
+  });
+
+  afterEach(() => {
+    db1?.close();
+    db2?.close();
+    db1 = null; db2 = null;
+  });
+
+  it('seeds accounting tables, backs up, wipes, restores — all counts match', () => {
+    // COA accounts are already seeded by buildAccountingDb; grab one for FK use
+    const { id: coaId } = db1.prepare(`SELECT id FROM chart_of_accounts LIMIT 1`).get();
+
+    // Seed additional rows in representative accounting tables
+    db1.prepare(`INSERT OR IGNORE INTO chart_of_accounts (account_number, name_fr, name_en, type) VALUES ('9999','Test Compte','Test Account','asset')`).run();
+    db1.prepare(`INSERT INTO bank_accounts (name, currency, opening_balance, coa_account_id, opening_date) VALUES ('Compte courant','CAD',0,?,'2026-01-01')`).run(coaId);
+    db1.prepare(`INSERT INTO supplier_bills (month_key, supplier_name, amount) VALUES ('2026-01','Fournisseur A',100.00)`).run();
+    db1.prepare(`INSERT OR IGNORE INTO kv_store (key, value) VALUES ('dicann-v7','{"test":1}')`).run();
+
+    // Take a full backup
+    const backup = getAllTablesForBackup(db1);
+    expect(backup.schemaVersion).toBeGreaterThan(0);
+    expect(backup.sqlite['chart_of_accounts'].length).toBeGreaterThanOrEqual(1);
+    expect(backup.sqlite['bank_accounts'].length).toBeGreaterThanOrEqual(1);
+    expect(backup.sqlite['supplier_bills'].length).toBeGreaterThanOrEqual(1);
+    expect(backup.sqlite['kv_store'].length).toBeGreaterThanOrEqual(1);
+
+    // Open a fresh DB (simulate wipe)
+    db2 = buildAccountingDb();
+
+    // Restore into fresh DB
+    expect(() => restoreAllTablesFromBackup(backup, backup.schemaVersion, db2)).not.toThrow();
+
+    // Assert every table has the expected row count
+    expect(db2.prepare(`SELECT COUNT(*) AS n FROM chart_of_accounts`).get().n).toBeGreaterThanOrEqual(1);
+    expect(db2.prepare(`SELECT COUNT(*) AS n FROM bank_accounts`).get().n).toBeGreaterThanOrEqual(1);
+    expect(db2.prepare(`SELECT COUNT(*) AS n FROM supplier_bills`).get().n).toBeGreaterThanOrEqual(1);
+    expect(db2.prepare(`SELECT COUNT(*) AS n FROM kv_store`).get().n).toBeGreaterThanOrEqual(1);
+
+    // Verify specific data survived
+    const coaRow = db2.prepare(`SELECT * FROM chart_of_accounts WHERE account_number='9999'`).get();
+    expect(coaRow).toBeTruthy();
+    expect(coaRow.name_fr).toBe('Test Compte');
+
+    const kvRow = db2.prepare(`SELECT value FROM kv_store WHERE key='dicann-v7'`).get();
+    expect(kvRow).toBeTruthy();
+    expect(JSON.parse(kvRow.value)).toEqual({ test: 1 });
+  });
+
+  it('refuses restore when schemaVersion mismatches', () => {
+    const backup = getAllTablesForBackup(db1);
+    backup.schemaVersion = 9999; // simulate stale backup
+
+    db2 = buildAccountingDb();
+
+    expect(() => restoreAllTablesFromBackup(backup, db1.pragma('user_version', { simple: true }), db2))
+      .toThrow('schema_version_mismatch');
   });
 });

@@ -10,6 +10,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { requireOrgMember } from '../_shared/auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -39,6 +40,9 @@ Deno.serve(async (req: Request) => {
   try {
     const { org_id, resend_api_key, resend_from, operator_email } = await req.json();
     if (!org_id) return json({ error: 'missing_org_id' }, 400);
+
+    try { await requireOrgMember(req, org_id); }
+    catch (resp) { return resp as Response; }
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,

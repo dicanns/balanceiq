@@ -14,6 +14,8 @@ Sentry.init({
 });
 const {
   storageGet, storageSet, storageGetAll,
+  getAllTablesForBackup, restoreAllTablesFromBackup,
+  syncQueuePush, syncQueuePeek, syncQueueDelete, syncQueueIncrementAttempts, syncQueueLength,
   auditInsert, auditQuery, getDeviceId,
   snapshotSave, snapshotGetByDate, snapshotGetLatest, snapshotListDates,
   forecastClearAll,
@@ -372,22 +374,26 @@ async function performAutoBackup() {
   const filepath = path.join(dir, `balanceiq-${today}.json`);
   if (fs.existsSync(filepath)) return; // already backed up today
 
+  const { schemaVersion, sqlite } = getAllTablesForBackup();
   const all = storageGetAll();
 
-  // Build in same format as manual backup so restore button handles both
   const data = {
-    liveData:  all['dicann-v7']          || {},
-    roster:    all['dicann-roster']       || [],
-    empRoster: all['dicann-emp-roster']   || [],
-    suppliers: all['dicann-suppliers-v2'] || [],
-    apiConfig: all['dicann-api-config']   || {},
-    plData: {},
+    schemaVersion,
+    legacy: {
+      liveData:  all['dicann-v7']          || {},
+      roster:    all['dicann-roster']       || [],
+      empRoster: all['dicann-emp-roster']   || [],
+      suppliers: all['dicann-suppliers-v2'] || [],
+      apiConfig: all['dicann-api-config']   || {},
+      plData: {},
+    },
+    sqlite,
+    createdAt: new Date().toISOString(),
   };
 
-  // Include all monthly P&L keys
   Object.entries(all).forEach(([key, val]) => {
     if (key.startsWith('dicann-pl-')) {
-      data.plData[key.replace('dicann-pl-', '')] = val;
+      data.legacy.plData[key.replace('dicann-pl-', '')] = val;
     }
   });
 
@@ -464,9 +470,20 @@ ipcMain.handle('backup:restore', async () => {
     return { error: "Fichier invalide — vérifier que c'est un backup BalanceIQ" };
   }
 
-  const required = ['liveData', 'roster', 'empRoster', 'suppliers'];
-  if (!required.every(k => k in data)) {
+  // Support both new format (schemaVersion + sqlite) and legacy format
+  const isNewFormat = data.schemaVersion !== undefined && data.sqlite !== undefined;
+  const isLegacyFormat = !isNewFormat && data.liveData !== undefined;
+  if (!isNewFormat && !isLegacyFormat) {
     return { error: "Fichier invalide — vérifier que c'est un backup BalanceIQ" };
+  }
+
+  if (isNewFormat) {
+    const { schemaVersion: currentVersion } = getAllTablesForBackup();
+    if (data.schemaVersion !== currentVersion) {
+      return {
+        error: `Version de schéma incompatible (backup: ${data.schemaVersion}, app: ${currentVersion}). Mettez à jour l'application avant de restaurer.`,
+      };
+    }
   }
 
   const { response } = await dialog.showMessageBox(win, {
@@ -480,15 +497,26 @@ ipcMain.handle('backup:restore', async () => {
 
   if (response === 0) return { cancelled: true };
 
-  storageSet('dicann-v7', JSON.stringify(data.liveData));
-  storageSet('dicann-roster', JSON.stringify(data.roster));
-  storageSet('dicann-emp-roster', JSON.stringify(data.empRoster));
-  storageSet('dicann-suppliers-v2', JSON.stringify(data.suppliers));
-  if (data.apiConfig) storageSet('dicann-api-config', JSON.stringify(data.apiConfig));
-  if (data.plData) {
-    Object.entries(data.plData).forEach(([month, val]) => {
+  const legacy = isNewFormat ? (data.legacy || {}) : data;
+
+  if (legacy.liveData !== undefined)  storageSet('dicann-v7', JSON.stringify(legacy.liveData));
+  if (legacy.roster !== undefined)    storageSet('dicann-roster', JSON.stringify(legacy.roster));
+  if (legacy.empRoster !== undefined) storageSet('dicann-emp-roster', JSON.stringify(legacy.empRoster));
+  if (legacy.suppliers !== undefined) storageSet('dicann-suppliers-v2', JSON.stringify(legacy.suppliers));
+  if (legacy.apiConfig)               storageSet('dicann-api-config', JSON.stringify(legacy.apiConfig));
+  if (legacy.plData) {
+    Object.entries(legacy.plData).forEach(([month, val]) => {
       storageSet(`dicann-pl-${month}`, JSON.stringify(val));
     });
+  }
+
+  if (isNewFormat && data.sqlite) {
+    try {
+      restoreAllTablesFromBackup(data, data.schemaVersion);
+    } catch (e) {
+      console.error('backup:restore sqlite error:', e);
+      return { error: `Erreur lors de la restauration SQLite: ${e.message}` };
+    }
   }
 
   await dialog.showMessageBox(win, {
@@ -1494,6 +1522,81 @@ ipcMain.handle('coa:exportCSV',          ()                   => coaExportCSV())
 ipcMain.handle('coa:getMappingSuggestions', (_e, names)       => coaMappingSuggestions(names));
 
 // ── General Ledger IPC ────────────────────────────────────────────────────────
+
+// Create and immediately post a journal entry for an invoice finalization.
+// Called by the renderer when a Facture transitions from Brouillon → Envoyée.
+ipcMain.handle('ledger:invoice:post', async (_e, {
+  invoiceId, invoiceDate, subtotalCents, tpsCents, tvqCents, totalCents, taxExempt,
+}) => {
+  const { coaList } = require('./src/db/database.js');
+  const accounts = coaList();
+  const find = (num) => accounts.find(a => a.account_number === num);
+  const ar      = find('1100');
+  const revenue = find('4000');
+  const tpsAcc  = find('2100');
+  const tvqAcc  = find('2110');
+
+  if (!ar || !revenue) {
+    return { ok: false, error: 'missing_coa_accounts', detail: 'Comptes 1100 ou 4000 introuvables' };
+  }
+
+  const lines = [];
+  lines.push({ account_id: ar.id, debit_cents: totalCents, credit_cents: 0, memo: `Facture ${invoiceId}` });
+  if (taxExempt) {
+    lines.push({ account_id: revenue.id, debit_cents: 0, credit_cents: totalCents, memo: `Revenus (exonéré)` });
+  } else {
+    lines.push({ account_id: revenue.id, debit_cents: 0, credit_cents: subtotalCents, memo: 'Revenus' });
+    if (tpsCents && tpsAcc) lines.push({ account_id: tpsAcc.id, debit_cents: 0, credit_cents: tpsCents, memo: 'TPS à payer' });
+    if (tvqCents && tvqAcc) lines.push({ account_id: tvqAcc.id, debit_cents: 0, credit_cents: tvqCents, memo: 'TVQ à payer' });
+  }
+
+  const { entryId } = glDraftEntry({
+    entry_date: invoiceDate,
+    description: `Facture ${invoiceId}`,
+    source_type: 'invoice',
+    source_id: String(invoiceId),
+    lines,
+  });
+  glPostEntry(entryId);
+  return { ok: true, entryId };
+});
+
+ipcMain.handle('ledger:creditnote:post', async (_e, {
+  creditNoteId, creditNoteDate, subtotalCents, tpsCents, tvqCents, totalCents, taxExempt,
+}) => {
+  const { coaList } = require('./src/db/database.js');
+  const accounts = coaList();
+  const find = (num) => accounts.find(a => a.account_number === num);
+  const ar      = find('1100');
+  const revenue = find('4000');
+  const tpsAcc  = find('2100');
+  const tvqAcc  = find('2110');
+
+  if (!ar || !revenue) {
+    return { ok: false, error: 'missing_coa_accounts' };
+  }
+
+  const lines = [];
+  lines.push({ account_id: ar.id, debit_cents: 0, credit_cents: totalCents, memo: `Note de crédit ${creditNoteId}` });
+  if (taxExempt) {
+    lines.push({ account_id: revenue.id, debit_cents: totalCents, credit_cents: 0, memo: 'Contra-revenus (exonéré)' });
+  } else {
+    lines.push({ account_id: revenue.id, debit_cents: subtotalCents, credit_cents: 0, memo: 'Contra-revenus' });
+    if (tpsCents && tpsAcc) lines.push({ account_id: tpsAcc.id, debit_cents: tpsCents, credit_cents: 0, memo: 'TPS – note de crédit' });
+    if (tvqCents && tvqAcc) lines.push({ account_id: tvqAcc.id, debit_cents: tvqCents, credit_cents: 0, memo: 'TVQ – note de crédit' });
+  }
+
+  const { entryId } = glDraftEntry({
+    entry_date: creditNoteDate,
+    description: `Note de crédit ${creditNoteId}`,
+    source_type: 'credit_note',
+    source_id: String(creditNoteId),
+    lines,
+  });
+  glPostEntry(entryId);
+  return { ok: true, entryId };
+});
+
 ipcMain.handle('ledger:entry:draft',   (_e, data)              => glDraftEntry(data));
 ipcMain.handle('ledger:entry:update',  (_e, id, data)          => glUpdateDraft(id, data));
 ipcMain.handle('ledger:entry:post',    (_e, id)                => glPostEntry(id));
@@ -2406,7 +2509,14 @@ ipcMain.handle('file:save', async (_e, { defaultPath, content }) => {
 // ── Supabase Proxy Fetch ───────────────────────────────────────────────────
 // Routes Supabase HTTP calls through Electron's net module (main process) to
 // bypass renderer window.fetch "Invalid value" validation in Electron 31.
+// Restricted to our Supabase project host — prevents SSRF via renderer XSS.
 ipcMain.handle('supabase:fetch', async (_e, { url, method, headers, body }) => {
+  const _supabaseUrl = process.env.VITE_SUPABASE_URL || '';
+  if (!_supabaseUrl) throw new Error('supabase_not_configured');
+  const _supabaseHost = new URL(_supabaseUrl).host;
+  const parsed = new URL(url);
+  if (parsed.host !== _supabaseHost) throw new Error('forbidden_host');
+
   // Strip CR/LF from all header values — net.fetch enforces strict RFC 7230
   // validation that rejects headers containing newline characters (which can
   // be present in long env-var tokens due to copy-paste line wrapping).
@@ -2422,6 +2532,13 @@ ipcMain.handle('supabase:fetch', async (_e, { url, method, headers, body }) => {
   res.headers.forEach((value, key) => { resHeaders[key] = value; });
   return { ok: res.ok, status: res.status, statusText: res.statusText, headers: resHeaders, body: text };
 });
+
+// ── Cloud Sync Queue IPC ─────────────────────────────────────────────────────
+ipcMain.handle('syncQueue:push',              (_e, key, value) => syncQueuePush(key, value));
+ipcMain.handle('syncQueue:peek',              (_e, limit)      => syncQueuePeek(limit));
+ipcMain.handle('syncQueue:delete',            (_e, id)         => syncQueueDelete(id));
+ipcMain.handle('syncQueue:incrementAttempts', (_e, id)         => syncQueueIncrementAttempts(id));
+ipcMain.handle('syncQueue:length',            ()               => syncQueueLength());
 
 app.on('window-all-closed', () => {
   if (biqTray) { biqTray.destroy(); biqTray = null; }
