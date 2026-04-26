@@ -3232,6 +3232,7 @@ function DepositScheduleSection({commandeId,totals,factures,saveFactures,clients
    const num=fmtDocNum(docNums?.prefix||"BIQ","F",docNums?.facture||1);
    const depFac={id:newId,clientId:sched.commande_id,numero:num,date:todayStr,dateEcheance:"",statut:"Envoyée",notes:sched.label,lignes:[{id:"1",description:sched.label,quantite:1,prixUnitaire:parseFloat(beforeTax.toFixed(2)),tps:true,tvq:true,remise:0}],paiements:[],sourceType:"commande_acompte",isDepositInvoice:true,parentCommandeId:sched.commande_id};
    saveFactures([...factures,depFac]);
+   if(!depFac.glEntryId&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients?.find(c=>c.id===depFac.clientId)?.taxExempt);const dTot=computeSoumTotals(depFac.lignes||[]);window.api.ledger.invoicePost({invoiceId:depFac.id,invoiceDate:depFac.date,subtotalCents:Math.round((dTot.sousTotal||0)*100),tpsCents:Math.round((dTot.tpsTotal||0)*100),tvqCents:Math.round((dTot.tvqTotal||0)*100),totalCents:Math.round((dTot.total||0)*100),taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(f=>f.id===depFac.id?{...f,glEntryId:res.entryId}:f));}).catch(()=>{});}
    if(saveDocNums&&docNums)saveDocNums({...docNums,facture:(docNums.facture||1)+1});
    await window.api.deposits.markGenerated(sched.id,newId);
    setSchedules(prev=>prev.map(s=>s.id===sched.id?{...s,status:'generated',generated_invoice_id:newId}:s));
@@ -3390,16 +3391,17 @@ function InterestConfigSection({showUpgradePrompt,factures,saveFactures,clients,
   if(!toGenerate.length){setPreview(null);return;}
   let encNum=docNums?.facture||1;
   const newFacs=[...factures];
-  const generated=[];
+  const generated=[];const newIntFacs=[];
   for(const fac of toGenerate){
    const newId=Date.now().toString()+(Math.random()*1000|0);
    const num=fmtDocNum(docNums?.prefix||"BIQ","F",encNum++);
    const intFac={id:newId,clientId:fac.clientId,numero:num,date:todayStr,dateEcheance:"",statut:"Envoyée",isInterest:true,parentFactureId:fac.id,notes:cfg.message||`Intérêts sur facture ${fac.numero} (${cfg.rate}%/mois)`,lignes:[{id:"1",description:`Intérêts sur ${fac.numero} — ${cfg.rate}%/mois`,quantite:1,prixUnitaire:fac._interestAmt,tps:false,tvq:false,remise:0}],paiements:[]};
-   newFacs.push(intFac);
+   newFacs.push(intFac);newIntFacs.push(intFac);
    generated.push({num,client:fac._client,amt:fac._interestAmt});
   }
   saveFactures(newFacs);
   if(saveDocNums&&docNums)saveDocNums({...docNums,facture:encNum});
+  for(const f of newIntFacs){if(!f.glEntryId&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients?.find(c=>c.id===f.clientId)?.taxExempt);const ft=computeSoumTotals(f.lignes||[]);window.api.ledger.invoicePost({invoiceId:f.id,invoiceDate:f.date,subtotalCents:Math.round((ft.sousTotal||0)*100),tpsCents:Math.round((ft.tpsTotal||0)*100),tvqCents:Math.round((ft.tvqTotal||0)*100),totalCents:Math.round((ft.total||0)*100),taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(fa=>fa.id===f.id?{...fa,glEntryId:res.entryId}:fa));}).catch(()=>{});}}
   setPreview(null);setResult(generated);
  };
  return(<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:14}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}><span style={{fontSize:13,fontWeight:700,color:t.text}}>{T.interestTitle||"Intérêts sur retard"}</span>{isPro?<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"1px 6px",borderRadius:6}}>PRO</span>:<span style={{fontSize:9,fontWeight:700,color:"#6b7280",background:"rgba(255,255,255,0.06)",padding:"1px 6px",borderRadius:6}}>Pro</span>}</div>
@@ -3492,7 +3494,7 @@ function RecurringGenerateModal({recurrents,saveRecurrents,factures,saveFactures
  let updFactures=[...factures];
  let encNum=docNums.facture;
  const newRecs=[...recurrents];
- const done=[];
+ const done=[];const newRecFacs=[];
  for(const rec of due){
  const fac={
  id:Date.now().toString(36)+Math.random().toString(36).slice(2),
@@ -3505,7 +3507,7 @@ function RecurringGenerateModal({recurrents,saveRecurrents,factures,saveFactures
  paiements:[],
  numero:fmtDocNum(docNums.prefix,"F",encNum++),
  };
- updFactures=[...updFactures,fac];
+ updFactures=[...updFactures,fac];newRecFacs.push(fac);
  const ri=newRecs.findIndex(r=>r.id===rec.id);
  if(ri>=0)newRecs[ri]={...newRecs[ri],lastGenerated:today};
  const client=clients.find(c=>c.id===rec.clientId);
@@ -3518,6 +3520,7 @@ function RecurringGenerateModal({recurrents,saveRecurrents,factures,saveFactures
  }
  }
  saveFactures(updFactures);
+ for(const f of newRecFacs){if(!f.glEntryId&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients?.find(c=>c.id===f.clientId)?.taxExempt);const ft=computeSoumTotals(f.lignes||[]);window.api.ledger.invoicePost({invoiceId:f.id,invoiceDate:f.date,subtotalCents:Math.round((ft.sousTotal||0)*100),tpsCents:Math.round((ft.tpsTotal||0)*100),tvqCents:Math.round((ft.tvqTotal||0)*100),totalCents:Math.round((ft.total||0)*100),taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(fa=>fa.id===f.id?{...fa,glEntryId:res.entryId}:fa));}).catch(()=>{});}}
  saveDocNums({...docNums,facture:encNum});
  saveRecurrents(newRecs);
  setGenerating(false);
