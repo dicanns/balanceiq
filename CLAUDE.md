@@ -27,12 +27,20 @@ Every code path that creates an invoice with `statut:"Envoyee"` must call
 immediately after `saveFactures`. A direct `statut:"Envoyee"` assignment
 without an invoicePost call is a bug.
 
-Covered paths as of v1.37.5:
+Covered paths as of v1.38.2:
 - FactureEditor doSave (line ~2670)
 - FactureEditor email send (line ~2902)
 - DepositScheduleSection generateDepositInvoice (line ~3234)
 - InterestConfigSection confirmGenerate (line ~3401)
 - RecurringGenerateModal doGenerate (line ~3520)
+
+Verified clean by grep audit: all remaining `statut:"Envoyée"` occurrences
+in App.jsx are filter predicates, status-color maps, or the demo PDF — not
+new invoice creation sites. Payment plan installments use `statut:"Brouillon"`
+at generation and are posted through the normal doSave path.
+
+Integration test: src/__tests__/integration/recurringInvoiceToGL.test.js
+(INT-001) covers all three bypass paths end-to-end.
 
 ### 4. No em dashes in any file
 The character `--` (em dash, U+2014) is banned from all source files,
