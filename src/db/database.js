@@ -4081,6 +4081,16 @@ function closeExceptionList(sessionId, _db) {
   return db.prepare('SELECT * FROM close_exceptions WHERE close_session_id = ? ORDER BY id ASC').all(sessionId);
 }
 
+function closeVarianceReveal(closureId, actor, _db) {
+  const db = _db || getDb();
+  const now = new Date().toISOString();
+  db.prepare(`INSERT INTO audit_log
+    (device_id, user_name, module, action, record_type, record_id, metadata)
+    VALUES ('local', ?, 'close_assurance', 'close_variance_revealed', 'register_closures', ?, ?)`
+  ).run(actor ?? 'local', String(closureId ?? 0), JSON.stringify({ revealed_at: now }));
+  return true;
+}
+
 function closeExceptionAcknowledge(id, actor, reason, _db) {
   const db = _db || getDb();
   const now = new Date().toISOString();
@@ -4167,5 +4177,6 @@ module.exports = {
   inventoryDeductUpsert, inventoryDeductDeleteByInvoice, inventoryDeductListByProduct, inventoryDeductSummaryByDate,
   closePolicyGet, closePolicySave,
   closeSessionGet, closeSessionList, closeSessionCreateOrLoad,
+  closeVarianceReveal,
   closeExceptionList, closeExceptionAcknowledge,
 };

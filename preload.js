@@ -445,6 +445,7 @@ contextBridge.exposeInMainWorld('api', {
       list:         (opts) => ipcRenderer.invoke('close:session:list', opts),
       createOrLoad: (opts) => ipcRenderer.invoke('close:session:createOrLoad', opts),
     },
+    revealVariance: (closureId, actor) => ipcRenderer.invoke('close:variance:reveal', closureId, actor),
     exception: {
       list:        (sessionId)          => ipcRenderer.invoke('close:exception:list', sessionId),
       acknowledge: (id, actor, reason)  => ipcRenderer.invoke('close:exception:acknowledge', id, actor, reason),

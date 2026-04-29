@@ -2272,6 +2272,12 @@ export const FR = {
   telemetryBody:       "Partagez des données d'utilisation anonymes — aucune donnée financière, aucun nom, aucune information commerciale n'est transmise. Seulement les fonctionnalités utilisées, la version et la plateforme.",
   telemetryAccept:     "Accepter",
   telemetryDecline:    "Non merci",
+  // ── CLOSE ASSURANCE — Blind close ──
+  closeBlindCounting:  "Compte en cours",
+  closeBlindSubmit:    "Soumettre le compte",
+  closeBlindAwaitReveal: "Soumis, en attente de révélation",
+  closeBlindReveal:    "Révéler l'écart",
+  closeBlindManagerOnly: "Manager seulement",
 };
 
 // ── ENGLISH ──
@@ -4544,4 +4550,10 @@ export const EN = {
   telemetryBody:       "Share anonymous usage data — no financial data, names, or business info is ever sent. Only which features are used, your version, and platform.",
   telemetryAccept:     "Accept",
   telemetryDecline:    "No thanks",
+  // ── CLOSE ASSURANCE — Blind close ──
+  closeBlindCounting:  "Counting in progress",
+  closeBlindSubmit:    "Submit count",
+  closeBlindAwaitReveal: "Submitted, awaiting reveal",
+  closeBlindReveal:    "Reveal variance",
+  closeBlindManagerOnly: "Manager only",
 };
