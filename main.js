@@ -81,6 +81,9 @@ const {
   docNumRegister, docNumCheckConflicts, docNumList,
   paymentPlanCreate, paymentPlanGet, paymentPlanUpdate, paymentPlanCancel,
   inventoryDeductUpsert, inventoryDeductDeleteByInvoice, inventoryDeductListByProduct, inventoryDeductSummaryByDate,
+  closePolicyGet, closePolicySave,
+  closeSessionGet, closeSessionList, closeSessionCreateOrLoad,
+  closeExceptionList, closeExceptionAcknowledge,
 } = require('./src/db/database.js');
 
 const BACKUP_DIR = () => path.join(app.getPath('userData'), 'Backups');
@@ -2539,6 +2542,15 @@ ipcMain.handle('syncQueue:peek',              (_e, limit)      => syncQueuePeek(
 ipcMain.handle('syncQueue:delete',            (_e, id)         => syncQueueDelete(id));
 ipcMain.handle('syncQueue:incrementAttempts', (_e, id)         => syncQueueIncrementAttempts(id));
 ipcMain.handle('syncQueue:length',            ()               => syncQueueLength());
+
+// ── Close Assurance ───────────────────────────────────────────────────────────
+ipcMain.handle('close:policy:get',            (_e, locationId) => closePolicyGet(locationId));
+ipcMain.handle('close:policy:save',           (_e, policy)     => closePolicySave(policy));
+ipcMain.handle('close:session:get',           (_e, id)         => closeSessionGet(id));
+ipcMain.handle('close:session:list',          (_e, opts)       => closeSessionList(opts || {}));
+ipcMain.handle('close:session:createOrLoad',  (_e, opts)       => closeSessionCreateOrLoad(opts));
+ipcMain.handle('close:exception:list',        (_e, sessionId)  => closeExceptionList(sessionId));
+ipcMain.handle('close:exception:acknowledge', (_e, id, actor, reason) => closeExceptionAcknowledge(id, actor, reason));
 
 app.on('window-all-closed', () => {
   if (biqTray) { biqTray.destroy(); biqTray = null; }

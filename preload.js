@@ -435,4 +435,19 @@ contextBridge.exposeInMainWorld('api', {
     incrementAttempts:(id)         => ipcRenderer.invoke('syncQueue:incrementAttempts', id),
     length:           ()           => ipcRenderer.invoke('syncQueue:length'),
   },
+  closeAssurance: {
+    policy: {
+      get:  (locationId) => ipcRenderer.invoke('close:policy:get', locationId),
+      save: (policy)     => ipcRenderer.invoke('close:policy:save', policy),
+    },
+    session: {
+      get:          (id)   => ipcRenderer.invoke('close:session:get', id),
+      list:         (opts) => ipcRenderer.invoke('close:session:list', opts),
+      createOrLoad: (opts) => ipcRenderer.invoke('close:session:createOrLoad', opts),
+    },
+    exception: {
+      list:        (sessionId)          => ipcRenderer.invoke('close:exception:list', sessionId),
+      acknowledge: (id, actor, reason)  => ipcRenderer.invoke('close:exception:acknowledge', id, actor, reason),
+    },
+  },
 });

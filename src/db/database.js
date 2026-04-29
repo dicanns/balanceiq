@@ -3965,6 +3965,138 @@ function restoreAllTablesFromBackup(data, expectedSchemaVersion, _db) {
   })();
 }
 
+// ── Close Assurance ──────────────────────────────────────────────────────────
+
+const CLOSE_POLICY_DEFAULTS = {
+  name: 'default',
+  blind_close_mode: 'off',
+  variance_per_register_cents: 100,
+  variance_store_cents: 200,
+  missing_required_checklist_rule: 'inform',
+  missing_pos_evidence_rule: 'inform',
+  missing_delivery_reconciliation_rule: 'inform',
+  manager_signoff_required: 0,
+  approver_identity_method: 'typed_name',
+  denomination_mode: 'total_only',
+  shift_mode_enabled: 0,
+  shift_signoff_required: 0,
+};
+
+function closePolicyGet(locationId, _db) {
+  const db = _db || getDb();
+  const row = locationId != null
+    ? db.prepare('SELECT * FROM close_policies WHERE location_id = ? LIMIT 1').get(locationId)
+    : db.prepare('SELECT * FROM close_policies WHERE location_id IS NULL LIMIT 1').get();
+  return row || { ...CLOSE_POLICY_DEFAULTS, location_id: locationId ?? null };
+}
+
+function closePolicySave(policy, _db) {
+  const db = _db || getDb();
+  const existing = policy.id
+    ? db.prepare('SELECT id FROM close_policies WHERE id = ?').get(policy.id)
+    : (policy.location_id != null
+        ? db.prepare('SELECT id FROM close_policies WHERE location_id = ?').get(policy.location_id)
+        : db.prepare('SELECT id FROM close_policies WHERE location_id IS NULL').get());
+
+  const now = new Date().toISOString();
+  let savedId;
+  if (existing) {
+    db.prepare(`UPDATE close_policies SET
+      name=@name, blind_close_mode=@blind_close_mode,
+      variance_per_register_cents=@variance_per_register_cents,
+      variance_store_cents=@variance_store_cents,
+      missing_required_checklist_rule=@missing_required_checklist_rule,
+      missing_pos_evidence_rule=@missing_pos_evidence_rule,
+      missing_delivery_reconciliation_rule=@missing_delivery_reconciliation_rule,
+      manager_signoff_required=@manager_signoff_required,
+      approver_identity_method=@approver_identity_method,
+      denomination_mode=@denomination_mode,
+      shift_mode_enabled=@shift_mode_enabled,
+      shift_signoff_required=@shift_signoff_required,
+      updated_at=@updated_at
+      WHERE id=@id`).run({ ...CLOSE_POLICY_DEFAULTS, ...policy, id: existing.id, updated_at: now });
+    savedId = existing.id;
+  } else {
+    const { lastInsertRowid } = db.prepare(`INSERT INTO close_policies
+      (location_id, name, blind_close_mode, variance_per_register_cents, variance_store_cents,
+       missing_required_checklist_rule, missing_pos_evidence_rule, missing_delivery_reconciliation_rule,
+       manager_signoff_required, approver_identity_method, denomination_mode,
+       shift_mode_enabled, shift_signoff_required, created_at, updated_at)
+      VALUES
+      (@location_id, @name, @blind_close_mode, @variance_per_register_cents, @variance_store_cents,
+       @missing_required_checklist_rule, @missing_pos_evidence_rule, @missing_delivery_reconciliation_rule,
+       @manager_signoff_required, @approver_identity_method, @denomination_mode,
+       @shift_mode_enabled, @shift_signoff_required, @created_at, @updated_at)`).run({
+      ...CLOSE_POLICY_DEFAULTS, ...policy,
+      location_id: policy.location_id ?? null,
+      created_at: now, updated_at: now,
+    });
+    savedId = lastInsertRowid;
+  }
+
+  db.prepare(`INSERT INTO audit_log
+    (device_id, user_name, module, action, record_type, record_id, metadata)
+    VALUES ('local', 'local', 'close_assurance', 'close_policy_saved', 'close_policies', ?, ?)`
+  ).run(String(savedId), JSON.stringify({ location_id: policy.location_id ?? null }));
+
+  return db.prepare('SELECT * FROM close_policies WHERE id = ?').get(savedId);
+}
+
+function closeSessionGet(id, _db) {
+  const db = _db || getDb();
+  const session = db.prepare('SELECT * FROM close_sessions WHERE id = ?').get(id);
+  if (!session) return null;
+  const closures = db.prepare('SELECT * FROM register_closures WHERE close_session_id = ?').all(id);
+  return { ...session, register_closures: closures };
+}
+
+function closeSessionList({ dateFrom, dateTo, status, limit = 50 } = {}, _db) {
+  const db = _db || getDb();
+  let sql = 'SELECT * FROM close_sessions WHERE 1=1';
+  const params = [];
+  if (dateFrom) { sql += ' AND date_key >= ?'; params.push(dateFrom); }
+  if (dateTo)   { sql += ' AND date_key <= ?'; params.push(dateTo); }
+  if (status)   { sql += ' AND status = ?';    params.push(status); }
+  sql += ` ORDER BY date_key DESC, id DESC LIMIT ${parseInt(limit, 10)}`;
+  return db.prepare(sql).all(...params);
+}
+
+function closeSessionCreateOrLoad({ date_key, shift_key = null, policy_id = null, prepared_by = null } = {}, _db) {
+  const db = _db || getDb();
+  const existing = shift_key
+    ? db.prepare('SELECT * FROM close_sessions WHERE date_key = ? AND shift_key = ? AND status = ?').get(date_key, shift_key, 'draft')
+    : db.prepare('SELECT * FROM close_sessions WHERE date_key = ? AND shift_key IS NULL AND status = ?').get(date_key, 'draft');
+  if (existing) return existing;
+
+  const now = new Date().toISOString();
+  const { lastInsertRowid } = db.prepare(`INSERT INTO close_sessions
+    (date_key, shift_key, status, policy_id, prepared_by, created_at, updated_at)
+    VALUES (?, ?, 'draft', ?, ?, ?, ?)`
+  ).run(date_key, shift_key, policy_id ?? null, prepared_by ?? null, now, now);
+  return db.prepare('SELECT * FROM close_sessions WHERE id = ?').get(lastInsertRowid);
+}
+
+function closeExceptionList(sessionId, _db) {
+  const db = _db || getDb();
+  return db.prepare('SELECT * FROM close_exceptions WHERE close_session_id = ? ORDER BY id ASC').all(sessionId);
+}
+
+function closeExceptionAcknowledge(id, actor, reason, _db) {
+  const db = _db || getDb();
+  const now = new Date().toISOString();
+  db.prepare(`UPDATE close_exceptions SET acknowledged_by = ?, acknowledged_at = ?, resolution_reason = ? WHERE id = ?`
+  ).run(actor, now, reason ?? null, id);
+
+  const ex = db.prepare('SELECT close_session_id FROM close_exceptions WHERE id = ?').get(id);
+  if (ex) {
+    db.prepare(`INSERT INTO audit_log
+      (device_id, user_name, module, action, record_type, record_id, metadata)
+      VALUES ('local', ?, 'close_assurance', 'close_exception_acknowledged', 'close_exceptions', ?, ?)`
+    ).run(actor, String(id), JSON.stringify({ session_id: ex.close_session_id, reason }));
+  }
+  return true;
+}
+
 module.exports = {
   storageGet, storageSet, storageGetAll, storageGetByPrefix,
   getAllTablesForBackup, restoreAllTablesFromBackup,
@@ -4033,4 +4165,7 @@ module.exports = {
   docNumRegister, docNumCheckConflicts, docNumList,
   paymentPlanCreate, paymentPlanGet, paymentPlanUpdate, paymentPlanCancel,
   inventoryDeductUpsert, inventoryDeductDeleteByInvoice, inventoryDeductListByProduct, inventoryDeductSummaryByDate,
+  closePolicyGet, closePolicySave,
+  closeSessionGet, closeSessionList, closeSessionCreateOrLoad,
+  closeExceptionList, closeExceptionAcknowledge,
 };

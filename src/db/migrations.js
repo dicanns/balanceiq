@@ -673,6 +673,124 @@ const MIGRATIONS = [
       database.prepare(`CREATE INDEX IF NOT EXISTS idx_rg_rule ON recurring_generated(rule_id, status)`).run();
     },
   },
+  {
+    version: 14,
+    description: 'Close Assurance - policies, sessions, register closures, exceptions, approvals',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS close_policies (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        location_id INTEGER,
+        name TEXT NOT NULL DEFAULT 'default',
+        blind_close_mode TEXT NOT NULL DEFAULT 'off',
+        variance_per_register_cents INTEGER NOT NULL DEFAULT 100,
+        variance_store_cents INTEGER NOT NULL DEFAULT 200,
+        missing_required_checklist_rule TEXT NOT NULL DEFAULT 'inform',
+        missing_pos_evidence_rule TEXT NOT NULL DEFAULT 'inform',
+        missing_delivery_reconciliation_rule TEXT NOT NULL DEFAULT 'inform',
+        manager_signoff_required INTEGER NOT NULL DEFAULT 0,
+        approver_identity_method TEXT NOT NULL DEFAULT 'typed_name',
+        denomination_mode TEXT NOT NULL DEFAULT 'total_only',
+        shift_mode_enabled INTEGER NOT NULL DEFAULT 0,
+        shift_signoff_required INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        CHECK (blind_close_mode IN ('off', 'register_blind', 'manager_reveal')),
+        CHECK (denomination_mode IN ('total_only', 'denominations_optional', 'denominations_required')),
+        CHECK (approver_identity_method IN ('typed_name', 'pin', 'cloud_user')),
+        CHECK (missing_required_checklist_rule IN ('inform', 'require_reason', 'block')),
+        CHECK (missing_pos_evidence_rule IN ('inform', 'require_reason', 'block')),
+        CHECK (missing_delivery_reconciliation_rule IN ('inform', 'require_reason', 'block'))
+      )`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS close_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date_key TEXT NOT NULL,
+        shift_key TEXT,
+        status TEXT NOT NULL DEFAULT 'draft',
+        blind_close_mode TEXT NOT NULL DEFAULT 'off',
+        policy_id INTEGER,
+        prepared_by TEXT,
+        submitted_at TEXT,
+        approved_by TEXT,
+        approved_at TEXT,
+        reopened_by TEXT,
+        reopened_at TEXT,
+        reopen_reason TEXT,
+        snapshot_id INTEGER,
+        all_balanced INTEGER NOT NULL DEFAULT 0,
+        warning_count INTEGER NOT NULL DEFAULT 0,
+        blocker_count INTEGER NOT NULL DEFAULT 0,
+        exception_summary_json TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (policy_id) REFERENCES close_policies(id),
+        CHECK (status IN ('draft','submitted','approved','reopened','finalized'))
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_cs_date ON close_sessions(date_key)`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_cs_status ON close_sessions(status)`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS register_closures (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        close_session_id INTEGER NOT NULL,
+        register_key TEXT NOT NULL,
+        register_label TEXT,
+        cashier_id TEXT,
+        cashier_name TEXT,
+        float_cents INTEGER NOT NULL DEFAULT 0,
+        pos_sales_cents INTEGER NOT NULL DEFAULT 0,
+        pos_tps_cents INTEGER NOT NULL DEFAULT 0,
+        pos_tvq_cents INTEGER NOT NULL DEFAULT 0,
+        pos_delivery_cents INTEGER NOT NULL DEFAULT 0,
+        terminal_cents INTEGER NOT NULL DEFAULT 0,
+        deposits_cents INTEGER NOT NULL DEFAULT 0,
+        final_cash_cents INTEGER NOT NULL DEFAULT 0,
+        expected_in_register_cents INTEGER NOT NULL DEFAULT 0,
+        expected_cash_cents INTEGER NOT NULL DEFAULT 0,
+        physical_cash_cents INTEGER NOT NULL DEFAULT 0,
+        variance_cents INTEGER NOT NULL DEFAULT 0,
+        count_mode TEXT NOT NULL DEFAULT 'total_only',
+        status TEXT NOT NULL DEFAULT 'draft',
+        variance_reason_code TEXT,
+        variance_reason_text TEXT,
+        submitted_at TEXT,
+        approved_at TEXT,
+        FOREIGN KEY (close_session_id) REFERENCES close_sessions(id)
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_rc_session ON register_closures(close_session_id)`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS close_exceptions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        close_session_id INTEGER NOT NULL,
+        register_closure_id INTEGER,
+        severity TEXT NOT NULL,
+        exception_type TEXT NOT NULL,
+        code TEXT NOT NULL,
+        label_fr TEXT,
+        label_en TEXT,
+        payload_json TEXT,
+        acknowledged_by TEXT,
+        acknowledged_at TEXT,
+        resolution_reason TEXT,
+        FOREIGN KEY (close_session_id) REFERENCES close_sessions(id),
+        CHECK (severity IN ('info','warning','blocker'))
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_ce_session ON close_exceptions(close_session_id)`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS close_approvals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        close_session_id INTEGER NOT NULL,
+        stage TEXT NOT NULL,
+        actor_name TEXT NOT NULL,
+        actor_role TEXT,
+        approval_method TEXT,
+        reason TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (close_session_id) REFERENCES close_sessions(id),
+        CHECK (approval_method IN ('typed_name','pin','cloud_user'))
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_ca_session ON close_approvals(close_session_id)`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
