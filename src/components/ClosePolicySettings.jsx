@@ -17,10 +17,17 @@ const DEFAULTS = {
 export default function ClosePolicySettings({ T, t, onPolicySaved }) {
   const [policy, setPolicy] = useState(DEFAULTS);
   const [msg, setMsg] = useState(null);
+  const [varRegStr, setVarRegStr] = useState('1.00');
+  const [varStoreStr, setVarStoreStr] = useState('2.00');
 
   useEffect(() => {
     window.api?.closeAssurance?.policy.get(null).then(p => {
-      if (p) setPolicy({ ...DEFAULTS, ...p });
+      if (p) {
+        const merged = { ...DEFAULTS, ...p };
+        setPolicy(merged);
+        setVarRegStr((merged.variance_per_register_cents / 100).toFixed(2));
+        setVarStoreStr((merged.variance_store_cents / 100).toFixed(2));
+      }
     }).catch(() => {});
   }, []);
 
@@ -141,8 +148,14 @@ export default function ClosePolicySettings({ T, t, onPolicySaved }) {
               <span style={{ fontSize: 12, color: t.textSub }}>$</span>
               <input
                 type="number" min="0" step="0.25"
-                value={(policy.variance_per_register_cents / 100).toFixed(2)}
-                onChange={e => set('variance_per_register_cents', Math.round(parseFloat(e.target.value || 0) * 100))}
+                value={varRegStr}
+                onChange={e => setVarRegStr(e.target.value)}
+                onBlur={() => {
+                  const cents = Math.round(parseFloat(varRegStr || '0') * 100);
+                  const safe = isNaN(cents) ? 0 : Math.max(0, cents);
+                  set('variance_per_register_cents', safe);
+                  setVarRegStr((safe / 100).toFixed(2));
+                }}
                 style={numStyle}
               />
             </div>
@@ -156,8 +169,14 @@ export default function ClosePolicySettings({ T, t, onPolicySaved }) {
               <span style={{ fontSize: 12, color: t.textSub }}>$</span>
               <input
                 type="number" min="0" step="0.25"
-                value={(policy.variance_store_cents / 100).toFixed(2)}
-                onChange={e => set('variance_store_cents', Math.round(parseFloat(e.target.value || 0) * 100))}
+                value={varStoreStr}
+                onChange={e => setVarStoreStr(e.target.value)}
+                onBlur={() => {
+                  const cents = Math.round(parseFloat(varStoreStr || '0') * 100);
+                  const safe = isNaN(cents) ? 0 : Math.max(0, cents);
+                  set('variance_store_cents', safe);
+                  setVarStoreStr((safe / 100).toFixed(2));
+                }}
                 style={numStyle}
               />
             </div>
