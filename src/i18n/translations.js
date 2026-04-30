@@ -2311,6 +2311,7 @@ export const FR = {
   cpMethodCloud:       "Utilisateur cloud",
   cpShiftMode:         "Mode quarts de travail",
   cpShiftSignoff:      "Signature de fin de quart requise",
+  cpCloudUserNotice:   "Cette methode necessite un compte BalanceIQ Pro actif pour chaque approbateur.",
   cfgClosePolicy:      "Politique de fermeture",
 };
 
@@ -4623,5 +4624,6 @@ export const EN = {
   cpMethodCloud:       "Cloud user",
   cpShiftMode:         "Shift mode",
   cpShiftSignoff:      "Shift sign-off required",
+  cpCloudUserNotice:   "This method requires an active BalanceIQ Pro account for each approver.",
   cfgClosePolicy:      "Close Policy",
 };

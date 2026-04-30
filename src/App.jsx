@@ -30,7 +30,7 @@ import { supabase as _supabaseClient } from "./services/supabase.js";
 import { initTelemetry, getTelemetryConsent, setTelemetryConsent, trackEvent } from "./services/telemetry.js";
 import { POS_CONFIG, POS_COMING_SOON } from "./config/posConfig.js";
 import { FR, EN } from "./i18n/translations.js";
-import RegisterCloseCard from "./components/RegisterCloseCard.jsx";
+import RegisterCloseCard, { computeRegisterVariance } from "./components/RegisterCloseCard.jsx";
 import ClosePolicySettings from "./components/ClosePolicySettings.jsx";
 
 // ── URL SAFETY (renderer-side) ───────────────────────────────────────────────
@@ -6772,6 +6772,29 @@ export default function App(){
 
   const closeDay=useCallback(async()=>{
     const key=selectedDate;
+    // ── Close Assurance evaluation (2C) ──────────────────────────────────────
+    if(closePolicy){
+      const dayCashes=(liveDataRef.current[key]?.cashes)||[];
+      const closures=dayCashes.map(c=>{
+        const v=computeRegisterVariance(c);
+        return{variance_cents:v!=null?Math.round(v*100):0};
+      });
+      const dailyTemplates=checklistTemplates.filter(t=>t.active&&t.required&&t.frequency==='daily');
+      const dayEntries=checklistEntries[key]||[];
+      const checklistItems=dailyTemplates.map(t=>({
+        required:true,
+        completed:!!dayEntries.find(e=>e.template_id===t.id&&e.completed),
+      }));
+      const posDataPresent=dayCashes.some(c=>c.posVentes!=null);
+      const {blockers}=window.api?.closeAssurance
+        ?await window.api.closeAssurance.evaluate({closures,policy:closePolicy,checklistItems,posDataPresent}).catch(()=>({blockers:[]}))
+        :{blockers:[]};
+      if(blockers.length>0){
+        const msg=blockers.map(b=>lang==='fr'?b.message_fr:b.message_en).join('\n');
+        alert((lang==='fr'?'Fermeture bloquée:\n':'Close blocked:\n')+msg);
+        return;
+      }
+    }
     const closedAt=new Date().toISOString();
     const dayData=liveDataRef.current[key];
     const cd=computeDay(key); // capture balance state at close time

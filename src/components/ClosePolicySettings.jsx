@@ -196,6 +196,11 @@ export default function ClosePolicySettings({ T, t, onPolicySaved }) {
               <option value="pin">{T.cpMethodPIN}</option>
               <option value="cloud_user">{T.cpMethodCloud}</option>
             </select>
+            {policy.approver_identity_method === 'cloud_user' && (
+              <div style={{ marginTop: 6, fontSize: 11, color: '#f97316', background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.25)', borderRadius: 6, padding: '6px 9px' }}>
+                {T.cpCloudUserNotice}
+              </div>
+            )}
           </div>
         )}
         <Toggle label={T.cpShiftMode} field="shift_mode_enabled" />
