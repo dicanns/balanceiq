@@ -3036,15 +3036,15 @@ export const EN = {
  invOverrideBtn: "",
 
  // ── EMPLOYEES / LABOUR ──
- empSectionTitle: "Main d'œuvre",
- empAddEmployee: "+ Employé",
- empCopyYesterday: "Copier d'hier",
- empName: "Employé",
- empHours: "Heures",
- empWage: "Taux/h",
- empCost: "Coût",
- empTotalHours: "Total heures",
- empTotalCost: "Total coût",
+ empSectionTitle: "Labour",
+ empAddEmployee: "+ Employee",
+ empCopyYesterday: "Copy from yesterday",
+ empName: "Employee",
+ empHours: "Hours",
+ empWage: "Rate/h",
+ empCost: "Cost",
+ empTotalHours: "Total hours",
+ empTotalCost: "Total cost",
  empLabourPct: "% labour",
 
  // ── EXTERNAL FACTORS ──
