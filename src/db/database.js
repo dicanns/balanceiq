@@ -4115,7 +4115,7 @@ function closePolicyGet(locationId, _db) {
   const row = locationId != null
     ? db.prepare('SELECT * FROM close_policies WHERE location_id = ? LIMIT 1').get(locationId)
     : db.prepare('SELECT * FROM close_policies WHERE location_id IS NULL LIMIT 1').get();
-  return row || { ...CLOSE_POLICY_DEFAULTS, location_id: locationId ?? null };
+  return { ...CLOSE_POLICY_DEFAULTS, location_id: locationId ?? null, ...(row || {}) };
 }
 
 function closePolicySave(policy, _db) {
