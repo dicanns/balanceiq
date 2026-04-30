@@ -454,5 +454,8 @@ contextBridge.exposeInMainWorld('api', {
     closure: {
       save: (opts) => ipcRenderer.invoke('close:closure:save', opts),
     },
+    denomination: {
+      save: (closureId, denoms) => ipcRenderer.invoke('close:denomination:save', closureId, denoms),
+    },
   },
 });

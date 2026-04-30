@@ -11,7 +11,8 @@
  *   require_reason - reason picker shown, close proceeds after reason captured
  *   block          - reason picker shown, close is blocked until reason confirmed
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
+import DenominationCounter, { buildDenominationRows } from './DenominationCounter.jsx';
 
 export const VARIANCE_REASON_CODES = [
   { code: 'counting_error',        fr: 'Erreur de comptage',          en: 'Counting error' },
@@ -31,6 +32,7 @@ export default function RegisterCloseCard({
   closureId = null,
   varianceThresholdCents = 100,
   varianceRule = 'inform',
+  denominationMode = 'total_only',
   closureDate = null,
   registerIndex = 0,
   T,
@@ -45,6 +47,11 @@ export default function RegisterCloseCard({
   const [reasonText, setReasonText] = useState(cash?.varianceReasonText || '');
   const [reasonConfirmed, setReasonConfirmed] = useState(!!(cash?.varianceReasonCode));
 
+  const denomRequired = denominationMode === 'denominations_required';
+  const denomAllowed = denominationMode !== 'total_only';
+  const [denomMode, setDenomMode] = useState(denomRequired);
+  const denomRowsRef = useRef([]);
+
   const isBlind = blindMode !== 'off';
   const hideVariance = isBlind && !revealed;
   const showSubmitButton = isBlind && !counted;
@@ -57,6 +64,20 @@ export default function RegisterCloseCard({
   const showReasonPicker = thresholdExceeded && varianceRule !== 'inform' && !hideVariance && !reasonConfirmed;
   const reasonRequired = varianceRule === 'block';
   const lang = T?.closeBlindSubmit === 'Submit count' ? 'en' : 'fr';
+  const fr = lang !== 'en';
+
+  function handleDenomChange(totalDollars, rows) {
+    denomRowsRef.current = rows;
+    onChange?.({ ...cash, finalCash: totalDollars });
+  }
+
+  const denomMismatch = (() => {
+    if (!denomMode || denomRowsRef.current.length === 0) return false;
+    const denomTotal = denomRowsRef.current.reduce((s, r) => s + r.total_value_cents, 0) / 100;
+    const manual = cash?.finalCash ?? null;
+    if (manual == null) return false;
+    return Math.abs(denomTotal - manual) > 0.01;
+  })();
 
   const handleSubmitCount = useCallback(() => {
     setCounted(true);
@@ -99,6 +120,16 @@ export default function RegisterCloseCard({
     return (
       <div>
         <CashBlockComponent {...cashBlockProps} cash={cash} onChange={onChange} />
+        {denomAllowed && (
+          <DenomToggle
+            fr={fr} T={T} t={t}
+            denomMode={denomMode} denomRequired={denomRequired}
+            setDenomMode={setDenomMode}
+            denomMismatch={denomMismatch}
+            onDenomChange={handleDenomChange}
+            lang={lang}
+          />
+        )}
         {showReasonPicker && (
           <ReasonPicker
             lang={lang} T={T} t={t}
@@ -154,6 +185,16 @@ export default function RegisterCloseCard({
           </button>
         </div>
       )}
+      {denomAllowed && (
+        <DenomToggle
+          fr={fr} T={T} t={t}
+          denomMode={denomMode} denomRequired={denomRequired}
+          setDenomMode={setDenomMode}
+          denomMismatch={denomMismatch}
+          onDenomChange={handleDenomChange}
+          lang={lang}
+        />
+      )}
       {showReasonPicker && (
         <ReasonPicker
           lang={lang} T={T} t={t}
@@ -164,6 +205,47 @@ export default function RegisterCloseCard({
       )}
       {reasonConfirmed && thresholdExceeded && (
         <ReasonSummary lang={lang} t={t} reasonCode={reasonCode} reasonText={reasonText} />
+      )}
+    </div>
+  );
+}
+
+function DenomToggle({ fr, T, t, denomMode, denomRequired, setDenomMode, denomMismatch, onDenomChange, lang }) {
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: denomMode ? 4 : 0 }}>
+        <button
+          onClick={() => { if (!denomRequired) setDenomMode(v => !v); }}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            background: 'none', border: 'none', cursor: denomRequired ? 'default' : 'pointer', padding: 0,
+          }}
+        >
+          <span style={{
+            width: 28, height: 16, borderRadius: 8, display: 'inline-flex', alignItems: 'center',
+            background: denomMode ? '#16a34a' : 'rgba(255,255,255,0.1)',
+            transition: 'background 0.2s', position: 'relative', flexShrink: 0,
+          }}>
+            <span style={{
+              width: 12, height: 12, borderRadius: '50%', background: '#fff',
+              position: 'absolute', left: denomMode ? 14 : 2, transition: 'left 0.2s',
+            }} />
+          </span>
+          <span style={{ fontSize: 11.5, color: '#9ca3af' }}>
+            {fr ? 'Compter par denomination' : 'Count by denomination'}
+            {denomRequired && <span style={{ marginLeft: 4, fontSize: 10, color: '#f97316' }}>({fr ? 'requis' : 'required'})</span>}
+          </span>
+        </button>
+      </div>
+      {denomMode && (
+        <div style={{ padding: '8px 10px', borderRadius: 8, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+          <DenominationCounter lang={lang} t={t} onChange={onDenomChange} />
+          {denomMismatch && (
+            <div style={{ marginTop: 6, fontSize: 11, color: '#f59e0b', padding: '4px 8px', borderRadius: 5, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
+              {fr ? 'Le total de denomination differe du montant Final Cash.' : 'Denomination total differs from Final Cash amount.'}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

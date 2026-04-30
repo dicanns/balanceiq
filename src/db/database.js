@@ -975,6 +975,29 @@ const MIGRATIONS = [
       } catch (_) {}
     },
   },
+  {
+    version: 21,
+    description: 'Close Assurance 3A - register_count_denominations table',
+    up: (database) => {
+      database.prepare(`
+        CREATE TABLE IF NOT EXISTS register_count_denominations (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          register_closure_id INTEGER NOT NULL,
+          denomination_code TEXT NOT NULL,
+          unit_value_cents INTEGER NOT NULL,
+          quantity INTEGER NOT NULL DEFAULT 0,
+          total_value_cents INTEGER NOT NULL DEFAULT 0,
+          FOREIGN KEY (register_closure_id) REFERENCES register_closures(id)
+        )
+      `).run();
+      database.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_rcd_closure ON register_count_denominations(register_closure_id)
+      `).run();
+      try {
+        database.prepare(`ALTER TABLE close_policies ADD COLUMN denomination_mode TEXT NOT NULL DEFAULT 'total_only'`).run();
+      } catch (_) {}
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -4342,6 +4365,22 @@ function registerClosureSave({ date_key, register_key = 'default', variance_cent
   return { id: Number(r.lastInsertRowid), session_id: session.id };
 }
 
+// denominations: array of { denomination_code, unit_value_cents, quantity, total_value_cents }
+function denominationSave(closureId, denominations, _db) {
+  const db = _db || getDb();
+  db.prepare(`DELETE FROM register_count_denominations WHERE register_closure_id = ?`).run(closureId);
+  const ins = db.prepare(`
+    INSERT INTO register_count_denominations (register_closure_id, denomination_code, unit_value_cents, quantity, total_value_cents)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+  db.transaction(() => {
+    for (const d of denominations) {
+      ins.run(closureId, d.denomination_code, d.unit_value_cents, d.quantity ?? 0, d.total_value_cents ?? 0);
+    }
+  })();
+  return true;
+}
+
 module.exports = {
   storageGet, storageSet, storageGetAll, storageGetByPrefix,
   getAllTablesForBackup, restoreAllTablesFromBackup,
@@ -4416,4 +4455,5 @@ module.exports = {
   closeExceptionList, closeExceptionAcknowledge,
   evaluateCloseAssurance,
   registerClosureSave,
+  denominationSave,
 };

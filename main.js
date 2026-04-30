@@ -87,6 +87,7 @@ const {
   closeExceptionList, closeExceptionAcknowledge,
   evaluateCloseAssurance,
   registerClosureSave,
+  denominationSave,
 } = require('./src/db/database.js');
 
 const BACKUP_DIR = () => path.join(app.getPath('userData'), 'Backups');
@@ -2557,6 +2558,7 @@ ipcMain.handle('close:exception:list',        (_e, sessionId)  => closeException
 ipcMain.handle('close:exception:acknowledge', (_e, id, actor, reason) => closeExceptionAcknowledge(id, actor, reason));
 ipcMain.handle('close:evaluate',              (_e, opts)             => evaluateCloseAssurance(opts || {}));
 ipcMain.handle('close:closure:save',          (_e, opts)             => registerClosureSave(opts || {}));
+ipcMain.handle('close:denomination:save',     (_e, closureId, denoms) => denominationSave(closureId, denoms || []));
 
 app.on('window-all-closed', () => {
   if (biqTray) { biqTray.destroy(); biqTray = null; }
