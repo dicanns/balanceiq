@@ -675,6 +675,141 @@ const MIGRATIONS = [
   },
   {
     version: 14,
+    description: 'Sprint 9 — Reminder Ladder + Deposit Schedules',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS reminder_ladder (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        is_default INTEGER DEFAULT 0,
+        applies_to_client_id INTEGER,
+        is_active INTEGER DEFAULT 1
+      )`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS reminder_steps (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ladder_id INTEGER NOT NULL,
+        days_after_due INTEGER NOT NULL,
+        subject_fr TEXT,
+        subject_en TEXT,
+        body_fr TEXT,
+        body_en TEXT,
+        attach_pdf INTEGER DEFAULT 1,
+        include_payment_link INTEGER DEFAULT 1,
+        FOREIGN KEY (ladder_id) REFERENCES reminder_ladder(id)
+      )`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS reminder_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_id TEXT NOT NULL,
+        step_id INTEGER NOT NULL,
+        sent_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        sent_to TEXT,
+        status TEXT
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_rl_invoice ON reminder_log(invoice_id)`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS deposit_schedules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        commande_id TEXT NOT NULL,
+        label TEXT NOT NULL,
+        percentage REAL,
+        fixed_amount REAL,
+        trigger_type TEXT NOT NULL,
+        trigger_date TEXT,
+        generated_invoice_id TEXT,
+        status TEXT DEFAULT 'pending',
+        sort_order INTEGER DEFAULT 0
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_ds_commande ON deposit_schedules(commande_id)`).run();
+
+      const ladderId = database.prepare(
+        `INSERT INTO reminder_ladder (name, is_default, is_active) VALUES ('Defaut', 1, 1)`
+      ).run().lastInsertRowid;
+      const steps = [
+        { days: 3,  sfr: 'Rappel amical — Facture {numero}',         sen: 'Friendly reminder — Invoice {numero}',        bfr: '', ben: '' },
+        { days: 7,  sfr: 'Rappel ferme — Facture {numero}',          sen: 'Payment reminder — Invoice {numero}',         bfr: '', ben: '' },
+        { days: 14, sfr: 'Compte en retard — Facture {numero}',      sen: 'Past due — Invoice {numero}',                 bfr: '', ben: '' },
+        { days: 30, sfr: 'Dernier avis — Facture {numero}',          sen: 'Final notice — Invoice {numero}',             bfr: '', ben: '' },
+        { days: 60, sfr: 'Mise en demeure — Facture {numero}',       sen: 'Collection notice — Invoice {numero}',        bfr: '', ben: '' },
+      ];
+      const ins = database.prepare(
+        `INSERT INTO reminder_steps (ladder_id, days_after_due, subject_fr, subject_en, body_fr, body_en, attach_pdf, include_payment_link)
+         VALUES (?, ?, ?, ?, ?, ?, 1, 1)`
+      );
+      for (const s of steps) ins.run(ladderId, s.days, s.sfr, s.sen, s.bfr, s.ben);
+    },
+  },
+  {
+    version: 15,
+    description: 'Sprint 12 — Document Number Registry + Payment Plans',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS document_number_registry (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        document_type TEXT NOT NULL,
+        document_number TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(document_type, document_number)
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_dnr_type ON document_number_registry(document_type)`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS payment_plans (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        parent_invoice_id TEXT UNIQUE NOT NULL,
+        total_installments INTEGER NOT NULL,
+        cadence TEXT NOT NULL,
+        start_date TEXT NOT NULL,
+        use_pad INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'active',
+        notes TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_pp_parent ON payment_plans(parent_invoice_id)`).run();
+    },
+  },
+  {
+    version: 16,
+    description: 'Sprint 13 — Invoice Inventory Deductions',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS invoice_inventory_deductions (
+        id TEXT PRIMARY KEY,
+        invoice_id TEXT NOT NULL,
+        invoice_numero TEXT,
+        product_id TEXT NOT NULL,
+        quantity REAL NOT NULL,
+        revenue REAL DEFAULT 0,
+        sale_date TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        UNIQUE(invoice_id, product_id)
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_iid_product ON invoice_inventory_deductions(product_id)`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_iid_date ON invoice_inventory_deductions(sale_date)`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_iid_invoice ON invoice_inventory_deductions(invoice_id)`).run();
+    },
+  },
+  {
+    version: 17,
+    description: 'Sprint 15 — Bank match reason label',
+    up: (database) => {
+      try { database.prepare(`ALTER TABLE bank_transactions ADD COLUMN match_reason TEXT`).run(); } catch (_) {}
+    },
+  },
+  {
+    version: 18,
+    description: 'Security sprint — durable cloud sync queue',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS sync_queue (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        key TEXT NOT NULL,
+        value TEXT NOT NULL,
+        queued_at TEXT NOT NULL DEFAULT (datetime('now')),
+        attempts INTEGER NOT NULL DEFAULT 0
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_sq_key ON sync_queue(key)`).run();
+    },
+  },
+  {
+    version: 19,
     description: 'Close Assurance - policies, sessions, register closures, exceptions, approvals',
     up: (database) => {
       database.prepare(`CREATE TABLE IF NOT EXISTS close_policies (

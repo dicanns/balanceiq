@@ -848,6 +848,124 @@ const MIGRATIONS = [
       database.prepare(`CREATE INDEX IF NOT EXISTS idx_sq_key ON sync_queue(key)`).run();
     },
   },
+  {
+    version: 19,
+    description: 'Close Assurance - policies, sessions, register closures, exceptions, approvals',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS close_policies (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        location_id INTEGER,
+        name TEXT NOT NULL DEFAULT 'default',
+        blind_close_mode TEXT NOT NULL DEFAULT 'off',
+        variance_per_register_cents INTEGER NOT NULL DEFAULT 100,
+        variance_store_cents INTEGER NOT NULL DEFAULT 200,
+        missing_required_checklist_rule TEXT NOT NULL DEFAULT 'inform',
+        missing_pos_evidence_rule TEXT NOT NULL DEFAULT 'inform',
+        missing_delivery_reconciliation_rule TEXT NOT NULL DEFAULT 'inform',
+        manager_signoff_required INTEGER NOT NULL DEFAULT 0,
+        approver_identity_method TEXT NOT NULL DEFAULT 'typed_name',
+        denomination_mode TEXT NOT NULL DEFAULT 'total_only',
+        shift_mode_enabled INTEGER NOT NULL DEFAULT 0,
+        shift_signoff_required INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        CHECK (blind_close_mode IN ('off', 'register_blind', 'manager_reveal')),
+        CHECK (denomination_mode IN ('total_only', 'denominations_optional', 'denominations_required')),
+        CHECK (approver_identity_method IN ('typed_name', 'pin', 'cloud_user')),
+        CHECK (missing_required_checklist_rule IN ('inform', 'require_reason', 'block')),
+        CHECK (missing_pos_evidence_rule IN ('inform', 'require_reason', 'block')),
+        CHECK (missing_delivery_reconciliation_rule IN ('inform', 'require_reason', 'block'))
+      )`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS close_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date_key TEXT NOT NULL,
+        shift_key TEXT,
+        status TEXT NOT NULL DEFAULT 'draft',
+        blind_close_mode TEXT NOT NULL DEFAULT 'off',
+        policy_id INTEGER,
+        prepared_by TEXT,
+        submitted_at TEXT,
+        approved_by TEXT,
+        approved_at TEXT,
+        reopened_by TEXT,
+        reopened_at TEXT,
+        reopen_reason TEXT,
+        snapshot_id INTEGER,
+        all_balanced INTEGER NOT NULL DEFAULT 0,
+        warning_count INTEGER NOT NULL DEFAULT 0,
+        blocker_count INTEGER NOT NULL DEFAULT 0,
+        exception_summary_json TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (policy_id) REFERENCES close_policies(id),
+        CHECK (status IN ('draft','submitted','approved','reopened','finalized'))
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_cs_date ON close_sessions(date_key)`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_cs_status ON close_sessions(status)`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS register_closures (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        close_session_id INTEGER NOT NULL,
+        register_key TEXT NOT NULL,
+        register_label TEXT,
+        cashier_id TEXT,
+        cashier_name TEXT,
+        float_cents INTEGER NOT NULL DEFAULT 0,
+        pos_sales_cents INTEGER NOT NULL DEFAULT 0,
+        pos_tps_cents INTEGER NOT NULL DEFAULT 0,
+        pos_tvq_cents INTEGER NOT NULL DEFAULT 0,
+        pos_delivery_cents INTEGER NOT NULL DEFAULT 0,
+        terminal_cents INTEGER NOT NULL DEFAULT 0,
+        deposits_cents INTEGER NOT NULL DEFAULT 0,
+        final_cash_cents INTEGER NOT NULL DEFAULT 0,
+        expected_in_register_cents INTEGER NOT NULL DEFAULT 0,
+        expected_cash_cents INTEGER NOT NULL DEFAULT 0,
+        physical_cash_cents INTEGER NOT NULL DEFAULT 0,
+        variance_cents INTEGER NOT NULL DEFAULT 0,
+        count_mode TEXT NOT NULL DEFAULT 'total_only',
+        status TEXT NOT NULL DEFAULT 'draft',
+        variance_reason_code TEXT,
+        variance_reason_text TEXT,
+        submitted_at TEXT,
+        approved_at TEXT,
+        FOREIGN KEY (close_session_id) REFERENCES close_sessions(id)
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_rc_session ON register_closures(close_session_id)`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS close_exceptions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        close_session_id INTEGER NOT NULL,
+        register_closure_id INTEGER,
+        severity TEXT NOT NULL,
+        exception_type TEXT NOT NULL,
+        code TEXT NOT NULL,
+        label_fr TEXT,
+        label_en TEXT,
+        payload_json TEXT,
+        acknowledged_by TEXT,
+        acknowledged_at TEXT,
+        resolution_reason TEXT,
+        FOREIGN KEY (close_session_id) REFERENCES close_sessions(id),
+        CHECK (severity IN ('info','warning','blocker'))
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_ce_session ON close_exceptions(close_session_id)`).run();
+
+      database.prepare(`CREATE TABLE IF NOT EXISTS close_approvals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        close_session_id INTEGER NOT NULL,
+        stage TEXT NOT NULL,
+        actor_name TEXT NOT NULL,
+        actor_role TEXT,
+        approval_method TEXT,
+        reason TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (close_session_id) REFERENCES close_sessions(id),
+        CHECK (approval_method IN ('typed_name','pin','cloud_user'))
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_ca_session ON close_approvals(close_session_id)`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -4081,6 +4199,90 @@ function closeExceptionList(sessionId, _db) {
   return db.prepare('SELECT * FROM close_exceptions WHERE close_session_id = ? ORDER BY id ASC').all(sessionId);
 }
 
+/**
+ * Evaluates a close session against the active policy and returns structured results.
+ * Input: { session, closures, policy, checklistItems }
+ *   session      - close_sessions row (or null for a live in-progress close)
+ *   closures     - array of { variance_cents } (register_closures rows or derived objects)
+ *   policy       - close_policies row (uses CLOSE_POLICY_DEFAULTS if null)
+ *   checklistItems - array of { required: bool, completed: bool }
+ *   posDataPresent - bool: whether POS scan was imported for the day
+ * Returns: { blockers: [...], warnings: [...], info: [...] }
+ *   Each item: { code, message_fr, message_en, severity, payload }
+ */
+function evaluateCloseAssurance({
+  closures = [],
+  policy = null,
+  checklistItems = [],
+  posDataPresent = true,
+} = {}) {
+  const p = { ...CLOSE_POLICY_DEFAULTS, ...(policy || {}) };
+  const blockers = [];
+  const warnings = [];
+  const info = [];
+
+  const push = (list, code, message_fr, message_en, payload = null) => {
+    list.push({ code, message_fr, message_en, severity: list === blockers ? 'blocker' : list === warnings ? 'warning' : 'info', payload });
+  };
+
+  // -- Variance per register --
+  let storeVarianceCents = 0;
+  for (const closure of closures) {
+    const absVariance = Math.abs(closure.variance_cents ?? 0);
+    storeVarianceCents += (closure.variance_cents ?? 0);
+    if (absVariance > p.variance_per_register_cents) {
+      const dollarAmt = (absVariance / 100).toFixed(2);
+      if (p.missing_required_checklist_rule === 'block') {
+        // The variance threshold itself doesn't use checklist rule; use dedicated logic below
+      }
+      // Determine severity based on rule (we use variance threshold, not checklist rule here)
+      // The variance rule is always "inform" level by default at the register level
+      // unless the store-wide threshold is crossed — per spec the per-register level
+      // produces info/warning/blocker based on whether it exceeds the threshold.
+      // For per-register: produce a warning (not a blocker) if variance_per_register_cents exceeded
+      push(warnings, 'VAR_REGISTER_EXCEEDED',
+        `Caisse: écart de $${dollarAmt} dépasse le seuil de $${(p.variance_per_register_cents/100).toFixed(2)}`,
+        `Register: variance $${dollarAmt} exceeds threshold $${(p.variance_per_register_cents/100).toFixed(2)}`,
+        { variance_cents: closure.variance_cents, threshold_cents: p.variance_per_register_cents }
+      );
+    }
+  }
+
+  // -- Store-wide variance --
+  const absStore = Math.abs(storeVarianceCents);
+  if (closures.length > 0 && absStore > p.variance_store_cents) {
+    const dollarAmt = (absStore / 100).toFixed(2);
+    push(blockers, 'VAR_STORE_EXCEEDED',
+      `Écart total magasin de $${dollarAmt} dépasse le seuil de $${(p.variance_store_cents/100).toFixed(2)}`,
+      `Store-wide variance $${dollarAmt} exceeds threshold $${(p.variance_store_cents/100).toFixed(2)}`,
+      { store_variance_cents: storeVarianceCents, threshold_cents: p.variance_store_cents }
+    );
+  }
+
+  // -- Missing required checklist items --
+  const missingRequired = checklistItems.filter(i => i.required && !i.completed);
+  if (missingRequired.length > 0) {
+    const rule = p.missing_required_checklist_rule;
+    const fr = `${missingRequired.length} article${missingRequired.length > 1 ? 's' : ''} obligatoire${missingRequired.length > 1 ? 's' : ''} de la checklist non complété${missingRequired.length > 1 ? 's' : ''}`;
+    const en = `${missingRequired.length} required checklist item${missingRequired.length > 1 ? 's' : ''} not completed`;
+    if (rule === 'block')          push(blockers, 'CHECKLIST_MISSING', fr, en, { count: missingRequired.length });
+    else if (rule === 'require_reason') push(warnings, 'CHECKLIST_MISSING', fr, en, { count: missingRequired.length });
+    else                           push(info, 'CHECKLIST_MISSING', fr, en, { count: missingRequired.length });
+  }
+
+  // -- Missing POS evidence --
+  if (!posDataPresent) {
+    const rule = p.missing_pos_evidence_rule;
+    const fr = 'Aucune donnée POS importée pour cette journée';
+    const en = 'No POS data imported for this day';
+    if (rule === 'block')          push(blockers, 'POS_MISSING', fr, en, null);
+    else if (rule === 'require_reason') push(warnings, 'POS_MISSING', fr, en, null);
+    else                           push(info, 'POS_MISSING', fr, en, null);
+  }
+
+  return { blockers, warnings, info };
+}
+
 function closeVarianceReveal(closureId, actor, _db) {
   const db = _db || getDb();
   const now = new Date().toISOString();
@@ -4179,4 +4381,5 @@ module.exports = {
   closeSessionGet, closeSessionList, closeSessionCreateOrLoad,
   closeVarianceReveal,
   closeExceptionList, closeExceptionAcknowledge,
+  evaluateCloseAssurance,
 };

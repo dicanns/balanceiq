@@ -450,5 +450,6 @@ contextBridge.exposeInMainWorld('api', {
       list:        (sessionId)          => ipcRenderer.invoke('close:exception:list', sessionId),
       acknowledge: (id, actor, reason)  => ipcRenderer.invoke('close:exception:acknowledge', id, actor, reason),
     },
+    evaluate: (opts) => ipcRenderer.invoke('close:evaluate', opts),
   },
 });
