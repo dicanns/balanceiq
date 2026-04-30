@@ -218,7 +218,17 @@ export default function CloseReviewModal({
         )}
 
         {/* ── Section 6: Final action ───────────────────────────────────── */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
+        {!canClose && (
+          <div style={{ marginTop: 12, padding: '8px 12px', borderRadius: 7, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', fontSize: 11.5, color: '#f87171' }}>
+            {blockers.length > 0
+              ? (fr ? '⛔ Fermeture bloquée — résolvez les blocages ci-dessus.' : '⛔ Close blocked — resolve the issues above.')
+              : variances.some(v => v.variance == null)
+              ? (fr ? '⛔ Fermeture bloquée — complétez le décompte (Final Cash requis).' : '⛔ Close blocked — complete the cash count (Final Cash required).')
+              : (fr ? '⛔ Fermeture bloquée — sélectionnez une raison pour chaque écart ci-dessus.' : '⛔ Close blocked — select a reason for each variance above.')
+            }
+          </div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
           <button
             onClick={handleClose}
             style={{ padding: '8px 18px', borderRadius: 8, border: '1px solid #374151', background: 'transparent', color: '#9ca3af', fontSize: '0.875rem', cursor: 'pointer' }}
