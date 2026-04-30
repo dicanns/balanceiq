@@ -5,10 +5,11 @@
 import { describe, it, expect } from 'vitest';
 import { canConfirmClose } from '../../components/CloseReviewModal.jsx';
 
-const noVariance = { idx: 0, register: 1, variance: 0, cents: 0, exceeds: false, reasonCode: null };
-const varOver    = { idx: 0, register: 1, variance: 5, cents: 500, exceeds: true,  reasonCode: null };
+const noVariance  = { idx: 0, register: 1, variance: 0,    cents: 0,   exceeds: false, reasonCode: null };
+const nullVariance = { idx: 0, register: 1, variance: null, cents: 0,   exceeds: false, reasonCode: null };
+const varOver     = { idx: 0, register: 1, variance: 5,    cents: 500, exceeds: true,  reasonCode: null };
 const varOverReasoned = { ...varOver, reasonCode: 'counting_error' };
-const varOver2   = { idx: 1, register: 2, variance: 3, cents: 300, exceeds: true,  reasonCode: null };
+const varOver2    = { idx: 1, register: 2, variance: 3,    cents: 300, exceeds: true,  reasonCode: null };
 
 // ── MODAL-001: blocker gating ─────────────────────────────────────────────────
 
@@ -40,6 +41,18 @@ describe('MODAL-001 canConfirmClose - blocker gating', () => {
 describe('MODAL-002 canConfirmClose - variance reason gating', () => {
   it('returns true with inform rule regardless of unresolved variance', () => {
     expect(canConfirmClose({ blockers: [], variances: [varOver], varianceRule: 'inform', localReasons: {} })).toBe(true);
+  });
+
+  it('returns true with inform rule even when count is incomplete (null variance)', () => {
+    expect(canConfirmClose({ blockers: [], variances: [nullVariance], varianceRule: 'inform', localReasons: {} })).toBe(true);
+  });
+
+  it('returns false with require_reason when count is incomplete (null variance)', () => {
+    expect(canConfirmClose({ blockers: [], variances: [nullVariance], varianceRule: 'require_reason', localReasons: {} })).toBe(false);
+  });
+
+  it('returns false with block rule when count is incomplete (null variance)', () => {
+    expect(canConfirmClose({ blockers: [], variances: [nullVariance], varianceRule: 'block', localReasons: {} })).toBe(false);
   });
 
   it('returns false when register exceeds threshold and no reason, rule=require_reason', () => {
