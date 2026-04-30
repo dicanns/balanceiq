@@ -125,22 +125,22 @@ export default function CloseReviewModal({
           {variances.length === 0
             ? <StatusRow color="#6b7280" icon="○">{fr ? 'Aucune caisse' : 'No registers'}</StatusRow>
             : variances.map(v => {
+              const incomplete = v.variance == null;
               const capturedCode = localReasons[v.idx]?.code || v.reasonCode;
               const capturedEntry = capturedCode ? VARIANCE_REASON_CODES.find(r => r.code === capturedCode) : null;
               const needsReason = v.exceeds && varianceRule !== 'inform';
-              const resolved = !v.exceeds || !!capturedCode;
               return (
                 <div key={v.idx} style={{ marginBottom: needsReason && !capturedCode ? 10 : 5 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <span style={{ color: v.exceeds ? (capturedCode ? '#f59e0b' : '#dc2626') : '#16a34a', fontSize: 13 }}>
-                      {v.exceeds ? (capturedCode ? '⚠' : '✗') : '✓'}
+                    <span style={{ color: incomplete ? '#f59e0b' : v.exceeds ? (capturedCode ? '#f59e0b' : '#dc2626') : '#16a34a', fontSize: 13 }}>
+                      {incomplete ? '⚠' : v.exceeds ? (capturedCode ? '⚠' : '✗') : '✓'}
                     </span>
                     <span style={{ fontSize: 12, color: '#d1d5db', fontWeight: 600 }}>
                       {fr ? 'Caisse' : 'Register'} {v.register}
                     </span>
-                    <span style={{ fontFamily: "'Satoshi',-apple-system,sans-serif", fontVariantNumeric: 'tabular-nums', fontSize: 12, color: v.exceeds ? '#f87171' : '#4ade80' }}>
-                      {v.variance == null
-                        ? '—'
+                    <span style={{ fontFamily: "'Satoshi',-apple-system,sans-serif", fontVariantNumeric: 'tabular-nums', fontSize: 12, color: incomplete ? '#f59e0b' : v.exceeds ? '#f87171' : '#4ade80' }}>
+                      {incomplete
+                        ? (fr ? 'Compte incomplet' : 'Count incomplete')
                         : v.variance === 0
                         ? (fr ? 'Balancé' : 'Balanced')
                         : `${fmt(Math.abs(v.variance))} ${v.variance > 0 ? (T?.crOver ?? (fr ? 'surplus' : 'over')) : (T?.crShort ?? (fr ? 'manque' : 'short'))}`
