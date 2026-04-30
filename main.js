@@ -86,6 +86,7 @@ const {
   closeVarianceReveal,
   closeExceptionList, closeExceptionAcknowledge,
   evaluateCloseAssurance,
+  registerClosureSave,
 } = require('./src/db/database.js');
 
 const BACKUP_DIR = () => path.join(app.getPath('userData'), 'Backups');
@@ -2555,6 +2556,7 @@ ipcMain.handle('close:variance:reveal',       (_e, closureId, actor) => closeVar
 ipcMain.handle('close:exception:list',        (_e, sessionId)  => closeExceptionList(sessionId));
 ipcMain.handle('close:exception:acknowledge', (_e, id, actor, reason) => closeExceptionAcknowledge(id, actor, reason));
 ipcMain.handle('close:evaluate',              (_e, opts)             => evaluateCloseAssurance(opts || {}));
+ipcMain.handle('close:closure:save',          (_e, opts)             => registerClosureSave(opts || {}));
 
 app.on('window-all-closed', () => {
   if (biqTray) { biqTray.destroy(); biqTray = null; }

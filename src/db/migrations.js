@@ -926,6 +926,15 @@ const MIGRATIONS = [
       database.prepare(`CREATE INDEX IF NOT EXISTS idx_ca_session ON close_approvals(close_session_id)`).run();
     },
   },
+  {
+    version: 20,
+    description: 'Close Assurance 2D - variance_register_rule column on close_policies',
+    up: (database) => {
+      try {
+        database.prepare(`ALTER TABLE close_policies ADD COLUMN variance_register_rule TEXT NOT NULL DEFAULT 'require_reason'`).run();
+      } catch (_) {}
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.

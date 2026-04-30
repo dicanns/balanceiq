@@ -966,6 +966,15 @@ const MIGRATIONS = [
       database.prepare(`CREATE INDEX IF NOT EXISTS idx_ca_session ON close_approvals(close_session_id)`).run();
     },
   },
+  {
+    version: 20,
+    description: 'Close Assurance 2D - variance_register_rule column on close_policies',
+    up: (database) => {
+      try {
+        database.prepare(`ALTER TABLE close_policies ADD COLUMN variance_register_rule TEXT NOT NULL DEFAULT 'require_reason'`).run();
+      } catch (_) {}
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -4090,6 +4099,7 @@ const CLOSE_POLICY_DEFAULTS = {
   blind_close_mode: 'off',
   variance_per_register_cents: 100,
   variance_store_cents: 200,
+  variance_register_rule: 'require_reason',
   missing_required_checklist_rule: 'inform',
   missing_pos_evidence_rule: 'inform',
   missing_delivery_reconciliation_rule: 'inform',
@@ -4123,6 +4133,7 @@ function closePolicySave(policy, _db) {
       name=@name, blind_close_mode=@blind_close_mode,
       variance_per_register_cents=@variance_per_register_cents,
       variance_store_cents=@variance_store_cents,
+      variance_register_rule=@variance_register_rule,
       missing_required_checklist_rule=@missing_required_checklist_rule,
       missing_pos_evidence_rule=@missing_pos_evidence_rule,
       missing_delivery_reconciliation_rule=@missing_delivery_reconciliation_rule,
@@ -4137,11 +4148,13 @@ function closePolicySave(policy, _db) {
   } else {
     const { lastInsertRowid } = db.prepare(`INSERT INTO close_policies
       (location_id, name, blind_close_mode, variance_per_register_cents, variance_store_cents,
+       variance_register_rule,
        missing_required_checklist_rule, missing_pos_evidence_rule, missing_delivery_reconciliation_rule,
        manager_signoff_required, approver_identity_method, denomination_mode,
        shift_mode_enabled, shift_signoff_required, created_at, updated_at)
       VALUES
       (@location_id, @name, @blind_close_mode, @variance_per_register_cents, @variance_store_cents,
+       @variance_register_rule,
        @missing_required_checklist_rule, @missing_pos_evidence_rule, @missing_delivery_reconciliation_rule,
        @manager_signoff_required, @approver_identity_method, @denomination_mode,
        @shift_mode_enabled, @shift_signoff_required, @created_at, @updated_at)`).run({
@@ -4309,6 +4322,26 @@ function closeExceptionAcknowledge(id, actor, reason, _db) {
   return true;
 }
 
+const VARIANCE_REASON_CODES = [
+  'counting_error', 'wrong_float', 'safe_drop_not_entered', 'deposit_not_entered',
+  'pos_mismatch', 'delivery_mismatch', 'refund_void_issue', 'cash_paid_out', 'unknown',
+];
+
+function registerClosureSave({ date_key, register_key = 'default', variance_cents = 0, variance_reason_code = null, variance_reason_text = null } = {}, _db) {
+  const db = _db || getDb();
+  const dk = date_key || new Date().toISOString().slice(0, 10);
+  const session = closeSessionCreateOrLoad({ date_key: dk }, db);
+  const existing = db.prepare(`SELECT id FROM register_closures WHERE close_session_id=? AND register_key=?`).get(session.id, register_key);
+  if (existing) {
+    db.prepare(`UPDATE register_closures SET variance_cents=?, variance_reason_code=?, variance_reason_text=? WHERE id=?`)
+      .run(variance_cents, variance_reason_code, variance_reason_text, existing.id);
+    return { id: existing.id, session_id: session.id };
+  }
+  const r = db.prepare(`INSERT INTO register_closures (close_session_id, register_key, variance_cents, variance_reason_code, variance_reason_text) VALUES (?,?,?,?,?)`)
+    .run(session.id, register_key, variance_cents, variance_reason_code, variance_reason_text);
+  return { id: Number(r.lastInsertRowid), session_id: session.id };
+}
+
 module.exports = {
   storageGet, storageSet, storageGetAll, storageGetByPrefix,
   getAllTablesForBackup, restoreAllTablesFromBackup,
@@ -4382,4 +4415,5 @@ module.exports = {
   closeVarianceReveal,
   closeExceptionList, closeExceptionAcknowledge,
   evaluateCloseAssurance,
+  registerClosureSave,
 };

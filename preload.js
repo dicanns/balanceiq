@@ -451,5 +451,8 @@ contextBridge.exposeInMainWorld('api', {
       acknowledge: (id, actor, reason)  => ipcRenderer.invoke('close:exception:acknowledge', id, actor, reason),
     },
     evaluate: (opts) => ipcRenderer.invoke('close:evaluate', opts),
+    closure: {
+      save: (opts) => ipcRenderer.invoke('close:closure:save', opts),
+    },
   },
 });

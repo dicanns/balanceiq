@@ -4,6 +4,7 @@ const DEFAULTS = {
   blind_close_mode: 'off',
   variance_per_register_cents: 100,
   variance_store_cents: 200,
+  variance_register_rule: 'require_reason',
   missing_required_checklist_rule: 'inform',
   missing_pos_evidence_rule: 'inform',
   missing_delivery_reconciliation_rule: 'inform',
@@ -180,6 +181,17 @@ export default function ClosePolicySettings({ T, t, onPolicySaved }) {
                 style={numStyle}
               />
             </div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, paddingTop: 8, borderTop: `1px solid ${t.cardBorder}` }}>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: t.text }}>{T.cpVarianceRule}</div>
+              <div style={{ fontSize: 10.5, color: t.textMuted }}>{T.cpVarianceRuleHint}</div>
+            </div>
+            <select value={policy.variance_register_rule} onChange={e => set('variance_register_rule', e.target.value)} style={{ ...selStyle, width: 'auto', minWidth: 160 }}>
+              <option value="inform">{T.cpRuleInform}</option>
+              <option value="require_reason">{T.cpRuleRequireReason}</option>
+              <option value="block">{T.cpRuleBlock}</option>
+            </select>
           </div>
         </div>
       </div>
