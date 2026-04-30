@@ -160,6 +160,16 @@ export default function RegisterCloseCard({
             : null
         }
       />
+      {denomAllowed && (
+        <DenomToggle
+          fr={fr} T={T} t={t}
+          denomMode={denomMode} denomRequired={denomRequired}
+          setDenomMode={setDenomMode}
+          denomMismatch={denomMismatch}
+          onDenomChange={handleDenomChange}
+          lang={lang}
+        />
+      )}
       {showSubmitButton && (
         <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
           <button
@@ -185,16 +195,6 @@ export default function RegisterCloseCard({
           </button>
         </div>
       )}
-      {denomAllowed && (
-        <DenomToggle
-          fr={fr} T={T} t={t}
-          denomMode={denomMode} denomRequired={denomRequired}
-          setDenomMode={setDenomMode}
-          denomMismatch={denomMismatch}
-          onDenomChange={handleDenomChange}
-          lang={lang}
-        />
-      )}
       {showReasonPicker && (
         <ReasonPicker
           lang={lang} T={T} t={t}
@@ -211,38 +211,54 @@ export default function RegisterCloseCard({
 }
 
 function DenomToggle({ fr, T, t, denomMode, denomRequired, setDenomMode, denomMismatch, onDenomChange, lang }) {
+  const active = denomMode;
   return (
-    <div style={{ marginTop: 8 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: denomMode ? 4 : 0 }}>
-        <button
-          onClick={() => { if (!denomRequired) setDenomMode(v => !v); }}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            background: 'none', border: 'none', cursor: denomRequired ? 'default' : 'pointer', padding: 0,
-          }}
-        >
-          <span style={{
-            width: 28, height: 16, borderRadius: 8, display: 'inline-flex', alignItems: 'center',
-            background: denomMode ? '#16a34a' : 'rgba(255,255,255,0.1)',
-            transition: 'background 0.2s', position: 'relative', flexShrink: 0,
-          }}>
-            <span style={{
-              width: 12, height: 12, borderRadius: '50%', background: '#fff',
-              position: 'absolute', left: denomMode ? 14 : 2, transition: 'left 0.2s',
-            }} />
-          </span>
-          <span style={{ fontSize: 11.5, color: '#9ca3af' }}>
-            {fr ? 'Compter par denomination' : 'Count by denomination'}
-            {denomRequired && <span style={{ marginLeft: 4, fontSize: 10, color: '#f97316' }}>({fr ? 'requis' : 'required'})</span>}
-          </span>
-        </button>
+    <div style={{
+      marginTop: 10,
+      borderRadius: 8,
+      border: `1px solid ${active ? 'rgba(20,184,166,0.35)' : 'rgba(255,255,255,0.09)'}`,
+      background: active ? 'rgba(20,184,166,0.05)' : 'rgba(255,255,255,0.02)',
+      transition: 'border-color 0.2s, background 0.2s',
+      overflow: 'hidden',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 12px' }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: active ? '#2dd4bf' : '#9ca3af', letterSpacing: 0.1 }}>
+          {fr ? 'Decompte par denomination' : 'Count by denomination'}
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {denomRequired
+            ? <span style={{ fontSize: 10, fontWeight: 700, color: '#f97316', background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.25)', borderRadius: 4, padding: '2px 7px' }}>
+                {fr ? 'Requis' : 'Required'}
+              </span>
+            : <button
+                onClick={() => setDenomMode(v => !v)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <span style={{ fontSize: 11, color: active ? '#2dd4bf' : '#6b7280' }}>
+                  {active ? (fr ? 'Actif' : 'On') : (fr ? 'Inactif' : 'Off')}
+                </span>
+                <span style={{
+                  width: 32, height: 18, borderRadius: 9, display: 'inline-flex', alignItems: 'center',
+                  background: active ? '#0d9488' : 'rgba(255,255,255,0.12)',
+                  transition: 'background 0.2s', position: 'relative', flexShrink: 0,
+                }}>
+                  <span style={{
+                    width: 14, height: 14, borderRadius: '50%', background: '#fff',
+                    position: 'absolute', left: active ? 16 : 2, transition: 'left 0.2s',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                  }} />
+                </span>
+              </button>
+          }
+        </div>
       </div>
-      {denomMode && (
-        <div style={{ padding: '8px 10px', borderRadius: 8, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+      {active && (
+        <div style={{ padding: '0 12px 12px' }}>
           <DenominationCounter lang={lang} t={t} onChange={onDenomChange} />
           {denomMismatch && (
-            <div style={{ marginTop: 6, fontSize: 11, color: '#f59e0b', padding: '4px 8px', borderRadius: 5, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
-              {fr ? 'Le total de denomination differe du montant Final Cash.' : 'Denomination total differs from Final Cash amount.'}
+            <div style={{ marginTop: 8, fontSize: 11.5, color: '#f59e0b', padding: '6px 10px', borderRadius: 6, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+              <span style={{ flexShrink: 0 }}>⚠</span>
+              <span>{fr ? 'Le total du decompte differe du montant Argent final saisi.' : 'Denomination total differs from the Final Cash amount entered.'}</span>
             </div>
           )}
         </div>
