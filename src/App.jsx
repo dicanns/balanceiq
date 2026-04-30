@@ -32,6 +32,7 @@ import { POS_CONFIG, POS_COMING_SOON } from "./config/posConfig.js";
 import { FR, EN } from "./i18n/translations.js";
 import RegisterCloseCard, { computeRegisterVariance } from "./components/RegisterCloseCard.jsx";
 import ClosePolicySettings from "./components/ClosePolicySettings.jsx";
+import CloseReviewModal from "./components/CloseReviewModal.jsx";
 
 // ── URL SAFETY (renderer-side) ───────────────────────────────────────────────
 // Mirrors the allowlist in main.js. Used to gate app-message URLs before render.
@@ -6013,7 +6014,8 @@ export default function App(){
   const [recurringPendingCount,setRecurringPendingCount]=useState(0);
   const [pdfPreview,setPdfPreview]=useState(null);
   const [closedDays,setClosedDays]=useState({});// {[dateKey]: {closedAt: ISO string}}
-  const [showCloseConfirm,setShowCloseConfirm]=useState(false);
+  const [showCloseReview,setShowCloseReview]=useState(false);
+  const [closeReviewData,setCloseReviewData]=useState(null);
   const [showTipPool,setShowTipPool]=useState(false);
   const [searchOpen,setSearchOpen]=useState(false);
   const [facDeepLink,setFacDeepLink]=useState(null); // {clientId?, invoiceId?} for GlobalSearch nav
@@ -6770,61 +6772,64 @@ export default function App(){
     return list;
   },[computeDay,closedDays,T]);
 
-  const closeDay=useCallback(async()=>{
+  // ── openCloseReview: evaluate + open structured modal (2E) ──────────────────
+  const openCloseReview=useCallback(async()=>{
     const key=selectedDate;
-    // ── Close Assurance evaluation (2C) ──────────────────────────────────────
-    if(closePolicy){
-      const dayCashes=(liveDataRef.current[key]?.cashes)||[];
-      const closures=dayCashes.map(c=>{
-        const v=computeRegisterVariance(c);
-        return{variance_cents:v!=null?Math.round(v*100):0};
-      });
-      const dailyTemplates=checklistTemplates.filter(t=>t.active&&t.required&&t.frequency==='daily');
-      const dayEntries=checklistEntries[key]||[];
-      const checklistItems=dailyTemplates.map(t=>({
-        required:true,
-        completed:!!dayEntries.find(e=>e.template_id===t.id&&e.completed),
-      }));
-      const posDataPresent=dayCashes.some(c=>c.posVentes!=null);
-      const {blockers}=window.api?.closeAssurance
-        ?await window.api.closeAssurance.evaluate({closures,policy:closePolicy,checklistItems,posDataPresent}).catch(()=>({blockers:[]}))
-        :{blockers:[]};
-      if(blockers.length>0){
-        const msg=blockers.map(b=>lang==='fr'?b.message_fr:b.message_en).join('\n');
-        alert((lang==='fr'?'Fermeture bloquée:\n':'Close blocked:\n')+msg);
-        return;
-      }
-      // ── Variance reason gate (2D) ─────────────────────────────────────────
-      if(closePolicy.variance_register_rule==='block'){
-        const threshold=closePolicy.variance_per_register_cents??100;
-        const missingReason=dayCashes.some(c=>{
-          const v=computeRegisterVariance(c);
-          return v!=null&&Math.abs(Math.round(v*100))>threshold&&!c.varianceReasonCode;
-        });
-        if(missingReason){
-          alert(lang==='fr'
-            ?'Fermeture bloquée: une ou plusieurs caisses ont un écart dépassant le seuil sans raison confirmée.'
-            :'Close blocked: one or more registers have a variance exceeding the threshold without a confirmed reason.');
-          return;
-        }
-      }
+    const dayCashes=(liveDataRef.current[key]?.cashes)||[];
+    const closures=dayCashes.map(c=>{
+      const v=computeRegisterVariance(c);
+      return{variance_cents:v!=null?Math.round(v*100):0};
+    });
+    const dailyTemplates=checklistTemplates.filter(tmpl=>tmpl.active&&tmpl.required&&tmpl.frequency==='daily');
+    const dayEntries=checklistEntries[key]||[];
+    const chkItems=dailyTemplates.map(tmpl=>({
+      required:true,
+      completed:!!dayEntries.find(e=>e.template_id===tmpl.id&&e.completed),
+      label:tmpl.label||tmpl.name||'',
+    }));
+    const posDataPresent=dayCashes.some(c=>c.posVentes!=null);
+    const depositsPresent=dayCashes.some(c=>(c.deposits||0)>0);
+    let evaluation={blockers:[],warnings:[],info:[]};
+    if(closePolicy&&window.api?.closeAssurance){
+      evaluation=await window.api.closeAssurance.evaluate({closures,policy:closePolicy,checklistItems:chkItems,posDataPresent}).catch(()=>evaluation);
     }
+    setCloseReviewData({evaluation,cashes:dayCashes,checklistItems:chkItems,posDataPresent,depositsPresent});
+    setShowCloseReview(true);
+  },[selectedDate,closePolicy,checklistTemplates,checklistEntries]);
+
+  // ── closeDay: persist snapshot + state after modal confirms (2E) ─────────────
+  const closeDay=useCallback(async(localReasons={})=>{
+    const key=selectedDate;
     const closedAt=new Date().toISOString();
-    const dayData=liveDataRef.current[key];
-    const cd=computeDay(key); // capture balance state at close time
-    // Save immutable snapshot
-    if(dayData&&Object.keys(dayData).length>0){
-      window.api.snapshot.save(key,dayData).catch(()=>{});
+    // Apply locally captured reasons from modal to cash objects
+    const baseCashes=(liveDataRef.current[key]?.cashes)||[];
+    const mergedCashes=baseCashes.map((c,idx)=>{
+      const r=localReasons[idx];
+      if(!r?.code)return c;
+      const merged={...c,varianceReasonCode:r.code,varianceReasonText:r.text||''};
+      updCash(key,idx,merged);
+      const v=computeRegisterVariance(merged);
+      window.api?.closeAssurance?.closure?.save({
+        date_key:key,register_key:`register_${idx}`,
+        variance_cents:Math.round((v||0)*100),
+        variance_reason_code:r.code,
+        variance_reason_text:r.text||null,
+      }).catch(()=>{});
+      return merged;
+    });
+    const mergedData={...(liveDataRef.current[key]||{}),cashes:mergedCashes};
+    const cd=computeDay(key);
+    if(Object.keys(mergedData).length>0){
+      window.api.snapshot.save(key,mergedData).catch(()=>{});
     }
-    // Persist closed state — record allBal so close status is stable after edits
     const closeStatus=cd.allBal?'closed_clean':'closed_with_warnings';
     const next={...closedDays,[key]:{closedAt,allBal:cd.allBal,closeStatus}};
     setClosedDays(next);
     window.api.storage.set("balanceiq-closed-days",JSON.stringify(next)).catch(()=>{});
-    // Audit log
     logUpdate('daily','jour',key,'fermeture',null,closedAt);
-    setShowCloseConfirm(false);
-  },[selectedDate,closedDays,computeDay]);
+    setShowCloseReview(false);
+    setCloseReviewData(null);
+  },[selectedDate,closedDays,computeDay,updCash]);
 
   // Load checklist entries for the selected date (fills gaps not covered by range load)
   useEffect(()=>{
@@ -7162,7 +7167,7 @@ export default function App(){
  />)}
 
  {/* Close-out button / closed badge */}
- {today.anyData&&!isClosed&&(<div style={{display:"flex",gap:8,justifyContent:"center",paddingTop:2,flexWrap:"wrap"}}><button onClick={()=>setShowCloseConfirm(true)} style={{background:"linear-gradient(135deg,#16a34a,#15803d)",border:"none",borderRadius:8,color:"#fff",padding:"9px 24px",fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:"0.3px"}}>
+ {today.anyData&&!isClosed&&(<div style={{display:"flex",gap:8,justifyContent:"center",paddingTop:2,flexWrap:"wrap"}}><button onClick={openCloseReview} style={{background:"linear-gradient(135deg,#16a34a,#15803d)",border:"none",borderRadius:8,color:"#fff",padding:"9px 24px",fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:"0.3px"}}>
  {T.closeDayBtn}</button><button onClick={()=>setShowTipPool(true)} style={{background:"linear-gradient(135deg,#f59e0b,#d97706)",border:"none",borderRadius:8,color:"#fff",padding:"9px 18px",fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:"0.3px"}}>
  {lang==='en'?'Tip Pool':'Pourboires'}</button></div>)}
             {isClosed&&(()=>{
@@ -7173,8 +7178,18 @@ export default function App(){
             })()}
 
             {/* Confirmation modal for close-out */}
-            {showCloseConfirm&&(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9998}} onClick={e=>{if(e.target===e.currentTarget)setShowCloseConfirm(false);}}><div style={{background:"#1a1d27",border:"1px solid #374151",borderRadius:12,padding:"28px 32px",width:440,maxWidth:"90vw",boxShadow:"0 20px 60px rgba(0,0,0,0.6)"}}><h3 style={{margin:"0 0 8px",color:"#16a34a",fontSize:"1rem",fontWeight:700}}>{T.closeDayTitle}</h3>{checklistUncheckedRequired>0&&<div style={{margin:"0 0 12px",padding:"8px 12px",borderRadius:7,background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.3)",fontSize:12,color:"#f59e0b",fontWeight:600}}>{typeof T.checklistWarnRequired==='function'?T.checklistWarnRequired(checklistUncheckedRequired):T.checklistWarnRequired}</div>}
-                  {!today.allBal&&today.anyData&&<div style={{margin:"0 0 12px",padding:"8px 12px",borderRadius:7,background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",fontSize:12,color:"#ef4444",fontWeight:600}}>{T.closeDayBodyWarn}</div>}<p style={{margin:"0 0 20px",color:"#9ca3af",fontSize:"0.875rem",lineHeight:1.6}}>{T.closeDayBody}</p><div style={{display:"flex",justifyContent:"flex-end",gap:10}}><button onClick={()=>setShowCloseConfirm(false)} style={{padding:"8px 18px",borderRadius:8,border:"1px solid #374151",background:"transparent",color:"#9ca3af",fontSize:"0.875rem",cursor:"pointer"}}>{T.closeDayCancel}</button><button onClick={closeDay} style={{padding:"8px 18px",borderRadius:8,border:"none",background:"linear-gradient(135deg,#16a34a,#15803d)",color:"#fff",fontSize:"0.875rem",fontWeight:700,cursor:"pointer"}}>{T.closeDayConfirm}</button></div></div></div>)}
+            <CloseReviewModal
+  open={showCloseReview}
+  onClose={()=>{setShowCloseReview(false);setCloseReviewData(null);}}
+  onConfirm={closeDay}
+  evaluation={closeReviewData?.evaluation}
+  cashes={closeReviewData?.cashes||[]}
+  checklistItems={closeReviewData?.checklistItems||[]}
+  posDataPresent={closeReviewData?.posDataPresent||false}
+  depositsPresent={closeReviewData?.depositsPresent||false}
+  closePolicy={closePolicy}
+  T={T} t={t} lang={lang}
+/>
 
             {/* Tip Pool Modal */}
             {showTipPool&&(<Suspense fallback={null}><TipPoolModal lang={lang} date={selectedDate} dailyEmployees={emps||[]} staffRoster={empRoster||[]} onClose={()=>setShowTipPool(false)}/></Suspense>)}
