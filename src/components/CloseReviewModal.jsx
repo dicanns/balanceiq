@@ -1,34 +1,19 @@
 /**
- * CloseReviewModal - structured day-close review (Sub-Sprint 2E)
+ * CloseReviewModal - structured day-close review (Sub-Sprint 2E + 4C)
  *
  * Six sections rendered in order:
  *   1. Required checklist status
  *   2. Variance summary (per register, inline reason capture)
  *   3. Evidence status (POS, deposits)
  *   4. Policy blockers (red)
- *   5. Warnings (yellow, informational)
- *   6. Final action (confirm disabled while blockers or unresolved variance reasons)
+ *   5. Warnings (yellow, override reasons + manager identity when signoffRequired)
+ *   6. Final action (confirm disabled while blockers or unresolved variance/override reasons)
  */
 import React, { useState, useMemo } from 'react';
 import { computeRegisterVariance, VARIANCE_REASON_CODES } from './RegisterCloseCard.jsx';
-
-/**
- * Pure gating function: can the user confirm close?
- * False when:
- *   - any policy blocker exists
- *   - varianceRule !== 'inform' AND a register has null variance (count incomplete)
- *   - varianceRule !== 'inform' AND a register exceeds threshold without a captured reason
- */
-export function canConfirmClose({ blockers = [], variances = [], varianceRule = 'inform', localReasons = {} }) {
-  if (blockers.length > 0) return false;
-  if (varianceRule !== 'inform') {
-    for (const v of variances) {
-      if (v.variance == null) return false;
-      if (v.exceeds && !v.reasonCode && !localReasons[v.idx]?.code) return false;
-    }
-  }
-  return true;
-}
+import IdentityPicker from './IdentityPicker.jsx';
+export { canConfirmClose } from '../services/closeGating.js';
+import { canConfirmClose } from '../services/closeGating.js';
 
 export default function CloseReviewModal({
   open,
@@ -43,13 +28,19 @@ export default function CloseReviewModal({
   T,
   t,
   lang,
+  cloudUser,
 }) {
   const [localReasons, setLocalReasons] = useState({});
+  const [overrideReasons, setOverrideReasons] = useState({});
+  const [overrideActor, setOverrideActor] = useState(null);
+  const [showOverrideIdentity, setShowOverrideIdentity] = useState(false);
 
   const fr = lang !== 'en';
   const { blockers = [], warnings = [] } = evaluation || {};
   const threshold = closePolicy?.variance_per_register_cents ?? 100;
   const varianceRule = closePolicy?.variance_register_rule ?? 'require_reason';
+  const signoffRequired = !!(closePolicy?.manager_signoff_required);
+  const identityMethod = closePolicy?.approver_identity_method || 'typed_name';
 
   const variances = useMemo(() => (cashes || []).map((c, idx) => {
     const v = computeRegisterVariance(c);
@@ -69,16 +60,24 @@ export default function CloseReviewModal({
   const completedReq = required.filter(i => i.completed).length;
   const checklistOk = required.length === 0 || completedReq === required.length;
 
-  const canClose = canConfirmClose({ blockers, variances, varianceRule, localReasons });
+  const canClose = canConfirmClose({ blockers, variances, varianceRule, localReasons, warnings, signoffRequired, overrideReasons, overrideActor });
+
+  const allOverrideReasonsFilled = signoffRequired && warnings.length > 0
+    ? warnings.every((_, i) => overrideReasons[i]?.trim())
+    : false;
 
   function handleConfirm() {
-    onConfirm(localReasons);
+    onConfirm(localReasons, { overrideReasons, overrideActor });
     setLocalReasons({});
+    setOverrideReasons({});
+    setOverrideActor(null);
   }
 
   function handleClose() {
     onClose();
     setLocalReasons({});
+    setOverrideReasons({});
+    setOverrideActor(null);
   }
 
   if (!open) return null;
@@ -205,15 +204,87 @@ export default function CloseReviewModal({
           </div>
         )}
 
-        {/* ── Section 5: Warnings ───────────────────────────────────────── */}
+        {/* ── Section 5: Warnings + override capture ────────────────────── */}
         {warnings.length > 0 && (
           <div style={{ ...sectionBase, background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.2)' }}>
             <div style={{ ...secTitle, color: '#d97706' }}>{T?.crWarnings ?? (fr ? 'Avertissements' : 'Warnings')}</div>
             {warnings.map((w, i) => (
-              <StatusRow key={i} color="#f59e0b" icon="⚠">
-                {fr ? w.message_fr : w.message_en}
-              </StatusRow>
+              <div key={i} style={{ marginBottom: signoffRequired ? 10 : 4 }}>
+                <StatusRow color="#f59e0b" icon="⚠">
+                  {fr ? w.message_fr : w.message_en}
+                </StatusRow>
+                {signoffRequired && (
+                  <div style={{ paddingLeft: 18, marginTop: 4 }}>
+                    <input
+                      type="text"
+                      placeholder={fr ? 'Raison de dérogation (requis)' : 'Override reason (required)'}
+                      value={overrideReasons[i] || ''}
+                      onChange={e => setOverrideReasons(p => ({ ...p, [i]: e.target.value }))}
+                      style={{
+                        width: '100%', boxSizing: 'border-box',
+                        background: t?.inputBg ?? '#111827',
+                        border: `1px solid ${overrideReasons[i]?.trim() ? 'rgba(245,158,11,0.4)' : t?.inputBorder ?? '#374151'}`,
+                        borderRadius: 5, color: t?.text ?? '#f9fafb',
+                        fontSize: 11, padding: '4px 6px', outline: 'none', fontFamily: 'inherit',
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
             ))}
+
+            {/* Manager identity step for overrides */}
+            {signoffRequired && warnings.length > 0 && (
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(245,158,11,0.15)' }}>
+                {overrideActor ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11 }}>
+                    <span style={{ color: '#16a34a' }}>✓</span>
+                    <span style={{ color: '#d1d5db' }}>
+                      {fr ? 'Approuvé par' : 'Approved by'}: <strong>{overrideActor.name}</strong>
+                    </span>
+                    <button
+                      onClick={() => setOverrideActor(null)}
+                      style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 11 }}
+                    >
+                      {fr ? 'Changer' : 'Change'}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => { if (allOverrideReasonsFilled) setShowOverrideIdentity(true); }}
+                    disabled={!allOverrideReasonsFilled}
+                    style={{
+                      width: '100%', padding: '6px 12px', borderRadius: 6,
+                      background: allOverrideReasonsFilled ? 'rgba(245,158,11,0.12)' : 'rgba(255,255,255,0.04)',
+                      border: `1px solid ${allOverrideReasonsFilled ? 'rgba(245,158,11,0.35)' : 'rgba(255,255,255,0.08)'}`,
+                      color: allOverrideReasonsFilled ? '#f59e0b' : '#6b7280',
+                      fontSize: 11.5, fontWeight: 600, cursor: allOverrideReasonsFilled ? 'pointer' : 'default',
+                    }}
+                  >
+                    {fr ? 'Vérifier identité du responsable' : 'Verify manager identity'}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Identity picker overlay for override ─────────────────────── */}
+        {showOverrideIdentity && (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ background: '#1a1d27', borderRadius: 10, padding: 24, width: 300, boxShadow: '0 8px 32px rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', marginBottom: 12, textAlign: 'center' }}>
+                {fr ? 'Vérification du responsable' : 'Manager verification'}
+              </div>
+              <IdentityPicker
+                method={identityMethod}
+                requiredRole="manager"
+                onVerified={actor => { setOverrideActor(actor); setShowOverrideIdentity(false); }}
+                onCancel={() => setShowOverrideIdentity(false)}
+                T={T} t={t} lang={lang}
+                cloudUser={cloudUser}
+              />
+            </div>
           </div>
         )}
 
@@ -224,6 +295,10 @@ export default function CloseReviewModal({
               ? (fr ? '⛔ Fermeture bloquée — résolvez les blocages ci-dessus.' : '⛔ Close blocked — resolve the issues above.')
               : variances.some(v => v.variance == null)
               ? (fr ? '⛔ Fermeture bloquée — complétez le décompte (Final Cash requis).' : '⛔ Close blocked — complete the cash count (Final Cash required).')
+              : signoffRequired && warnings.length > 0 && !allOverrideReasonsFilled
+              ? (fr ? '⛔ Fermeture bloquée — saisissez une raison pour chaque avertissement.' : '⛔ Close blocked — enter a reason for each warning.')
+              : signoffRequired && warnings.length > 0 && !overrideActor
+              ? (fr ? '⛔ Fermeture bloquée — vérifiez l\'identité du responsable.' : '⛔ Close blocked — verify manager identity.')
               : (fr ? '⛔ Fermeture bloquée — sélectionnez une raison pour chaque écart ci-dessus.' : '⛔ Close blocked — select a reason for each variance above.')
             }
           </div>

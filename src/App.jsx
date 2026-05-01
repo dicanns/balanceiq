@@ -6817,8 +6817,8 @@ export default function App(){
     setShowCloseReview(true);
   },[selectedDate,closePolicy,checklistTemplates,checklistEntries]);
 
-  // ── closeDay: persist snapshot + state after modal confirms (2E) ─────────────
-  const closeDay=useCallback(async(localReasons={})=>{
+  // ── closeDay: persist snapshot + state after modal confirms (2E/4C) ──────────
+  const closeDay=useCallback(async(localReasons={},overrideData={})=>{
     const key=selectedDate;
     const closedAt=new Date().toISOString();
     // Apply locally captured reasons from modal to cash objects
@@ -6849,14 +6849,30 @@ export default function App(){
     logUpdate('daily','jour',key,'fermeture',null,closedAt);
     setShowCloseReview(false);
     setCloseReviewData(null);
-    // Create or load a close session and surface the ApprovalPanel
+    // Create or load a close session, record override rows, then submit
     if(window.api?.closeAssurance?.session){
       window.api.closeAssurance.session.createOrLoad({
         date_key:key,
         policy_id:closePolicy?.id??null,
-      }).then(session=>{
-        if(session?.status==='draft'){
-          // Auto-submit (the cashier confirms via CloseReviewModal — that is the submit action)
+      }).then(async session=>{
+        if(!session) return null;
+        // Write override approval rows for warning overrides captured in the modal
+        const {overrideReasons={},overrideActor=null}=overrideData||{};
+        if(overrideActor&&Object.keys(overrideReasons).length>0){
+          const warnings=(closeReviewData?.evaluation?.warnings)||[];
+          for(const[idx,reason] of Object.entries(overrideReasons)){
+            const w=warnings[parseInt(idx)];
+            await window.api.closeAssurance.override?.record({
+              session_id:session.id,
+              warning_code:w?.code||`warning_${idx}`,
+              reason:reason||'',
+              actor_name:overrideActor.name,
+              actor_role:overrideActor.role??null,
+              approval_method:overrideActor.identity_method,
+            }).catch(()=>{});
+          }
+        }
+        if(session.status==='draft'){
           return window.api.closeAssurance.session.transition({
             id:session.id,to:'submitted',
             actor_name:null,actor_role:null,approval_method:null,
@@ -6867,7 +6883,7 @@ export default function App(){
         setActiveCloseSession(session||null);
       }).catch(()=>{});
     }
-  },[selectedDate,closedDays,computeDay,updCash,closePolicy]);
+  },[selectedDate,closedDays,computeDay,updCash,closePolicy,closeReviewData]);
 
   // Load checklist entries for the selected date (fills gaps not covered by range load)
   useEffect(()=>{
@@ -7248,6 +7264,7 @@ export default function App(){
   depositsPresent={closeReviewData?.depositsPresent||false}
   closePolicy={closePolicy}
   T={T} t={t} lang={lang}
+  cloudUser={user||null}
 />
 
             {/* Tip Pool Modal */}

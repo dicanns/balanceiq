@@ -3,7 +3,7 @@
  * MODAL-002  canConfirmClose - variance reason gating
  */
 import { describe, it, expect } from 'vitest';
-import { canConfirmClose } from '../../components/CloseReviewModal.jsx';
+import { canConfirmClose } from '../../services/closeGating.js';
 
 const noVariance  = { idx: 0, register: 1, variance: 0,    cents: 0,   exceeds: false, reasonCode: null };
 const nullVariance = { idx: 0, register: 1, variance: null, cents: 0,   exceeds: false, reasonCode: null };

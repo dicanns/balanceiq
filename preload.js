@@ -450,6 +450,9 @@ contextBridge.exposeInMainWorld('api', {
       create: (opts)      => ipcRenderer.invoke('close:approval:create', opts),
       list:   (sessionId) => ipcRenderer.invoke('close:approval:list', sessionId),
     },
+    override: {
+      record: (opts) => ipcRenderer.invoke('close:override:record', opts),
+    },
     revealVariance: (closureId, actor) => ipcRenderer.invoke('close:variance:reveal', closureId, actor),
     exception: {
       list:        (sessionId)          => ipcRenderer.invoke('close:exception:list', sessionId),

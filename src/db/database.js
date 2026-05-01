@@ -4307,6 +4307,19 @@ function closeSessionCreateOrLoad({ date_key, shift_key = null, policy_id = null
   return db.prepare('SELECT * FROM close_sessions WHERE id = ?').get(lastInsertRowid);
 }
 
+function closeOverrideRecord({ session_id, warning_code, reason, actor_name, actor_role, approval_method } = {}, _db) {
+  const { enforceRole } = require('../services/identityCore.js');
+  if (!enforceRole(actor_role, 'manager')) throw new Error('insufficient_role');
+  const db = _db || getDb();
+  const now = new Date().toISOString();
+  const fullReason = warning_code ? `[${warning_code}] ${reason || ''}` : (reason || '');
+  const { lastInsertRowid } = db.prepare(`INSERT INTO close_approvals
+    (close_session_id, stage, actor_name, actor_role, approval_method, reason, created_at)
+    VALUES (?, 'override', ?, ?, ?, ?, ?)`
+  ).run(session_id, actor_name, actor_role ?? null, approval_method ?? null, fullReason, now);
+  return db.prepare('SELECT * FROM close_approvals WHERE id = ?').get(lastInsertRowid);
+}
+
 function closeSessionTransition({ id, to, actor_name, actor_role, approval_method, reason } = {}, _db) {
   const db = _db || getDb();
   const session = db.prepare('SELECT * FROM close_sessions WHERE id = ?').get(id);
@@ -4662,6 +4675,7 @@ module.exports = {
   closePolicyGet, closePolicySave,
   closeSessionGet, closeSessionList, closeSessionCreateOrLoad,
   closeSessionTransition, closeApprovalCreate, closeApprovalList,
+  closeOverrideRecord,
   closeVarianceReveal,
   closeExceptionList, closeExceptionAcknowledge,
   evaluateCloseAssurance,
