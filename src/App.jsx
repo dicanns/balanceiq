@@ -313,9 +313,9 @@ function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,ro
  // POS total = Sales + GST + QST (deliveries are SUBSET of sales, already included)
  const posOk=cash.posVentes!=null;
  const posT=(cash.posVentes||0)+(cash.posTPS||0)+(cash.posTVQ||0);
- // Expected in register = Total POS − deliveries (platforms hold delivery money)
+ // Expected in register = Total POS − deliveries + opening float (cashier counts the whole drawer)
  const posLiv=cash.posLivraisons||0;
- const expectedInReg=posOk?posT-posLiv:null;
+ const expectedInReg=posOk?posT-posLiv+(cash.float??0):null;
  // Net Sales = Sales before tax − Discounts − Refunds (royalty base)
  const posDisc=cash.posDiscounts||0;
  const posRef=cash.posRefunds||0;
@@ -337,8 +337,8 @@ function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,ro
  const posCardTotal=(posPmts.visa||0)+(posPmts.mastercard||0)+(posPmts.debit||0)+(posPmts.amex||0)+(posPmts.other||0);
  const hasPosBreakdown=!!(posPmts.visa||posPmts.mastercard||posPmts.debit||posPmts.amex||posPmts.other);
  const posVsTermMatch=!hasPosBreakdown||termTotal==null||Math.abs(posCardTotal-(termTotal||0))<=0.01;
- // Expected cash = Expected in register − terminal (what should be physically in the drawer)
- const expectedCash=(posOk&&termTotal!=null)?(posT-posLiv)-(termTotal||0):null;
+ // Expected cash = Expected in register + float − terminal (what should be physically in the drawer)
+ const expectedCash=(posOk&&termTotal!=null)?(posT-posLiv+(cash.float??0))-(termTotal||0):null;
  // Physical cash = what's in till + what was moved to safe (deposits)
  const physCash=(cash.finalCash||0)+(cash.deposits||0);
  const cashVariance=(expectedCash!=null&&cash.finalCash!=null)?physCash-expectedCash:null;
@@ -3905,7 +3905,7 @@ function IntelligenceTab({liveData,computeDay,demoData,selectedDate,velocityProf
  if(!name||c.posVentes==null||c.interac==null||c.finalCash==null)return;
  const manT=(c.interac||0)+(c.finalCash||0)+(c.deposits||0);
  const posT=(c.posVentes||0)+(c.posTPS||0)+(c.posTVQ||0);
- const expectedInReg=posT-(c.posLivraisons||0);
+ const expectedInReg=posT-(c.posLivraisons||0)+(c.float??0);
  const ecart=Math.round((manT-expectedInReg)*100)/100;
  if(!vars[name])vars[name]={name,ecarts:[],cumul:0};
  vars[name].ecarts.push({date,ecart,manT,posT});
@@ -6700,7 +6700,7 @@ export default function App(){
       const manT_=mc_?(c.interac||0)+(c.finalCash||0)+(c.deposits||0):0;
       // POS total = Sales + GST + QST (deliveries are subset of sales, not added)
       const posT_=(c.posVentes||0)+(c.posTPS||0)+(c.posTVQ||0);
-      const expectedInReg_=posT_-(c.posLivraisons||0);
+      const expectedInReg_=posT_-(c.posLivraisons||0)+(c.float??0);
       posVN+=c.posVentes||0;posTPS_+=c.posTPS||0;posTVQ_+=c.posTVQ||0;posLiv_+=c.posLivraisons||0;
       posDisc_+=c.posDiscounts||0;posRef_+=c.posRefunds||0;
       manVN+=manT_;
@@ -7024,7 +7024,7 @@ export default function App(){
     h+=`<h1>BalanceIQ — Rapport journalier</h1><p class="sub" style="text-transform:capitalize">${escapeHtml(dateStr)}${holiday?` · ${escapeHtml(holiday)}`:""}</p>`;
     h+=`<h3>Ventes</h3><table><tr><th>Vente nette</th><th>TPS</th><th>TVQ</th><th>Total brut</th></tr><tr><td>${fmt(today.venteNet)}</td><td>${fmt(today.tps)}</td><td>${fmt(today.tvq)}</td><td>${fmt(today.total)}</td></tr></table>`;
     h+=`<h3>Caisses</h3><table><tr><th>Caisse</th><th>Total compté</th><th>Total POS</th><th>Statut</th></tr>`;
-    cashes.forEach((c,i)=>{const rN=roster.find(r=>r.id===c.cashierId)?.name||`Caisse ${i+1}`;const mc=c.interac!=null&&c.finalCash!=null;const manT=mc?(c.interac||0)+(c.finalCash||0):null;const posT=(c.posVentes||0)+(c.posTPS||0)+(c.posTVQ||0);const expectedInReg=posT-(c.posLivraisons||0);const bal=mc&&c.posVentes!=null&&Math.abs(manT-expectedInReg)<=1;h+=`<tr><td>${escapeHtml(rN)}</td><td>${manT!=null?fmt(manT):"—"}</td><td>${c.posVentes!=null?fmt(expectedInReg):"—"}</td><td class="${bal?"g":"r"}">${bal?"Balancé":mc&&c.posVentes!=null?`Écart: ${fmt(manT-expectedInReg)}`:"Incomplet"}</td></tr>`});
+    cashes.forEach((c,i)=>{const rN=roster.find(r=>r.id===c.cashierId)?.name||`Caisse ${i+1}`;const mc=c.interac!=null&&c.finalCash!=null;const manT=mc?(c.interac||0)+(c.finalCash||0):null;const posT=(c.posVentes||0)+(c.posTPS||0)+(c.posTVQ||0);const expectedInReg=posT-(c.posLivraisons||0)+(c.float??0);const bal=mc&&c.posVentes!=null&&Math.abs(manT-expectedInReg)<=1;h+=`<tr><td>${escapeHtml(rN)}</td><td>${manT!=null?fmt(manT):"—"}</td><td>${c.posVentes!=null?fmt(expectedInReg):"—"}</td><td class="${bal?"g":"r"}">${bal?"Balancé":mc&&c.posVentes!=null?`Écart: ${fmt(manT-expectedInReg)}`:"Incomplet"}</td></tr>`});
     h+=`</table>`;
     const hasPmtBreakdown=cashes.some(c=>c.pmtVisa||c.pmtMastercard||c.pmtDebit||c.pmtAmex||c.pmtOther);
     if(hasPmtBreakdown){h+=`<h3>Détail par type de paiement</h3><table><tr><th>Caisse</th><th>Terminal</th><th>Visa</th><th>Mastercard</th><th>Débit</th><th>Amex</th><th>Autre</th></tr>`;const f2=v=>v!=null&&v>0?fmt(v):"—";cashes.forEach((c,i)=>{if(!c.pmtVisa&&!c.pmtMastercard&&!c.pmtDebit&&!c.pmtAmex&&!c.pmtOther)return;const rN=roster.find(r=>r.id===c.cashierId)?.name||`Caisse ${i+1}`;h+=`<tr><td>${escapeHtml(rN)}</td><td>${f2(c.interac)}</td><td>${f2(c.pmtVisa)}</td><td>${f2(c.pmtMastercard)}</td><td>${f2(c.pmtDebit)}</td><td>${f2(c.pmtAmex)}</td><td>${f2(c.pmtOther)}</td></tr>`;});h+=`</table>`;}

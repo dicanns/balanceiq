@@ -17,8 +17,9 @@ function computeRegisterVariance(cash) {
   const finalCash = cash.finalCash ?? null;
   if (finalCash === null) return null;
 
+  const float_ = cash.float ?? 0;
   const posT = posVentes + posTPS + posTVQ;
-  const expectedCash = posT - posLivraisons - interac;
+  const expectedCash = posT - posLivraisons - interac + float_;
   const physCash = finalCash + (cash.deposits ?? 0);
   return physCash - expectedCash;
 }
