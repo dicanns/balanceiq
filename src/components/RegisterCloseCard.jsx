@@ -404,11 +404,6 @@ function AdvancedFieldsPanel({ cash, onChange, showAdvanced, setShowAdvanced, va
     { key: 'house_account_sales_cents',   label: T?.tenderHouseAcct ?? (fr ? 'Ventes sur compte maison'  : 'House account sales'),  sign: null },
   ];
 
-  function handleFieldChange(key, dollarVal) {
-    const cents = Math.round((parseFloat(dollarVal) || 0) * 100);
-    onChange?.({ ...cash, [key]: cents });
-  }
-
   const inputStyle = {
     width: '100%', boxSizing: 'border-box',
     background: t?.inputBg ?? '#0c0e14',
@@ -437,13 +432,11 @@ function AdvancedFieldsPanel({ cash, onChange, showAdvanced, setShowAdvanced, va
                 <label style={{ fontSize: 10.5, fontWeight: 600, color: sign === +1 ? '#4ade80' : sign === -1 ? '#f87171' : '#94a3b8', display: 'block', marginBottom: 3 }}>
                   {sign === +1 ? '+ ' : sign === -1 ? '- ' : ''}{label}
                 </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={((cash?.[key] ?? 0) / 100).toFixed(2)}
-                  onChange={e => handleFieldChange(key, e.target.value)}
-                  style={inputStyle}
+                <AdvancedFieldInput
+                  fieldKey={key}
+                  cash={cash}
+                  onChange={onChange}
+                  inputStyle={inputStyle}
                 />
               </div>
             ))}
@@ -480,6 +473,33 @@ function AdvancedFieldsPanel({ cash, onChange, showAdvanced, setShowAdvanced, va
         </div>
       )}
     </div>
+  );
+}
+
+function AdvancedFieldInput({ fieldKey, cash, onChange, inputStyle }) {
+  const externalCents = cash?.[fieldKey] ?? 0;
+  const [localVal, setLocalVal] = useState((externalCents / 100).toFixed(2));
+
+  useEffect(() => {
+    setLocalVal((externalCents / 100).toFixed(2));
+  }, [externalCents]);
+
+  function commit(val) {
+    const cents = Math.round((parseFloat(val) || 0) * 100);
+    setLocalVal((cents / 100).toFixed(2));
+    onChange?.({ ...cash, [fieldKey]: cents });
+  }
+
+  return (
+    <input
+      type="number"
+      min="0"
+      step="0.01"
+      value={localVal}
+      onChange={e => setLocalVal(e.target.value)}
+      onBlur={e => commit(e.target.value)}
+      style={inputStyle}
+    />
   );
 }
 
