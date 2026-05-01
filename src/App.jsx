@@ -6265,7 +6265,7 @@ export default function App(){
         const manT=mc?(c.interac||0)+(c.finalCash||0)+(c.deposits||0):0;
         posVN+=c.posVentes||0;posTPS_+=c.posTPS||0;posTVQ_+=c.posTVQ||0;
         manVN+=manT;
-        if(c.posVentes!=null||c.interac!=null||c.finalCash!=null)anyD=true;
+        if(c.posVentes!=null||c.interac!=null||c.finalCash!=null||(c.paid_ins_cents??0)!==0||(c.paid_outs_cents??0)!==0||(c.cash_tips_paid_cents??0)!==0||(c.till_transfers_in_cents??0)!==0||(c.till_transfers_out_cents??0)!==0)anyD=true;
         if(mc&&c.posVentes)closedCnt++;
       });
       if(!anyD)return;
@@ -6326,7 +6326,7 @@ export default function App(){
           const mc=c.interac!=null&&c.finalCash!=null;
           const manT=mc?(c.interac||0)+(c.finalCash||0)+(c.deposits||0):0;
           posVN+=c.posVentes||0;posTPS_+=c.posTPS||0;posTVQ_+=c.posTVQ||0;manVN+=manT;
-          if(c.posVentes!=null||c.interac!=null||c.finalCash!=null)anyD=true;
+          if(c.posVentes!=null||c.interac!=null||c.finalCash!=null||(c.paid_ins_cents??0)!==0||(c.paid_outs_cents??0)!==0||(c.cash_tips_paid_cents??0)!==0||(c.till_transfers_in_cents??0)!==0||(c.till_transfers_out_cents??0)!==0)anyD=true;
           if(mc&&c.posVentes)closedCnt++;
         });
         if(!anyD)return;
@@ -6704,7 +6704,7 @@ export default function App(){
       posVN+=c.posVentes||0;posTPS_+=c.posTPS||0;posTVQ_+=c.posTVQ||0;posLiv_+=c.posLivraisons||0;
       posDisc_+=c.posDiscounts||0;posRef_+=c.posRefunds||0;
       manVN+=manT_;
-      if(c.posVentes!=null||c.interac!=null||c.finalCash!=null)anyD=true;
+      if(c.posVentes!=null||c.interac!=null||c.finalCash!=null||(c.paid_ins_cents??0)!==0||(c.paid_outs_cents??0)!==0||(c.cash_tips_paid_cents??0)!==0||(c.till_transfers_in_cents??0)!==0||(c.till_transfers_out_cents??0)!==0)anyD=true;
       if(!mc_||!c.posVentes||Math.abs(manT_-expectedInReg_)>1)allB=false;
     });
     // Net Sales = Sales before tax − Discounts − Refunds. Fall back to manual for historical data.
@@ -6891,6 +6891,9 @@ export default function App(){
         return session;
       }).then(session=>{
         setActiveCloseSession(session||null);
+        // Refresh sessionsForDay so ShiftHandoff shows the new session status
+        window.api.closeAssurance.session.list({dateFrom:key,dateTo:key,limit:20})
+          .then(all=>setSessionsForDay(all||[])).catch(()=>{});
       }).catch(()=>{});
     }
   },[selectedDate,closedDays,computeDay,updCash,closePolicy,closeReviewData]);
