@@ -55,9 +55,10 @@ describe('VAR-REASON-002: computeRegisterVariance', () => {
     expect(computeRegisterVariance(rest)).toBeNull();
   });
 
-  it('returns null when interac missing', () => {
+  it('treats missing interac as zero (cash-only till)', () => {
+    // interac defaults to 0: expected = 1149.75 - 200 - 0 = 949.75, physCash = 549.75, variance = -400
     const { interac: _, ...rest } = base;
-    expect(computeRegisterVariance(rest)).toBeNull();
+    expect(computeRegisterVariance(rest)).toBeCloseTo(-400, 5);
   });
 
   it('returns null when finalCash missing', () => {

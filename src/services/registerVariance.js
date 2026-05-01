@@ -13,8 +13,7 @@ function computeRegisterVariance(cash) {
   const posTPS = cash.posTPS ?? 0;
   const posTVQ = cash.posTVQ ?? 0;
   const posLivraisons = cash.posLivraisons ?? 0;
-  const interac = cash.interac ?? null;
-  if (interac === null) return null;
+  const interac = cash.interac ?? 0;
   const finalCash = cash.finalCash ?? null;
   if (finalCash === null) return null;
 
@@ -56,8 +55,7 @@ function computeAdvancedRegisterVariance(cash, advFields, safeDropsTotalCents, o
   const posTPS = cash.posTPS ?? 0;
   const posTVQ = cash.posTVQ ?? 0;
   const posLivraisons = cash.posLivraisons ?? 0;
-  const interac = cash.interac ?? null;
-  if (interac === null) return null;
+  const interac = cash.interac ?? 0;
   const finalCash = cash.finalCash ?? null;
   if (finalCash === null) return null;
 

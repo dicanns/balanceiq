@@ -44,9 +44,10 @@ describe('TENDER-001 simple mode preservation', () => {
     expect(computeRegisterVariance(incomplete)).toBeNull();
   });
 
-  it('simple mode returns null when interac missing', () => {
+  it('simple mode treats missing interac as zero (cash-only till)', () => {
+    // interac defaults to 0: expected = 1149.75 - 100 - 0 = 1049.75, physCash = 449.75, variance = -600
     const { interac: _, ...incomplete } = baseCash;
-    expect(computeRegisterVariance(incomplete)).toBeNull();
+    expect(computeRegisterVariance(incomplete)).toBeCloseTo(-600, 5);
   });
 
   it('simple mode returns null when finalCash missing', () => {

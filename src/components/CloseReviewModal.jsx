@@ -294,7 +294,7 @@ export default function CloseReviewModal({
             {blockers.length > 0
               ? (fr ? '⛔ Fermeture bloquée — résolvez les blocages ci-dessus.' : '⛔ Close blocked — resolve the issues above.')
               : variances.some(v => v.variance == null)
-              ? (fr ? '⛔ Fermeture bloquée — complétez le décompte (Final Cash requis).' : '⛔ Close blocked — complete the cash count (Final Cash required).')
+              ? (fr ? '⛔ Fermeture bloquée — complétez le décompte (POS + Argent final requis).' : '⛔ Close blocked — complete the cash count (POS sales + Final Cash required).')
               : signoffRequired && warnings.length > 0 && !allOverrideReasonsFilled
               ? (fr ? '⛔ Fermeture bloquée — saisissez une raison pour chaque avertissement.' : '⛔ Close blocked — enter a reason for each warning.')
               : signoffRequired && warnings.length > 0 && !overrideActor

@@ -391,6 +391,29 @@ function ReasonSummary({ lang, t, reasonCode, reasonText }) {
 
 // ── Advanced Fields Panel ─────────────────────────────────────────────────────
 
+function FieldTooltip({ text }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', marginLeft: 4 }}>
+      <span
+        onMouseEnter={() => setVisible(true)}
+        onMouseLeave={() => setVisible(false)}
+        style={{ fontSize: 10, color: '#64748b', cursor: 'default', userSelect: 'none', lineHeight: 1 }}
+      >ⓘ</span>
+      {visible && (
+        <span style={{
+          position: 'absolute', bottom: '120%', left: '50%', transform: 'translateX(-50%)',
+          background: '#1e293b', border: '1px solid rgba(255,255,255,0.12)',
+          borderRadius: 6, padding: '6px 9px', fontSize: 10.5, color: '#cbd5e1',
+          whiteSpace: 'pre-wrap', maxWidth: 200, lineHeight: 1.4,
+          zIndex: 99, boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+          pointerEvents: 'none',
+        }}>{text}</span>
+      )}
+    </span>
+  );
+}
+
 function AdvancedFieldInput({ fieldKey, cash, onChange, inputStyle }) {
   const externalCents = cash?.[fieldKey] ?? 0;
   const [localVal, setLocalVal] = useState((externalCents / 100).toFixed(2));
@@ -422,13 +445,20 @@ function AdvancedFieldsPanel({ cash, onChange, showAdvanced, setShowAdvanced, va
   const fmt = v => new Intl.NumberFormat(fr ? 'fr-CA' : 'en-CA', { style: 'currency', currency: 'CAD' }).format(v / 100);
 
   const fieldDef = [
-    { key: 'paid_ins_cents',            label: T?.tenderPaidIns  ?? (fr ? 'Entrées de caisse'         : 'Paid-ins'),           sign: +1 },
-    { key: 'paid_outs_cents',           label: T?.tenderPaidOuts ?? (fr ? 'Sorties de caisse'          : 'Paid-outs'),          sign: -1 },
-    { key: 'cash_tips_paid_cents',      label: T?.tenderCashTips ?? (fr ? 'Pourboires comptant payés'  : 'Cash tips paid'),     sign: -1 },
-    { key: 'till_transfers_in_cents',   label: T?.tenderTillIn   ?? (fr ? 'Transferts entrants'        : 'Till transfers in'),  sign: +1 },
-    { key: 'till_transfers_out_cents',  label: T?.tenderTillOut  ?? (fr ? 'Transferts sortants'        : 'Till transfers out'), sign: -1 },
-    { key: 'gift_card_redemptions_cents', label: T?.tenderGiftCards ?? (fr ? 'Cartes-cadeaux encaissées' : 'Gift card redemptions'), sign: null },
-    { key: 'house_account_sales_cents',   label: T?.tenderHouseAcct ?? (fr ? 'Ventes sur compte maison'  : 'House account sales'),  sign: null },
+    { key: 'paid_ins_cents',            label: T?.tenderPaidIns  ?? (fr ? 'Entrées de caisse'         : 'Paid-ins'),           sign: +1,
+      tip: fr ? 'Cash ajouté à la caisse hors ventes.\nEx : le gérant apporte 50 $ de monnaie depuis le coffre.' : 'Cash added to the till outside of sales.\nEx: manager brings $50 change from the safe.' },
+    { key: 'paid_outs_cents',           label: T?.tenderPaidOuts ?? (fr ? 'Sorties de caisse'          : 'Paid-outs'),          sign: -1,
+      tip: fr ? 'Cash retiré de la caisse pour des dépenses.\nEx : 25 $ payés au livreur de produits.' : 'Cash taken from the till for expenses.\nEx: $25 paid to the produce delivery driver.' },
+    { key: 'cash_tips_paid_cents',      label: T?.tenderCashTips ?? (fr ? 'Pourboires comptant payés'  : 'Cash tips paid'),     sign: -1,
+      tip: fr ? 'Pourboires distribués en cash aux employés depuis la caisse.\nEx : pourboire carte de 15 $ payé en espèces au serveur.' : 'Tips paid out in cash to staff from the till.\nEx: $15 card tip paid as cash to the server.' },
+    { key: 'till_transfers_in_cents',   label: T?.tenderTillIn   ?? (fr ? 'Transferts entrants'        : 'Till transfers in'),  sign: +1,
+      tip: fr ? 'Cash reçu d\'une autre caisse.\nEx : la caisse 2 vous envoie 100 $ de monnaie.' : 'Cash received from another register.\nEx: Register 2 sends you $100 in change.' },
+    { key: 'till_transfers_out_cents',  label: T?.tenderTillOut  ?? (fr ? 'Transferts sortants'        : 'Till transfers out'), sign: -1,
+      tip: fr ? 'Cash envoyé vers une autre caisse.\nEx : vous envoyez 100 $ à la caisse 2.' : 'Cash sent to another register.\nEx: you send $100 to Register 2.' },
+    { key: 'gift_card_redemptions_cents', label: T?.tenderGiftCards ?? (fr ? 'Cartes-cadeaux encaissées' : 'Gift card redemptions'), sign: null,
+      tip: fr ? 'Valeur des cartes-cadeaux utilisées comme paiement.\nN\'affecte pas l\'écart (informatif).' : 'Value of gift cards used as payment.\nDoes not affect variance (informational).' },
+    { key: 'house_account_sales_cents',   label: T?.tenderHouseAcct ?? (fr ? 'Ventes sur compte maison'  : 'House account sales'),  sign: null,
+      tip: fr ? 'Ventes portées sur un compte maison (ex : repas du personnel).\nN\'affecte pas l\'écart (informatif).' : 'Sales charged to a house account (ex: staff meals).\nDoes not affect variance (informational).' },
   ];
 
   const inputStyle = {
@@ -454,10 +484,11 @@ function AdvancedFieldsPanel({ cash, onChange, showAdvanced, setShowAdvanced, va
       {showAdvanced && (
         <div style={{ padding: '0 12px 14px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 12px', marginBottom: 10 }}>
-            {fieldDef.map(({ key, label, sign }) => (
+            {fieldDef.map(({ key, label, sign, tip }) => (
               <div key={key}>
-                <label style={{ fontSize: 10.5, fontWeight: 600, color: sign === +1 ? '#4ade80' : sign === -1 ? '#f87171' : '#94a3b8', display: 'block', marginBottom: 3 }}>
-                  {sign === +1 ? '+ ' : sign === -1 ? '- ' : ''}{label}
+                <label style={{ fontSize: 10.5, fontWeight: 600, color: sign === +1 ? '#4ade80' : sign === -1 ? '#f87171' : '#94a3b8', display: 'flex', alignItems: 'center', marginBottom: 3 }}>
+                  <span>{sign === +1 ? '+ ' : sign === -1 ? '- ' : ''}{label}</span>
+                  {tip && <FieldTooltip text={tip} />}
                 </label>
                 <AdvancedFieldInput
                   fieldKey={key}

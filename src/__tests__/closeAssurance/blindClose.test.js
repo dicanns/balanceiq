@@ -69,8 +69,9 @@ describe('BLIND-001 variance computation invariant', () => {
     expect(computeRegisterVariance({ interac: 100, finalCash: 50 })).toBeNull();
   });
 
-  it('returns null when interac is missing', () => {
-    expect(computeRegisterVariance({ posVentes: 1000, finalCash: 50 })).toBeNull();
+  it('treats missing interac as zero (cash-only till)', () => {
+    // interac defaults to 0: expected = 1000 - 0 = 1000, physCash = 50, variance = -950
+    expect(computeRegisterVariance({ posVentes: 1000, finalCash: 50 })).toBeCloseTo(-950, 5);
   });
 
   it('returns null when finalCash is missing', () => {
