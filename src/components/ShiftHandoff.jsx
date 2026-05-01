@@ -202,6 +202,25 @@ export default function ShiftHandoff({
         </div>
       )}
 
+      {/* Active shift context banner */}
+      {currentShiftKey ? (
+        <div style={{ marginTop: 8, padding: '7px 10px', borderRadius: 7, background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.3)', fontSize: 11.5, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#a78bfa', flexShrink: 0, display: 'inline-block' }} />
+          <span style={{ color: '#c4b5fd' }}>
+            {fr
+              ? <>Les caisses fermées ci-dessous seront enregistrées sous le quart <strong>{shiftLabel(currentShiftKey)}</strong>.</>
+              : <>Registers closed below will be recorded under the <strong>{shiftLabel(currentShiftKey)}</strong> shift.</>
+            }
+          </span>
+        </div>
+      ) : (
+        <div style={{ marginTop: 8, padding: '7px 10px', borderRadius: 7, background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.25)', fontSize: 11.5, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ color: '#f59e0b' }}>
+            {fr ? 'Sélectionnez un quart ci-dessus avant de fermer les caisses.' : 'Select a shift above before closing registers.'}
+          </span>
+        </div>
+      )}
+
       {/* No session notice */}
       {currentShiftKey && !sessionForShift(currentShiftKey) && (
         <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
