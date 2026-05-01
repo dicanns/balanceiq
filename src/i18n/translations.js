@@ -1657,6 +1657,20 @@ export const FR = {
   crdErrReasonRequired:"Une raison est obligatoire pour la réouverture.",
   crdErrManagerRequired:"L'identité du responsable est requise.",
 
+  // ── TENDER-AWARE RECONCILIATION ──
+  tenderAdvancedFields:  "Champs avancés",
+  tenderPaidIns:         "Entrées de caisse",
+  tenderPaidOuts:        "Sorties de caisse",
+  tenderCashTips:        "Pourboires comptant payés",
+  tenderTillIn:          "Transferts entrants",
+  tenderTillOut:         "Transferts sortants",
+  tenderGiftCards:       "Cartes-cadeaux encaissées",
+  tenderHouseAcct:       "Ventes sur compte maison",
+  tenderFormulaSimple:   "Formule: standard",
+  tenderFormulaAdvanced: "Formule: avancée",
+  tenderExpectedBase:    "Ventes comptant attendues",
+  tenderExpectedFinal:   "Caisse attendue",
+
   // ── TODAY-AT-A-GLANCE ──
   // ── ONBOARDING CHECKLIST ──
   obTitle:           "Mise en route",
@@ -4051,6 +4065,20 @@ export const EN = {
   crdCancelBtn:        "Cancel",
   crdErrReasonRequired:"A reason is required to reopen.",
   crdErrManagerRequired:"Manager identity is required.",
+
+  // ── TENDER-AWARE RECONCILIATION ──
+  tenderAdvancedFields:  "Advanced fields",
+  tenderPaidIns:         "Paid-ins",
+  tenderPaidOuts:        "Paid-outs",
+  tenderCashTips:        "Cash tips paid",
+  tenderTillIn:          "Till transfers in",
+  tenderTillOut:         "Till transfers out",
+  tenderGiftCards:       "Gift card redemptions",
+  tenderHouseAcct:       "House account sales",
+  tenderFormulaSimple:   "Formula: standard",
+  tenderFormulaAdvanced: "Formula: advanced",
+  tenderExpectedBase:    "Expected cash sales",
+  tenderExpectedFinal:   "Expected in drawer",
 
   // ── TODAY-AT-A-GLANCE ──
   // ── ONBOARDING CHECKLIST ──

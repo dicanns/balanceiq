@@ -14,6 +14,8 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import DenominationCounter, { buildDenominationRows } from './DenominationCounter.jsx';
 import SafeDropPanel from './SafeDropPanel.jsx';
+export { computeRegisterVariance, computeAdvancedRegisterVariance } from '../services/registerVariance.js';
+import { computeRegisterVariance, computeAdvancedRegisterVariance } from '../services/registerVariance.js';
 
 export const VARIANCE_REASON_CODES = [
   { code: 'counting_error',        fr: 'Erreur de comptage',          en: 'Counting error' },
@@ -41,6 +43,8 @@ export default function RegisterCloseCard({
   onDeleteDrop,
   roster = [],
   date = null,
+  advancedMode = false,
+  openingFloatCents = 0,
   T,
   t,
   cash,
@@ -52,6 +56,7 @@ export default function RegisterCloseCard({
   const [reasonCode, setReasonCode] = useState(cash?.varianceReasonCode || '');
   const [reasonText, setReasonText] = useState(cash?.varianceReasonText || '');
   const [reasonConfirmed, setReasonConfirmed] = useState(!!(cash?.varianceReasonCode));
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const denomRequired = denominationMode === 'denominations_required';
   const denomAllowed = denominationMode !== 'total_only';
@@ -64,11 +69,6 @@ export default function RegisterCloseCard({
   const showRevealButton = isBlind && counted && !revealed;
   const showManagerLabel = blindMode === 'manager_reveal';
 
-  const variance = computeRegisterVariance(cash || {});
-  const varianceCents = variance != null ? Math.round(Math.abs(variance) * 100) : 0;
-  const thresholdExceeded = variance != null && varianceCents > varianceThresholdCents;
-  const showReasonPicker = thresholdExceeded && varianceRule !== 'inform' && !hideVariance && !reasonConfirmed;
-  const reasonRequired = varianceRule === 'block';
   const lang = T?.closeBlindSubmit === 'Submit count' ? 'en' : 'fr';
   const fr = lang !== 'en';
 
@@ -78,6 +78,19 @@ export default function RegisterCloseCard({
       ? safeDrops.filter(d => d.dropped_by === cashierName)
       : [],
   [safeDrops, cashierName]);
+
+  const safeDropsTotalCents = useMemo(
+    () => myDrops.reduce((s, d) => s + (d.amount_cents ?? 0), 0),
+    [myDrops],
+  );
+
+  const variance = advancedMode
+    ? computeAdvancedRegisterVariance(cash || {}, cash || {}, safeDropsTotalCents, openingFloatCents)
+    : computeRegisterVariance(cash || {});
+  const varianceCents = variance != null ? Math.round(Math.abs(variance) * 100) : 0;
+  const thresholdExceeded = variance != null && varianceCents > varianceThresholdCents;
+  const showReasonPicker = thresholdExceeded && varianceRule !== 'inform' && !hideVariance && !reasonConfirmed;
+  const reasonRequired = varianceRule === 'block';
 
   // Sync cash.deposits with safe drop total whenever drops change
   const dropSyncRef = useRef(null);
@@ -161,6 +174,15 @@ export default function RegisterCloseCard({
             roster={roster} cashierName={cashierName}
           />
         )}
+        {advancedMode && (
+          <AdvancedFieldsPanel
+            cash={cash} onChange={onChange}
+            showAdvanced={showAdvanced} setShowAdvanced={setShowAdvanced}
+            variance={variance} safeDropsTotalCents={safeDropsTotalCents}
+            openingFloatCents={openingFloatCents}
+            fr={fr} T={T} t={t}
+          />
+        )}
         {showReasonPicker && (
           <ReasonPicker
             lang={lang} T={T} t={t}
@@ -207,6 +229,15 @@ export default function RegisterCloseCard({
           drops={myDrops} onSave={onSaveDrops} onDelete={onDeleteDrop} date={date}
           t={t} T={T} lang={lang}
           roster={roster} cashierName={cashierName}
+        />
+      )}
+      {advancedMode && !hideVariance && (
+        <AdvancedFieldsPanel
+          cash={cash} onChange={onChange}
+          showAdvanced={showAdvanced} setShowAdvanced={setShowAdvanced}
+          variance={variance} safeDropsTotalCents={safeDropsTotalCents}
+          openingFloatCents={openingFloatCents}
+          fr={fr} T={T} t={t}
         />
       )}
       {showSubmitButton && (
@@ -358,27 +389,108 @@ function ReasonSummary({ lang, t, reasonCode, reasonText }) {
   );
 }
 
-/**
- * Pure helper: compute variance from a cash entry object.
- * variance = physicalCash - expectedCash
- * physicalCash = finalCash + deposits
- * expectedCash = (posVentes + posTPS + posTVQ - posLivraisons) - interac
- *
- * Returns null when inputs are insufficient for the calculation.
- */
-export function computeRegisterVariance(cash) {
-  const posVentes = cash.posVentes ?? null;
-  if (posVentes === null) return null;
-  const posTPS = cash.posTPS ?? 0;
-  const posTVQ = cash.posTVQ ?? 0;
-  const posLivraisons = cash.posLivraisons ?? 0;
-  const interac = cash.interac ?? null;
-  if (interac === null) return null;
-  const finalCash = cash.finalCash ?? null;
-  if (finalCash === null) return null;
+// ── Advanced Fields Panel ─────────────────────────────────────────────────────
 
-  const posT = posVentes + posTPS + posTVQ;
-  const expectedCash = posT - posLivraisons - interac;
-  const physCash = finalCash + (cash.deposits ?? 0);
-  return physCash - expectedCash;
+function AdvancedFieldsPanel({ cash, onChange, showAdvanced, setShowAdvanced, variance, safeDropsTotalCents, openingFloatCents, fr, T, t }) {
+  const fmt = v => new Intl.NumberFormat(fr ? 'fr-CA' : 'en-CA', { style: 'currency', currency: 'CAD' }).format(v / 100);
+
+  const fieldDef = [
+    { key: 'paid_ins_cents',            label: T?.tenderPaidIns  ?? (fr ? 'Entrées de caisse'         : 'Paid-ins'),           sign: +1 },
+    { key: 'paid_outs_cents',           label: T?.tenderPaidOuts ?? (fr ? 'Sorties de caisse'          : 'Paid-outs'),          sign: -1 },
+    { key: 'cash_tips_paid_cents',      label: T?.tenderCashTips ?? (fr ? 'Pourboires comptant payés'  : 'Cash tips paid'),     sign: -1 },
+    { key: 'till_transfers_in_cents',   label: T?.tenderTillIn   ?? (fr ? 'Transferts entrants'        : 'Till transfers in'),  sign: +1 },
+    { key: 'till_transfers_out_cents',  label: T?.tenderTillOut  ?? (fr ? 'Transferts sortants'        : 'Till transfers out'), sign: -1 },
+    { key: 'gift_card_redemptions_cents', label: T?.tenderGiftCards ?? (fr ? 'Cartes-cadeaux encaissées' : 'Gift card redemptions'), sign: null },
+    { key: 'house_account_sales_cents',   label: T?.tenderHouseAcct ?? (fr ? 'Ventes sur compte maison'  : 'House account sales'),  sign: null },
+  ];
+
+  function handleFieldChange(key, dollarVal) {
+    const cents = Math.round((parseFloat(dollarVal) || 0) * 100);
+    onChange?.({ ...cash, [key]: cents });
+  }
+
+  const inputStyle = {
+    width: '100%', boxSizing: 'border-box',
+    background: t?.inputBg ?? '#0c0e14',
+    border: `1px solid ${t?.inputBorder ?? '#374151'}`,
+    borderRadius: 5, color: t?.text ?? '#f9fafb',
+    fontSize: 12, padding: '4px 7px', outline: 'none',
+  };
+
+  return (
+    <div style={{ marginTop: 10, borderRadius: 8, border: '1px solid rgba(20,184,166,0.3)', background: 'rgba(20,184,166,0.04)', overflow: 'hidden' }}>
+      <button
+        onClick={() => setShowAdvanced(v => !v)}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 12px', background: 'none', border: 'none', cursor: 'pointer' }}
+      >
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#2dd4bf' }}>
+          {T?.tenderAdvancedFields ?? (fr ? 'Champs avancés' : 'Advanced fields')}
+        </span>
+        <span style={{ fontSize: 11, color: '#2dd4bf', opacity: 0.7 }}>{showAdvanced ? '▲' : '▼'}</span>
+      </button>
+
+      {showAdvanced && (
+        <div style={{ padding: '0 12px 14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 12px', marginBottom: 10 }}>
+            {fieldDef.map(({ key, label, sign }) => (
+              <div key={key}>
+                <label style={{ fontSize: 10.5, fontWeight: 600, color: sign === +1 ? '#4ade80' : sign === -1 ? '#f87171' : '#94a3b8', display: 'block', marginBottom: 3 }}>
+                  {sign === +1 ? '+ ' : sign === -1 ? '- ' : ''}{label}
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={((cash?.[key] ?? 0) / 100).toFixed(2)}
+                  onChange={e => handleFieldChange(key, e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* Formula explainer */}
+          {variance != null && (
+            <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 7, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', fontSize: 11 }}>
+              <div style={{ fontWeight: 700, color: '#2dd4bf', marginBottom: 5, fontSize: 10.5, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                {T?.tenderFormulaAdvanced ?? (fr ? 'Formule: avancée' : 'Formula: advanced')}
+              </div>
+              {openingFloatCents !== 0 && (
+                <ExplainerRow label={fr ? 'Flottant d\'ouverture' : 'Opening float'} cents={openingFloatCents} />
+              )}
+              <ExplainerRow label={T?.tenderExpectedBase ?? (fr ? 'Ventes comptant attendues' : 'Expected cash sales')} cents={Math.round(((cash?.posVentes ?? 0) + (cash?.posTPS ?? 0) + (cash?.posTVQ ?? 0) - (cash?.posLivraisons ?? 0) - (cash?.interac ?? 0)) * 100)} />
+              {fieldDef.filter(f => f.sign !== null).map(({ key, label, sign }) => {
+                const cents = cash?.[key] ?? 0;
+                if (cents === 0) return null;
+                return <ExplainerRow key={key} label={label} cents={sign * cents} />;
+              })}
+              {safeDropsTotalCents !== 0 && (
+                <ExplainerRow label={fr ? 'Coffre (total)' : 'Safe drops (total)'} cents={-safeDropsTotalCents} />
+              )}
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 5, marginTop: 5 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#94a3b8' }}>{T?.tenderExpectedFinal ?? (fr ? 'Caisse attendue' : 'Expected in drawer')}</span>
+                  <span style={{ color: '#e2e8f0', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                    {fmt(Math.round(((cash?.posVentes ?? 0) + (cash?.posTPS ?? 0) + (cash?.posTVQ ?? 0) - (cash?.posLivraisons ?? 0) - (cash?.interac ?? 0)) * 100) + openingFloatCents + (cash?.paid_ins_cents ?? 0) - (cash?.paid_outs_cents ?? 0) - safeDropsTotalCents - (cash?.cash_tips_paid_cents ?? 0) - (cash?.till_transfers_out_cents ?? 0) + (cash?.till_transfers_in_cents ?? 0))}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExplainerRow({ label, cents }) {
+  const fmtAbs = v => new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' }).format(Math.abs(v) / 100);
+  const color = cents >= 0 ? '#4ade80' : '#f87171';
+  const sign = cents >= 0 ? '+' : '-';
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+      <span style={{ color: '#94a3b8' }}>{label}</span>
+      <span style={{ color, fontVariantNumeric: 'tabular-nums' }}>{sign} {fmtAbs(cents)}</span>
+    </div>
+  );
 }
