@@ -4368,6 +4368,40 @@ function closeExceptionList(sessionId, _db) {
   return db.prepare('SELECT * FROM close_exceptions WHERE close_session_id = ? ORDER BY id ASC').all(sessionId);
 }
 
+function closeSessionsByDate(date_key, _db) {
+  const db = _db || getDb();
+  return db.prepare('SELECT * FROM close_sessions WHERE date_key = ? ORDER BY created_at ASC').all(date_key);
+}
+
+function closeStoreCarryForward({ id, carry_forward_float_cents, is_final_shift = 0 } = {}, _db) {
+  const db = _db || getDb();
+  const now = new Date().toISOString();
+  db.prepare(
+    'UPDATE close_sessions SET carry_forward_float_cents=?, is_final_shift=?, updated_at=? WHERE id=?'
+  ).run(carry_forward_float_cents, is_final_shift ? 1 : 0, now, id);
+  return db.prepare('SELECT * FROM close_sessions WHERE id = ?').get(id);
+}
+
+function closeGetPrecedingCarryForward(date_key, preceding_shift_key, _db) {
+  if (!preceding_shift_key) return null;
+  const db = _db || getDb();
+  const row = db.prepare(
+    'SELECT carry_forward_float_cents FROM close_sessions WHERE date_key=? AND shift_key=? ORDER BY created_at DESC LIMIT 1'
+  ).get(date_key, preceding_shift_key);
+  return row?.carry_forward_float_cents ?? null;
+}
+
+function closeDaySummary(date_key, _db) {
+  const db = _db || getDb();
+  const sessions = db.prepare('SELECT * FROM close_sessions WHERE date_key=? ORDER BY created_at ASC').all(date_key);
+  let totalVarianceCents = 0;
+  for (const s of sessions) {
+    const row = db.prepare('SELECT SUM(variance_cents) as total FROM register_closures WHERE close_session_id=?').get(s.id);
+    totalVarianceCents += row?.total ?? 0;
+  }
+  return { sessions, totalVarianceCents };
+}
+
 /**
  * Evaluates a close session against the active policy and returns structured results.
  * Input: { session, closures, policy, checklistItems }
@@ -4683,6 +4717,7 @@ module.exports = {
   closeOverrideRecord,
   closeVarianceReveal,
   closeExceptionList, closeExceptionAcknowledge,
+  closeSessionsByDate, closeStoreCarryForward, closeGetPrecedingCarryForward, closeDaySummary,
   evaluateCloseAssurance,
   registerClosureSave,
   denominationSave,

@@ -1671,6 +1671,21 @@ export const FR = {
   tenderExpectedBase:    "Ventes comptant attendues",
   tenderExpectedFinal:   "Caisse attendue",
 
+  // ── SHIFT CLOSE ──
+  shiftSelector:       "Quart de travail",
+  shiftDawn:           "Aube",
+  shiftMorning:        "Matin",
+  shiftAfternoon:      "Après-midi",
+  shiftEvening:        "Soirée",
+  shiftNight:          "Nuit",
+  shiftFinal:          "Final de journée",
+  shiftCarryForward:   "Flottant reporté",
+  shiftOverrideFloat:  "Modifier le flottant",
+  shiftFinalSummary:   "Résumé de la journée",
+  shiftNoSession:      "Aucune fermeture pour ce quart",
+  shiftIsFinal:        "Marquer comme fermeture finale du jour",
+  shiftDayTotal:       "Écart total du jour",
+
   // ── TODAY-AT-A-GLANCE ──
   // ── ONBOARDING CHECKLIST ──
   obTitle:           "Mise en route",
@@ -4079,6 +4094,21 @@ export const EN = {
   tenderFormulaAdvanced: "Formula: advanced",
   tenderExpectedBase:    "Expected cash sales",
   tenderExpectedFinal:   "Expected in drawer",
+
+  // ── SHIFT CLOSE ──
+  shiftSelector:       "Shift",
+  shiftDawn:           "Dawn",
+  shiftMorning:        "Morning",
+  shiftAfternoon:      "Afternoon",
+  shiftEvening:        "Evening",
+  shiftNight:          "Night",
+  shiftFinal:          "End of Day",
+  shiftCarryForward:   "Carry-forward float",
+  shiftOverrideFloat:  "Override float",
+  shiftFinalSummary:   "Day summary",
+  shiftNoSession:      "No close for this shift",
+  shiftIsFinal:        "Mark as final close for the day",
+  shiftDayTotal:       "Total day variance",
 
   // ── TODAY-AT-A-GLANCE ──
   // ── ONBOARDING CHECKLIST ──

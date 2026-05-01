@@ -1054,6 +1054,14 @@ const MIGRATIONS = [
       });
     },
   },
+  {
+    version: 26,
+    description: 'Close Assurance 5B - shift close: is_final_shift + carry_forward_float_cents on close_sessions',
+    up: (database) => {
+      database.prepare(`ALTER TABLE close_sessions ADD COLUMN is_final_shift INTEGER NOT NULL DEFAULT 0`).run();
+      database.prepare(`ALTER TABLE close_sessions ADD COLUMN carry_forward_float_cents INTEGER`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
