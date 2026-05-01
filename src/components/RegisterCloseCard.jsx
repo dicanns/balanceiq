@@ -56,7 +56,7 @@ export default function RegisterCloseCard({
   const [reasonCode, setReasonCode] = useState(cash?.varianceReasonCode || '');
   const [reasonText, setReasonText] = useState(cash?.varianceReasonText || '');
   const [reasonConfirmed, setReasonConfirmed] = useState(!!(cash?.varianceReasonCode));
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(!!advancedMode);
 
   const denomRequired = denominationMode === 'denominations_required';
   const denomAllowed = denominationMode !== 'total_only';
@@ -231,11 +231,11 @@ export default function RegisterCloseCard({
           roster={roster} cashierName={cashierName}
         />
       )}
-      {advancedMode && !hideVariance && (
+      {advancedMode && (
         <AdvancedFieldsPanel
           cash={cash} onChange={onChange}
           showAdvanced={showAdvanced} setShowAdvanced={setShowAdvanced}
-          variance={variance} safeDropsTotalCents={safeDropsTotalCents}
+          variance={hideVariance ? null : variance} safeDropsTotalCents={safeDropsTotalCents}
           openingFloatCents={openingFloatCents}
           fr={fr} T={T} t={t}
         />
