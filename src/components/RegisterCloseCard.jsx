@@ -470,10 +470,10 @@ function AdvancedFieldsPanel({ cash, onChange, showAdvanced, setShowAdvanced, va
   };
 
   return (
-    <div style={{ marginTop: 10, borderRadius: 8, border: '1px solid rgba(20,184,166,0.3)', background: 'rgba(20,184,166,0.04)', overflow: 'hidden' }}>
+    <div style={{ marginTop: 10, borderRadius: 8, border: '1px solid rgba(20,184,166,0.3)', background: 'rgba(20,184,166,0.04)' }}>
       <button
         onClick={() => setShowAdvanced(v => !v)}
-        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 12px', background: 'none', border: 'none', cursor: 'pointer' }}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 12px', background: 'none', border: 'none', cursor: 'pointer', borderRadius: '8px 8px 0 0' }}
       >
         <span style={{ fontSize: 12, fontWeight: 700, color: '#2dd4bf' }}>
           {T?.tenderAdvancedFields ?? (fr ? 'Champs avancés' : 'Advanced fields')}

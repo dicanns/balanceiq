@@ -142,7 +142,7 @@ export default function CloseReviewModal({
                     </span>
                     <span style={{ fontFamily: "'Satoshi',-apple-system,sans-serif", fontVariantNumeric: 'tabular-nums', fontSize: 12, color: incomplete ? '#f59e0b' : v.exceeds ? '#f87171' : '#4ade80' }}>
                       {incomplete
-                        ? (fr ? 'Compte incomplet' : 'Count incomplete')
+                        ? <span title={fr ? 'Entrez POS Ventes + Argent final pour compléter le décompte' : 'Enter POS Sales + Final Cash to complete the count'} style={{ cursor: 'help', borderBottom: '1px dashed #f59e0b' }}>{fr ? 'Compte incomplet' : 'Count incomplete'}</span>
                         : v.variance === 0
                         ? (fr ? 'Balancé' : 'Balanced')
                         : `${fmt(Math.abs(v.variance))} ${v.variance > 0 ? (T?.crOver ?? (fr ? 'surplus' : 'over')) : (T?.crShort ?? (fr ? 'manque' : 'short'))}`
