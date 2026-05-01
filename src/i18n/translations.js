@@ -1625,6 +1625,27 @@ export const FR = {
   closeStatusEditedAfter:"Modifié après fermeture",
   closeStatus7DaysLabel: "7 derniers jours",
 
+  // ── CLOSE APPROVAL PANEL ──
+  capStatusDraft:      "En cours",
+  capStatusSubmitted:  "Soumis - en attente d'approbation",
+  capStatusApproved:   "Approuvé - en attente de finalisation",
+  capStatusFinalized:  "Finalisé",
+  capStatusReopened:   "Réouvert",
+  capSubmitBtn:        "Soumettre pour approbation",
+  capApproveBtn:       "Approuver",
+  capFinalizeBtn:      "Finaliser",
+  capReopenBtn:        "Rouvrir",
+  capApprovals:        "Journal d'approbations",
+  capNoApprovals:      "Aucune approbation enregistrée.",
+  capStageSubmitted:   "Soumis",
+  capStageApproved:    "Approuvé",
+  capStageFinalized:   "Finalisé",
+  capStageReopened:    "Réouvert",
+  capVerifyIdentity:   "Vérifier l'identité",
+  capReasonLabel:      "Raison (optionnel)",
+  capConfirm:          "Confirmer",
+  capCancel:           "Annuler",
+
   // ── TODAY-AT-A-GLANCE ──
   // ── ONBOARDING CHECKLIST ──
   obTitle:           "Mise en route",
@@ -3987,6 +4008,27 @@ export const EN = {
   closeStatusWarnings:   "Closed · Variances",
   closeStatusEditedAfter:"Edited after close",
   closeStatus7DaysLabel: "Last 7 days",
+
+  // ── CLOSE APPROVAL PANEL ──
+  capStatusDraft:      "In progress",
+  capStatusSubmitted:  "Submitted - awaiting approval",
+  capStatusApproved:   "Approved - awaiting finalization",
+  capStatusFinalized:  "Finalized",
+  capStatusReopened:   "Reopened",
+  capSubmitBtn:        "Submit for approval",
+  capApproveBtn:       "Approve",
+  capFinalizeBtn:      "Finalize",
+  capReopenBtn:        "Reopen",
+  capApprovals:        "Approval log",
+  capNoApprovals:      "No approvals recorded.",
+  capStageSubmitted:   "Submitted",
+  capStageApproved:    "Approved",
+  capStageFinalized:   "Finalized",
+  capStageReopened:    "Reopened",
+  capVerifyIdentity:   "Verify identity",
+  capReasonLabel:      "Reason (optional)",
+  capConfirm:          "Confirm",
+  capCancel:           "Cancel",
 
   // ── TODAY-AT-A-GLANCE ──
   // ── ONBOARDING CHECKLIST ──

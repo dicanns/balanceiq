@@ -444,6 +444,11 @@ contextBridge.exposeInMainWorld('api', {
       get:          (id)   => ipcRenderer.invoke('close:session:get', id),
       list:         (opts) => ipcRenderer.invoke('close:session:list', opts),
       createOrLoad: (opts) => ipcRenderer.invoke('close:session:createOrLoad', opts),
+      transition:   (opts) => ipcRenderer.invoke('close:session:transition', opts),
+    },
+    approval: {
+      create: (opts)      => ipcRenderer.invoke('close:approval:create', opts),
+      list:   (sessionId) => ipcRenderer.invoke('close:approval:list', sessionId),
     },
     revealVariance: (closureId, actor) => ipcRenderer.invoke('close:variance:reveal', closureId, actor),
     exception: {

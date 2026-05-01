@@ -33,6 +33,7 @@ import { FR, EN } from "./i18n/translations.js";
 import RegisterCloseCard, { computeRegisterVariance } from "./components/RegisterCloseCard.jsx";
 import ClosePolicySettings from "./components/ClosePolicySettings.jsx";
 import CloseReviewModal from "./components/CloseReviewModal.jsx";
+import CloseApprovalPanel from "./components/CloseApprovalPanel.jsx";
 
 // ── URL SAFETY (renderer-side) ───────────────────────────────────────────────
 // Mirrors the allowlist in main.js. Used to gate app-message URLs before render.
@@ -5966,6 +5967,7 @@ export default function App(){
   const encaisseTimer=useRef(null);
   const [appMode,setAppMode]=useState(null);
   const [closePolicy,setClosePolicy]=useState(null);
+  const [activeCloseSession,setActiveCloseSession]=useState(null);
   const [lang,setLang]=useState("fr");
   const [cloudUser,setCloudUser]=useState(null); // {email, plan} or null
   const [syncStatus,setSyncStatus]=useState(null); // 'synced'|'syncing'|'offline'|'error'|null
@@ -6847,7 +6849,25 @@ export default function App(){
     logUpdate('daily','jour',key,'fermeture',null,closedAt);
     setShowCloseReview(false);
     setCloseReviewData(null);
-  },[selectedDate,closedDays,computeDay,updCash]);
+    // Create or load a close session and surface the ApprovalPanel
+    if(window.api?.closeAssurance?.session){
+      window.api.closeAssurance.session.createOrLoad({
+        date_key:key,
+        policy_id:closePolicy?.id??null,
+      }).then(session=>{
+        if(session?.status==='draft'){
+          // Auto-submit (the cashier confirms via CloseReviewModal — that is the submit action)
+          return window.api.closeAssurance.session.transition({
+            id:session.id,to:'submitted',
+            actor_name:null,actor_role:null,approval_method:null,
+          });
+        }
+        return session;
+      }).then(session=>{
+        setActiveCloseSession(session||null);
+      }).catch(()=>{});
+    }
+  },[selectedDate,closedDays,computeDay,updCash,closePolicy]);
 
   // Load checklist entries for the selected date (fills gaps not covered by range load)
   useEffect(()=>{
@@ -6856,6 +6876,17 @@ export default function App(){
     window.api.checklist.getEntries(selectedDate).then(entries=>{
       setChecklistEntries(prev=>({...prev,[selectedDate]:entries}));
     }).catch(()=>{});
+  },[selectedDate]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load existing close session when navigating to a closed day
+  useEffect(()=>{
+    setActiveCloseSession(null);
+    if(!selectedDate||!window.api?.closeAssurance?.session)return;
+    window.api.closeAssurance.session.list({dateFrom:selectedDate,dateTo:selectedDate,limit:5})
+      .then(sessions=>{
+        const nonDraft=(sessions||[]).find(s=>s.status!=='draft');
+        if(nonDraft) setActiveCloseSession(nonDraft);
+      }).catch(()=>{});
   },[selectedDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-snapshot when a day becomes "complete" — once per date per session
@@ -7189,7 +7220,16 @@ export default function App(){
  {today.anyData&&!isClosed&&(<div style={{display:"flex",gap:8,justifyContent:"center",paddingTop:2,flexWrap:"wrap"}}><button onClick={openCloseReview} style={{background:"linear-gradient(135deg,#16a34a,#15803d)",border:"none",borderRadius:8,color:"#fff",padding:"9px 24px",fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:"0.3px"}}>
  {T.closeDayBtn}</button><button onClick={()=>setShowTipPool(true)} style={{background:"linear-gradient(135deg,#f59e0b,#d97706)",border:"none",borderRadius:8,color:"#fff",padding:"9px 18px",fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:"0.3px"}}>
  {lang==='en'?'Tip Pool':'Pourboires'}</button></div>)}
-            {isClosed&&(()=>{
+            {isClosed&&activeCloseSession&&(
+              <CloseApprovalPanel
+                session={activeCloseSession}
+                closePolicy={closePolicy}
+                t={t} T={T} lang={lang}
+                cloudUser={user||null}
+                onSessionChange={s=>setActiveCloseSession(s)}
+              />
+            )}
+            {isClosed&&!activeCloseSession&&(()=>{
               const closedAt=closedDays[selectedDate]?.closedAt;
               const timeStr=closedAt?new Date(closedAt).toLocaleTimeString(lang==='en'?'en-CA':'fr-CA',{hour:'2-digit',minute:'2-digit'}):'';
               return(<div style={{display:"flex",gap:8,justifyContent:"center",alignItems:"center",flexWrap:"wrap"}}><div style={{padding:"6px 10px",borderRadius:6,background:"rgba(34,197,94,0.07)",border:"1px solid rgba(34,197,94,0.2)",fontSize:12,color:"#16a34a",fontWeight:700}}>{T.closeDayBadge}{timeStr?` — ${timeStr}`:''}</div><button onClick={()=>setShowTipPool(true)} style={{background:"linear-gradient(135deg,#f59e0b,#d97706)",border:"none",borderRadius:8,color:"#fff",padding:"6px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>

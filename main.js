@@ -83,6 +83,7 @@ const {
   inventoryDeductUpsert, inventoryDeductDeleteByInvoice, inventoryDeductListByProduct, inventoryDeductSummaryByDate,
   closePolicyGet, closePolicySave,
   closeSessionGet, closeSessionList, closeSessionCreateOrLoad,
+  closeSessionTransition, closeApprovalCreate, closeApprovalList,
   closeVarianceReveal,
   closeExceptionList, closeExceptionAcknowledge,
   evaluateCloseAssurance,
@@ -2566,6 +2567,9 @@ ipcMain.handle('close:policy:save',           (_e, policy)     => closePolicySav
 ipcMain.handle('close:session:get',           (_e, id)         => closeSessionGet(id));
 ipcMain.handle('close:session:list',          (_e, opts)       => closeSessionList(opts || {}));
 ipcMain.handle('close:session:createOrLoad',  (_e, opts)       => closeSessionCreateOrLoad(opts));
+ipcMain.handle('close:session:transition',    (_e, opts)       => closeSessionTransition(opts || {}));
+ipcMain.handle('close:approval:create',       (_e, opts)       => closeApprovalCreate(opts || {}));
+ipcMain.handle('close:approval:list',         (_e, sessionId)  => closeApprovalList(sessionId));
 ipcMain.handle('close:variance:reveal',       (_e, closureId, actor) => closeVarianceReveal(closureId, actor));
 ipcMain.handle('close:exception:list',        (_e, sessionId)  => closeExceptionList(sessionId));
 ipcMain.handle('close:exception:acknowledge', (_e, id, actor, reason) => closeExceptionAcknowledge(id, actor, reason));

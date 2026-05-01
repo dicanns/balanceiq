@@ -4307,6 +4307,44 @@ function closeSessionCreateOrLoad({ date_key, shift_key = null, policy_id = null
   return db.prepare('SELECT * FROM close_sessions WHERE id = ?').get(lastInsertRowid);
 }
 
+function closeSessionTransition({ id, to, actor_name, actor_role, approval_method, reason } = {}, _db) {
+  const db = _db || getDb();
+  const session = db.prepare('SELECT * FROM close_sessions WHERE id = ?').get(id);
+  if (!session) throw new Error('session_not_found');
+  const { validateTransition } = require('../services/closeStateMachine.js');
+  const err = validateTransition(session.status, to);
+  if (err) throw new Error(err);
+  const now = new Date().toISOString();
+  const updates = { status: to, updated_at: now };
+  if (to === 'submitted') updates.submitted_at = now;
+  if (to === 'approved')  { updates.approved_by = actor_name; updates.approved_at = now; }
+  if (to === 'reopened')  { updates.reopened_by = actor_name; updates.reopened_at = now; }
+  const setClauses = Object.keys(updates).map(k => `${k} = @${k}`).join(', ');
+  db.prepare(`UPDATE close_sessions SET ${setClauses} WHERE id = @id`).run({ ...updates, id });
+  if (actor_name) {
+    db.prepare(`INSERT INTO close_approvals
+      (close_session_id, stage, actor_name, actor_role, approval_method, reason, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, to, actor_name, actor_role ?? null, approval_method ?? null, reason ?? null, now);
+  }
+  return db.prepare('SELECT * FROM close_sessions WHERE id = ?').get(id);
+}
+
+function closeApprovalCreate({ close_session_id, stage, actor_name, actor_role, approval_method, reason } = {}, _db) {
+  const db = _db || getDb();
+  const now = new Date().toISOString();
+  const { lastInsertRowid } = db.prepare(`INSERT INTO close_approvals
+    (close_session_id, stage, actor_name, actor_role, approval_method, reason, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(close_session_id, stage, actor_name, actor_role ?? null, approval_method ?? null, reason ?? null, now);
+  return db.prepare('SELECT * FROM close_approvals WHERE id = ?').get(lastInsertRowid);
+}
+
+function closeApprovalList(sessionId, _db) {
+  const db = _db || getDb();
+  return db.prepare('SELECT * FROM close_approvals WHERE close_session_id = ? ORDER BY id ASC').all(sessionId);
+}
+
 function closeExceptionList(sessionId, _db) {
   const db = _db || getDb();
   return db.prepare('SELECT * FROM close_exceptions WHERE close_session_id = ? ORDER BY id ASC').all(sessionId);
@@ -4623,6 +4661,7 @@ module.exports = {
   inventoryDeductUpsert, inventoryDeductDeleteByInvoice, inventoryDeductListByProduct, inventoryDeductSummaryByDate,
   closePolicyGet, closePolicySave,
   closeSessionGet, closeSessionList, closeSessionCreateOrLoad,
+  closeSessionTransition, closeApprovalCreate, closeApprovalList,
   closeVarianceReveal,
   closeExceptionList, closeExceptionAcknowledge,
   evaluateCloseAssurance,
