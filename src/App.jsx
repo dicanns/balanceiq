@@ -6852,9 +6852,12 @@ export default function App(){
       window.api.snapshot.save(key,mergedData).catch(()=>{});
     }
     const closeStatus=cd.allBal?'closed_clean':'closed_with_warnings';
-    const next={...closedDays,[key]:{closedAt,allBal:cd.allBal,closeStatus}};
-    setClosedDays(next);
-    window.api.storage.set("balanceiq-closed-days",JSON.stringify(next)).catch(()=>{});
+    // In shift mode only lock the day when the final shift is closed
+    if(!closePolicy?.shift_mode_enabled||shiftIsFinal||currentShiftKey==='final'){
+      const next={...closedDays,[key]:{closedAt,allBal:cd.allBal,closeStatus}};
+      setClosedDays(next);
+      window.api.storage.set("balanceiq-closed-days",JSON.stringify(next)).catch(()=>{});
+    }
     logUpdate('daily','jour',key,'fermeture',null,closedAt);
     setShowCloseReview(false);
     setCloseReviewData(null);
@@ -7250,10 +7253,8 @@ export default function App(){
 
  {/* Deposit verification panel (previous days) */}
  {/* Close-out button / closed badge */}
- {today.anyData&&!isClosed&&(<div style={{display:"flex",gap:8,justifyContent:"center",paddingTop:2,flexWrap:"wrap"}}><button onClick={openCloseReview} style={{background:"linear-gradient(135deg,#16a34a,#15803d)",border:"none",borderRadius:8,color:"#fff",padding:"9px 24px",fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:"0.3px"}}>
- {T.closeDayBtn}</button><button onClick={()=>setShowTipPool(true)} style={{background:"linear-gradient(135deg,#f59e0b,#d97706)",border:"none",borderRadius:8,color:"#fff",padding:"9px 18px",fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:"0.3px"}}>
- {lang==='en'?'Tip Pool':'Pourboires'}</button></div>)}
-            {isClosed&&activeCloseSession&&(
+ {(()=>{const shiftMode=closePolicy?.shift_mode_enabled;const curSess=shiftMode&&currentShiftKey?sessionsForDay.find(s=>s.shift_key===currentShiftKey):null;const canClose=today.anyData&&(shiftMode?(currentShiftKey&&(!curSess||curSess.status==='draft')):!isClosed);return canClose?(<div style={{display:"flex",gap:8,justifyContent:"center",paddingTop:2,flexWrap:"wrap"}}><button onClick={openCloseReview} style={{background:"linear-gradient(135deg,#16a34a,#15803d)",border:"none",borderRadius:8,color:"#fff",padding:"9px 24px",fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:"0.3px"}}>{shiftMode?(lang==='en'?`Close ${currentShiftKey||''} shift`:T.closeDayBtn):T.closeDayBtn}</button><button onClick={()=>setShowTipPool(true)} style={{background:"linear-gradient(135deg,#f59e0b,#d97706)",border:"none",borderRadius:8,color:"#fff",padding:"9px 18px",fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:"0.3px"}}>{lang==='en'?'Tip Pool':'Pourboires'}</button></div>):null;})()}
+            {activeCloseSession&&(
               <CloseApprovalPanel
                 session={activeCloseSession}
                 closePolicy={closePolicy}
