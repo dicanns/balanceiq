@@ -4,10 +4,7 @@
  * TENDER-003  integer cents safety
  */
 import { describe, it, expect } from 'vitest';
-import { createRequire } from 'module';
-
-const require = createRequire(import.meta.url);
-const { computeRegisterVariance, computeAdvancedRegisterVariance } = require('../../services/registerVariance.js');
+import { computeRegisterVariance, computeAdvancedRegisterVariance } from '../../services/registerVariance.js';
 
 // Base cash object that satisfies all required fields (deposits=0 for clean comparison)
 const baseCash = {

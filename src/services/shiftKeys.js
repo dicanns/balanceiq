@@ -1,5 +1,3 @@
-'use strict';
-
 const SHIFT_KEYS = ['dawn', 'morning', 'afternoon', 'evening', 'night', 'final'];
 
 /**
@@ -25,4 +23,4 @@ function resolveOpeningFloat(carryForwardCents, overrideCents) {
   return carryForwardCents ?? 0;
 }
 
-module.exports = { SHIFT_KEYS, precedingShiftKey, isFinalShift, resolveOpeningFloat };
+export { SHIFT_KEYS, precedingShiftKey, isFinalShift, resolveOpeningFloat };

@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { createRequire } from 'module';
+import { SHIFT_KEYS, precedingShiftKey, isFinalShift, resolveOpeningFloat } from '../../services/shiftKeys.js';
 
 const require = createRequire(import.meta.url);
 const { runMigrations } = require('../../db/migrations.js');
@@ -17,7 +18,6 @@ const {
   closeSessionsByDate,
   closeSessionTransition,
 } = require('../../db/database.js');
-const { SHIFT_KEYS, precedingShiftKey, isFinalShift, resolveOpeningFloat } = require('../../services/shiftKeys.js');
 
 function makeDb() {
   const db = new Database(':memory:');

@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { createRequire } from 'module';
+import { requiresReopen } from '../../services/closeReopenGuard.js';
 
 const require = createRequire(import.meta.url);
 const { runMigrations } = require('../../db/migrations.js');
@@ -14,7 +15,6 @@ const {
   closeSessionTransition,
   closeApprovalList,
 } = require('../../db/database.js');
-const { requiresReopen } = require('../../services/closeReopenGuard.js');
 
 function makeDb() {
   const db = new Database(':memory:');

@@ -1,5 +1,3 @@
-'use strict';
-
 /**
  * Assembles a close packet (evidence bundle) from raw DB rows.
  * Pure function - no DB calls, no side effects.
@@ -49,4 +47,4 @@ function buildClosePacket({ session = null, registers = [], approvals = [], safe
   };
 }
 
-module.exports = { buildClosePacket };
+export { buildClosePacket };

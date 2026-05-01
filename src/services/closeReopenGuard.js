@@ -1,5 +1,3 @@
-'use strict';
-
 /**
  * Returns true when the close session is finalized and editing must be
  * gated behind a reopen workflow.
@@ -11,4 +9,4 @@ function requiresReopen(session) {
   return session?.status === 'finalized';
 }
 
-module.exports = { requiresReopen };
+export { requiresReopen };

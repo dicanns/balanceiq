@@ -1,5 +1,3 @@
-'use strict';
-
 /**
  * Simple variance formula (current behavior).
  *
@@ -89,4 +87,4 @@ function computeAdvancedRegisterVariance(cash, advFields, safeDropsTotalCents, o
   return (physCashCents - expectedCashInDrawerCents) / 100;
 }
 
-module.exports = { computeRegisterVariance, computeAdvancedRegisterVariance };
+export { computeRegisterVariance, computeAdvancedRegisterVariance };
