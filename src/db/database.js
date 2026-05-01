@@ -1023,6 +1023,36 @@ const MIGRATIONS = [
       `).run();
     },
   },
+  {
+    version: 23,
+    description: 'Close Assurance 3C - deposit_verifications table',
+    up: (database) => {
+      database.prepare(`
+        -- Reserved for Sprint 6 bank reconciliation use.
+        -- This table tracks actual bank deposit verification (safe-to-bank
+        -- runs entered in Encaisse). It is NOT for the daily close's
+        -- 'Deposits' field, which is a till-to-safe internal movement and
+        -- is captured by safe_drop_events (Sub-Sprint 3B).
+        CREATE TABLE IF NOT EXISTS deposit_verifications (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          close_session_id INTEGER,
+          date_key TEXT NOT NULL,
+          expected_amount_cents INTEGER NOT NULL,
+          verified_amount_cents INTEGER,
+          verified_date TEXT,
+          verified_by TEXT,
+          matched INTEGER NOT NULL DEFAULT 0,
+          bank_transaction_id INTEGER,
+          notes TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+      `).run();
+      database.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_dv_date ON deposit_verifications(date_key)
+      `).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -4423,6 +4453,48 @@ function safeDropList(date_key, _db) {
   return db.prepare(`SELECT * FROM safe_drop_events WHERE date_key = ? ORDER BY event_timestamp ASC`).all(date_key);
 }
 
+function safeDropDelete(id, _db) {
+  if (!id) throw new Error('id is required');
+  const db = _db || getDb();
+  db.prepare(`DELETE FROM safe_drop_events WHERE id = ?`).run(id);
+}
+
+function depositVerificationCreate({ date_key, expected_amount_cents, close_session_id = null } = {}, _db) {
+  if (!date_key) throw new Error('date_key is required');
+  if (!expected_amount_cents || expected_amount_cents <= 0) throw new Error('expected_amount_cents must be positive');
+  const db = _db || getDb();
+  const now = new Date().toISOString();
+  const r = db.prepare(`
+    INSERT INTO deposit_verifications (close_session_id, date_key, expected_amount_cents, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(close_session_id, date_key, expected_amount_cents, now, now);
+  return { id: Number(r.lastInsertRowid) };
+}
+
+function depositVerificationListPending(before_date, _db) {
+  if (!before_date) throw new Error('before_date is required');
+  const db = _db || getDb();
+  return db.prepare(`
+    SELECT * FROM deposit_verifications WHERE matched = 0 AND date_key < ? ORDER BY date_key DESC
+  `).all(before_date);
+}
+
+function depositVerificationMarkVerified({ id, verified_amount_cents, verified_by, notes } = {}, _db) {
+  if (!id) throw new Error('id is required');
+  if (!verified_amount_cents || verified_amount_cents <= 0) throw new Error('verified_amount_cents must be positive');
+  const db = _db || getDb();
+  const now = new Date().toISOString();
+  const row = db.prepare(`SELECT expected_amount_cents FROM deposit_verifications WHERE id = ?`).get(id);
+  if (!row) throw new Error('deposit_verification not found');
+  const matched = Math.abs(verified_amount_cents - row.expected_amount_cents) <= 1 ? 1 : 0;
+  db.prepare(`
+    UPDATE deposit_verifications
+    SET verified_amount_cents=?, verified_date=?, verified_by=?, notes=?, matched=?, updated_at=?
+    WHERE id=?
+  `).run(verified_amount_cents, now.slice(0, 10), verified_by?.trim() || null, notes?.trim() || null, matched, now, id);
+  return { id, matched, verified_date: now.slice(0, 10) };
+}
+
 module.exports = {
   storageGet, storageSet, storageGetAll, storageGetByPrefix,
   getAllTablesForBackup, restoreAllTablesFromBackup,
@@ -4500,4 +4572,8 @@ module.exports = {
   denominationSave,
   safeDropSave,
   safeDropList,
+  safeDropDelete,
+  depositVerificationCreate,
+  depositVerificationListPending,
+  depositVerificationMarkVerified,
 };

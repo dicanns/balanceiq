@@ -983,6 +983,36 @@ const MIGRATIONS = [
       `).run();
     },
   },
+  {
+    version: 23,
+    description: 'Close Assurance 3C - deposit_verifications table',
+    up: (database) => {
+      database.prepare(`
+        -- Reserved for Sprint 6 bank reconciliation use.
+        -- This table tracks actual bank deposit verification (safe-to-bank
+        -- runs entered in Encaisse). It is NOT for the daily close's
+        -- 'Deposits' field, which is a till-to-safe internal movement and
+        -- is captured by safe_drop_events (Sub-Sprint 3B).
+        CREATE TABLE IF NOT EXISTS deposit_verifications (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          close_session_id INTEGER,
+          date_key TEXT NOT NULL,
+          expected_amount_cents INTEGER NOT NULL,
+          verified_amount_cents INTEGER,
+          verified_date TEXT,
+          verified_by TEXT,
+          matched INTEGER NOT NULL DEFAULT 0,
+          bank_transaction_id INTEGER,
+          notes TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+      `).run();
+      database.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_dv_date ON deposit_verifications(date_key)
+      `).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
