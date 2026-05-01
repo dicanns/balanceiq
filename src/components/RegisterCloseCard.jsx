@@ -76,7 +76,7 @@ export default function RegisterCloseCard({
   const myDrops = useMemo(() =>
     cashierName
       ? safeDrops.filter(d => d.dropped_by === cashierName)
-      : safeDrops,
+      : [],
   [safeDrops, cashierName]);
 
   // Sync cash.deposits with safe drop total whenever drops change
