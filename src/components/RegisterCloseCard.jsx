@@ -11,8 +11,9 @@
  *   require_reason - reason picker shown, close proceeds after reason captured
  *   block          - reason picker shown, close is blocked until reason confirmed
  */
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import DenominationCounter, { buildDenominationRows } from './DenominationCounter.jsx';
+import SafeDropPanel from './SafeDropPanel.jsx';
 
 export const VARIANCE_REASON_CODES = [
   { code: 'counting_error',        fr: 'Erreur de comptage',          en: 'Counting error' },
@@ -35,6 +36,11 @@ export default function RegisterCloseCard({
   denominationMode = 'total_only',
   closureDate = null,
   registerIndex = 0,
+  safeDrops = [],
+  onSaveDrops,
+  onDeleteDrop,
+  roster = [],
+  date = null,
   T,
   t,
   cash,
@@ -65,6 +71,24 @@ export default function RegisterCloseCard({
   const reasonRequired = varianceRule === 'block';
   const lang = T?.closeBlindSubmit === 'Submit count' ? 'en' : 'fr';
   const fr = lang !== 'en';
+
+  const cashierName = roster.find(r => r.id === cash?.cashierId)?.name ?? null;
+  const myDrops = useMemo(() =>
+    cashierName
+      ? safeDrops.filter(d => d.dropped_by === cashierName)
+      : safeDrops,
+  [safeDrops, cashierName]);
+
+  // Sync cash.deposits with safe drop total whenever drops change
+  const dropSyncRef = useRef(null);
+  useEffect(() => {
+    if (!onSaveDrops || !onChange || myDrops.length === 0) return;
+    const total = myDrops.reduce((s, d) => s + (d.amount_cents ?? 0), 0) / 100;
+    if (dropSyncRef.current === total) return;
+    dropSyncRef.current = total;
+    onChange({ ...cash, deposits: total });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myDrops]);
 
   function handleDenomChange(totalDollars, rows) {
     denomRowsRef.current = rows;
@@ -119,7 +143,7 @@ export default function RegisterCloseCard({
   if (!isBlind) {
     return (
       <div>
-        <CashBlockComponent {...cashBlockProps} cash={cash} onChange={onChange} />
+        <CashBlockComponent {...cashBlockProps} cash={cash} onChange={onChange} roster={roster} />
         {denomAllowed && (
           <DenomToggle
             fr={fr} T={T} t={t}
@@ -128,6 +152,13 @@ export default function RegisterCloseCard({
             denomMismatch={denomMismatch}
             onDenomChange={handleDenomChange}
             lang={lang}
+          />
+        )}
+        {onSaveDrops && (
+          <SafeDropPanel
+            drops={myDrops} onSave={onSaveDrops} onDelete={onDeleteDrop} date={date}
+            t={t} T={T} lang={lang}
+            roster={roster} cashierName={cashierName}
           />
         )}
         {showReasonPicker && (
@@ -151,6 +182,7 @@ export default function RegisterCloseCard({
         {...cashBlockProps}
         cash={cash}
         onChange={onChange}
+        roster={roster}
         hideVariance={hideVariance}
         blindStatusLabel={
           !counted
@@ -168,6 +200,13 @@ export default function RegisterCloseCard({
           denomMismatch={denomMismatch}
           onDenomChange={handleDenomChange}
           lang={lang}
+        />
+      )}
+      {onSaveDrops && (
+        <SafeDropPanel
+          drops={myDrops} onSave={onSaveDrops} onDelete={onDeleteDrop} date={date}
+          t={t} T={T} lang={lang}
+          roster={roster} cashierName={cashierName}
         />
       )}
       {showSubmitButton && (

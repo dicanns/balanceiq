@@ -90,6 +90,10 @@ const {
   denominationSave,
   safeDropSave,
   safeDropList,
+  safeDropDelete,
+  depositVerificationCreate,
+  depositVerificationListPending,
+  depositVerificationMarkVerified,
 } = require('./src/db/database.js');
 
 const BACKUP_DIR = () => path.join(app.getPath('userData'), 'Backups');
@@ -2563,6 +2567,10 @@ ipcMain.handle('close:closure:save',          (_e, opts)             => register
 ipcMain.handle('close:denomination:save',     (_e, closureId, denoms) => denominationSave(closureId, denoms || []));
 ipcMain.handle('close:safedrop:save',         (_e, opts)              => safeDropSave(opts || {}));
 ipcMain.handle('close:safedrop:list',         (_e, dateKey)           => safeDropList(dateKey));
+ipcMain.handle('close:safedrop:delete',       (_e, id)                => safeDropDelete(id));
+ipcMain.handle('deposit:verify:create',       (_e, opts)              => depositVerificationCreate(opts || {}));
+ipcMain.handle('deposit:verify:listPending',  (_e, beforeDate)        => depositVerificationListPending(beforeDate));
+ipcMain.handle('deposit:verify:markVerified', (_e, opts)              => depositVerificationMarkVerified(opts || {}));
 
 app.on('window-all-closed', () => {
   if (biqTray) { biqTray.destroy(); biqTray = null; }

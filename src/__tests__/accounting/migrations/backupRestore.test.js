@@ -133,7 +133,7 @@ describe('MIG-007 backup and restore', () => {
     expect(() => runMigrations(restored)).not.toThrow();
     const kvCount2 = restored.prepare(`SELECT COUNT(*) AS n FROM kv_store`).get().n;
     expect(kvCount2).toBe(kvCount1);
-    expect(restored.pragma('user_version', { simple: true })).toBe(22);
+    expect(restored.pragma('user_version', { simple: true })).toBe(23);
   });
 });
 

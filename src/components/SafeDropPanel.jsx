@@ -1,11 +1,18 @@
 import React, { useState } from 'react';
 
-const BLANK = { amount: '', bagReference: '', droppedBy: '', witnessedBy: '', notes: '' };
+function makeBlank(cashierName) {
+  return { amount: '', bagReference: '', droppedBy: cashierName ?? '', witnessedBy: '', notes: '' };
+}
 
-export default function SafeDropPanel({ drops = [], onSave, date, t = {}, T = {}, lang = 'fr' }) {
+export default function SafeDropPanel({
+  drops = [], onSave, onDelete, date,
+  t = {}, T = {}, lang = 'fr',
+  roster = [], cashierName = null,
+}) {
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState(BLANK);
+  const [form, setForm] = useState(() => makeBlank(cashierName));
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(null);
   const [error, setError] = useState('');
 
   const fr = lang !== 'en';
@@ -23,6 +30,12 @@ export default function SafeDropPanel({ drops = [], onSave, date, t = {}, T = {}
     fontSize: 12, padding: '6px 9px', outline: 'none',
     fontFamily: 'inherit',
   };
+
+  function openForm() {
+    setForm(makeBlank(cashierName));
+    setError('');
+    setShowForm(true);
+  }
 
   async function handleSave() {
     setError('');
@@ -45,7 +58,7 @@ export default function SafeDropPanel({ drops = [], onSave, date, t = {}, T = {}
         witnessed_by: form.witnessedBy.trim() || null,
         notes: form.notes.trim() || null,
       });
-      setForm(BLANK);
+      setForm(makeBlank(cashierName));
       setShowForm(false);
     } catch (e) {
       setError(e.message ?? 'Error');
@@ -54,10 +67,24 @@ export default function SafeDropPanel({ drops = [], onSave, date, t = {}, T = {}
     }
   }
 
+  async function handleDelete(id) {
+    if (!onDelete) return;
+    setDeleting(id);
+    setError('');
+    try {
+      await onDelete(id);
+    } catch (e) {
+      setError(e.message ?? 'Delete failed');
+    } finally {
+      setDeleting(null);
+    }
+  }
+
   const sectionStyle = {
     marginTop: 10, borderRadius: 8,
-    border: '1px solid rgba(255,255,255,0.09)',
-    background: 'rgba(255,255,255,0.02)',
+    border: `1px solid ${showForm ? 'rgba(249,115,22,0.3)' : 'rgba(255,255,255,0.09)'}`,
+    background: showForm ? 'rgba(249,115,22,0.04)' : 'rgba(255,255,255,0.02)',
+    transition: 'border-color 0.2s, background 0.2s',
     overflow: 'hidden',
   };
 
@@ -70,8 +97,8 @@ export default function SafeDropPanel({ drops = [], onSave, date, t = {}, T = {}
   return (
     <div style={sectionStyle}>
       <div style={headerStyle}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: '#9ca3af' }}>
-          {T.sdTitle ?? (fr ? 'Depots coffre' : 'Safe drops')}
+        <span style={{ fontSize: 12, fontWeight: 700, color: showForm ? '#f97316' : '#9ca3af' }}>
+          {T.sdTitle ?? (fr ? 'Depots coffre (depot bancaire)' : 'Safe drops (deposits)')}
           {drops.length > 0 && (
             <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: '#4ade80', fontVariantNumeric: 'tabular-nums' }}>
               {fmt(totalCents)}
@@ -80,7 +107,7 @@ export default function SafeDropPanel({ drops = [], onSave, date, t = {}, T = {}
         </span>
         {!showForm && (
           <button
-            onClick={() => setShowForm(true)}
+            onClick={openForm}
             style={{
               fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 6,
               border: '1px solid rgba(249,115,22,0.3)', background: 'rgba(249,115,22,0.07)',
@@ -92,6 +119,12 @@ export default function SafeDropPanel({ drops = [], onSave, date, t = {}, T = {}
         )}
       </div>
 
+      {error && !showForm && (
+        <div style={{ margin: '6px 12px 0', fontSize: 11.5, color: '#f87171', padding: '5px 8px', borderRadius: 5, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+          {error}
+        </div>
+      )}
+
       {/* Drop list */}
       {drops.length > 0 && (
         <div style={{ padding: '8px 12px 0' }}>
@@ -100,9 +133,6 @@ export default function SafeDropPanel({ drops = [], onSave, date, t = {}, T = {}
               display: 'flex', alignItems: 'flex-start', gap: 10, padding: '6px 0',
               borderBottom: i < drops.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
             }}>
-              <div style={{ flexShrink: 0, marginTop: 2, width: 28, height: 28, borderRadius: 6, background: 'rgba(249,115,22,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>
-                🏦
-              </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 13, fontWeight: 700, color: '#4ade80', fontVariantNumeric: 'tabular-nums' }}>
@@ -123,6 +153,22 @@ export default function SafeDropPanel({ drops = [], onSave, date, t = {}, T = {}
                   {d.notes && <span style={{ color: '#6b7280', fontStyle: 'italic' }}> · {d.notes}</span>}
                 </div>
               </div>
+              {onDelete && (
+                <button
+                  onClick={() => handleDelete(d.id)}
+                  disabled={deleting === d.id}
+                  title={fr ? 'Supprimer ce depot' : 'Delete this drop'}
+                  style={{
+                    flexShrink: 0, marginTop: 2,
+                    background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)',
+                    borderRadius: 5, color: '#ef4444', fontSize: 11, fontWeight: 700,
+                    padding: '2px 8px', cursor: deleting === d.id ? 'default' : 'pointer',
+                    opacity: deleting === d.id ? 0.5 : 1,
+                  }}
+                >
+                  {deleting === d.id ? '...' : '×'}
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -140,20 +186,20 @@ export default function SafeDropPanel({ drops = [], onSave, date, t = {}, T = {}
           <span style={{ fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, color: '#6b7280', marginRight: 4 }}>
             {T.sdChainTitle ?? (fr ? 'Trace de garde' : 'Chain of custody')}
           </span>
-          <ChainNode label={T.sdChainDrawer ?? (fr ? 'Caisse' : 'Drawer')} icon="🗄" active />
+          <ChainNode label={T.sdChainDrawer ?? (fr ? 'Caisse' : 'Drawer')} active />
           <ChainArrow />
           <ChainNode
             label={`${T.sdChainSafe ?? (fr ? 'Coffre' : 'Safe')} (${drops.length}x · ${fmt(totalCents)})`}
-            icon="🔒" active
+            active
           />
           <ChainArrow />
-          <ChainNode label={T.sdChainDeposit ?? (fr ? 'Depot banque' : 'Bank deposit')} icon="🏛" pending />
+          <ChainNode label={T.sdChainDeposit ?? (fr ? 'Depot banque' : 'Bank deposit')} pending />
         </div>
       )}
 
       {/* Add form */}
       {showForm && (
-        <div style={{ padding: '10px 12px 12px', borderTop: drops.length > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
+        <div style={{ padding: '12px 12px 14px', borderTop: drops.length > 0 ? '1px solid rgba(249,115,22,0.12)' : 'none' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
             <div>
               <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 3 }}>{T.sdAmount ?? (fr ? 'Montant' : 'Amount')} *</div>
@@ -178,13 +224,26 @@ export default function SafeDropPanel({ drops = [], onSave, date, t = {}, T = {}
             </div>
             <div>
               <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 3 }}>{T.sdDroppedBy ?? (fr ? 'Remis par' : 'Dropped by')} *</div>
-              <input
-                type="text"
-                value={form.droppedBy}
-                onChange={e => setForm(f => ({ ...f, droppedBy: e.target.value }))}
-                placeholder={fr ? 'Nom de l\'employe' : 'Employee name'}
-                style={inputS}
-              />
+              {roster.length > 0 ? (
+                <select
+                  value={form.droppedBy}
+                  onChange={e => setForm(f => ({ ...f, droppedBy: e.target.value }))}
+                  style={{ ...inputS }}
+                >
+                  <option value="">{fr ? '-- Selectionner --' : '-- Select --'}</option>
+                  {roster.map(r => (
+                    <option key={r.id} value={r.name}>{r.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={form.droppedBy}
+                  onChange={e => setForm(f => ({ ...f, droppedBy: e.target.value }))}
+                  placeholder={fr ? "Nom de l'employe" : 'Employee name'}
+                  style={inputS}
+                />
+              )}
             </div>
             <div>
               <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 3 }}>{T.sdWitnessedBy ?? (fr ? 'Temoin (optionnel)' : 'Witnessed by (optional)')}</div>
@@ -214,7 +273,7 @@ export default function SafeDropPanel({ drops = [], onSave, date, t = {}, T = {}
           )}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button
-              onClick={() => { setShowForm(false); setForm(BLANK); setError(''); }}
+              onClick={() => { setShowForm(false); setForm(makeBlank(cashierName)); setError(''); }}
               style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #374151', background: 'transparent', color: '#9ca3af', fontSize: 12, cursor: 'pointer' }}
             >
               {T.sdCancel ?? (fr ? 'Annuler' : 'Cancel')}
@@ -228,7 +287,7 @@ export default function SafeDropPanel({ drops = [], onSave, date, t = {}, T = {}
                 color: '#fff', cursor: saving ? 'default' : 'pointer',
               }}
             >
-              {saving ? '…' : (T.sdSave ?? (fr ? 'Enregistrer le depot' : 'Save drop'))}
+              {saving ? '...' : (T.sdSave ?? (fr ? 'Enregistrer le depot' : 'Save drop'))}
             </button>
           </div>
         </div>
@@ -237,17 +296,16 @@ export default function SafeDropPanel({ drops = [], onSave, date, t = {}, T = {}
   );
 }
 
-function ChainNode({ label, icon, active, pending }) {
+function ChainNode({ label, active, pending }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 4,
       padding: '3px 8px', borderRadius: 5, fontSize: 10, fontWeight: 600,
-      background: active ? 'rgba(34,197,94,0.08)' : pending ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.04)',
+      background: active ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.04)',
       border: `1px solid ${active ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.08)'}`,
       color: active ? '#4ade80' : '#6b7280',
     }}>
-      <span>{icon}</span>
-      <span>{label}</span>
+      {label}
     </div>
   );
 }

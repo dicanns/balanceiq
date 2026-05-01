@@ -33,7 +33,6 @@ import { FR, EN } from "./i18n/translations.js";
 import RegisterCloseCard, { computeRegisterVariance } from "./components/RegisterCloseCard.jsx";
 import ClosePolicySettings from "./components/ClosePolicySettings.jsx";
 import CloseReviewModal from "./components/CloseReviewModal.jsx";
-import SafeDropPanel from "./components/SafeDropPanel.jsx";
 
 // ── URL SAFETY (renderer-side) ───────────────────────────────────────────────
 // Mirrors the allowlist in main.js. Used to gate app-message URLs before render.
@@ -6774,7 +6773,7 @@ export default function App(){
     return list;
   },[computeDay,closedDays,T]);
 
-  // ── safe drops: load on date change ─────────────────────────────────────────
+  // ── safe drops + pending deposit verifications: load on date change ──────────
   React.useEffect(()=>{
     if(!selectedDate||!window.api?.closeAssurance?.safeDrop)return;
     window.api.closeAssurance.safeDrop.list(selectedDate).then(rows=>setSafeDrops(rows||[])).catch(()=>setSafeDrops([]));
@@ -6783,6 +6782,11 @@ export default function App(){
   async function handleSafeDropSave(opts){
     await window.api.closeAssurance.safeDrop.save(opts);
     const rows=await window.api.closeAssurance.safeDrop.list(opts.date_key);
+    setSafeDrops(rows||[]);
+  }
+  async function handleSafeDropDelete(id){
+    await window.api.closeAssurance.safeDrop.remove(id);
+    const rows=await window.api.closeAssurance.safeDrop.list(selectedDate);
     setSafeDrops(rows||[]);
   }
 
@@ -7168,7 +7172,7 @@ export default function App(){
  setPosImporting(false);
  setTimeout(()=>setPosImportMsg(null),4000);
  }} disabled={posImporting} style={{fontSize:10.5,padding:"3px 10px",borderRadius:5,border:"1px solid rgba(56,189,248,0.3)",background:"rgba(56,189,248,0.06)",color:"#38bdf8",cursor:posImporting?"default":"pointer",fontWeight:600,whiteSpace:"nowrap",opacity:posImporting?0.65:1}}>{posImporting?T.posImporting:T.posImport(posCred.merchantName||posType)}</button>)})()}
- {posImportMsg&&(posImportMsg.ok?<span style={{fontSize:10,color:"#22c55e",fontWeight:600}}>{posImportMsg.ok}</span>:<span style={{fontSize:10,color:"#ef4444",fontWeight:600}}>{posImportMsg.err}</span>)}<button onClick={()=>addCash(selectedDate)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.18)",background:"rgba(249,115,22,0.06)",color:"#f97316",cursor:"pointer",fontWeight:600}}>{T.dailyNewCaisse}</button></div></div><div style={{display:"flex",flexDirection:"column",gap:8}}>{cashes.map((c,i)=>(<RegisterCloseCard key={`${selectedDate}-${i}-${cashes.length}`} CashBlockComponent={CashBlock} blindMode={closePolicy?.blind_close_mode||'off'} closureId={null} varianceThresholdCents={closePolicy?.variance_per_register_cents??100} varianceRule={closePolicy?.variance_register_rule??'require_reason'} denominationMode={closePolicy?.denomination_mode??'total_only'} closureDate={selectedDate} registerIndex={i} T={T} t={t} cash={c} index={i} onChange={c=>updCash(selectedDate,i,c)} onRemove={()=>rmCash(selectedDate,i)} canRemove={cashes.length>1} collapsed={!!collapseMap[`${selectedDate}-${i}`]} onToggle={()=>togC(i)} roster={roster} posAdvancedConfig={posAdvancedConfig} onScan={()=>setPosScanOpen({caisseIndex:i})}/>))}</div></div>{today.anyData&&(<div style={{padding:"6px 10px",borderRadius:6,textAlign:"center",background:today.allBal?t.balStatusBg:t.warnStatusBg,border:`1px solid ${today.allBal?t.reconBalBorder:t.reconErrBorder}`}}>{today.allBal
+ {posImportMsg&&(posImportMsg.ok?<span style={{fontSize:10,color:"#22c55e",fontWeight:600}}>{posImportMsg.ok}</span>:<span style={{fontSize:10,color:"#ef4444",fontWeight:600}}>{posImportMsg.err}</span>)}<button onClick={()=>addCash(selectedDate)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.18)",background:"rgba(249,115,22,0.06)",color:"#f97316",cursor:"pointer",fontWeight:600}}>{T.dailyNewCaisse}</button></div></div><div style={{display:"flex",flexDirection:"column",gap:8}}>{cashes.map((c,i)=>(<RegisterCloseCard key={`${selectedDate}-${i}-${cashes.length}`} CashBlockComponent={CashBlock} blindMode={closePolicy?.blind_close_mode||'off'} closureId={null} varianceThresholdCents={closePolicy?.variance_per_register_cents??100} varianceRule={closePolicy?.variance_register_rule??'require_reason'} denominationMode={closePolicy?.denomination_mode??'total_only'} closureDate={selectedDate} registerIndex={i} T={T} t={t} cash={c} index={i} onChange={c=>updCash(selectedDate,i,c)} onRemove={()=>rmCash(selectedDate,i)} canRemove={cashes.length>1} collapsed={!!collapseMap[`${selectedDate}-${i}`]} onToggle={()=>togC(i)} roster={roster} safeDrops={safeDrops} onSaveDrops={handleSafeDropSave} onDeleteDrop={handleSafeDropDelete} date={selectedDate} posAdvancedConfig={posAdvancedConfig} onScan={()=>setPosScanOpen({caisseIndex:i})}/>))}</div></div>{today.anyData&&(<div style={{padding:"6px 10px",borderRadius:6,textAlign:"center",background:today.allBal?t.balStatusBg:t.warnStatusBg,border:`1px solid ${today.allBal?t.reconBalBorder:t.reconErrBorder}`}}>{today.allBal
  ?<span style={{fontSize:12,color:"#16a34a",fontWeight:600}}>Toutes les caisses balancent</span>:<span style={{fontSize:12,color:t.warnText,fontWeight:600}}>{T.verifyCaisses}</span>}</div>)}
 
  {/* Close-out Checklist */}
@@ -7180,9 +7184,7 @@ export default function App(){
  t={t} T={T} lang={lang}
  />)}
 
- {/* Safe drops */}
- {today.anyData&&(<SafeDropPanel drops={safeDrops} onSave={handleSafeDropSave} date={selectedDate} t={t} T={T} lang={lang}/>)}
-
+ {/* Deposit verification panel (previous days) */}
  {/* Close-out button / closed badge */}
  {today.anyData&&!isClosed&&(<div style={{display:"flex",gap:8,justifyContent:"center",paddingTop:2,flexWrap:"wrap"}}><button onClick={openCloseReview} style={{background:"linear-gradient(135deg,#16a34a,#15803d)",border:"none",borderRadius:8,color:"#fff",padding:"9px 24px",fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:"0.3px"}}>
  {T.closeDayBtn}</button><button onClick={()=>setShowTipPool(true)} style={{background:"linear-gradient(135deg,#f59e0b,#d97706)",border:"none",borderRadius:8,color:"#fff",padding:"9px 18px",fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:"0.3px"}}>

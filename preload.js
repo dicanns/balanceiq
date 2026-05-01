@@ -458,8 +458,14 @@ contextBridge.exposeInMainWorld('api', {
       save: (closureId, denoms) => ipcRenderer.invoke('close:denomination:save', closureId, denoms),
     },
     safeDrop: {
-      save: (opts)    => ipcRenderer.invoke('close:safedrop:save', opts),
-      list: (dateKey) => ipcRenderer.invoke('close:safedrop:list', dateKey),
+      save:   (opts)    => ipcRenderer.invoke('close:safedrop:save', opts),
+      list:   (dateKey) => ipcRenderer.invoke('close:safedrop:list', dateKey),
+      remove: (id)      => ipcRenderer.invoke('close:safedrop:delete', id),
     },
+  },
+  depositVerify: {
+    create:      (opts)       => ipcRenderer.invoke('deposit:verify:create', opts),
+    listPending: (beforeDate) => ipcRenderer.invoke('deposit:verify:listPending', beforeDate),
+    markVerified:(opts)       => ipcRenderer.invoke('deposit:verify:markVerified', opts),
   },
 });
