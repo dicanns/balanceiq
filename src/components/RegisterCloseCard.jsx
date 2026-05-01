@@ -391,6 +391,33 @@ function ReasonSummary({ lang, t, reasonCode, reasonText }) {
 
 // ── Advanced Fields Panel ─────────────────────────────────────────────────────
 
+function AdvancedFieldInput({ fieldKey, cash, onChange, inputStyle }) {
+  const externalCents = cash?.[fieldKey] ?? 0;
+  const [localVal, setLocalVal] = useState((externalCents / 100).toFixed(2));
+
+  useEffect(() => {
+    setLocalVal((externalCents / 100).toFixed(2));
+  }, [externalCents]);
+
+  function commit(val) {
+    const cents = Math.round((parseFloat(val) || 0) * 100);
+    setLocalVal((cents / 100).toFixed(2));
+    onChange?.({ ...cash, [fieldKey]: cents });
+  }
+
+  return (
+    <input
+      type="number"
+      min="0"
+      step="0.01"
+      value={localVal}
+      onChange={e => setLocalVal(e.target.value)}
+      onBlur={e => commit(e.target.value)}
+      style={inputStyle}
+    />
+  );
+}
+
 function AdvancedFieldsPanel({ cash, onChange, showAdvanced, setShowAdvanced, variance, safeDropsTotalCents, openingFloatCents, fr, T, t }) {
   const fmt = v => new Intl.NumberFormat(fr ? 'fr-CA' : 'en-CA', { style: 'currency', currency: 'CAD' }).format(v / 100);
 
@@ -473,33 +500,6 @@ function AdvancedFieldsPanel({ cash, onChange, showAdvanced, setShowAdvanced, va
         </div>
       )}
     </div>
-  );
-}
-
-function AdvancedFieldInput({ fieldKey, cash, onChange, inputStyle }) {
-  const externalCents = cash?.[fieldKey] ?? 0;
-  const [localVal, setLocalVal] = useState((externalCents / 100).toFixed(2));
-
-  useEffect(() => {
-    setLocalVal((externalCents / 100).toFixed(2));
-  }, [externalCents]);
-
-  function commit(val) {
-    const cents = Math.round((parseFloat(val) || 0) * 100);
-    setLocalVal((cents / 100).toFixed(2));
-    onChange?.({ ...cash, [fieldKey]: cents });
-  }
-
-  return (
-    <input
-      type="number"
-      min="0"
-      step="0.01"
-      value={localVal}
-      onChange={e => setLocalVal(e.target.value)}
-      onBlur={e => commit(e.target.value)}
-      style={inputStyle}
-    />
   );
 }
 
