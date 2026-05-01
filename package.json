@@ -1,6 +1,6 @@
 {
   "name": "balanceiq",
-  "version": "1.40.16",
+  "version": "1.40.17",
   "description": "L'intelligence derrière vos chiffres.",
   "main": "main.js",
   "scripts": {

@@ -84,8 +84,11 @@ export default function RegisterCloseCard({
     [myDrops],
   );
 
+  // For first shift of the day, carry-forward is 0 but cashier entered a float in cash.float.
+  // Fall back to cash.float (converted to cents) so advanced variance matches what's in the drawer.
+  const effectiveFloatCents = openingFloatCents || Math.round((cash?.float ?? 0) * 100);
   const variance = advancedMode
-    ? computeAdvancedRegisterVariance(cash || {}, cash || {}, safeDropsTotalCents, openingFloatCents)
+    ? computeAdvancedRegisterVariance(cash || {}, cash || {}, safeDropsTotalCents, effectiveFloatCents)
     : computeRegisterVariance(cash || {});
   const varianceCents = variance != null ? Math.round(Math.abs(variance) * 100) : 0;
   const thresholdExceeded = variance != null && varianceCents > varianceThresholdCents;

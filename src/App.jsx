@@ -6863,12 +6863,20 @@ export default function App(){
     setCloseReviewData(null);
     // Create or load a close session, record override rows, then submit
     if(window.api?.closeAssurance?.session){
+      // Compute total float across all registers to carry forward to next shift
+      const totalFloatCents=mergedCashes.reduce((s,c)=>s+Math.round((c.float??0)*100),0);
       window.api.closeAssurance.session.createOrLoad({
         date_key:key,
         shift_key:closePolicy?.shift_mode_enabled?currentShiftKey:null,
         policy_id:closePolicy?.id??null,
       }).then(async session=>{
         if(!session) return null;
+        // Save carry-forward float and final-shift flag so the next shift's opening float is pre-populated
+        await window.api.closeAssurance.session.setCarryForward({
+          id:session.id,
+          carry_forward_float_cents:totalFloatCents,
+          is_final_shift:shiftIsFinal?1:0,
+        }).catch(()=>{});
         // Write override approval rows for warning overrides captured in the modal
         const {overrideReasons={},overrideActor=null}=overrideData||{};
         if(overrideActor&&Object.keys(overrideReasons).length>0){
@@ -6899,7 +6907,7 @@ export default function App(){
           .then(all=>setSessionsForDay(all||[])).catch(()=>{});
       }).catch(()=>{});
     }
-  },[selectedDate,closedDays,computeDay,updCash,closePolicy,closeReviewData]);
+  },[selectedDate,closedDays,computeDay,updCash,closePolicy,closeReviewData,shiftIsFinal]);
 
   // Load checklist entries for the selected date (fills gaps not covered by range load)
   useEffect(()=>{

@@ -441,10 +441,11 @@ contextBridge.exposeInMainWorld('api', {
       save: (policy)     => ipcRenderer.invoke('close:policy:save', policy),
     },
     session: {
-      get:          (id)   => ipcRenderer.invoke('close:session:get', id),
-      list:         (opts) => ipcRenderer.invoke('close:session:list', opts),
-      createOrLoad: (opts) => ipcRenderer.invoke('close:session:createOrLoad', opts),
-      transition:   (opts) => ipcRenderer.invoke('close:session:transition', opts),
+      get:            (id)   => ipcRenderer.invoke('close:session:get', id),
+      list:           (opts) => ipcRenderer.invoke('close:session:list', opts),
+      createOrLoad:   (opts) => ipcRenderer.invoke('close:session:createOrLoad', opts),
+      transition:     (opts) => ipcRenderer.invoke('close:session:transition', opts),
+      setCarryForward:(opts) => ipcRenderer.invoke('close:session:setCarryForward', opts),
     },
     approval: {
       create: (opts)      => ipcRenderer.invoke('close:approval:create', opts),
