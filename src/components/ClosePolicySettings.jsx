@@ -102,16 +102,20 @@ export default function ClosePolicySettings({ T, t, lang = 'fr', onPolicySaved }
     );
   }
 
-  function Toggle({ label, field }) {
+  function Toggle({ label, hint, field }) {
     const on = !!policy[field];
     return (
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: t.text }}>{label}</span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, gap: 10 }}>
+        <div style={{ flex: 1 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: t.text }}>{label}</span>
+          {hint && <div style={{ fontSize: 10.5, color: t.textMuted, marginTop: 2 }}>{hint}</div>}
+        </div>
         <button
           onClick={() => set(field, on ? 0 : 1)}
           style={{
             width: 36, height: 20, borderRadius: 10, border: 'none', cursor: 'pointer', flexShrink: 0,
             background: on ? '#f97316' : t.inputBorder, position: 'relative', transition: 'background 0.2s',
+            marginTop: 1,
           }}
         >
           <span style={{
@@ -220,7 +224,7 @@ export default function ClosePolicySettings({ T, t, lang = 'fr', onPolicySaved }
       {/* Signoff & shift */}
       <div style={cardStyle}>
         <div style={sectionTitle}>{T.cpSignoff}</div>
-        <Toggle label={T.cpManagerSignoff} field="manager_signoff_required" />
+        <Toggle label={T.cpManagerSignoff} hint={T.cpManagerSignoffHint} field="manager_signoff_required" />
         {!!policy.manager_signoff_required && (
           <div style={{ marginBottom: 8, paddingLeft: 4 }}>
             <div style={{ fontSize: 11.5, color: t.text, marginBottom: 4 }}>{T.cpApproverMethod}</div>
@@ -239,13 +243,13 @@ export default function ClosePolicySettings({ T, t, lang = 'fr', onPolicySaved }
             )}
           </div>
         )}
-        <Toggle label={T.cpShiftMode} field="shift_mode_enabled" />
+        <Toggle label={T.cpShiftMode} hint={T.cpShiftModeHint} field="shift_mode_enabled" />
         {!!policy.shift_mode_enabled && (
           <div style={{ paddingLeft: 4 }}>
-            <Toggle label={T.cpShiftSignoff} field="shift_signoff_required" />
+            <Toggle label={T.cpShiftSignoff} hint={T.cpShiftSignoffHint} field="shift_signoff_required" />
           </div>
         )}
-        <Toggle label={T.cpTenderMode} field="tender_mode_enabled" />
+        <Toggle label={T.cpTenderMode} hint={T.cpTenderModeHint} field="tender_mode_enabled" />
       </div>
 
       {/* Save row */}
