@@ -14,6 +14,7 @@ const DEFAULTS = {
   denomination_mode: 'total_only',
   shift_mode_enabled: 0,
   shift_signoff_required: 0,
+  tender_mode_enabled: 0,
 };
 
 export default function ClosePolicySettings({ T, t, lang = 'fr', onPolicySaved }) {
@@ -244,6 +245,7 @@ export default function ClosePolicySettings({ T, t, lang = 'fr', onPolicySaved }
             <Toggle label={T.cpShiftSignoff} field="shift_signoff_required" />
           </div>
         )}
+        <Toggle label={T.cpTenderMode} field="tender_mode_enabled" />
       </div>
 
       {/* Save row */}

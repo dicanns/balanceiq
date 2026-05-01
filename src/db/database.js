@@ -4208,6 +4208,7 @@ const CLOSE_POLICY_DEFAULTS = {
   denomination_mode: 'total_only',
   shift_mode_enabled: 0,
   shift_signoff_required: 0,
+  tender_mode_enabled: 0,
 };
 
 function closePolicyGet(locationId, _db) {
@@ -4242,6 +4243,7 @@ function closePolicySave(policy, _db) {
       denomination_mode=@denomination_mode,
       shift_mode_enabled=@shift_mode_enabled,
       shift_signoff_required=@shift_signoff_required,
+      tender_mode_enabled=@tender_mode_enabled,
       updated_at=@updated_at
       WHERE id=@id`).run({ ...CLOSE_POLICY_DEFAULTS, ...policy, id: existing.id, updated_at: now });
     savedId = existing.id;
@@ -4251,13 +4253,13 @@ function closePolicySave(policy, _db) {
        variance_register_rule,
        missing_required_checklist_rule, missing_pos_evidence_rule, missing_delivery_reconciliation_rule,
        manager_signoff_required, approver_identity_method, denomination_mode,
-       shift_mode_enabled, shift_signoff_required, created_at, updated_at)
+       shift_mode_enabled, shift_signoff_required, tender_mode_enabled, created_at, updated_at)
       VALUES
       (@location_id, @name, @blind_close_mode, @variance_per_register_cents, @variance_store_cents,
        @variance_register_rule,
        @missing_required_checklist_rule, @missing_pos_evidence_rule, @missing_delivery_reconciliation_rule,
        @manager_signoff_required, @approver_identity_method, @denomination_mode,
-       @shift_mode_enabled, @shift_signoff_required, @created_at, @updated_at)`).run({
+       @shift_mode_enabled, @shift_signoff_required, @tender_mode_enabled, @created_at, @updated_at)`).run({
       ...CLOSE_POLICY_DEFAULTS, ...policy,
       location_id: policy.location_id ?? null,
       created_at: now, updated_at: now,

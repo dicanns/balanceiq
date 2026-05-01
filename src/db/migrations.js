@@ -1062,6 +1062,13 @@ const MIGRATIONS = [
       database.prepare(`ALTER TABLE close_sessions ADD COLUMN carry_forward_float_cents INTEGER`).run();
     },
   },
+  {
+    version: 27,
+    description: 'Close Assurance 5A fix - tender_mode_enabled on close_policies',
+    up: (database) => {
+      database.prepare(`ALTER TABLE close_policies ADD COLUMN tender_mode_enabled INTEGER NOT NULL DEFAULT 0`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
