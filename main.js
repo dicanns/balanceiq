@@ -88,6 +88,8 @@ const {
   evaluateCloseAssurance,
   registerClosureSave,
   denominationSave,
+  safeDropSave,
+  safeDropList,
 } = require('./src/db/database.js');
 
 const BACKUP_DIR = () => path.join(app.getPath('userData'), 'Backups');
@@ -2559,6 +2561,8 @@ ipcMain.handle('close:exception:acknowledge', (_e, id, actor, reason) => closeEx
 ipcMain.handle('close:evaluate',              (_e, opts)             => evaluateCloseAssurance(opts || {}));
 ipcMain.handle('close:closure:save',          (_e, opts)             => registerClosureSave(opts || {}));
 ipcMain.handle('close:denomination:save',     (_e, closureId, denoms) => denominationSave(closureId, denoms || []));
+ipcMain.handle('close:safedrop:save',         (_e, opts)              => safeDropSave(opts || {}));
+ipcMain.handle('close:safedrop:list',         (_e, dateKey)           => safeDropList(dateKey));
 
 app.on('window-all-closed', () => {
   if (biqTray) { biqTray.destroy(); biqTray = null; }

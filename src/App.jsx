@@ -33,6 +33,7 @@ import { FR, EN } from "./i18n/translations.js";
 import RegisterCloseCard, { computeRegisterVariance } from "./components/RegisterCloseCard.jsx";
 import ClosePolicySettings from "./components/ClosePolicySettings.jsx";
 import CloseReviewModal from "./components/CloseReviewModal.jsx";
+import SafeDropPanel from "./components/SafeDropPanel.jsx";
 
 // ── URL SAFETY (renderer-side) ───────────────────────────────────────────────
 // Mirrors the allowlist in main.js. Used to gate app-message URLs before render.
@@ -6016,6 +6017,7 @@ export default function App(){
   const [closedDays,setClosedDays]=useState({});// {[dateKey]: {closedAt: ISO string}}
   const [showCloseReview,setShowCloseReview]=useState(false);
   const [closeReviewData,setCloseReviewData]=useState(null);
+  const [safeDrops,setSafeDrops]=useState([]);
   const [showTipPool,setShowTipPool]=useState(false);
   const [searchOpen,setSearchOpen]=useState(false);
   const [facDeepLink,setFacDeepLink]=useState(null); // {clientId?, invoiceId?} for GlobalSearch nav
@@ -6772,6 +6774,18 @@ export default function App(){
     return list;
   },[computeDay,closedDays,T]);
 
+  // ── safe drops: load on date change ─────────────────────────────────────────
+  React.useEffect(()=>{
+    if(!selectedDate||!window.api?.closeAssurance?.safeDrop)return;
+    window.api.closeAssurance.safeDrop.list(selectedDate).then(rows=>setSafeDrops(rows||[])).catch(()=>setSafeDrops([]));
+  },[selectedDate]);
+
+  async function handleSafeDropSave(opts){
+    await window.api.closeAssurance.safeDrop.save(opts);
+    const rows=await window.api.closeAssurance.safeDrop.list(opts.date_key);
+    setSafeDrops(rows||[]);
+  }
+
   // ── openCloseReview: evaluate + open structured modal (2E) ──────────────────
   const openCloseReview=useCallback(async()=>{
     const key=selectedDate;
@@ -7165,6 +7179,9 @@ export default function App(){
  isClosed={isClosed}
  t={t} T={T} lang={lang}
  />)}
+
+ {/* Safe drops */}
+ {today.anyData&&(<SafeDropPanel drops={safeDrops} onSave={handleSafeDropSave} date={selectedDate} t={t} T={T} lang={lang}/>)}
 
  {/* Close-out button / closed badge */}
  {today.anyData&&!isClosed&&(<div style={{display:"flex",gap:8,justifyContent:"center",paddingTop:2,flexWrap:"wrap"}}><button onClick={openCloseReview} style={{background:"linear-gradient(135deg,#16a34a,#15803d)",border:"none",borderRadius:8,color:"#fff",padding:"9px 24px",fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:"0.3px"}}>

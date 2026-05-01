@@ -998,6 +998,31 @@ const MIGRATIONS = [
       } catch (_) {}
     },
   },
+  {
+    version: 22,
+    description: 'Close Assurance 3B - safe_drop_events table',
+    up: (database) => {
+      database.prepare(`
+        CREATE TABLE IF NOT EXISTS safe_drop_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          date_key TEXT NOT NULL,
+          shift_key TEXT,
+          register_closure_id INTEGER,
+          amount_cents INTEGER NOT NULL,
+          bag_reference TEXT,
+          dropped_by TEXT NOT NULL,
+          witnessed_by TEXT,
+          event_timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          notes TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (register_closure_id) REFERENCES register_closures(id)
+        )
+      `).run();
+      database.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_sde_date ON safe_drop_events(date_key)
+      `).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -4381,6 +4406,23 @@ function denominationSave(closureId, denominations, _db) {
   return true;
 }
 
+function safeDropSave({ date_key, shift_key = null, register_closure_id = null, amount_cents, bag_reference = null, dropped_by, witnessed_by = null, notes = null } = {}, _db) {
+  if (!amount_cents || amount_cents <= 0) throw new Error('amount_cents must be a positive integer');
+  if (!dropped_by?.trim()) throw new Error('dropped_by is required');
+  const db = _db || getDb();
+  const now = new Date().toISOString();
+  const r = db.prepare(`
+    INSERT INTO safe_drop_events (date_key, shift_key, register_closure_id, amount_cents, bag_reference, dropped_by, witnessed_by, event_timestamp, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(date_key, shift_key, register_closure_id, amount_cents, bag_reference, dropped_by.trim(), witnessed_by?.trim() || null, now, notes?.trim() || null);
+  return { id: Number(r.lastInsertRowid), event_timestamp: now };
+}
+
+function safeDropList(date_key, _db) {
+  const db = _db || getDb();
+  return db.prepare(`SELECT * FROM safe_drop_events WHERE date_key = ? ORDER BY event_timestamp ASC`).all(date_key);
+}
+
 module.exports = {
   storageGet, storageSet, storageGetAll, storageGetByPrefix,
   getAllTablesForBackup, restoreAllTablesFromBackup,
@@ -4456,4 +4498,6 @@ module.exports = {
   evaluateCloseAssurance,
   registerClosureSave,
   denominationSave,
+  safeDropSave,
+  safeDropList,
 };

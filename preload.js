@@ -457,5 +457,9 @@ contextBridge.exposeInMainWorld('api', {
     denomination: {
       save: (closureId, denoms) => ipcRenderer.invoke('close:denomination:save', closureId, denoms),
     },
+    safeDrop: {
+      save: (opts)    => ipcRenderer.invoke('close:safedrop:save', opts),
+      list: (dateKey) => ipcRenderer.invoke('close:safedrop:list', dateKey),
+    },
   },
 });

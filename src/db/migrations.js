@@ -958,6 +958,31 @@ const MIGRATIONS = [
       } catch (_) {}
     },
   },
+  {
+    version: 22,
+    description: 'Close Assurance 3B - safe_drop_events table',
+    up: (database) => {
+      database.prepare(`
+        CREATE TABLE IF NOT EXISTS safe_drop_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          date_key TEXT NOT NULL,
+          shift_key TEXT,
+          register_closure_id INTEGER,
+          amount_cents INTEGER NOT NULL,
+          bag_reference TEXT,
+          dropped_by TEXT NOT NULL,
+          witnessed_by TEXT,
+          event_timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          notes TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (register_closure_id) REFERENCES register_closures(id)
+        )
+      `).run();
+      database.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_sde_date ON safe_drop_events(date_key)
+      `).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
