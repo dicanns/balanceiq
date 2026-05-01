@@ -402,10 +402,10 @@ function FieldTooltip({ text }) {
       >ⓘ</span>
       {visible && (
         <span style={{
-          position: 'absolute', bottom: '120%', left: '50%', transform: 'translateX(-50%)',
+          position: 'absolute', bottom: '120%', left: 0,
           background: '#1e293b', border: '1px solid rgba(255,255,255,0.12)',
-          borderRadius: 6, padding: '6px 9px', fontSize: 10.5, color: '#cbd5e1',
-          whiteSpace: 'pre-wrap', maxWidth: 200, lineHeight: 1.4,
+          borderRadius: 6, padding: '6px 10px', fontSize: 10.5, color: '#cbd5e1',
+          whiteSpace: 'pre-wrap', width: 260, lineHeight: 1.45,
           zIndex: 99, boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
           pointerEvents: 'none',
         }}>{text}</span>

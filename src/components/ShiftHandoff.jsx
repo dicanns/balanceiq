@@ -142,7 +142,7 @@ export default function ShiftHandoff({
                 </>
               ) : (
                 <>
-                  <span style={{ fontVariantNumeric: 'tabular-nums', color: openingFloatOverride != null ? '#f59e0b' : '#e2e8f0', fontWeight: 600 }}>
+                  <span style={{ fontVariantNumeric: 'tabular-nums', color: openingFloatOverride != null ? '#f59e0b' : '#6366f1', fontWeight: 700 }}>
                     {fmtCents(resolvedFloat)}
                     {openingFloatOverride != null && (
                       <span style={{ fontSize: 9.5, color: '#f59e0b', marginLeft: 4 }}>({fr ? 'modifié' : 'overridden'})</span>
