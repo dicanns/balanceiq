@@ -4327,11 +4327,16 @@ function closeSessionTransition({ id, to, actor_name, actor_role, approval_metho
   const { validateTransition } = require('../services/closeStateMachine.js');
   const err = validateTransition(session.status, to);
   if (err) throw new Error(err);
+  if (to === 'reopened') {
+    if (!reason?.trim()) throw new Error('reopen_reason_required');
+    const { enforceRole } = require('../services/identityCore.js');
+    if (!enforceRole(actor_role, 'manager')) throw new Error('reopen_insufficient_role');
+  }
   const now = new Date().toISOString();
   const updates = { status: to, updated_at: now };
   if (to === 'submitted') updates.submitted_at = now;
   if (to === 'approved')  { updates.approved_by = actor_name; updates.approved_at = now; }
-  if (to === 'reopened')  { updates.reopened_by = actor_name; updates.reopened_at = now; }
+  if (to === 'reopened')  { updates.reopened_by = actor_name; updates.reopened_at = now; updates.reopen_reason = reason; }
   const setClauses = Object.keys(updates).map(k => `${k} = @${k}`).join(', ');
   db.prepare(`UPDATE close_sessions SET ${setClauses} WHERE id = @id`).run({ ...updates, id });
   if (actor_name) {

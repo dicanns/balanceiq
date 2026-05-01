@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import IdentityPicker from './IdentityPicker.jsx';
+import CloseReopenDialog from './CloseReopenDialog.jsx';
 
 const STAGE_LABELS = {
   submitted: 'capStageSubmitted',
@@ -29,9 +30,10 @@ const STATUS_COLORS = {
 export default function CloseApprovalPanel({ session, closePolicy, t, T, lang, cloudUser, onSessionChange }) {
   const [approvals, setApprovals] = useState([]);
   const [showIdentity, setShowIdentity] = useState(false);
-  const [pendingAction, setPendingAction] = useState(null); // 'submit' | 'approve' | 'finalize' | 'reopen'
+  const [pendingAction, setPendingAction] = useState(null); // 'submit' | 'approve' | 'finalize'
   const [reason, setReason] = useState('');
   const [err, setErr] = useState('');
+  const [showReopenDialog, setShowReopenDialog] = useState(false);
 
   const identityMethod = closePolicy?.approver_identity_method || 'typed_name';
   const signoffRequired = !!(closePolicy?.manager_signoff_required);
@@ -140,6 +142,11 @@ export default function CloseApprovalPanel({ session, closePolicy, t, T, lang, c
             {T.capFinalizeBtn}
           </button>
         )}
+        {status === 'finalized' && (
+          <button onClick={() => setShowReopenDialog(true)} style={btnStyle('#ef4444')}>
+            {T.capReopenBtn}
+          </button>
+        )}
       </div>
 
       {/* Identity picker overlay */}
@@ -214,6 +221,20 @@ export default function CloseApprovalPanel({ session, closePolicy, t, T, lang, c
       {approvals.length === 0 && status !== 'draft' && (
         <div style={{ fontSize: 11, color: '#64748b', textAlign: 'center' }}>{T.capNoApprovals}</div>
       )}
+
+      <CloseReopenDialog
+        open={showReopenDialog}
+        session={session}
+        closePolicy={closePolicy}
+        T={T} t={t} lang={lang}
+        cloudUser={cloudUser}
+        onConfirm={updated => {
+          setShowReopenDialog(false);
+          loadApprovals();
+          if (onSessionChange) onSessionChange(updated);
+        }}
+        onCancel={() => setShowReopenDialog(false)}
+      />
     </div>
   );
 }

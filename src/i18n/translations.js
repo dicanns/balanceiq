@@ -1646,6 +1646,17 @@ export const FR = {
   capConfirm:          "Confirmer",
   capCancel:           "Annuler",
 
+  // ── CLOSE REOPEN DIALOG ──
+  crdTitle:            "Réouverture de la fermeture",
+  crdWarning:          "Cette fermeture est finalisée. La réouverture permettra de modifier les données.",
+  crdReasonLabel:      "Raison de la réouverture (obligatoire)",
+  crdReasonPlaceholder:"Ex : erreur de saisie détectée",
+  crdManagerRequired:  "Approbation du responsable requise",
+  crdConfirmBtn:       "Confirmer la réouverture",
+  crdCancelBtn:        "Annuler",
+  crdErrReasonRequired:"Une raison est obligatoire pour la réouverture.",
+  crdErrManagerRequired:"L'identité du responsable est requise.",
+
   // ── TODAY-AT-A-GLANCE ──
   // ── ONBOARDING CHECKLIST ──
   obTitle:           "Mise en route",
@@ -4029,6 +4040,17 @@ export const EN = {
   capReasonLabel:      "Reason (optional)",
   capConfirm:          "Confirm",
   capCancel:           "Cancel",
+
+  // ── CLOSE REOPEN DIALOG ──
+  crdTitle:            "Reopen Session",
+  crdWarning:          "This session is finalized. Reopening will allow data to be modified.",
+  crdReasonLabel:      "Reason for reopening (required)",
+  crdReasonPlaceholder:"e.g., data entry error detected",
+  crdManagerRequired:  "Manager approval required",
+  crdConfirmBtn:       "Confirm reopen",
+  crdCancelBtn:        "Cancel",
+  crdErrReasonRequired:"A reason is required to reopen.",
+  crdErrManagerRequired:"Manager identity is required.",
 
   // ── TODAY-AT-A-GLANCE ──
   // ── ONBOARDING CHECKLIST ──
