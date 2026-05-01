@@ -1075,6 +1075,40 @@ const MIGRATIONS = [
       `).run();
     },
   },
+  {
+    version: 25,
+    description: 'Close Assurance 5A - tender-aware reconciliation fields on register_closures',
+    up: (database) => {
+      const cols = [
+        'paid_ins_cents INTEGER NOT NULL DEFAULT 0',
+        'paid_outs_cents INTEGER NOT NULL DEFAULT 0',
+        'cash_tips_paid_cents INTEGER NOT NULL DEFAULT 0',
+        'till_transfers_in_cents INTEGER NOT NULL DEFAULT 0',
+        'till_transfers_out_cents INTEGER NOT NULL DEFAULT 0',
+        'gift_card_redemptions_cents INTEGER NOT NULL DEFAULT 0',
+        'house_account_sales_cents INTEGER NOT NULL DEFAULT 0',
+        "tender_mode TEXT NOT NULL DEFAULT 'simple'",
+      ];
+      cols.forEach(col => {
+        database.prepare(`ALTER TABLE register_closures ADD COLUMN ${col}`).run();
+      });
+    },
+  },
+  {
+    version: 26,
+    description: 'Close Assurance 5B - shift close: is_final_shift + carry_forward_float_cents on close_sessions',
+    up: (database) => {
+      database.prepare(`ALTER TABLE close_sessions ADD COLUMN is_final_shift INTEGER NOT NULL DEFAULT 0`).run();
+      database.prepare(`ALTER TABLE close_sessions ADD COLUMN carry_forward_float_cents INTEGER`).run();
+    },
+  },
+  {
+    version: 27,
+    description: 'Close Assurance 5A fix - tender_mode_enabled on close_policies',
+    up: (database) => {
+      database.prepare(`ALTER TABLE close_policies ADD COLUMN tender_mode_enabled INTEGER NOT NULL DEFAULT 0`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
