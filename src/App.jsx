@@ -7241,7 +7241,7 @@ export default function App(){
                 session={activeCloseSession}
                 closePolicy={closePolicy}
                 t={t} T={T} lang={lang}
-                cloudUser={user||null}
+                cloudUser={cloudUser}
                 onSessionChange={s=>setActiveCloseSession(s)}
               />
             )}
@@ -7264,7 +7264,7 @@ export default function App(){
   depositsPresent={closeReviewData?.depositsPresent||false}
   closePolicy={closePolicy}
   T={T} t={t} lang={lang}
-  cloudUser={user||null}
+  cloudUser={cloudUser}
 />
 
             {/* Tip Pool Modal */}
