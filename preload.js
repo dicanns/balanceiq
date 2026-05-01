@@ -462,6 +462,13 @@ contextBridge.exposeInMainWorld('api', {
       list:   (dateKey) => ipcRenderer.invoke('close:safedrop:list', dateKey),
       remove: (id)      => ipcRenderer.invoke('close:safedrop:delete', id),
     },
+    identity: {
+      userList:       ()         => ipcRenderer.invoke('identity:users:list'),
+      userCreate:     (opts)     => ipcRenderer.invoke('identity:users:create', opts),
+      userDeactivate: (id)       => ipcRenderer.invoke('identity:users:deactivate', id),
+      userSetPin:     (opts)     => ipcRenderer.invoke('identity:users:setPin', opts),
+      verify:         (opts)     => ipcRenderer.invoke('identity:verify', opts),
+    },
   },
   depositVerify: {
     create:      (opts)       => ipcRenderer.invoke('deposit:verify:create', opts),

@@ -1013,6 +1013,28 @@ const MIGRATIONS = [
       `).run();
     },
   },
+  {
+    version: 24,
+    description: 'Close Assurance 4A - local_users table',
+    up: (database) => {
+      database.prepare(`
+        CREATE TABLE IF NOT EXISTS local_users (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          role TEXT NOT NULL DEFAULT 'cashier',
+          pin_hash TEXT,
+          pin_salt TEXT,
+          active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          CHECK (role IN ('cashier','manager','owner'))
+        )
+      `).run();
+      database.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_lu_active ON local_users(active)
+      `).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.

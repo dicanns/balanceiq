@@ -1053,6 +1053,28 @@ const MIGRATIONS = [
       `).run();
     },
   },
+  {
+    version: 24,
+    description: 'Close Assurance 4A - local_users table',
+    up: (database) => {
+      database.prepare(`
+        CREATE TABLE IF NOT EXISTS local_users (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          role TEXT NOT NULL DEFAULT 'cashier',
+          pin_hash TEXT,
+          pin_salt TEXT,
+          active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          CHECK (role IN ('cashier','manager','owner'))
+        )
+      `).run();
+      database.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_lu_active ON local_users(active)
+      `).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -4495,6 +4517,42 @@ function depositVerificationMarkVerified({ id, verified_amount_cents, verified_b
   return { id, matched, verified_date: now.slice(0, 10) };
 }
 
+// ── Local users (4A) ─────────────────────────────────────────────────────────
+
+function localUserList(_db) {
+  const db = _db || getDb();
+  return db.prepare(`SELECT id, name, role, active, created_at FROM local_users WHERE active=1 ORDER BY name`).all();
+}
+
+function localUserListWithHashes(_db) {
+  const db = _db || getDb();
+  return db.prepare(`SELECT id, name, role, pin_hash, pin_salt, active FROM local_users WHERE active=1`).all();
+}
+
+function localUserCreate({ name, role = 'cashier', pin_hash = null, pin_salt = null }, _db) {
+  const db = _db || getDb();
+  if (!name?.trim()) throw new Error('name_required');
+  if (!['cashier', 'manager', 'owner'].includes(role)) throw new Error('invalid_role');
+  const now = new Date().toISOString();
+  const result = db.prepare(`
+    INSERT INTO local_users (name, role, pin_hash, pin_salt, active, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 1, ?, ?)
+  `).run(name.trim(), role, pin_hash, pin_salt, now, now);
+  return { id: result.lastInsertRowid };
+}
+
+function localUserDeactivate(id, _db) {
+  const db = _db || getDb();
+  const now = new Date().toISOString();
+  db.prepare(`UPDATE local_users SET active=0, updated_at=? WHERE id=?`).run(now, id);
+}
+
+function localUserSetPin({ id, pin_hash, pin_salt }, _db) {
+  const db = _db || getDb();
+  const now = new Date().toISOString();
+  db.prepare(`UPDATE local_users SET pin_hash=?, pin_salt=?, updated_at=? WHERE id=?`).run(pin_hash, pin_salt, now, id);
+}
+
 module.exports = {
   storageGet, storageSet, storageGetAll, storageGetByPrefix,
   getAllTablesForBackup, restoreAllTablesFromBackup,
@@ -4576,4 +4634,9 @@ module.exports = {
   depositVerificationCreate,
   depositVerificationListPending,
   depositVerificationMarkVerified,
+  localUserList,
+  localUserListWithHashes,
+  localUserCreate,
+  localUserDeactivate,
+  localUserSetPin,
 };

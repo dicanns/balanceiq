@@ -94,7 +94,14 @@ const {
   depositVerificationCreate,
   depositVerificationListPending,
   depositVerificationMarkVerified,
+  localUserList,
+  localUserListWithHashes,
+  localUserCreate,
+  localUserDeactivate,
+  localUserSetPin,
 } = require('./src/db/database.js');
+
+const { hashPin, verifyPin, enforceRole } = require('./src/services/identityCore.js');
 
 const BACKUP_DIR = () => path.join(app.getPath('userData'), 'Backups');
 const BACKUP_KEEP_DAYS = 30;
@@ -2571,6 +2578,48 @@ ipcMain.handle('close:safedrop:delete',       (_e, id)                => safeDro
 ipcMain.handle('deposit:verify:create',       (_e, opts)              => depositVerificationCreate(opts || {}));
 ipcMain.handle('deposit:verify:listPending',  (_e, beforeDate)        => depositVerificationListPending(beforeDate));
 ipcMain.handle('deposit:verify:markVerified', (_e, opts)              => depositVerificationMarkVerified(opts || {}));
+
+// ── Identity (4A) ─────────────────────────────────────────────────────────────
+ipcMain.handle('identity:users:list',       ()         => localUserList());
+ipcMain.handle('identity:users:create',     (_e, opts) => {
+  const { name, role, pin } = opts || {};
+  const { hash, salt } = hashPin(pin);
+  return localUserCreate({ name, role, pin_hash: hash, pin_salt: salt });
+});
+ipcMain.handle('identity:users:deactivate', (_e, id)   => localUserDeactivate(id));
+ipcMain.handle('identity:users:setPin',     (_e, opts) => {
+  const { id, pin } = opts || {};
+  const { hash, salt } = hashPin(pin);
+  return localUserSetPin({ id, pin_hash: hash, pin_salt: salt });
+});
+ipcMain.handle('identity:verify', (_e, opts) => {
+  const { method, name, pin, cloudUser, requiredRole } = opts || {};
+  let actor = null;
+  if (method === 'typed_name') {
+    if (!name?.trim()) return { ok: false, error: 'name_required' };
+    actor = { name: name.trim(), role: null, identity_method: 'typed_name' };
+  } else if (method === 'pin') {
+    if (!/^\d{4}$/.test(String(pin ?? ''))) return { ok: false, error: 'pin_format' };
+    const users = localUserListWithHashes();
+    for (const u of users) {
+      if (!u.pin_hash || !u.pin_salt) continue;
+      if (verifyPin(pin, u.pin_hash, u.pin_salt)) {
+        actor = { name: u.name, role: u.role, identity_method: 'pin' };
+        break;
+      }
+    }
+    if (!actor) return { ok: false, error: 'invalid_pin' };
+  } else if (method === 'cloud_user') {
+    if (!cloudUser?.email) return { ok: false, error: 'not_signed_in' };
+    actor = { name: cloudUser.email, role: cloudUser.role || 'manager', identity_method: 'cloud_user' };
+  } else {
+    return { ok: false, error: 'unknown_method' };
+  }
+  if (requiredRole && !enforceRole(actor.role, requiredRole)) {
+    return { ok: false, error: 'role_insufficient', actor };
+  }
+  return { ok: true, actor };
+});
 
 app.on('window-all-closed', () => {
   if (biqTray) { biqTray.destroy(); biqTray = null; }

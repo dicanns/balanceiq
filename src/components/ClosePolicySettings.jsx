@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import LocalUsersManager from './LocalUsersManager.jsx';
 
 const DEFAULTS = {
   blind_close_mode: 'off',
@@ -15,7 +16,7 @@ const DEFAULTS = {
   shift_signoff_required: 0,
 };
 
-export default function ClosePolicySettings({ T, t, onPolicySaved }) {
+export default function ClosePolicySettings({ T, t, lang = 'fr', onPolicySaved }) {
   const [policy, setPolicy] = useState(DEFAULTS);
   const [msg, setMsg] = useState(null);
   const [varRegStr, setVarRegStr] = useState('1.00');
@@ -231,6 +232,9 @@ export default function ClosePolicySettings({ T, t, onPolicySaved }) {
               <div style={{ marginTop: 6, fontSize: 11, color: '#f97316', background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.25)', borderRadius: 6, padding: '6px 9px' }}>
                 {T.cpCloudUserNotice}
               </div>
+            )}
+            {policy.approver_identity_method === 'pin' && (
+              <LocalUsersManager T={T} t={t} lang={lang} />
             )}
           </div>
         )}
