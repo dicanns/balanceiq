@@ -25,6 +25,7 @@ export default function ClosePolicySettings({ T, t, lang = 'fr', onPolicySaved }
   const [varStoreStr, setVarStoreStr] = useState('2.00');
   const [usersUnlocked, setUsersUnlocked] = useState(false);
   const [showUsersAuth, setShowUsersAuth] = useState(false);
+  const [hasLocalUsers, setHasLocalUsers] = useState(true);
   const fr = lang !== 'en';
 
   useEffect(() => {
@@ -35,6 +36,9 @@ export default function ClosePolicySettings({ T, t, lang = 'fr', onPolicySaved }
         setVarRegStr((merged.variance_per_register_cents / 100).toFixed(2));
         setVarStoreStr((merged.variance_store_cents / 100).toFixed(2));
       }
+    }).catch(() => {});
+    window.api?.closeAssurance?.identity?.userList().then(users => {
+      setHasLocalUsers((users || []).length > 0);
     }).catch(() => {});
   }, []);
 
@@ -254,14 +258,16 @@ export default function ClosePolicySettings({ T, t, lang = 'fr', onPolicySaved }
                         {fr ? 'Verrouiller' : 'Lock'}
                       </button>
                     </div>
-                    <LocalUsersManager T={T} t={t} lang={lang} />
+                    <LocalUsersManager T={T} t={t} lang={lang} onUsersChange={users => setHasLocalUsers((users||[]).length > 0)} />
                   </div>
                 ) : (
                   <button
-                    onClick={() => setShowUsersAuth(true)}
+                    onClick={() => hasLocalUsers ? setShowUsersAuth(true) : setUsersUnlocked(true)}
                     style={{ marginTop: 4, width: '100%', padding: '8px 12px', borderRadius: 7, fontSize: 12, fontWeight: 600, background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.25)', color: '#a78bfa', cursor: 'pointer' }}
                   >
-                    {fr ? 'Gérer les utilisateurs PIN (responsable requis)' : 'Manage PIN users (manager required)'}
+                    {hasLocalUsers
+                      ? (fr ? 'Gérer les utilisateurs PIN (responsable requis)' : 'Manage PIN users (manager required)')
+                      : (fr ? 'Créer le premier utilisateur PIN' : 'Create first PIN user')}
                   </button>
                 )}
                 {showUsersAuth && (

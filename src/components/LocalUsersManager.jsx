@@ -9,7 +9,7 @@ function roleLabel(role, fr) {
   return role;
 }
 
-export default function LocalUsersManager({ T = {}, t = {}, lang = 'fr' }) {
+export default function LocalUsersManager({ T = {}, t = {}, lang = 'fr', onUsersChange }) {
   const fr = lang !== 'en';
   const [users, setUsers] = useState([]);
   const [showForm, setShowForm] = useState(false);
@@ -29,6 +29,7 @@ export default function LocalUsersManager({ T = {}, t = {}, lang = 'fr' }) {
     try {
       const rows = await window.api.closeAssurance.identity.userList();
       setUsers(rows || []);
+      onUsersChange?.(rows || []);
     } catch { setUsers([]); }
   }
 

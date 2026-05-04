@@ -6934,6 +6934,17 @@ export default function App(){
         setSessionsForDay(all);
         const nonDraft=all.find(s=>s.status!=='draft');
         if(nonDraft) setActiveCloseSession(nonDraft);
+        // Sync closedDays from DB so the dot/badge reflects finalized sessions
+        // loaded on navigation (not just sessions closed in this app session)
+        const finalised=all.find(s=>s.status==='finalized');
+        if(finalised){
+          setClosedDays(prev=>{
+            if(prev[selectedDate])return prev; // already have an entry, don't overwrite
+            const next={...prev,[selectedDate]:{closedAt:finalised.updated_at||finalised.created_at||new Date().toISOString(),allBal:true,closeStatus:'closed_clean'}};
+            window.api.storage.set('balanceiq-closed-days',JSON.stringify(next)).catch(()=>{});
+            return next;
+          });
+        }
       }).catch(()=>{});
   },[selectedDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
