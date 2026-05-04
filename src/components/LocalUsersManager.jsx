@@ -22,6 +22,7 @@ export default function LocalUsersManager({ T = {}, t = {}, lang = 'fr', onUsers
   const [pinError, setPinError] = useState('');
   const [pinSaving, setPinSaving] = useState(false);
   const [deactivating, setDeactivating] = useState(null);
+  const [pinAcknowledged, setPinAcknowledged] = useState(false);
 
   useEffect(() => { loadUsers(); }, []);
 
@@ -176,14 +177,36 @@ export default function LocalUsersManager({ T = {}, t = {}, lang = 'fr', onUsers
               <input type="password" inputMode="numeric" maxLength={4} value={form.pin2} onChange={e => setForm(f => ({ ...f, pin2: e.target.value.replace(/\D/g,'').slice(0,4) }))} placeholder="••••" style={{ ...inputS, letterSpacing: 6, textAlign: 'center', fontSize: 16 }} />
             </div>
           </div>
+          {users.length === 0 && (
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 9, marginBottom: 10, padding: '10px 12px', borderRadius: 7, background: 'rgba(239,68,68,0.07)', border: `1px solid ${pinAcknowledged ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.4)'}`, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={pinAcknowledged}
+                onChange={e => setPinAcknowledged(e.target.checked)}
+                style={{ marginTop: 2, flexShrink: 0, accentColor: '#ef4444', width: 14, height: 14 }}
+              />
+              <span style={{ fontSize: 11, color: '#fca5a5', lineHeight: 1.5 }}>
+                {fr
+                  ? "Je comprends que si j'oublie ce NIP et que je n'ai pas de compte infonuagique, il n'y a aucune façon de le récupérer. Mon seul recours sera de m'abonner au plan Pro ou Franchisé pour obtenir un compte infonuagique et déverrouiller l'accès."
+                  : "I understand that if I forget this PIN and do not have a cloud account, there is no way to recover it. My only option will be to upgrade to the Pro or Franchise plan to get a cloud account and regain access."}
+              </span>
+            </label>
+          )}
           {error && <div style={{ fontSize: 11, color: '#f87171', marginBottom: 6, padding: '4px 8px', borderRadius: 4, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>{error}</div>}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button onClick={() => { setShowForm(false); setForm({ name: '', role: 'cashier', pin: '', pin2: '' }); setError(''); }}
-              style={{ padding: '5px 12px', borderRadius: 5, border: '1px solid #374151', background: 'transparent', color: '#9ca3af', fontSize: 11, cursor: 'pointer' }}>
-              {fr ? 'Annuler' : 'Cancel'}
-            </button>
-            <button onClick={handleCreate} disabled={saving}
-              style={{ padding: '5px 14px', borderRadius: 5, border: 'none', background: saving ? 'rgba(249,115,22,0.3)' : 'linear-gradient(135deg,#f97316,#ea580c)', color: '#fff', fontSize: 11, fontWeight: 700, cursor: saving ? 'default' : 'pointer' }}>
+            {users.length > 0 && (
+              <button onClick={() => { setShowForm(false); setForm({ name: '', role: 'cashier', pin: '', pin2: '' }); setError(''); }}
+                style={{ padding: '5px 12px', borderRadius: 5, border: '1px solid #374151', background: 'transparent', color: '#9ca3af', fontSize: 11, cursor: 'pointer' }}>
+                {fr ? 'Annuler' : 'Cancel'}
+              </button>
+            )}
+            <button
+              onClick={handleCreate}
+              disabled={saving || (users.length === 0 && !pinAcknowledged)}
+              style={{ padding: '5px 14px', borderRadius: 5, border: 'none', fontSize: 11, fontWeight: 700, transition: 'opacity 0.15s',
+                background: (users.length === 0 && !pinAcknowledged) ? 'rgba(100,116,139,0.25)' : saving ? 'rgba(249,115,22,0.3)' : 'linear-gradient(135deg,#f97316,#ea580c)',
+                color: (users.length === 0 && !pinAcknowledged) ? 'rgba(255,255,255,0.3)' : '#fff',
+                cursor: (saving || (users.length === 0 && !pinAcknowledged)) ? 'default' : 'pointer' }}>
               {saving ? '...' : (T.idAddUser ?? (fr ? 'Ajouter' : 'Add'))}
             </button>
           </div>

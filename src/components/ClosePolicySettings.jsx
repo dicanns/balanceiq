@@ -283,19 +283,27 @@ export default function ClosePolicySettings({ T, t, lang = 'fr', onPolicySaved, 
                         onCancel={() => setShowUsersAuth(false)}
                         T={T} t={t} lang={lang}
                       />
-                      {cloudUser?.email && (
-                        <div style={{ marginTop: 14, borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 12, textAlign: 'center' }}>
-                          <div style={{ fontSize: 10.5, color: '#6b7280', marginBottom: 6 }}>
-                            {fr ? 'NIP oublié? Utilisez votre compte infonuagique.' : 'Forgot PIN? Use your cloud account.'}
+                      <div style={{ marginTop: 14, borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 12, textAlign: 'center' }}>
+                        {cloudUser?.email ? (
+                          <>
+                            <div style={{ fontSize: 10.5, color: '#6b7280', marginBottom: 6 }}>
+                              {fr ? 'NIP oublié? Utilisez votre compte infonuagique.' : 'Forgot PIN? Use your cloud account.'}
+                            </div>
+                            <button
+                              onClick={() => { setShowUsersAuth(false); setUsersUnlocked(true); }}
+                              style={{ fontSize: 11, padding: '5px 14px', borderRadius: 6, border: '1px solid rgba(56,189,248,0.3)', background: 'rgba(56,189,248,0.07)', color: '#38bdf8', cursor: 'pointer', fontWeight: 600 }}
+                            >
+                              {cloudUser.email}
+                            </button>
+                          </>
+                        ) : (
+                          <div style={{ fontSize: 10.5, color: '#6b7280', lineHeight: 1.5 }}>
+                            {fr
+                              ? 'Pas de compte infonuagique? En cas de NIP oublié, un abonnement Pro ou Franchisé est la seule façon de récupérer l\'accès.'
+                              : 'No cloud account? If your PIN is lost, upgrading to Pro or Franchise is the only way to recover access.'}
                           </div>
-                          <button
-                            onClick={() => { setShowUsersAuth(false); setUsersUnlocked(true); }}
-                            style={{ fontSize: 11, padding: '5px 14px', borderRadius: 6, border: '1px solid rgba(56,189,248,0.3)', background: 'rgba(56,189,248,0.07)', color: '#38bdf8', cursor: 'pointer', fontWeight: 600 }}
-                          >
-                            {cloudUser.email}
-                          </button>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
