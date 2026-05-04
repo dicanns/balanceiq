@@ -34,9 +34,11 @@ import RegisterCloseCard, { computeRegisterVariance } from "./components/Registe
 import ClosePolicySettings from "./components/ClosePolicySettings.jsx";
 import CloseReviewModal from "./components/CloseReviewModal.jsx";
 import CloseApprovalPanel from "./components/CloseApprovalPanel.jsx";
+import CloseEvidencePanel from "./components/CloseEvidencePanel.jsx";
 import ShiftHandoff from "./components/ShiftHandoff.jsx";
 import CloseSummaryPanel from "./components/CloseSummaryPanel.jsx";
 import { precedingShiftKey } from "./services/shiftKeys.js";
+import { buildClosePacket } from "./services/closePacketGenerator.js";
 
 // ── URL SAFETY (renderer-side) ───────────────────────────────────────────────
 // Mirrors the allowlist in main.js. Used to gate app-message URLs before render.
@@ -5973,6 +5975,7 @@ export default function App(){
   const [appMode,setAppMode]=useState(null);
   const [closePolicy,setClosePolicy]=useState(null);
   const [activeCloseSession,setActiveCloseSession]=useState(null);
+  const [closePacket,setClosePacket]=useState(null);
   const [currentShiftKey,setCurrentShiftKey]=useState(null);
   const [sessionsForDay,setSessionsForDay]=useState([]);
   const [shiftFloatOverride,setShiftFloatOverride]=useState(null); // cents | null
@@ -6921,6 +6924,7 @@ export default function App(){
   // Load existing close session when navigating to a closed day
   useEffect(()=>{
     setActiveCloseSession(null);
+    setClosePacket(null);
     setSessionsForDay([]);
     setShiftFloatOverride(null);
     if(!selectedDate||!window.api?.closeAssurance?.session)return;
@@ -7247,7 +7251,7 @@ export default function App(){
  setPosImporting(false);
  setTimeout(()=>setPosImportMsg(null),4000);
  }} disabled={posImporting} style={{fontSize:10.5,padding:"3px 10px",borderRadius:5,border:"1px solid rgba(56,189,248,0.3)",background:"rgba(56,189,248,0.06)",color:"#38bdf8",cursor:posImporting?"default":"pointer",fontWeight:600,whiteSpace:"nowrap",opacity:posImporting?0.65:1}}>{posImporting?T.posImporting:T.posImport(posCred.merchantName||posType)}</button>)})()}
- {posImportMsg&&(posImportMsg.ok?<span style={{fontSize:10,color:"#22c55e",fontWeight:600}}>{posImportMsg.ok}</span>:<span style={{fontSize:10,color:"#ef4444",fontWeight:600}}>{posImportMsg.err}</span>)}<button onClick={()=>addCash(selectedDate)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.18)",background:"rgba(249,115,22,0.06)",color:"#f97316",cursor:"pointer",fontWeight:600}}>{T.dailyNewCaisse}</button></div></div>{activeCloseSession&&<CloseSummaryPanel session={activeCloseSession} policy={closePolicy} exceptionCount={0} hasEvidence={false} T={T} lang={lang}/>}{closePolicy?.shift_mode_enabled?<ShiftHandoff currentShiftKey={currentShiftKey} onShiftChange={k=>{setCurrentShiftKey(k);setShiftFloatOverride(null);}} sessionsForDay={sessionsForDay} carryForwardCents={(()=>{const prev=precedingShiftKey(currentShiftKey);return sessionsForDay.find(s=>s.shift_key===prev)?.carry_forward_float_cents??null;})() } openingFloatOverride={shiftFloatOverride} onOverrideFloat={setShiftFloatOverride} isFinalShift={shiftIsFinal} onToggleFinalShift={setShiftIsFinal} daySummary={currentShiftKey==='final'?{totalVarianceCents:0,sessions:sessionsForDay}:null} T={T} t={t} lang={lang}/>:null}<div style={{display:"flex",flexDirection:"column",gap:8}}>{cashes.map((c,i)=>(<RegisterCloseCard key={`${selectedDate}-${i}-${cashes.length}`} CashBlockComponent={CashBlock} blindMode={closePolicy?.blind_close_mode||'off'} closureId={null} varianceThresholdCents={closePolicy?.variance_per_register_cents??100} varianceRule={closePolicy?.variance_register_rule??'require_reason'} denominationMode={closePolicy?.denomination_mode??'total_only'} closureDate={selectedDate} registerIndex={i} T={T} t={t} cash={c} index={i} onChange={c=>updCash(selectedDate,i,c)} onRemove={()=>rmCash(selectedDate,i)} canRemove={cashes.length>1} collapsed={!!collapseMap[`${selectedDate}-${i}`]} onToggle={()=>togC(i)} roster={roster} safeDrops={safeDrops} onSaveDrops={handleSafeDropSave} onDeleteDrop={handleSafeDropDelete} date={selectedDate} advancedMode={closePolicy?.tender_mode_enabled} openingFloatCents={shiftFloatOverride??((()=>{const prev=precedingShiftKey(currentShiftKey);return sessionsForDay.find(s=>s.shift_key===prev)?.carry_forward_float_cents??0;})())} posAdvancedConfig={posAdvancedConfig} onScan={()=>setPosScanOpen({caisseIndex:i})}/>))}</div></div>{today.anyData&&(<div style={{padding:"6px 10px",borderRadius:6,textAlign:"center",background:today.allBal?t.balStatusBg:t.warnStatusBg,border:`1px solid ${today.allBal?t.reconBalBorder:t.reconErrBorder}`}}>{today.allBal
+ {posImportMsg&&(posImportMsg.ok?<span style={{fontSize:10,color:"#22c55e",fontWeight:600}}>{posImportMsg.ok}</span>:<span style={{fontSize:10,color:"#ef4444",fontWeight:600}}>{posImportMsg.err}</span>)}<button onClick={()=>addCash(selectedDate)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.18)",background:"rgba(249,115,22,0.06)",color:"#f97316",cursor:"pointer",fontWeight:600}}>{T.dailyNewCaisse}</button></div></div>{activeCloseSession&&<CloseSummaryPanel session={activeCloseSession} policy={closePolicy} exceptionCount={0} hasEvidence={!!closePacket} T={T} lang={lang}/>}{closePolicy?.shift_mode_enabled?<ShiftHandoff currentShiftKey={currentShiftKey} onShiftChange={k=>{setCurrentShiftKey(k);setShiftFloatOverride(null);}} sessionsForDay={sessionsForDay} carryForwardCents={(()=>{const prev=precedingShiftKey(currentShiftKey);return sessionsForDay.find(s=>s.shift_key===prev)?.carry_forward_float_cents??null;})() } openingFloatOverride={shiftFloatOverride} onOverrideFloat={setShiftFloatOverride} isFinalShift={shiftIsFinal} onToggleFinalShift={setShiftIsFinal} daySummary={currentShiftKey==='final'?{totalVarianceCents:0,sessions:sessionsForDay}:null} T={T} t={t} lang={lang}/>:null}<div style={{display:"flex",flexDirection:"column",gap:8}}>{cashes.map((c,i)=>(<RegisterCloseCard key={`${selectedDate}-${i}-${cashes.length}`} CashBlockComponent={CashBlock} blindMode={closePolicy?.blind_close_mode||'off'} closureId={null} varianceThresholdCents={closePolicy?.variance_per_register_cents??100} varianceRule={closePolicy?.variance_register_rule??'require_reason'} denominationMode={closePolicy?.denomination_mode??'total_only'} closureDate={selectedDate} registerIndex={i} T={T} t={t} cash={c} index={i} onChange={c=>updCash(selectedDate,i,c)} onRemove={()=>rmCash(selectedDate,i)} canRemove={cashes.length>1} collapsed={!!collapseMap[`${selectedDate}-${i}`]} onToggle={()=>togC(i)} roster={roster} safeDrops={safeDrops} onSaveDrops={handleSafeDropSave} onDeleteDrop={handleSafeDropDelete} date={selectedDate} advancedMode={closePolicy?.tender_mode_enabled} openingFloatCents={shiftFloatOverride??((()=>{const prev=precedingShiftKey(currentShiftKey);return sessionsForDay.find(s=>s.shift_key===prev)?.carry_forward_float_cents??0;})())} posAdvancedConfig={posAdvancedConfig} onScan={()=>setPosScanOpen({caisseIndex:i})}/>))}</div></div>{today.anyData&&(<div style={{padding:"6px 10px",borderRadius:6,textAlign:"center",background:today.allBal?t.balStatusBg:t.warnStatusBg,border:`1px solid ${today.allBal?t.reconBalBorder:t.reconErrBorder}`}}>{today.allBal
  ?<span style={{fontSize:12,color:"#16a34a",fontWeight:600}}>{T.allRegistersBalanced}</span>:<span style={{fontSize:12,color:t.warnText,fontWeight:600}}>{T.verifyCaisses}</span>}</div>)}
 
  {/* Close-out Checklist */}
@@ -7274,8 +7278,30 @@ export default function App(){
                 closePolicy={closePolicy}
                 t={t} T={T} lang={lang}
                 cloudUser={cloudUser}
-                onSessionChange={s=>{setActiveCloseSession(s);if(s?.status==='reopened'){const next={...closedDays};delete next[selectedDate];setClosedDays(next);window.api.storage.set("balanceiq-closed-days",JSON.stringify(next)).catch(()=>{});}}}
+                onSessionChange={s=>{setActiveCloseSession(s);setClosePacket(null);if(s?.status==='reopened'){const next={...closedDays};delete next[selectedDate];setClosedDays(next);window.api.storage.set("balanceiq-closed-days",JSON.stringify(next)).catch(()=>{});}}}
               />
+            )}
+            {activeCloseSession?.status==='finalized'&&(
+              <div style={{marginTop:4}}>
+                <button
+                  onClick={async()=>{
+                    try{
+                      const full=await window.api.closeAssurance.session.get(activeCloseSession.id);
+                      const approvals=await window.api.closeAssurance.approval.list(activeCloseSession.id);
+                      const packet=buildClosePacket({session:full,registers:full?.register_closures||[],approvals:approvals||[],safeDrops:safeDrops.filter(sd=>sd.date===selectedDate)});
+                      setClosePacket(packet);
+                    }catch(e){console.error('packet build failed',e);}
+                  }}
+                  style={{width:'100%',padding:'7px 0',borderRadius:7,border:'1px solid rgba(167,139,250,0.3)',background:'rgba(167,139,250,0.07)',color:'#a78bfa',fontSize:12,fontWeight:700,cursor:'pointer'}}
+                >
+                  {lang==='en'?'Generate Close Packet':'Générer le dossier de fermeture'}
+                </button>
+                {closePacket&&(
+                  <div style={{marginTop:8,padding:12,borderRadius:8,background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.08)'}}>
+                    <CloseEvidencePanel packet={closePacket} T={T} lang={lang}/>
+                  </div>
+                )}
+              </div>
             )}
             {isClosed&&!activeCloseSession&&(()=>{
               const closedAt=closedDays[selectedDate]?.closedAt;
