@@ -45,6 +45,7 @@ export default function RegisterCloseCard({
   date = null,
   advancedMode = false,
   openingFloatCents = 0,
+  collapsed = false,
   T,
   t,
   cash,
@@ -159,8 +160,8 @@ export default function RegisterCloseCard({
   if (!isBlind) {
     return (
       <div>
-        <CashBlockComponent {...cashBlockProps} cash={cash} onChange={onChange} roster={roster} />
-        {denomAllowed && (
+        <CashBlockComponent {...cashBlockProps} collapsed={collapsed} cash={cash} onChange={onChange} roster={roster} />
+        {!collapsed && denomAllowed && (
           <DenomToggle
             fr={fr} T={T} t={t}
             denomMode={denomMode} denomRequired={denomRequired}
@@ -170,14 +171,14 @@ export default function RegisterCloseCard({
             lang={lang}
           />
         )}
-        {onSaveDrops && (
+        {!collapsed && onSaveDrops && (
           <SafeDropPanel
             drops={myDrops} onSave={onSaveDrops} onDelete={onDeleteDrop} date={date}
             t={t} T={T} lang={lang}
             roster={roster} cashierName={cashierName}
           />
         )}
-        {advancedMode && (
+        {!collapsed && advancedMode && (
           <AdvancedFieldsPanel
             cash={cash} onChange={onChange}
             showAdvanced={showAdvanced} setShowAdvanced={setShowAdvanced}
@@ -186,7 +187,7 @@ export default function RegisterCloseCard({
             fr={fr} T={T} t={t}
           />
         )}
-        {showReasonPicker && (
+        {!collapsed && showReasonPicker && (
           <ReasonPicker
             lang={lang} T={T} t={t}
             reasonCode={reasonCode} setReasonCode={setReasonCode}
@@ -194,7 +195,7 @@ export default function RegisterCloseCard({
             onConfirm={confirmReason} required={reasonRequired}
           />
         )}
-        {reasonConfirmed && thresholdExceeded && (
+        {!collapsed && reasonConfirmed && thresholdExceeded && (
           <ReasonSummary lang={lang} t={t} reasonCode={reasonCode} reasonText={reasonText} />
         )}
       </div>
@@ -205,6 +206,7 @@ export default function RegisterCloseCard({
     <div>
       <CashBlockComponent
         {...cashBlockProps}
+        collapsed={collapsed}
         cash={cash}
         onChange={onChange}
         roster={roster}
@@ -217,7 +219,7 @@ export default function RegisterCloseCard({
             : null
         }
       />
-      {denomAllowed && (
+      {!collapsed && denomAllowed && (
         <DenomToggle
           fr={fr} T={T} t={t}
           denomMode={denomMode} denomRequired={denomRequired}
@@ -227,14 +229,14 @@ export default function RegisterCloseCard({
           lang={lang}
         />
       )}
-      {onSaveDrops && (
+      {!collapsed && onSaveDrops && (
         <SafeDropPanel
           drops={myDrops} onSave={onSaveDrops} onDelete={onDeleteDrop} date={date}
           t={t} T={T} lang={lang}
           roster={roster} cashierName={cashierName}
         />
       )}
-      {advancedMode && (
+      {!collapsed && advancedMode && (
         <AdvancedFieldsPanel
           cash={cash} onChange={onChange}
           showAdvanced={showAdvanced} setShowAdvanced={setShowAdvanced}
@@ -243,7 +245,7 @@ export default function RegisterCloseCard({
           fr={fr} T={T} t={t}
         />
       )}
-      {showSubmitButton && (
+      {!collapsed && showSubmitButton && (
         <div style={{ marginTop: 10 }}>
           <div style={{ marginBottom: 6, padding: '6px 10px', borderRadius: 6, background: 'rgba(249,115,22,0.06)', border: '1px solid rgba(249,115,22,0.2)', fontSize: 11, color: '#f97316', display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontWeight: 700, background: '#f97316', color: '#fff', borderRadius: '50%', width: 16, height: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, flexShrink: 0 }}>1</span>
@@ -257,7 +259,7 @@ export default function RegisterCloseCard({
           </button>
         </div>
       )}
-      {showRevealButton && (
+      {!collapsed && showRevealButton && (
         <div style={{ marginTop: 10 }}>
           <div style={{ marginBottom: 6, padding: '6px 10px', borderRadius: 6, background: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.2)', fontSize: 11, color: '#a78bfa', display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontWeight: 700, background: '#a78bfa', color: '#fff', borderRadius: '50%', width: 16, height: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, flexShrink: 0 }}>2</span>
@@ -278,7 +280,7 @@ export default function RegisterCloseCard({
         </div>
         </div>
       )}
-      {showReasonPicker && (
+      {!collapsed && showReasonPicker && (
         <ReasonPicker
           lang={lang} T={T} t={t}
           reasonCode={reasonCode} setReasonCode={setReasonCode}
@@ -286,7 +288,7 @@ export default function RegisterCloseCard({
           onConfirm={confirmReason} required={reasonRequired}
         />
       )}
-      {reasonConfirmed && thresholdExceeded && (
+      {!collapsed && reasonConfirmed && thresholdExceeded && (
         <ReasonSummary lang={lang} t={t} reasonCode={reasonCode} reasonText={reasonText} />
       )}
     </div>
