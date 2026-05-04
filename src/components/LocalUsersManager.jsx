@@ -30,6 +30,10 @@ export default function LocalUsersManager({ T = {}, t = {}, lang = 'fr', onUsers
       const rows = await window.api.closeAssurance.identity.userList();
       setUsers(rows || []);
       onUsersChange?.(rows || []);
+      if ((rows || []).length === 0) {
+        setShowForm(true);
+        setForm({ name: '', role: 'manager', pin: '', pin2: '' });
+      }
     } catch { setUsers([]); }
   }
 
@@ -144,7 +148,14 @@ export default function LocalUsersManager({ T = {}, t = {}, lang = 'fr', onUsers
       ))}
 
       {showForm && (
-        <div style={{ marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 10 }}>
+        <div style={{ marginTop: 8, borderTop: users.length === 0 ? 'none' : '1px solid rgba(255,255,255,0.06)', paddingTop: users.length === 0 ? 0 : 10 }}>
+          {users.length === 0 && (
+            <div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 6, background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.25)', fontSize: 11, color: '#f97316' }}>
+              {fr
+                ? 'Le premier utilisateur doit etre Gerant ou Proprietaire — il pourra ensuite gerer les autres.'
+                : 'The first user must be Manager or Owner — they will be able to manage others.'}
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
             <div>
               <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 3 }}>{T.idUserName ?? (fr ? 'Nom' : 'Name')} *</div>
@@ -153,7 +164,7 @@ export default function LocalUsersManager({ T = {}, t = {}, lang = 'fr', onUsers
             <div>
               <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 3 }}>{T.idUserRole ?? (fr ? 'Role' : 'Role')}</div>
               <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} style={selS}>
-                {ROLES.map(r => <option key={r} value={r}>{roleLabel(r, fr)}</option>)}
+                {(users.length === 0 ? ROLES.filter(r => r !== 'cashier') : ROLES).map(r => <option key={r} value={r}>{roleLabel(r, fr)}</option>)}
               </select>
             </div>
             <div>

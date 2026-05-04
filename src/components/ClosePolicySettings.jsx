@@ -18,7 +18,7 @@ const DEFAULTS = {
   tender_mode_enabled: 0,
 };
 
-export default function ClosePolicySettings({ T, t, lang = 'fr', onPolicySaved }) {
+export default function ClosePolicySettings({ T, t, lang = 'fr', onPolicySaved, cloudUser }) {
   const [policy, setPolicy] = useState(DEFAULTS);
   const [msg, setMsg] = useState(null);
   const [varRegStr, setVarRegStr] = useState('1.00');
@@ -283,6 +283,19 @@ export default function ClosePolicySettings({ T, t, lang = 'fr', onPolicySaved }
                         onCancel={() => setShowUsersAuth(false)}
                         T={T} t={t} lang={lang}
                       />
+                      {cloudUser?.email && (
+                        <div style={{ marginTop: 14, borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 12, textAlign: 'center' }}>
+                          <div style={{ fontSize: 10.5, color: '#6b7280', marginBottom: 6 }}>
+                            {fr ? 'NIP oublié? Utilisez votre compte infonuagique.' : 'Forgot PIN? Use your cloud account.'}
+                          </div>
+                          <button
+                            onClick={() => { setShowUsersAuth(false); setUsersUnlocked(true); }}
+                            style={{ fontSize: 11, padding: '5px 14px', borderRadius: 6, border: '1px solid rgba(56,189,248,0.3)', background: 'rgba(56,189,248,0.07)', color: '#38bdf8', cursor: 'pointer', fontWeight: 600 }}
+                          >
+                            {cloudUser.email}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
