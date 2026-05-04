@@ -6840,14 +6840,17 @@ export default function App(){
       if(!r?.code)return c;
       const merged={...c,varianceReasonCode:r.code,varianceReasonText:r.text||''};
       updCash(key,idx,merged);
-      const v=computeRegisterVariance(merged);
+      return merged;
+    });
+    // Save a register closure for every register (not just those with modal-captured reasons)
+    mergedCashes.forEach((c,idx)=>{
+      const v=computeRegisterVariance(c);
       window.api?.closeAssurance?.closure?.save({
         date_key:key,register_key:`register_${idx}`,
         variance_cents:Math.round((v||0)*100),
-        variance_reason_code:r.code,
-        variance_reason_text:r.text||null,
+        variance_reason_code:c.varianceReasonCode||null,
+        variance_reason_text:c.varianceReasonText||null,
       }).catch(()=>{});
-      return merged;
     });
     const mergedData={...(liveDataRef.current[key]||{}),cashes:mergedCashes};
     const cd=computeDay(key);
@@ -7303,13 +7306,16 @@ export default function App(){
                       setClosePacket(packet);
                     }catch(e){console.error('packet build failed',e);}
                   }}
-                  style={{width:'100%',padding:'7px 0',borderRadius:7,border:'1px solid rgba(167,139,250,0.3)',background:'rgba(167,139,250,0.07)',color:'#a78bfa',fontSize:12,fontWeight:700,cursor:'pointer'}}
+                  style={{width:'100%',padding:'7px 0',borderRadius:7,border:'1px solid rgba(167,139,250,0.3)',background:'rgba(167,139,250,0.07)',color:'#a78bfa',fontSize:12,fontWeight:700,cursor:'pointer',display:'block'}}
                 >
                   {lang==='en'?'Generate Close Packet':'Générer le dossier de fermeture'}
                 </button>
+                <div style={{fontSize:10.5,color:t.textMuted,textAlign:'center',marginTop:4}}>
+                  {lang==='en'?'Snapshot of this session: variance, approval chain, register breakdown.':'Instantané de cette session : écart, historique d\'approbation, détail par caisse.'}
+                </div>
                 {closePacket&&(
                   <div style={{marginTop:8,padding:12,borderRadius:8,background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.08)'}}>
-                    <CloseEvidencePanel packet={closePacket} T={T} lang={lang}/>
+                    <CloseEvidencePanel packet={closePacket} T={T} t={t} lang={lang}/>
                   </div>
                 )}
               </div>

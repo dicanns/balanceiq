@@ -27,7 +27,7 @@ const STAGE_LABELS_EN = {
  *   T          - translation map
  *   lang       - 'fr' | 'en'
  */
-export default function CloseEvidencePanel({ packet, T, lang }) {
+export default function CloseEvidencePanel({ packet, T, t, lang }) {
   if (!packet) return null;
   const fr = lang !== 'en';
 
@@ -160,12 +160,12 @@ export default function CloseEvidencePanel({ packet, T, lang }) {
                 {stageLabels[a.stage] ?? a.stage}
               </span>
               <div style={{ flex: 1 }}>
-                <span style={{ fontWeight: 600, color: '#e2e8f0' }}>{a.actor_name ?? '-'}</span>
-                {a.actor_role && <span style={{ color: '#64748b', marginLeft: 6, fontSize: 10.5 }}>{a.actor_role}</span>}
-                {a.approval_method && <span style={{ color: '#64748b', marginLeft: 6, fontSize: 10.5 }}>({a.approval_method})</span>}
-                {a.reason && <div style={{ color: '#94a3b8', fontSize: 11, marginTop: 2 }}>{a.reason}</div>}
+                <span style={{ fontWeight: 600, color: t?.text ?? '#e2e8f0' }}>{a.actor_name ?? '-'}</span>
+                {a.actor_role && <span style={{ color: t?.textSub ?? '#94a3b8', marginLeft: 6, fontSize: 10.5 }}>{a.actor_role}</span>}
+                {a.approval_method && <span style={{ color: t?.textMuted ?? '#64748b', marginLeft: 6, fontSize: 10.5 }}>({a.approval_method})</span>}
+                {a.reason && <div style={{ color: t?.textSub ?? '#94a3b8', fontSize: 11, marginTop: 2 }}>{a.reason.replace(/^\[[\w_]+\]\s*/, '')}</div>}
               </div>
-              <span style={{ color: '#475569', fontSize: 10.5, flexShrink: 0 }}>{fmtDate(a.created_at)}</span>
+              <span style={{ color: t?.textMuted ?? '#64748b', fontSize: 10.5, flexShrink: 0 }}>{fmtDate(a.created_at)}</span>
             </div>
           ))}
         </div>
