@@ -6663,6 +6663,10 @@ export default function App(){
   },[_updCashRaw,lang,closedDays]);
   const addCash=useCallback(dt=>{setLiveData(p=>{const d={...(p[dt]||{})};const cs=[...(d.cashes||[{...BLANK_CASH}])];cs.push({...BLANK_CASH});const u={...p,[dt]:{...d,cashes:cs}};persist(u);return u});logUpdate('daily','jour',dt,'caisses',null,'ajout');},[persist]);
   const rmCash=useCallback((dt,i)=>{setLiveData(p=>{const d={...(p[dt]||{})};const cs=[...(d.cashes||[])];cs.splice(i,1);const u={...p,[dt]:{...d,cashes:cs}};persist(u);return u});logUpdate('daily','jour',dt,'caisses',null,`retrait:${i}`);},[persist]);
+  // Shift-aware register updaters (used when shift_mode_enabled)
+  const addShiftCash=useCallback((dt,sk)=>{setLiveData(p=>{const d={...(p[dt]||{})};const sc={...(d.shiftCashes||{})};sc[sk]=[...(sc[sk]||[{...BLANK_CASH}]),{...BLANK_CASH}];const u={...p,[dt]:{...d,shiftCashes:sc}};persist(u);return u});},[persist]);
+  const rmShiftCash=useCallback((dt,sk,i)=>{setLiveData(p=>{const d={...(p[dt]||{})};const sc={...(d.shiftCashes||{})};const cs=[...(sc[sk]||[])];cs.splice(i,1);sc[sk]=cs;const u={...p,[dt]:{...d,shiftCashes:sc}};persist(u);return u});},[persist]);
+  const updShiftCash=useCallback((dt,sk,i,newCash)=>{setLiveData(p=>{const d={...(p[dt]||{})};const sc={...(d.shiftCashes||{})};const cs=[...(sc[sk]||[{...BLANK_CASH}])];cs[i]=newCash;sc[sk]=cs;const u={...p,[dt]:{...d,shiftCashes:sc}};persist(u);return u});},[persist]);
   const updEmp=useCallback((dt,i,newEmp)=>{
     const oldEmp=(liveDataRef.current[dt]?.employees||[])[i]||{};
     _updEmpRaw(dt,i,newEmp);
@@ -6672,7 +6676,7 @@ export default function App(){
   const addEmp=useCallback((dt,empEntry)=>{setLiveData(p=>{const d={...(p[dt]||{})};const es=[...(d.employees||[])];es.push(empEntry||{...BLANK_EMP});const u={...p,[dt]:{...d,employees:es}};persist(u);return u});logUpdate('daily','employe',dt,'ajout',null,JSON.stringify(empEntry));},[persist]);
   const rmEmp=useCallback((dt,i)=>{setLiveData(p=>{const d={...(p[dt]||{})};const es=[...(d.employees||[])];es.splice(i,1);const u={...p,[dt]:{...d,employees:es}};persist(u);return u});logUpdate('daily','employe',dt,'retrait',null,`index:${i}`);},[persist]);
 
-  const getLR=useCallback(dt=>{const l=liveData[dt];if(!l||!Object.keys(l).length)return{...BLANK_DAY,cashes:[{...BLANK_CASH}],employees:[]};return{...BLANK_DAY,...l,cashes:l.cashes||[{...BLANK_CASH}],employees:l.employees||[]}},[liveData]);
+  const getLR=useCallback(dt=>{const l=liveData[dt];if(!l||!Object.keys(l).length)return{...BLANK_DAY,cashes:[{...BLANK_CASH}],employees:[]};const shiftAll=l.shiftCashes?Object.values(l.shiftCashes).flat():[];const allCashes=shiftAll.length>0?shiftAll:(l.cashes||[{...BLANK_CASH}]);return{...BLANK_DAY,...l,cashes:allCashes,employees:l.employees||[]}},[liveData]);
   const getIC=useCallback(dt=>{const p=liveData[prevDk(dt)];return p?{hamEnd:p.hamEnd??null,hotEnd:p.hotEnd??null}:{hamEnd:null,hotEnd:null}},[liveData]);
   const computeDay=useCallback(dt=>{
     const r=getLR(dt);const carry=getIC(dt);
@@ -6723,7 +6727,7 @@ export default function App(){
     return{...r,venteNet:vN,tps,tvq,total:tot,allBal:allB,anyData:anyD,hamStart:hamS,hamEnd:r.hamEnd,hamReceived:hR,hamUsed:hamU,hotStart:hotS,hotEnd:r.hotEnd,hotReceived:hoR,hotUsed:hotU,totalDoz:tDoz,moyenne:moy,labourCost:labC,labourHrs:labH,labourPct:labP,itemResults};
   },[getLR,getIC,invConfig]);
 
-  const today=computeDay(selectedDate);const d=new Date(selectedDate+"T12:00:00");const holiday=getHol(d);const raw=getLR(selectedDate);const cashes=raw.cashes;const emps=raw.employees;
+  const today=computeDay(selectedDate);const d=new Date(selectedDate+"T12:00:00");const holiday=getHol(d);const raw=getLR(selectedDate);const _shiftMode=!!closePolicy?.shift_mode_enabled;const cashes=_shiftMode&&currentShiftKey?(liveData[selectedDate]?.shiftCashes?.[currentShiftKey]||[{...BLANK_CASH}]):raw.cashes;const emps=raw.employees;
   const isDayComplete=today.anyData&&today.allBal&&raw.hamEnd!=null&&raw.hotEnd!=null;
 
   // ── SYSTEM TRAY: update tooltip with today's sales ────────────────────────
@@ -6807,7 +6811,7 @@ export default function App(){
   // ── openCloseReview: evaluate + open structured modal (2E) ──────────────────
   const openCloseReview=useCallback(async()=>{
     const key=selectedDate;
-    const dayCashes=(liveDataRef.current[key]?.cashes)||[];
+    const dayCashes=closePolicy?.shift_mode_enabled&&currentShiftKey?(liveDataRef.current[key]?.shiftCashes?.[currentShiftKey]||[]):(liveDataRef.current[key]?.cashes||[]);
     const closures=dayCashes.map(c=>{
       const v=computeRegisterVariance(c);
       return{variance_cents:v!=null?Math.round(v*100):0};
@@ -6834,12 +6838,13 @@ export default function App(){
     const key=selectedDate;
     const closedAt=new Date().toISOString();
     // Apply locally captured reasons from modal to cash objects
-    const baseCashes=(liveDataRef.current[key]?.cashes)||[];
+    const _closeShiftMode=closePolicy?.shift_mode_enabled&&currentShiftKey;
+    const baseCashes=_closeShiftMode?(liveDataRef.current[key]?.shiftCashes?.[currentShiftKey]||[]):(liveDataRef.current[key]?.cashes||[]);
     const mergedCashes=baseCashes.map((c,idx)=>{
       const r=localReasons[idx];
       if(!r?.code)return c;
       const merged={...c,varianceReasonCode:r.code,varianceReasonText:r.text||''};
-      updCash(key,idx,merged);
+      if(_closeShiftMode)updShiftCash(key,currentShiftKey,idx,merged);else updCash(key,idx,merged);
       return merged;
     });
     // Save a register closure for every register (not just those with modal-captured reasons)
@@ -7041,7 +7046,7 @@ export default function App(){
   const wkDelta=wkCLast>0?((wkC-wkCLast)/wkCLast*100):null;
   let mtdTotal=0,mtdDays=0;{const[sy,sm,sd]=selectedDate.split("-");const sdi=parseInt(sd);for(let day=1;day<=sdi;day++){const k=`${sy}-${sm}-${String(day).padStart(2,"0")}`;const cd=computeDay(k);if(cd.venteNet>0){mtdTotal+=cd.venteNet;mtdDays++;}}}
   const hasL=Object.keys(liveData[selectedDate]||{}).length>0;
-  const togC=i=>setCollapseMap(p=>({...p,[`${selectedDate}-${i}`]:!p[`${selectedDate}-${i}`]}));
+  const togC=(i,sk)=>{const k=sk?`${selectedDate}-${sk}-${i}`:`${selectedDate}-${i}`;setCollapseMap(p=>({...p,[k]:!p[k]}));};
   const addRC=()=>{if(!newCN.trim())return;const nr=[...roster,{id:Date.now().toString(),name:newCN.trim()}];setRoster(nr);saveRoster(nr);setNewCN("")};
 
   const buildDailyHTML=()=>{
@@ -7265,7 +7270,7 @@ export default function App(){
  setPosImporting(false);
  setTimeout(()=>setPosImportMsg(null),4000);
  }} disabled={posImporting} style={{fontSize:10.5,padding:"3px 10px",borderRadius:5,border:"1px solid rgba(56,189,248,0.3)",background:"rgba(56,189,248,0.06)",color:"#38bdf8",cursor:posImporting?"default":"pointer",fontWeight:600,whiteSpace:"nowrap",opacity:posImporting?0.65:1}}>{posImporting?T.posImporting:T.posImport(posCred.merchantName||posType)}</button>)})()}
- {posImportMsg&&(posImportMsg.ok?<span style={{fontSize:10,color:"#22c55e",fontWeight:600}}>{posImportMsg.ok}</span>:<span style={{fontSize:10,color:"#ef4444",fontWeight:600}}>{posImportMsg.err}</span>)}<button onClick={()=>addCash(selectedDate)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.18)",background:"rgba(249,115,22,0.06)",color:"#f97316",cursor:"pointer",fontWeight:600}}>{T.dailyNewCaisse}</button></div></div>{activeCloseSession&&<CloseSummaryPanel session={activeCloseSession} policy={closePolicy} exceptionCount={0} hasEvidence={!!closePacket} T={T} lang={lang}/>}{closePolicy?.shift_mode_enabled?<ShiftHandoff currentShiftKey={currentShiftKey} onShiftChange={k=>{setCurrentShiftKey(k);setShiftFloatOverride(null);}} sessionsForDay={sessionsForDay} carryForwardCents={(()=>{const prev=precedingShiftKey(currentShiftKey);return sessionsForDay.find(s=>s.shift_key===prev)?.carry_forward_float_cents??null;})() } openingFloatOverride={shiftFloatOverride} onOverrideFloat={setShiftFloatOverride} isFinalShift={shiftIsFinal} onToggleFinalShift={setShiftIsFinal} daySummary={currentShiftKey==='final'?{totalVarianceCents:0,sessions:sessionsForDay}:null} advancedMode={!!closePolicy?.tender_mode_enabled} T={T} t={t} lang={lang}/>:null}<div style={{display:"flex",flexDirection:"column",gap:8}}>{cashes.map((c,i)=>(<RegisterCloseCard key={`${selectedDate}-${i}`} CashBlockComponent={CashBlock} blindMode={closePolicy?.blind_close_mode||'off'} closureId={null} varianceThresholdCents={closePolicy?.variance_per_register_cents??100} varianceRule={closePolicy?.variance_register_rule??'require_reason'} denominationMode={closePolicy?.denomination_mode??'total_only'} closureDate={selectedDate} registerIndex={i} T={T} t={t} cash={c} index={i} onChange={c=>updCash(selectedDate,i,c)} onRemove={()=>rmCash(selectedDate,i)} canRemove={cashes.length>1} collapsed={!!collapseMap[`${selectedDate}-${i}`]} onToggle={()=>togC(i)} roster={roster} safeDrops={safeDrops} onSaveDrops={handleSafeDropSave} onDeleteDrop={handleSafeDropDelete} date={selectedDate} advancedMode={closePolicy?.tender_mode_enabled} openingFloatCents={shiftFloatOverride??((()=>{const prev=precedingShiftKey(currentShiftKey);return sessionsForDay.find(s=>s.shift_key===prev)?.carry_forward_float_cents??0;})())} posAdvancedConfig={posAdvancedConfig} onScan={()=>setPosScanOpen({caisseIndex:i})}/>))}</div></div>{today.anyData&&(<div style={{padding:"6px 10px",borderRadius:6,textAlign:"center",background:today.allBal?t.balStatusBg:t.warnStatusBg,border:`1px solid ${today.allBal?t.reconBalBorder:t.reconErrBorder}`}}>{today.allBal
+ {posImportMsg&&(posImportMsg.ok?<span style={{fontSize:10,color:"#22c55e",fontWeight:600}}>{posImportMsg.ok}</span>:<span style={{fontSize:10,color:"#ef4444",fontWeight:600}}>{posImportMsg.err}</span>)}<button onClick={()=>(_shiftMode&&currentShiftKey?addShiftCash(selectedDate,currentShiftKey):addCash(selectedDate))} style={{fontSize:10.5,padding:"3px 10px",borderRadius:5,border:"1px solid rgba(249,115,22,0.18)",background:"rgba(249,115,22,0.06)",color:"#f97316",cursor:"pointer",fontWeight:600}}>{T.dailyNewCaisse}</button></div></div>{activeCloseSession&&<CloseSummaryPanel session={activeCloseSession} policy={closePolicy} exceptionCount={0} hasEvidence={!!closePacket} T={T} lang={lang}/>}{closePolicy?.shift_mode_enabled?<ShiftHandoff currentShiftKey={currentShiftKey} onShiftChange={k=>{setCurrentShiftKey(k);setShiftFloatOverride(null);}} sessionsForDay={sessionsForDay} carryForwardCents={(()=>{const prev=precedingShiftKey(currentShiftKey);return sessionsForDay.find(s=>s.shift_key===prev)?.carry_forward_float_cents??null;})() } openingFloatOverride={shiftFloatOverride} onOverrideFloat={setShiftFloatOverride} isFinalShift={shiftIsFinal} onToggleFinalShift={setShiftIsFinal} daySummary={currentShiftKey==='final'?{totalVarianceCents:0,sessions:sessionsForDay}:null} advancedMode={!!closePolicy?.tender_mode_enabled} T={T} t={t} lang={lang}/>:null}<div style={{display:"flex",flexDirection:"column",gap:8}}>{cashes.map((c,i)=>{const _ck=_shiftMode&&currentShiftKey?`${selectedDate}-${currentShiftKey}-${i}`:`${selectedDate}-${i}`;return(<RegisterCloseCard key={_ck} CashBlockComponent={CashBlock} blindMode={closePolicy?.blind_close_mode||'off'} closureId={null} varianceThresholdCents={closePolicy?.variance_per_register_cents??100} varianceRule={closePolicy?.variance_register_rule??'require_reason'} denominationMode={closePolicy?.denomination_mode??'total_only'} closureDate={selectedDate} registerIndex={i} T={T} t={t} cash={c} index={i} onChange={c=>(_shiftMode&&currentShiftKey?updShiftCash(selectedDate,currentShiftKey,i,c):updCash(selectedDate,i,c))} onRemove={()=>(_shiftMode&&currentShiftKey?rmShiftCash(selectedDate,currentShiftKey,i):rmCash(selectedDate,i))} canRemove={cashes.length>1} collapsed={!!collapseMap[_ck]} onToggle={()=>togC(i,_shiftMode&&currentShiftKey?currentShiftKey:null)} roster={roster} safeDrops={safeDrops} onSaveDrops={handleSafeDropSave} onDeleteDrop={handleSafeDropDelete} date={selectedDate} advancedMode={closePolicy?.tender_mode_enabled} openingFloatCents={shiftFloatOverride??((()=>{const prev=precedingShiftKey(currentShiftKey);return sessionsForDay.find(s=>s.shift_key===prev)?.carry_forward_float_cents??0;})())} posAdvancedConfig={posAdvancedConfig} onScan={()=>setPosScanOpen({caisseIndex:i})}/>);})}</div></div>{today.anyData&&(<div style={{padding:"6px 10px",borderRadius:6,textAlign:"center",background:today.allBal?t.balStatusBg:t.warnStatusBg,border:`1px solid ${today.allBal?t.reconBalBorder:t.reconErrBorder}`}}>{today.allBal
  ?<span style={{fontSize:12,color:"#16a34a",fontWeight:600}}>{T.allRegistersBalanced}</span>:<span style={{fontSize:12,color:t.warnText,fontWeight:600}}>{T.verifyCaisses}</span>}</div>)}
 
  {/* Close-out Checklist */}
