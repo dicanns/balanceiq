@@ -34,6 +34,7 @@ export default function ShiftHandoff({
   isFinalShift = false,
   onToggleFinalShift,
   daySummary = null,
+  advancedMode = false,
   T,
   t,
   lang,
@@ -113,8 +114,8 @@ export default function ShiftHandoff({
         })}
       </div>
 
-      {/* Carry-forward float display */}
-      {currentShiftKey && currentShiftKey !== 'dawn' && (
+      {/* Carry-forward float display — only relevant in Advanced/Tender mode */}
+      {advancedMode && currentShiftKey && currentShiftKey !== 'dawn' && (
         <div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 7, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', fontSize: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ color: '#94a3b8' }}>
