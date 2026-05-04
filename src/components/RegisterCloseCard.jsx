@@ -52,8 +52,12 @@ export default function RegisterCloseCard({
   onChange,
   ...cashBlockProps
 }) {
-  const [counted, setCounted] = useState(false);
-  const [revealed, setRevealed] = useState(false);
+  const [counted, setCounted] = useState(!!cash?._counted);
+  const [revealed, setRevealed] = useState(!!cash?._revealed);
+  const cashRef = React.useRef(cash);
+  cashRef.current = cash;
+  const onChangeRef = React.useRef(onChange);
+  onChangeRef.current = onChange;
   const [reasonCode, setReasonCode] = useState(cash?.varianceReasonCode || '');
   const [reasonText, setReasonText] = useState(cash?.varianceReasonText || '');
   const [reasonConfirmed, setReasonConfirmed] = useState(!!(cash?.varianceReasonCode));
@@ -122,8 +126,10 @@ export default function RegisterCloseCard({
 
   const handleSubmitCount = useCallback(() => {
     setCounted(true);
+    onChangeRef.current?.({ ...cashRef.current, _counted: true });
     if (blindMode === 'register_blind') {
       setRevealed(true);
+      onChangeRef.current?.({ ...cashRef.current, _counted: true, _revealed: true });
       if (window.api?.closeAssurance?.revealVariance) {
         window.api.closeAssurance.revealVariance(closureId ?? 0, 'cashier').catch(() => {});
       }
@@ -132,6 +138,7 @@ export default function RegisterCloseCard({
 
   const handleRevealVariance = useCallback(() => {
     setRevealed(true);
+    onChangeRef.current?.({ ...cashRef.current, _revealed: true });
     if (window.api?.closeAssurance?.revealVariance) {
       window.api.closeAssurance.revealVariance(closureId ?? 0, 'manager').catch(() => {});
     }

@@ -35,6 +35,7 @@ export default function ShiftHandoff({
   onToggleFinalShift,
   daySummary = null,
   advancedMode = false,
+  registerCountPerShift = {},
   T,
   t,
   lang,
@@ -103,6 +104,16 @@ export default function ShiftHandoff({
               }}
             >
               {shiftLabel(key)}
+              {registerCountPerShift[key] > 0 && (
+                <span style={{
+                  fontSize: 9, fontWeight: 700, lineHeight: 1,
+                  background: 'rgba(249,115,22,0.18)',
+                  color: '#f97316', borderRadius: 8,
+                  padding: '1px 5px', minWidth: 16, textAlign: 'center', flexShrink: 0,
+                }}>
+                  {registerCountPerShift[key]}
+                </span>
+              )}
               {session && (
                 <span style={{
                   width: 6, height: 6, borderRadius: '50%',
