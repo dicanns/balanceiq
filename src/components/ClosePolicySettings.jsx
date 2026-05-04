@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import LocalUsersManager from './LocalUsersManager.jsx';
+import IdentityPicker from './IdentityPicker.jsx';
 
 const DEFAULTS = {
   blind_close_mode: 'off',
@@ -22,6 +23,9 @@ export default function ClosePolicySettings({ T, t, lang = 'fr', onPolicySaved }
   const [msg, setMsg] = useState(null);
   const [varRegStr, setVarRegStr] = useState('1.00');
   const [varStoreStr, setVarStoreStr] = useState('2.00');
+  const [usersUnlocked, setUsersUnlocked] = useState(false);
+  const [showUsersAuth, setShowUsersAuth] = useState(false);
+  const fr = lang !== 'en';
 
   useEffect(() => {
     window.api?.closeAssurance?.policy.get(null).then(p => {
@@ -239,7 +243,44 @@ export default function ClosePolicySettings({ T, t, lang = 'fr', onPolicySaved }
               </div>
             )}
             {policy.approver_identity_method === 'pin' && (
-              <LocalUsersManager T={T} t={t} lang={lang} />
+              <div style={{ marginTop: 10 }}>
+                {usersUnlocked ? (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 600 }}>
+                        {fr ? 'Gestion des utilisateurs déverrouillée' : 'User management unlocked'}
+                      </span>
+                      <button onClick={() => setUsersUnlocked(false)} style={{ background: 'none', border: 'none', fontSize: 11, color: '#6b7280', cursor: 'pointer' }}>
+                        {fr ? 'Verrouiller' : 'Lock'}
+                      </button>
+                    </div>
+                    <LocalUsersManager T={T} t={t} lang={lang} />
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowUsersAuth(true)}
+                    style={{ marginTop: 4, width: '100%', padding: '8px 12px', borderRadius: 7, fontSize: 12, fontWeight: 600, background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.25)', color: '#a78bfa', cursor: 'pointer' }}
+                  >
+                    {fr ? 'Gérer les utilisateurs PIN (responsable requis)' : 'Manage PIN users (manager required)'}
+                  </button>
+                )}
+                {showUsersAuth && (
+                  <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ background: '#1a1d27', borderRadius: 10, padding: 24, width: 320, boxShadow: '0 8px 32px rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', marginBottom: 12, textAlign: 'center' }}>
+                        {fr ? 'Vérification du responsable' : 'Manager verification'}
+                      </div>
+                      <IdentityPicker
+                        method="pin"
+                        requiredRole="manager"
+                        onVerified={() => { setShowUsersAuth(false); setUsersUnlocked(true); }}
+                        onCancel={() => setShowUsersAuth(false)}
+                        T={T} t={t} lang={lang}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         )}
