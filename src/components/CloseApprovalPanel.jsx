@@ -122,10 +122,15 @@ export default function CloseApprovalPanel({ session, closePolicy, t, T, lang, c
 
       {/* Action buttons */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
-        {(status === 'draft' || status === 'reopened') && (
+        {status === 'draft' && (
           <button onClick={() => startAction('submit')} style={btnStyle('#16a34a')}>
             {T.capSubmitBtn}
           </button>
+        )}
+        {status === 'reopened' && (
+          <div style={{ fontSize: 11, color: '#f59e0b', padding: '6px 10px', borderRadius: 6, background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', textAlign: 'center' }}>
+            {T?.capReopenedHint ?? 'Use the "Close shift" button above to update and re-submit register closures.'}
+          </div>
         )}
         {status === 'submitted' && signoffRequired && (
           <button onClick={() => startAction('approve')} style={btnStyle('#3b82f6')}>

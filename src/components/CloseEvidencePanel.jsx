@@ -38,6 +38,20 @@ export default function CloseEvidencePanel({ packet, T, t, lang }) {
   const { session, registers, approvalChain, safeDrops, summary } = packet;
   const stageLabels = fr ? STAGE_LABELS_FR : STAGE_LABELS_EN;
 
+  const fmtRegKey = (key) => {
+    const m = /^register_(\d+)$/.exec(key);
+    if (!m) return key;
+    return fr ? `Caisse ${parseInt(m[1]) + 1}` : `Register ${parseInt(m[1]) + 1}`;
+  };
+
+  const fmtShift = (key) => key ? key.charAt(0).toUpperCase() + key.slice(1) : '';
+
+  const fmtDateKey = (dk) => {
+    if (!dk) return '-';
+    const d = new Date(dk + 'T12:00:00');
+    return d.toLocaleDateString(fr ? 'fr-CA' : 'en-CA', { year: 'numeric', month: 'long', day: 'numeric' });
+  };
+
   const varianceColor = summary.totalVarianceCents === 0
     ? '#16a34a'
     : summary.totalVarianceCents > 0 ? '#4ade80' : '#f87171';
@@ -49,8 +63,8 @@ export default function CloseEvidencePanel({ packet, T, t, lang }) {
       <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
           <span style={{ fontWeight: 700, fontSize: 13 }}>
-            {session?.date_key ?? '-'}
-            {session?.shift_key && <span style={{ color: '#a78bfa', marginLeft: 8, fontWeight: 500, fontSize: 11 }}>{session.shift_key}</span>}
+            {fmtDateKey(session?.date_key)}
+            {session?.shift_key && <span style={{ color: '#a78bfa', marginLeft: 8, fontWeight: 500, fontSize: 11 }}>{fmtShift(session.shift_key)}</span>}
           </span>
           <span style={{
             padding: '2px 10px', borderRadius: 12, fontSize: 10.5, fontWeight: 700,
@@ -108,7 +122,7 @@ export default function CloseEvidencePanel({ packet, T, t, lang }) {
             return (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', borderRadius: 6, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', marginBottom: 4 }}>
                 <div>
-                  <span style={{ fontWeight: 600 }}>{r.register_key}</span>
+                  <span style={{ fontWeight: 600 }}>{fmtRegKey(r.register_key)}</span>
                   {r.tender_mode === 'advanced' && (
                     <span style={{ marginLeft: 6, fontSize: 10, color: '#64748b' }}>advanced</span>
                   )}
