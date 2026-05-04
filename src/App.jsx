@@ -6647,7 +6647,7 @@ export default function App(){
  const allKeys=new Set([...Object.keys(oldCash),...Object.keys(newCash)]);
  for(const key of allKeys){
  if(oldCash[key]===newCash[key])continue;
- if(isExisting&&(isPastDate||isDayClosed)&&isFinancialField('daily',key)){
+ if(isExisting&&(isPastDate||isDayClosed)&&isFinancialField('daily',key)&&oldCash[key]!=null&&oldCash[key]!==''&&oldCash[key]!==0){
         if(sessionCorrectionRef.current.has(dt)){
           logCorrection('daily','caisse',`${dt}:${i}`,key,oldCash[key],newCash[key],sessionCorrectionRef.current.get(dt));
         }else{
