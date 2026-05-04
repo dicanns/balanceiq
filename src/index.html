@@ -15,6 +15,10 @@
       input[type=number] { -moz-appearance: textfield; }
       .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
       .no-scrollbar::-webkit-scrollbar { display: none; }
+      details > summary { list-style: none; }
+      details > summary::-webkit-details-marker { display: none; }
+      details > summary::after { content: " ▾"; font-size: 10px; opacity: 0.6; }
+      details[open] > summary::after { content: " ▲"; }
     </style>
   </head>
   <body>
