@@ -244,17 +244,26 @@ export default function RegisterCloseCard({
         />
       )}
       {showSubmitButton && (
-        <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ marginTop: 10 }}>
+          <div style={{ marginBottom: 6, padding: '6px 10px', borderRadius: 6, background: 'rgba(249,115,22,0.06)', border: '1px solid rgba(249,115,22,0.2)', fontSize: 11, color: '#f97316', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontWeight: 700, background: '#f97316', color: '#fff', borderRadius: '50%', width: 16, height: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, flexShrink: 0 }}>1</span>
+            {lang === 'en' ? 'Cashier: enter your count above, then submit.' : 'Caissier : entrez votre compte ci-dessus, puis soumettez.'}
+          </div>
           <button
             onClick={handleSubmitCount}
-            style={{ ...btnBase, background: 'linear-gradient(135deg,#f97316,#ea580c)', color: '#fff' }}
+            style={{ ...btnBase, width: '100%', background: 'linear-gradient(135deg,#f97316,#ea580c)', color: '#fff' }}
           >
             {T?.closeBlindSubmit ?? 'Soumettre le compte'}
           </button>
         </div>
       )}
       {showRevealButton && (
-        <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ marginTop: 10 }}>
+          <div style={{ marginBottom: 6, padding: '6px 10px', borderRadius: 6, background: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.2)', fontSize: 11, color: '#a78bfa', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontWeight: 700, background: '#a78bfa', color: '#fff', borderRadius: '50%', width: 16, height: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, flexShrink: 0 }}>2</span>
+            {lang === 'en' ? 'Count submitted. Manager: reveal the variance, then close the shift.' : 'Compte soumis. Responsable : révélez l\'écart, puis fermez le quart.'}
+          </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button
             onClick={handleRevealVariance}
             style={{ ...btnBase, border: '1.5px solid rgba(249,115,22,0.4)', background: 'rgba(249,115,22,0.07)', color: '#f97316' }}
@@ -266,6 +275,7 @@ export default function RegisterCloseCard({
               </span>
             )}
           </button>
+        </div>
         </div>
       )}
       {showReasonPicker && (
