@@ -315,8 +315,8 @@ export default function CloseReviewModal({
             disabled={!canClose}
             style={{
               padding: '8px 24px', borderRadius: 8, border: 'none',
-              background: canClose ? 'linear-gradient(135deg,#16a34a,#15803d)' : 'rgba(22,163,74,0.25)',
-              color: '#fff', fontSize: '0.875rem', fontWeight: 700,
+              background: canClose ? 'linear-gradient(135deg,#16a34a,#15803d)' : 'rgba(100,116,139,0.25)',
+              color: canClose ? '#fff' : 'rgba(255,255,255,0.4)', fontSize: '0.875rem', fontWeight: 700,
               cursor: canClose ? 'pointer' : 'default',
               transition: 'background 0.2s',
             }}

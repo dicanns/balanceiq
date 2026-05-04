@@ -208,7 +208,7 @@ export default function CloseApprovalPanel({ session, closePolicy, t, T, lang, c
                 <span style={{ color: '#94a3b8' }}>
                   {T[STAGE_LABELS[a.stage]] || a.stage}
                 </span>
-                <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{a.actor_name}</span>
+                <span style={{ color: t?.text ?? '#e2e8f0', fontWeight: 700 }}>{a.actor_name}</span>
                 <span style={{ color: '#64748b' }}>
                   {new Date(a.created_at).toLocaleTimeString(lang === 'en' ? 'en-CA' : 'fr-CA', { hour: '2-digit', minute: '2-digit' })}
                 </span>
