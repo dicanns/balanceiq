@@ -4330,9 +4330,10 @@ function closeSessionList({ dateFrom, dateTo, status, limit = 50 } = {}, _db) {
 
 function closeSessionCreateOrLoad({ date_key, shift_key = null, policy_id = null, prepared_by = null } = {}, _db) {
   const db = _db || getDb();
+  // Load an existing draft OR a reopened session (reopened → submitted is the re-close path)
   const existing = shift_key
-    ? db.prepare('SELECT * FROM close_sessions WHERE date_key = ? AND shift_key = ? AND status = ?').get(date_key, shift_key, 'draft')
-    : db.prepare('SELECT * FROM close_sessions WHERE date_key = ? AND shift_key IS NULL AND status = ?').get(date_key, 'draft');
+    ? db.prepare("SELECT * FROM close_sessions WHERE date_key = ? AND shift_key = ? AND status IN ('draft','reopened') ORDER BY id DESC LIMIT 1").get(date_key, shift_key)
+    : db.prepare("SELECT * FROM close_sessions WHERE date_key = ? AND shift_key IS NULL AND status IN ('draft','reopened') ORDER BY id DESC LIMIT 1").get(date_key);
   if (existing) return existing;
 
   const now = new Date().toISOString();

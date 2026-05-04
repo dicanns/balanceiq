@@ -6893,7 +6893,7 @@ export default function App(){
             }).catch(()=>{});
           }
         }
-        if(session.status==='draft'){
+        if(session.status==='draft'||session.status==='reopened'){
           return window.api.closeAssurance.session.transition({
             id:session.id,to:'submitted',
             actor_name:null,actor_role:null,approval_method:null,
@@ -7261,14 +7261,20 @@ export default function App(){
 
  {/* Deposit verification panel (previous days) */}
  {/* Close-out button / closed badge */}
- {(()=>{const shiftMode=closePolicy?.shift_mode_enabled;const curSess=shiftMode&&currentShiftKey?sessionsForDay.find(s=>s.shift_key===currentShiftKey):null;const canClose=today.anyData&&(shiftMode?(currentShiftKey&&(!curSess||curSess.status==='draft')):!isClosed);return canClose?(<div style={{display:"flex",gap:8,justifyContent:"center",paddingTop:2,flexWrap:"wrap"}}><button onClick={openCloseReview} style={{background:"linear-gradient(135deg,#16a34a,#15803d)",border:"none",borderRadius:8,color:"#fff",padding:"9px 24px",fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:"0.3px"}}>{shiftMode?(lang==='en'?`Close ${currentShiftKey||''} shift`:T.closeDayBtn):T.closeDayBtn}</button><button onClick={()=>setShowTipPool(true)} style={{background:"linear-gradient(135deg,#f59e0b,#d97706)",border:"none",borderRadius:8,color:"#fff",padding:"9px 18px",fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:"0.3px"}}>{lang==='en'?'Tip Pool':'Pourboires'}</button></div>):null;})()}
+ {(()=>{const shiftMode=closePolicy?.shift_mode_enabled;const curSess=shiftMode&&currentShiftKey?sessionsForDay.find(s=>s.shift_key===currentShiftKey):null;const canClose=today.anyData&&(shiftMode?(currentShiftKey&&(!curSess||curSess.status==='draft'||curSess.status==='reopened')):!isClosed);return canClose?(<div style={{display:"flex",gap:8,justifyContent:"center",paddingTop:2,flexWrap:"wrap"}}><button onClick={openCloseReview} style={{background:"linear-gradient(135deg,#16a34a,#15803d)",border:"none",borderRadius:8,color:"#fff",padding:"9px 24px",fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:"0.3px"}}>{shiftMode?(lang==='en'?`Close ${currentShiftKey||''} shift`:T.closeDayBtn):T.closeDayBtn}</button><button onClick={()=>setShowTipPool(true)} style={{background:"linear-gradient(135deg,#f59e0b,#d97706)",border:"none",borderRadius:8,color:"#fff",padding:"9px 18px",fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:"0.3px"}}>{lang==='en'?'Tip Pool':'Pourboires'}</button></div>):null;})()}
+            {isClosed&&activeCloseSession?.status==='finalized'&&editedAfterClose&&(
+              <div style={{padding:'10px 14px',borderRadius:8,background:'rgba(245,158,11,0.08)',border:'1px solid rgba(245,158,11,0.3)',fontSize:12,color:'#fbbf24',display:'flex',alignItems:'flex-start',gap:8}}>
+                <span style={{flexShrink:0,fontSize:14}}>⚠</span>
+                <span>{lang==='en'?'Register data was modified after finalization. Use the Reopen button below to unlock the session and re-submit.':'Des données ont été modifiées après la finalisation. Utilisez le bouton Rouvrir ci-dessous pour déverrouiller la session et resoumettre.'}</span>
+              </div>
+            )}
             {activeCloseSession&&(
               <CloseApprovalPanel
                 session={activeCloseSession}
                 closePolicy={closePolicy}
                 t={t} T={T} lang={lang}
                 cloudUser={cloudUser}
-                onSessionChange={s=>setActiveCloseSession(s)}
+                onSessionChange={s=>{setActiveCloseSession(s);if(s?.status==='reopened'){const next={...closedDays};delete next[selectedDate];setClosedDays(next);window.api.storage.set("balanceiq-closed-days",JSON.stringify(next)).catch(()=>{});}}}
               />
             )}
             {isClosed&&!activeCloseSession&&(()=>{
