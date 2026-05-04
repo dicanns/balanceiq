@@ -4554,10 +4554,10 @@ const VARIANCE_REASON_CODES = [
   'pos_mismatch', 'delivery_mismatch', 'refund_void_issue', 'cash_paid_out', 'unknown',
 ];
 
-function registerClosureSave({ date_key, register_key = 'default', variance_cents = 0, variance_reason_code = null, variance_reason_text = null } = {}, _db) {
+function registerClosureSave({ date_key, shift_key = null, register_key = 'default', variance_cents = 0, variance_reason_code = null, variance_reason_text = null } = {}, _db) {
   const db = _db || getDb();
   const dk = date_key || new Date().toISOString().slice(0, 10);
-  const session = closeSessionCreateOrLoad({ date_key: dk }, db);
+  const session = closeSessionCreateOrLoad({ date_key: dk, shift_key }, db);
   const existing = db.prepare(`SELECT id FROM register_closures WHERE close_session_id=? AND register_key=?`).get(session.id, register_key);
   if (existing) {
     db.prepare(`UPDATE register_closures SET variance_cents=?, variance_reason_code=?, variance_reason_text=? WHERE id=?`)

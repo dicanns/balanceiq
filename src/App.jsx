@@ -6846,7 +6846,7 @@ export default function App(){
     mergedCashes.forEach((c,idx)=>{
       const v=computeRegisterVariance(c);
       window.api?.closeAssurance?.closure?.save({
-        date_key:key,register_key:`register_${idx}`,
+        date_key:key,shift_key:currentShiftKey||null,register_key:`register_${idx}`,
         variance_cents:Math.round((v||0)*100),
         variance_reason_code:c.varianceReasonCode||null,
         variance_reason_text:c.varianceReasonText||null,
