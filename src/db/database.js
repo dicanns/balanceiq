@@ -4680,6 +4680,175 @@ function localUserSetPin({ id, pin_hash, pin_salt }, _db) {
   db.prepare(`UPDATE local_users SET pin_hash=?, pin_salt=?, updated_at=? WHERE id=?`).run(pin_hash, pin_salt, now, id);
 }
 
+// ── Sprint 6A: Compliance aggregation queries ───────────────────────────────
+
+function complianceGetKPIs({ dateFrom, dateTo } = {}, _db) {
+  const db = _db || getDb();
+  const from = dateFrom || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const to   = dateTo   || new Date().toISOString().slice(0, 10);
+
+  // 1. Average time to close (minutes): submitted_at - created_at
+  const sessions = db.prepare(
+    `SELECT submitted_at, created_at FROM close_sessions
+     WHERE date_key >= ? AND date_key <= ? AND submitted_at IS NOT NULL`
+  ).all(from, to);
+  let avgTimeToCloseMinutes = null;
+  if (sessions.length > 0) {
+    const totalMs = sessions.reduce((s, r) => s + Math.max(0, new Date(r.submitted_at) - new Date(r.created_at)), 0);
+    avgTimeToCloseMinutes = Math.round(totalMs / sessions.length / 60000);
+  }
+
+  // 2. Variance by cashier
+  const varianceByCashier = db.prepare(
+    `SELECT rc.cashier_name,
+            COUNT(*) as total,
+            SUM(CASE WHEN ABS(rc.variance_cents) > 0 THEN 1 ELSE 0 END) as with_variance
+     FROM register_closures rc
+     JOIN close_sessions cs ON rc.close_session_id = cs.id
+     WHERE cs.date_key >= ? AND cs.date_key <= ?
+       AND rc.cashier_name IS NOT NULL AND rc.cashier_name != ''
+     GROUP BY rc.cashier_name ORDER BY with_variance DESC, total DESC`
+  ).all(from, to);
+
+  // 3. Variance by register
+  const varianceByRegister = db.prepare(
+    `SELECT rc.register_key,
+            COUNT(*) as total,
+            SUM(CASE WHEN ABS(rc.variance_cents) > 0 THEN 1 ELSE 0 END) as with_variance
+     FROM register_closures rc
+     JOIN close_sessions cs ON rc.close_session_id = cs.id
+     WHERE cs.date_key >= ? AND cs.date_key <= ?
+     GROUP BY rc.register_key ORDER BY with_variance DESC`
+  ).all(from, to);
+
+  // 4. Override count (distinct sessions with any override approval)
+  const overrideCount = db.prepare(
+    `SELECT COUNT(DISTINCT ca.close_session_id) as cnt
+     FROM close_approvals ca
+     JOIN close_sessions cs ON ca.close_session_id = cs.id
+     WHERE cs.date_key >= ? AND cs.date_key <= ? AND ca.stage = 'override'`
+  ).get(from, to)?.cnt ?? 0;
+
+  // 5. Reopen count
+  const reopenCount = db.prepare(
+    `SELECT COUNT(DISTINCT ca.close_session_id) as cnt
+     FROM close_approvals ca
+     JOIN close_sessions cs ON ca.close_session_id = cs.id
+     WHERE cs.date_key >= ? AND cs.date_key <= ? AND ca.stage = 'reopened'`
+  ).get(from, to)?.cnt ?? 0;
+
+  // 6. Checklist compliance % (required + active templates only)
+  const ckRow = db.prepare(
+    `SELECT COUNT(*) as total,
+            SUM(CASE WHEN ce.completed = 1 THEN 1 ELSE 0 END) as completed
+     FROM checklist_entries ce
+     JOIN checklist_templates ct ON ce.template_id = ct.id
+     WHERE ce.date >= ? AND ce.date <= ? AND ct.required = 1 AND ct.active = 1`
+  ).get(from, to);
+  const checklistCompliancePct = ckRow?.total > 0 ? Math.round((ckRow.completed / ckRow.total) * 100) : null;
+
+  // 7. Evidence completeness % (finalized sessions with >= 1 register closure)
+  const evRow = db.prepare(
+    `SELECT COUNT(*) as total_finalized,
+            SUM(CASE WHEN rc_count.cnt > 0 THEN 1 ELSE 0 END) as with_evidence
+     FROM close_sessions cs
+     LEFT JOIN (SELECT close_session_id, COUNT(*) as cnt FROM register_closures GROUP BY close_session_id) rc_count
+               ON rc_count.close_session_id = cs.id
+     WHERE cs.date_key >= ? AND cs.date_key <= ? AND cs.status = 'finalized'`
+  ).get(from, to);
+  const evidenceCompletenessPct = evRow?.total_finalized > 0 ? Math.round((evRow.with_evidence / evRow.total_finalized) * 100) : null;
+
+  // 8. Deposit verification lag (days avg for matched verifications)
+  const lagRow = db.prepare(
+    `SELECT AVG(JULIANDAY(verified_date) - JULIANDAY(date_key)) as avg_lag
+     FROM deposit_verifications
+     WHERE date_key >= ? AND date_key <= ? AND matched = 1 AND verified_date IS NOT NULL`
+  ).get(from, to);
+  const depositVerifLagDays = lagRow?.avg_lag != null ? Math.round(lagRow.avg_lag * 10) / 10 : null;
+
+  return {
+    dateFrom: from, dateTo: to,
+    sessionCount: sessions.length,
+    avgTimeToCloseMinutes,
+    varianceByCashier,
+    varianceByRegister,
+    overrideCount,
+    reopenCount,
+    checklistCompliancePct,
+    evidenceCompletenessPct,
+    depositVerifLagDays,
+  };
+}
+
+function complianceGetLists({ dateFrom, dateTo } = {}, _db) {
+  const db = _db || getDb();
+  const from = dateFrom || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const to   = dateTo   || new Date().toISOString().slice(0, 10);
+  const oneDayAgo = new Date(Date.now() - 86400000).toISOString();
+
+  const unapproved = db.prepare(
+    `SELECT * FROM close_sessions
+     WHERE date_key >= ? AND date_key <= ? AND status = 'submitted'
+       AND submitted_at IS NOT NULL AND submitted_at < ?
+     ORDER BY submitted_at ASC LIMIT 50`
+  ).all(from, to, oneDayAgo);
+
+  const withWarnings = db.prepare(
+    `SELECT * FROM close_sessions
+     WHERE date_key >= ? AND date_key <= ? AND warning_count > 0
+     ORDER BY date_key DESC, id DESC LIMIT 50`
+  ).all(from, to);
+
+  const reopened = db.prepare(
+    `SELECT DISTINCT cs.* FROM close_sessions cs
+     JOIN close_approvals ca ON ca.close_session_id = cs.id AND ca.stage = 'reopened'
+     WHERE cs.date_key >= ? AND cs.date_key <= ?
+     ORDER BY cs.date_key DESC LIMIT 50`
+  ).all(from, to);
+
+  const topVarianceCashiers = db.prepare(
+    `SELECT rc.cashier_name,
+            COUNT(*) as total_closures,
+            SUM(CASE WHEN ABS(rc.variance_cents) > 0 THEN 1 ELSE 0 END) as variance_count,
+            CAST(AVG(ABS(rc.variance_cents)) AS INTEGER) as avg_abs_variance_cents
+     FROM register_closures rc
+     JOIN close_sessions cs ON rc.close_session_id = cs.id
+     WHERE cs.date_key >= ? AND cs.date_key <= ?
+       AND rc.cashier_name IS NOT NULL AND rc.cashier_name != ''
+     GROUP BY rc.cashier_name HAVING variance_count > 0
+     ORDER BY variance_count DESC, avg_abs_variance_cents DESC LIMIT 10`
+  ).all(from, to);
+
+  const topVarianceRegisters = db.prepare(
+    `SELECT rc.register_key,
+            COUNT(*) as total_closures,
+            SUM(CASE WHEN ABS(rc.variance_cents) > 0 THEN 1 ELSE 0 END) as variance_count,
+            CAST(AVG(ABS(rc.variance_cents)) AS INTEGER) as avg_abs_variance_cents
+     FROM register_closures rc
+     JOIN close_sessions cs ON rc.close_session_id = cs.id
+     WHERE cs.date_key >= ? AND cs.date_key <= ?
+     GROUP BY rc.register_key HAVING variance_count > 0
+     ORDER BY variance_count DESC LIMIT 10`
+  ).all(from, to);
+
+  const missingEvidence = db.prepare(
+    `SELECT cs.* FROM close_sessions cs
+     LEFT JOIN register_closures rc ON rc.close_session_id = cs.id
+     WHERE cs.date_key >= ? AND cs.date_key <= ? AND cs.status = 'finalized' AND rc.id IS NULL
+     ORDER BY cs.date_key DESC LIMIT 50`
+  ).all(from, to);
+
+  const missingDepositVerif = db.prepare(
+    `SELECT sde.date_key, SUM(sde.amount_cents) as total_drop_cents
+     FROM safe_drop_events sde
+     LEFT JOIN deposit_verifications dv ON dv.date_key = sde.date_key AND dv.matched = 1
+     WHERE sde.date_key >= ? AND sde.date_key <= ? AND dv.id IS NULL
+     GROUP BY sde.date_key ORDER BY sde.date_key DESC LIMIT 50`
+  ).all(from, to);
+
+  return { unapproved, withWarnings, reopened, topVarianceCashiers, topVarianceRegisters, missingEvidence, missingDepositVerif };
+}
+
 module.exports = {
   storageGet, storageSet, storageGetAll, storageGetByPrefix,
   getAllTablesForBackup, restoreAllTablesFromBackup,
@@ -4756,6 +4925,7 @@ module.exports = {
   closeExceptionList, closeExceptionAcknowledge,
   closeSessionsByDate, closeStoreCarryForward, closeGetPrecedingCarryForward, closeDaySummary,
   evaluateCloseAssurance,
+  complianceGetKPIs, complianceGetLists,
   registerClosureSave,
   denominationSave,
   safeDropSave,

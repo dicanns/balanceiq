@@ -478,6 +478,10 @@ contextBridge.exposeInMainWorld('api', {
       userSetPin:     (opts)     => ipcRenderer.invoke('identity:users:setPin', opts),
       verify:         (opts)     => ipcRenderer.invoke('identity:verify', opts),
     },
+    compliance: {
+      kpis:  (opts) => ipcRenderer.invoke('close:compliance:kpis',  opts),
+      lists: (opts) => ipcRenderer.invoke('close:compliance:lists', opts),
+    },
   },
   depositVerify: {
     create:      (opts)       => ipcRenderer.invoke('deposit:verify:create', opts),
