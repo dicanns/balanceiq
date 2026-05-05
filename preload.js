@@ -300,6 +300,10 @@ contextBridge.exposeInMainWorld('api', {
       upsert: (data)  => ipcRenderer.invoke('tax:profile:upsert', data),
       delete: (id)    => ipcRenderer.invoke('tax:profile:delete', id),
     },
+    registration: {
+      get:  (locationId) => ipcRenderer.invoke('tax:registration:get', locationId),
+      save: (data)       => ipcRenderer.invoke('tax:registration:save', data),
+    },
   },
   bilan: {
     compute:  (asOfDate, opts) => ipcRenderer.invoke('bilan:compute', asOfDate, opts),

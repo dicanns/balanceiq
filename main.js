@@ -64,6 +64,7 @@ const {
   taxPeriodCompute, taxPeriodSave, taxPeriodMarkFiled, taxPeriodList,
   taxSuspenseList, taxSuspenseClassifyAsCashExpense, taxSuspenseReverseCategorization,
   taxProfileList, taxProfileUpsert, taxProfileDelete,
+  taxRegistrationGet, taxRegistrationSave,
   supplierBillList, supplierBillCreate, supplierBillUpdate, supplierBillMarkPaid, supplierBillMarkUnpaid,
   supplierPaymentsList, supplierPaymentCreate,
   assetList, assetCreate, assetUpdate, assetDelete,
@@ -1667,6 +1668,8 @@ ipcMain.handle('tax:suspense:reverse',          (_e, txId)                      
 ipcMain.handle('tax:profile:list',              ()                                      => taxProfileList());
 ipcMain.handle('tax:profile:upsert',            (_e, data)                              => taxProfileUpsert(data));
 ipcMain.handle('tax:profile:delete',            (_e, id)                                => taxProfileDelete(id));
+ipcMain.handle('tax:registration:get',          (_e, locationId)                        => taxRegistrationGet(locationId ?? null));
+ipcMain.handle('tax:registration:save',         (_e, data)                              => taxRegistrationSave(data));
 
 // ── Bilan (Balance Sheet) — Sprint 6 ─────────────────────────────────────────
 try {

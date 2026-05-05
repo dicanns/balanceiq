@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import QuebecTaxWizard from './QuebecTaxWizard.jsx';
 
 const UI = {
   fr: {
@@ -8,6 +9,7 @@ const UI = {
     tabPeriods: 'Périodes',
     tabProfiles: 'Profils fournisseurs',
     tabSuspense: 'Dépenses comptant',
+    tabRegistration: 'Enregistrement',
     newPeriod: 'Nouvelle période',
     periodType: 'Type de période',
     typeQuarterly: 'Trimestrielle',
@@ -68,6 +70,7 @@ const UI = {
     tabPeriods: 'Periods',
     tabProfiles: 'Supplier Profiles',
     tabSuspense: 'Cash Expenses',
+    tabRegistration: 'Registration',
     newPeriod: 'New period',
     periodType: 'Period type',
     typeQuarterly: 'Quarterly',
@@ -460,7 +463,7 @@ export default function TaxPeriodTab({ lang }) {
 
       {/* Sub-tab bar */}
       <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: 14 }}>
-        {[['periods', T.tabPeriods], ['profiles', T.tabProfiles], ['suspense', T.tabSuspense]].map(([id, label]) => (
+        {[['periods', T.tabPeriods], ['profiles', T.tabProfiles], ['suspense', T.tabSuspense], ['registration', T.tabRegistration]].map(([id, label]) => (
           <button key={id} onClick={() => setSubTab(id)} style={{
             background: 'none', border: 'none',
             color: subTab === id ? '#f97316' : '#64748b',
@@ -671,6 +674,13 @@ export default function TaxPeriodTab({ lang }) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ── REGISTRATION TAB ── */}
+      {subTab === 'registration' && (
+        <div style={{ padding: '4px 0' }}>
+          <QuebecTaxWizard lang={lang} locationId={null} />
         </div>
       )}
     </div>

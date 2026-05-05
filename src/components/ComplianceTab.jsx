@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 export const COMPLIANCE_SUBTABS = [
   { id: 'filings',    labelFr: 'Déclarations',      labelEn: 'Filings' },
@@ -15,11 +15,118 @@ const PLACEHOLDER_ICONS = {
 };
 
 const PLACEHOLDER_NEXT = {
-  filings:    { fr: 'Contenu disponible dans la sous-étape 7B', en: 'Content available in sub-sprint 7B' },
-  periods:    { fr: 'Contenu disponible dans la sous-étape 7C', en: 'Content available in sub-sprint 7C' },
+  filings:    { fr: 'Contenu disponible dans la sous-étape 7D', en: 'Content available in sub-sprint 7D' },
   documents:  { fr: 'Contenu disponible dans la sous-étape 7E', en: 'Content available in sub-sprint 7E' },
   accountant: { fr: 'Contenu disponible dans une prochaine sous-étape', en: 'Content available in a future sub-sprint' },
 };
+
+const STATUS_COLORS = {
+  open:   { bg: 'rgba(100,116,139,0.15)', text: '#94a3b8' },
+  filed:  { bg: 'rgba(34,197,94,0.12)',   text: '#22c55e' },
+  paid:   { bg: 'rgba(59,130,246,0.12)',  text: '#60a5fa' },
+};
+
+const UI_PERIODS = {
+  fr: {
+    title: 'Périodes de déclaration',
+    noPeriods: 'Aucune période configurée.',
+    noPeriodsHint: 'Allez dans Configuration → TPS/TVQ → Enregistrement pour configurer votre profil fiscal et générer vos périodes.',
+    status: { open: 'Ouverte', filed: 'Produite', paid: 'Payée' },
+    start: 'Début',
+    end: 'Fin',
+    type: 'Type',
+  },
+  en: {
+    title: 'Filing Periods',
+    noPeriods: 'No periods configured.',
+    noPeriodsHint: 'Go to Configuration → GST/QST → Registration to set up your tax profile and generate periods.',
+    status: { open: 'Open', filed: 'Filed', paid: 'Paid' },
+    start: 'Start',
+    end: 'End',
+    type: 'Type',
+  },
+};
+
+function PeriodsSubTab({ lang, t }) {
+  const fr = lang !== 'en';
+  const T = UI_PERIODS[fr ? 'fr' : 'en'];
+  const [periods, setPeriods] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!window.api?.tax?.period?.list) { setLoading(false); return; }
+    window.api.tax.period.list().then(rows => {
+      setPeriods(rows || []);
+      setLoading(false);
+    });
+  }, []);
+
+  if (loading) return <div style={{ fontSize: 12, color: '#64748b', padding: 12 }}>…</div>;
+
+  if (periods.length === 0) {
+    return (
+      <div style={{
+        background: t.card,
+        border: `1px solid ${t.cardBorder}`,
+        borderRadius: 12,
+        padding: 28,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 10,
+        maxWidth: 480,
+        margin: '0 auto',
+        textAlign: 'center',
+      }}>
+        <div style={{ fontSize: 32 }}>📅</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>{T.noPeriods}</div>
+        <div style={{ fontSize: 11, color: t.textMuted, lineHeight: 1.6 }}>{T.noPeriodsHint}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 14 }}>{T.title}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {periods.map(p => {
+          const status = p.filed_at ? (p.paid_amount != null ? 'paid' : 'filed') : 'open';
+          const sc = STATUS_COLORS[status];
+          const statusLabel = T.status[status];
+          return (
+            <div key={p.id} style={{
+              background: t.card,
+              border: `1px solid ${t.cardBorder}`,
+              borderRadius: 8,
+              padding: '10px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+            }}>
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: '2px 8px',
+                borderRadius: 10, background: sc.bg, color: sc.text,
+                whiteSpace: 'nowrap',
+              }}>
+                {statusLabel}
+              </span>
+              <span style={{ fontSize: 11, color: t.textSub, fontFamily: 'monospace', minWidth: 80 }}>
+                {p.period_start}
+              </span>
+              <span style={{ fontSize: 11, color: t.textMuted }}>→</span>
+              <span style={{ fontSize: 11, color: t.textSub, fontFamily: 'monospace', minWidth: 80 }}>
+                {p.period_end}
+              </span>
+              <span style={{ fontSize: 10, color: t.textMuted, flex: 1 }}>
+                {p.period_type}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export default function ComplianceTab({ t, lang, canUse }) {
   const [subTab, setSubTab] = useState('filings');
@@ -54,7 +161,6 @@ export default function ComplianceTab({ t, lang, canUse }) {
 
   const cur = COMPLIANCE_SUBTABS.find(s => s.id === subTab);
   const label = fr ? cur.labelFr : cur.labelEn;
-  const next = fr ? PLACEHOLDER_NEXT[subTab].fr : PLACEHOLDER_NEXT[subTab].en;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: t.bg }}>
@@ -100,33 +206,39 @@ export default function ComplianceTab({ t, lang, canUse }) {
 
       {/* Content area */}
       <div style={{ flex: 1, padding: 24, overflowY: 'auto' }}>
-        <div style={{
-          background: t.card,
-          border: `1px solid ${t.cardBorder}`,
-          borderRadius: 12,
-          padding: 32,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 12,
-          maxWidth: 480,
-          margin: '0 auto',
-          textAlign: 'center',
-        }}>
-          <div style={{ fontSize: 36 }}>{PLACEHOLDER_ICONS[subTab]}</div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{label}</div>
+        {/* Periods sub-tab — live data */}
+        {subTab === 'periods' && <PeriodsSubTab lang={lang} t={t} />}
+
+        {/* Other sub-tabs — placeholder */}
+        {subTab !== 'periods' && (
           <div style={{
-            fontSize: 11,
-            color: t.textMuted,
-            background: t.section,
+            background: t.card,
             border: `1px solid ${t.cardBorder}`,
-            borderRadius: 6,
-            padding: '8px 14px',
-            fontStyle: 'italic',
+            borderRadius: 12,
+            padding: 32,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 12,
+            maxWidth: 480,
+            margin: '0 auto',
+            textAlign: 'center',
           }}>
-            {next}
+            <div style={{ fontSize: 36 }}>{PLACEHOLDER_ICONS[subTab]}</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{label}</div>
+            <div style={{
+              fontSize: 11,
+              color: t.textMuted,
+              background: t.section,
+              border: `1px solid ${t.cardBorder}`,
+              borderRadius: 6,
+              padding: '8px 14px',
+              fontStyle: 'italic',
+            }}>
+              {PLACEHOLDER_NEXT[subTab] ? (fr ? PLACEHOLDER_NEXT[subTab].fr : PLACEHOLDER_NEXT[subTab].en) : ''}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

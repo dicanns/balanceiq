@@ -1163,6 +1163,30 @@ const MIGRATIONS = [
       database.prepare(`ALTER TABLE tax_calc_log ADD COLUMN province_tax_profile_id INTEGER`).run();
     },
   },
+  {
+    version: 29,
+    description: 'Sprint 7C - Quebec tax registration table',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS tax_registration (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        location_id INTEGER,
+        province_code TEXT NOT NULL DEFAULT 'QC',
+        business_number TEXT,
+        neq TEXT,
+        tps_registered_at TEXT,
+        tvq_registered_at TEXT,
+        fiscal_year_end_month INTEGER NOT NULL DEFAULT 12,
+        fiscal_year_end_day INTEGER NOT NULL DEFAULT 31,
+        filing_frequency TEXT NOT NULL DEFAULT 'quarterly',
+        first_filing_period TEXT,
+        cra_contact TEXT,
+        rq_contact TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        CHECK (filing_frequency IN ('monthly','quarterly','annual'))
+      )`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -3378,6 +3402,72 @@ function taxProfileDelete(id) {
   return true;
 }
 
+function taxRegistrationGet(locationId = null) {
+  const db = getDb();
+  if (locationId != null) {
+    return db.prepare('SELECT * FROM tax_registration WHERE location_id=? LIMIT 1').get(locationId) ?? null;
+  }
+  return db.prepare('SELECT * FROM tax_registration WHERE location_id IS NULL LIMIT 1').get() ?? null;
+}
+
+function taxRegistrationSave(data) {
+  const db = getDb();
+  const {
+    locationId = null,
+    provinceCode = 'QC',
+    businessNumber = null,
+    neq = null,
+    tpsRegisteredAt = null,
+    tvqRegisteredAt = null,
+    fiscalYearEndMonth = 12,
+    fiscalYearEndDay = 31,
+    filingFrequency = 'quarterly',
+    firstFilingPeriod = null,
+    craContact = null,
+    rqContact = null,
+  } = data;
+
+  const existing = taxRegistrationGet(locationId);
+  const now = new Date().toISOString();
+
+  if (existing) {
+    db.prepare(`
+      UPDATE tax_registration SET
+        province_code=?, business_number=?, neq=?,
+        tps_registered_at=?, tvq_registered_at=?,
+        fiscal_year_end_month=?, fiscal_year_end_day=?,
+        filing_frequency=?, first_filing_period=?,
+        cra_contact=?, rq_contact=?, updated_at=?
+      WHERE id=?
+    `).run(
+      provinceCode, businessNumber, neq,
+      tpsRegisteredAt, tvqRegisteredAt,
+      fiscalYearEndMonth, fiscalYearEndDay,
+      filingFrequency, firstFilingPeriod,
+      craContact, rqContact, now,
+      existing.id,
+    );
+    return db.prepare('SELECT * FROM tax_registration WHERE id=?').get(existing.id);
+  }
+
+  const { lastInsertRowid } = db.prepare(`
+    INSERT INTO tax_registration (
+      location_id, province_code, business_number, neq,
+      tps_registered_at, tvq_registered_at,
+      fiscal_year_end_month, fiscal_year_end_day,
+      filing_frequency, first_filing_period,
+      cra_contact, rq_contact
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    locationId, provinceCode, businessNumber, neq,
+    tpsRegisteredAt, tvqRegisteredAt,
+    fiscalYearEndMonth, fiscalYearEndDay,
+    filingFrequency, firstFilingPeriod,
+    craContact, rqContact,
+  );
+  return db.prepare('SELECT * FROM tax_registration WHERE id=?').get(lastInsertRowid);
+}
+
 // ── Supplier Bills (Relational AP) ────────────────────────────────────────────
 
 function supplierBillList({ monthKey = null, paid = null, supplierName = null } = {}) {
@@ -5053,6 +5143,7 @@ module.exports = {
   taxPeriodCompute, taxPeriodSave, taxPeriodMarkFiled, taxPeriodList,
   taxSuspenseList, taxSuspenseClassifyAsCashExpense, taxSuspenseReverseCategorization,
   taxProfileList, taxProfileUpsert, taxProfileDelete,
+  taxRegistrationGet, taxRegistrationSave,
   supplierBillList, supplierBillCreate, supplierBillUpdate, supplierBillMarkPaid, supplierBillMarkUnpaid,
   supplierPaymentsList, supplierPaymentCreate,
   assetList, assetCreate, assetUpdate, assetDelete,

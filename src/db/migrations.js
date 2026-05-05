@@ -1123,6 +1123,30 @@ const MIGRATIONS = [
       database.prepare(`ALTER TABLE tax_calc_log ADD COLUMN province_tax_profile_id INTEGER`).run();
     },
   },
+  {
+    version: 29,
+    description: 'Sprint 7C - Quebec tax registration table',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS tax_registration (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        location_id INTEGER,
+        province_code TEXT NOT NULL DEFAULT 'QC',
+        business_number TEXT,
+        neq TEXT,
+        tps_registered_at TEXT,
+        tvq_registered_at TEXT,
+        fiscal_year_end_month INTEGER NOT NULL DEFAULT 12,
+        fiscal_year_end_day INTEGER NOT NULL DEFAULT 31,
+        filing_frequency TEXT NOT NULL DEFAULT 'quarterly',
+        first_filing_period TEXT,
+        cra_contact TEXT,
+        rq_contact TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        CHECK (filing_frequency IN ('monthly','quarterly','annual'))
+      )`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
