@@ -4682,6 +4682,7 @@ function MesSuccursalesTab({myLinkedLocations,activeMUOLocationId,setActiveMUOLo
 function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfig,facCategories,facProduits,saveFacFactures,docNums,saveDocNums,companyInfo,apiConfig,perfTargets,payrollConfig,cloudUser,alertConfig,orgId,onUnreadDocsChange}){
  const t=useT();
  const T=useL();
+ const lang=T===EN?'en':'fr';
  const [monthlyData,setMonthlyData]=useState({});
  const [loading,setLoading]=useState(true);
  const [cloudSyncMap,setCloudSyncMap]=useState({}); // {localLocId: true} — which locations have cloud data
@@ -4960,7 +4961,6 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
  return{name:loc.nom,monthlySales:Math.round(d.monthlySales||0),labourPct:d.avgLabourPct||0,avgDz:d.avgDz||0,daysSinceFilled:d.daysSinceFilled||999,isCloud:!!d.isCloud};
  }),
  };
- const lang=T===EN?'en':'fr';
  const ownApiKey=apiConfig?.anthropicApiKey||null;
  const {SUPABASE_URL,SUPABASE_ANON_KEY}=await import('./services/supabase.js');
  // Get auth token explicitly

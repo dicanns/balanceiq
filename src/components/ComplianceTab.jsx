@@ -15,8 +15,8 @@ const PLACEHOLDER_ICONS = {
 };
 
 const PLACEHOLDER_NEXT = {
-  filings:    { fr: 'Contenu disponible dans la sous-étape 7D', en: 'Content available in sub-sprint 7D' },
-  accountant: { fr: 'Contenu disponible dans une prochaine sous-étape', en: 'Content available in a future sub-sprint' },
+  filings:    { fr: 'Disponible prochainement.', en: 'Coming soon.' },
+  accountant: { fr: 'Disponible prochainement.', en: 'Coming soon.' },
 };
 
 const UI_DOCS = {
