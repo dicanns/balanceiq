@@ -94,7 +94,7 @@ export default function RegisterCloseCard({
   const effectiveFloatCents = openingFloatCents || Math.round((cash?.float ?? 0) * 100);
   const variance = advancedMode
     ? computeAdvancedRegisterVariance(cash || {}, cash || {}, safeDropsTotalCents, effectiveFloatCents)
-    : computeRegisterVariance(cash || {});
+    : computeRegisterVariance(cash || {}, effectiveFloatCents > 0 ? effectiveFloatCents : null);
   const varianceCents = variance != null ? Math.round(Math.abs(variance) * 100) : 0;
   const thresholdExceeded = variance != null && varianceCents > varianceThresholdCents;
   const showReasonPicker = thresholdExceeded && varianceRule !== 'inform' && !hideVariance && !reasonConfirmed;
@@ -167,7 +167,7 @@ export default function RegisterCloseCard({
   if (!isBlind) {
     return (
       <div>
-        <CashBlockComponent {...cashBlockProps} collapsed={collapsed} cash={cash} onChange={onChange} roster={roster} />
+        <CashBlockComponent {...cashBlockProps} openingFloatCents={effectiveFloatCents} collapsed={collapsed} cash={cash} onChange={onChange} roster={roster} />
         {!collapsed && denomAllowed && (
           <DenomToggle
             fr={fr} T={T} t={t}
@@ -213,6 +213,7 @@ export default function RegisterCloseCard({
     <div>
       <CashBlockComponent
         {...cashBlockProps}
+        openingFloatCents={effectiveFloatCents}
         collapsed={collapsed}
         cash={cash}
         onChange={onChange}

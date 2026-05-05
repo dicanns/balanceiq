@@ -7,7 +7,7 @@
  *
  * Returns null when inputs are insufficient.
  */
-function computeRegisterVariance(cash) {
+function computeRegisterVariance(cash, effectiveFloatCents = null) {
   const posVentes = cash.posVentes ?? null;
   if (posVentes === null) return null;
   const posTPS = cash.posTPS ?? 0;
@@ -17,7 +17,7 @@ function computeRegisterVariance(cash) {
   const finalCash = cash.finalCash ?? null;
   if (finalCash === null) return null;
 
-  const float_ = cash.float ?? 0;
+  const float_ = effectiveFloatCents != null ? effectiveFloatCents / 100 : (cash.float ?? 0);
   const posT = posVentes + posTPS + posTVQ;
   const expectedCash = posT - posLivraisons - interac + float_;
   const physCash = finalCash + (cash.deposits ?? 0);

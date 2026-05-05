@@ -309,15 +309,17 @@ function ReconLine({label,value,negative,bold,accent,borderTop}){
 }
 
 // ── CASH BLOCK ──
-function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,roster,posAdvancedConfig,onScan,hideVariance=false,blindStatusLabel=null}){
+function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,roster,posAdvancedConfig,onScan,openingFloatCents=0,hideVariance=false,blindStatusLabel=null}){
  const T=useL();
  const t=useT();
  // POS total = Sales + GST + QST (deliveries are SUBSET of sales, already included)
  const posOk=cash.posVentes!=null;
  const posT=(cash.posVentes||0)+(cash.posTPS||0)+(cash.posTVQ||0);
  // Expected in register = Total POS − deliveries + opening float (cashier counts the whole drawer)
+ // openingFloatCents from carry-forward takes precedence over manually entered cash.float
  const posLiv=cash.posLivraisons||0;
- const expectedInReg=posOk?posT-posLiv+(cash.float??0):null;
+ const effectiveFloat=openingFloatCents>0?openingFloatCents/100:(cash.float??0);
+ const expectedInReg=posOk?posT-posLiv+effectiveFloat:null;
  // Net Sales = Sales before tax − Discounts − Refunds (royalty base)
  const posDisc=cash.posDiscounts||0;
  const posRef=cash.posRefunds||0;
@@ -340,7 +342,7 @@ function CashBlock({cash,index,onChange,onRemove,canRemove,collapsed,onToggle,ro
  const hasPosBreakdown=!!(posPmts.visa||posPmts.mastercard||posPmts.debit||posPmts.amex||posPmts.other);
  const posVsTermMatch=!hasPosBreakdown||termTotal==null||Math.abs(posCardTotal-(termTotal||0))<=0.01;
  // Expected cash = Expected in register + float − terminal (what should be physically in the drawer)
- const expectedCash=(posOk&&termTotal!=null)?(posT-posLiv+(cash.float??0))-(termTotal||0):null;
+ const expectedCash=(posOk&&termTotal!=null)?(posT-posLiv+effectiveFloat)-(termTotal||0):null;
  // Physical cash = what's in till + what was moved to safe (deposits)
  const physCash=(cash.finalCash||0)+(cash.deposits||0);
  const cashVariance=(expectedCash!=null&&cash.finalCash!=null)?physCash-expectedCash:null;
@@ -6728,7 +6730,7 @@ export default function App(){
   },[getLR,getIC,invConfig]);
 
   const today=computeDay(selectedDate);const d=new Date(selectedDate+"T12:00:00");const holiday=getHol(d);const raw=getLR(selectedDate);const _shiftMode=!!closePolicy?.shift_mode_enabled;const cashes=_shiftMode&&currentShiftKey?(liveData[selectedDate]?.shiftCashes?.[currentShiftKey]??[]):raw.cashes;const emps=raw.employees;const _curShiftSess=_shiftMode&&currentShiftKey?sessionsForDay.find(s=>s.shift_key===currentShiftKey):null;const _sessionLocked=(_shiftMode?_curShiftSess?.status:activeCloseSession?.status)==='finalized';
-  const _dayVarianceCents=useMemo(()=>{if(!_shiftMode)return null;const sc=liveData[selectedDate]?.shiftCashes||{};let t=0;let any=false;for(const arr of Object.values(sc)){for(const c of arr){const v=computeRegisterVariance(c);if(v!=null){t+=Math.round(v*100);any=true;}}}return any?t:null;},[_shiftMode,liveData,selectedDate]);
+  const _dayVarianceCents=useMemo(()=>{if(!_shiftMode)return null;const sc=liveData[selectedDate]?.shiftCashes||{};let t=0;let any=false;for(const[sk,arr]of Object.entries(sc)){const prevKey=precedingShiftKey(sk);const cfCents=sessionsForDay.find(s=>s.shift_key===prevKey)?.carry_forward_float_cents??0;for(const c of arr){const v=computeRegisterVariance(c,cfCents>0?cfCents:null);if(v!=null){t+=Math.round(v*100);any=true;}}}return any?t:null;},[_shiftMode,liveData,selectedDate,sessionsForDay]);
   const isDayComplete=today.anyData&&today.allBal&&raw.hamEnd!=null&&raw.hotEnd!=null;
 
   // ── SYSTEM TRAY: update tooltip with today's sales ────────────────────────
@@ -6815,8 +6817,9 @@ export default function App(){
   const openCloseReview=useCallback(async()=>{
     const key=selectedDate;
     const dayCashes=closePolicy?.shift_mode_enabled&&currentShiftKey?(liveDataRef.current[key]?.shiftCashes?.[currentShiftKey]||[]):(liveDataRef.current[key]?.cashes||[]);
+    const _reviewCfCents=closePolicy?.shift_mode_enabled&&currentShiftKey?(shiftFloatOverride??sessionsForDay.find(s=>s.shift_key===precedingShiftKey(currentShiftKey))?.carry_forward_float_cents??0):0;
     const closures=dayCashes.map(c=>{
-      const v=computeRegisterVariance(c);
+      const v=computeRegisterVariance(c,_reviewCfCents>0?_reviewCfCents:null);
       return{variance_cents:v!=null?Math.round(v*100):0};
     });
     const dailyTemplates=checklistTemplates.filter(tmpl=>tmpl.active&&tmpl.required&&tmpl.frequency==='daily');
@@ -6834,7 +6837,7 @@ export default function App(){
     }
     setCloseReviewData({evaluation,cashes:dayCashes,checklistItems:chkItems,posDataPresent,depositsPresent});
     setShowCloseReview(true);
-  },[selectedDate,closePolicy,checklistTemplates,checklistEntries,currentShiftKey]);
+  },[selectedDate,closePolicy,checklistTemplates,checklistEntries,currentShiftKey,shiftFloatOverride,sessionsForDay]);
 
   // ── closeDay: persist snapshot + state after modal confirms (2E/4C) ──────────
   const closeDay=useCallback(async(localReasons={},overrideData={})=>{
@@ -6851,11 +6854,13 @@ export default function App(){
       return merged;
     });
     // Save a register closure for every register (not just those with modal-captured reasons)
+    // Use carry-forward float cents so the variance formula matches what the UI shows
+    const _closeCfCents=_closeShiftMode?(shiftFloatOverride??sessionsForDay.find(s=>s.shift_key===precedingShiftKey(currentShiftKey))?.carry_forward_float_cents??0):0;
     mergedCashes.forEach((c,idx)=>{
-      const v=computeRegisterVariance(c);
+      const v=computeRegisterVariance(c,_closeCfCents>0?_closeCfCents:null);
       window.api?.closeAssurance?.closure?.save({
         date_key:key,shift_key:currentShiftKey||null,register_key:`register_${idx}`,
-        variance_cents:Math.round((v||0)*100),
+        variance_cents:Math.round((v??0)*100),
         variance_reason_code:c.varianceReasonCode||null,
         variance_reason_text:c.varianceReasonText||null,
       }).catch(()=>{});
