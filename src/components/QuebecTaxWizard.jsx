@@ -71,21 +71,22 @@ const UI = {
 };
 
 const inputStyle = {
-  background: 'rgba(255,255,255,0.04)',
-  border: '1px solid rgba(255,255,255,0.12)',
+  background: '#f8fafc',
+  border: '1px solid #e2e8f0',
   borderRadius: 6,
-  color: '#e2e8f0',
+  color: '#1e293b',
   fontSize: 12,
   padding: '7px 10px',
   width: '100%',
   boxSizing: 'border-box',
   fontFamily: "'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",
+  outline: 'none',
 };
 
 const labelStyle = {
   fontSize: 11,
   fontWeight: 600,
-  color: '#94a3b8',
+  color: '#475569',
   marginBottom: 4,
   display: 'block',
 };
@@ -186,19 +187,19 @@ export default function QuebecTaxWizard({ lang, locationId = null }) {
     <div style={{ maxWidth: 560 }}>
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', marginBottom: 4 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>
           {T.title}
           {existing && (
             <span style={{
               marginLeft: 10, fontSize: 10, fontWeight: 700,
-              color: '#22c55e', background: 'rgba(34,197,94,0.12)',
+              color: '#16a34a', background: 'rgba(22,163,74,0.1)',
               padding: '2px 8px', borderRadius: 10,
             }}>
               {T.configured}
             </span>
           )}
         </div>
-        <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.5 }}>{T.subtitle}</div>
+        <div style={{ fontSize: 11, color: '#475569', lineHeight: 1.5 }}>{T.subtitle}</div>
       </div>
 
       {/* Form grid */}
@@ -274,10 +275,10 @@ export default function QuebecTaxWizard({ lang, locationId = null }) {
 
       {/* Disclaimer */}
       <div style={{
-        fontSize: 10, color: '#475569', fontStyle: 'italic',
+        fontSize: 10, color: '#64748b', fontStyle: 'italic',
         padding: '8px 12px', borderRadius: 6,
-        background: 'rgba(255,255,255,0.03)',
-        border: '1px solid rgba(255,255,255,0.06)',
+        background: 'rgba(249,115,22,0.04)',
+        border: '1px solid rgba(249,115,22,0.15)',
         marginBottom: 16,
       }}>
         {T.disclaimer}
@@ -310,11 +311,11 @@ export default function QuebecTaxWizard({ lang, locationId = null }) {
             style={{
               padding: '8px 18px',
               borderRadius: 6,
-              background: 'rgba(34,197,94,0.12)',
-              color: '#22c55e',
+              background: 'rgba(22,163,74,0.08)',
+              color: '#16a34a',
               fontWeight: 700,
               fontSize: 12,
-              border: '1px solid rgba(34,197,94,0.25)',
+              border: '1px solid rgba(22,163,74,0.3)',
               cursor: 'pointer',
               fontFamily: "'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",
             }}
@@ -326,7 +327,7 @@ export default function QuebecTaxWizard({ lang, locationId = null }) {
         {msg && (
           <span style={{
             fontSize: 11, fontWeight: 600,
-            color: msg.type === 'ok' ? '#22c55e' : '#f59e0b',
+            color: msg.type === 'ok' ? '#16a34a' : '#b45309',
           }}>
             {msg.text}
           </span>
