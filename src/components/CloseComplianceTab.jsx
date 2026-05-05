@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { computeCloseScore, deriveRates, BAND_COLOR } from '../services/closeScorecard.js';
+import { buildCompliancePdfHTML } from '../services/compliancePdfBuilder.js';
 
 const fmt = (cents) =>
   new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' }).format((cents ?? 0) / 100);
@@ -98,6 +99,13 @@ function exportCsv(kpis, lists, fr) {
   URL.revokeObjectURL(url);
 }
 
+function b64ToBlob(b64) {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: 'application/pdf' });
+}
+
 const PERIODS = ['today', 'yesterday', 'week', 'month', 'custom'];
 
 export default function CloseComplianceTab({ t, lang, canUse, activePlan }) {
@@ -147,6 +155,29 @@ export default function CloseComplianceTab({ t, lang, canUse, activePlan }) {
     return computeCloseScore(deriveRates(kpis));
   }, [kpis]);
 
+  const handleExportPdf = useCallback(async () => {
+    if (!kpis || !lists) return;
+    if (!canUse('reportingAdvanced')) {
+      // Trigger upgrade via custom event (same pattern as other Pro gates in App.jsx)
+      window.dispatchEvent(new CustomEvent('biq:upgrade-prompt', { detail: { feature: 'reportingAdvanced' } }));
+      return;
+    }
+    const html = buildCompliancePdfHTML({ kpis, lists, scorecard, lang });
+    if (window.api?.pdf?.toPDF) {
+      const b64 = await window.api.pdf.toPDF(html);
+      const blob = b64ToBlob(b64);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `fermeture-conformite-${new Date().toISOString().slice(0, 10)}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else {
+      // Fallback for non-Electron (dev browser)
+      window.dispatchEvent(new CustomEvent('biq:pdf-preview', { detail: html }));
+    }
+  }, [kpis, lists, scorecard, lang, canUse]);
+
   const varColor = (pct) => pct == null ? t.textMuted : pct >= 90 ? '#16a34a' : pct >= 70 ? '#f59e0b' : '#ef4444';
 
   const sessionRow = (s) => (
@@ -166,13 +197,25 @@ export default function CloseComplianceTab({ t, lang, canUse, activePlan }) {
         <div style={{ fontSize: 15, fontWeight: 700, color: t.text }}>
           {fr ? 'Conformité de fermeture' : 'Close Compliance'}
         </div>
-        <button
-          onClick={() => exportCsv(kpis || {}, lists || { unapproved:[], topVarianceCashiers:[], withWarnings:[], reopened:[], topVarianceRegisters:[], missingEvidence:[], missingDepositVerif:[] }, fr)}
-          disabled={!kpis}
-          style={{ padding: '5px 14px', borderRadius: 7, border: '1px solid rgba(249,115,22,0.3)', background: 'rgba(249,115,22,0.08)', color: '#f97316', fontSize: 11, fontWeight: 700, cursor: kpis ? 'pointer' : 'not-allowed', opacity: kpis ? 1 : 0.5 }}
-        >
-          {fr ? 'Exporter CSV' : 'Export CSV'}
-        </button>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <button
+            onClick={() => exportCsv(kpis || {}, lists || { unapproved:[], topVarianceCashiers:[], withWarnings:[], reopened:[], topVarianceRegisters:[], missingEvidence:[], missingDepositVerif:[] }, fr)}
+            disabled={!kpis}
+            style={{ padding: '5px 14px', borderRadius: 7, border: '1px solid rgba(249,115,22,0.3)', background: 'rgba(249,115,22,0.08)', color: '#f97316', fontSize: 11, fontWeight: 700, cursor: kpis ? 'pointer' : 'not-allowed', opacity: kpis ? 1 : 0.5 }}
+          >
+            {fr ? 'Exporter CSV' : 'Export CSV'}
+          </button>
+          <button
+            onClick={handleExportPdf}
+            disabled={!kpis}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 14px', borderRadius: 7, border: '1px solid rgba(56,189,248,0.3)', background: 'rgba(56,189,248,0.08)', color: '#38bdf8', fontSize: 11, fontWeight: 700, cursor: kpis ? 'pointer' : 'not-allowed', opacity: kpis ? 1 : 0.5 }}
+          >
+            {fr ? 'Exporter PDF' : 'Export PDF'}
+            {!canUse('reportingAdvanced') && (
+              <span style={{ fontSize: 8, fontWeight: 700, background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.3)', color: '#38bdf8', borderRadius: 4, padding: '1px 4px', lineHeight: 1.4 }}>Pro</span>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Period selector */}
