@@ -4766,6 +4766,34 @@ function complianceGetKPIs({ dateFrom, dateTo } = {}, _db) {
   ).get(from, to);
   const depositVerifLagDays = lagRow?.avg_lag != null ? Math.round(lagRow.avg_lag * 10) / 10 : null;
 
+  // 9. Raw counts for scorecard rate computation
+  const closureCountRow = db.prepare(
+    `SELECT COUNT(*) as total,
+            SUM(CASE WHEN ABS(rc.variance_cents) > 0 THEN 1 ELSE 0 END) as with_variance
+     FROM register_closures rc
+     JOIN close_sessions cs ON rc.close_session_id = cs.id
+     WHERE cs.date_key >= ? AND cs.date_key <= ?`
+  ).get(from, to);
+  const totalClosures = closureCountRow?.total ?? 0;
+  const closuresWithVariance = closureCountRow?.with_variance ?? 0;
+
+  const safeDropRow = db.prepare(
+    `SELECT COUNT(*) as drops FROM safe_drop_events WHERE date_key >= ? AND date_key <= ?`
+  ).get(from, to);
+  const safeDropCount = safeDropRow?.drops ?? 0;
+
+  const matchedDepositRow = db.prepare(
+    `SELECT COUNT(*) as matched FROM deposit_verifications WHERE date_key >= ? AND date_key <= ? AND matched = 1`
+  ).get(from, to);
+  const depositMatchedCount = matchedDepositRow?.matched ?? 0;
+
+  const onTimeRow = db.prepare(
+    `SELECT COUNT(*) as cnt FROM close_sessions
+     WHERE date_key >= ? AND date_key <= ? AND submitted_at IS NOT NULL
+       AND (JULIANDAY(submitted_at) - JULIANDAY(created_at)) * 1440 < 120`
+  ).get(from, to);
+  const onTimeCount = onTimeRow?.cnt ?? 0;
+
   return {
     dateFrom: from, dateTo: to,
     sessionCount: sessions.length,
@@ -4777,6 +4805,11 @@ function complianceGetKPIs({ dateFrom, dateTo } = {}, _db) {
     checklistCompliancePct,
     evidenceCompletenessPct,
     depositVerifLagDays,
+    totalClosures,
+    closuresWithVariance,
+    safeDropCount,
+    depositMatchedCount,
+    onTimeCount,
   };
 }
 

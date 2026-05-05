@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { computeCloseScore, deriveRates, BAND_COLOR } from '../services/closeScorecard.js';
 
 const fmt = (cents) =>
   new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' }).format((cents ?? 0) / 100);
@@ -141,6 +142,11 @@ export default function CloseComplianceTab({ t, lang, canUse, activePlan }) {
     custom:    fr ? 'Personnalisé': 'Custom',
   }[p]);
 
+  const scorecard = useMemo(() => {
+    if (!kpis) return null;
+    return computeCloseScore(deriveRates(kpis));
+  }, [kpis]);
+
   const varColor = (pct) => pct == null ? t.textMuted : pct >= 90 ? '#16a34a' : pct >= 70 ? '#f59e0b' : '#ef4444';
 
   const sessionRow = (s) => (
@@ -202,6 +208,50 @@ export default function CloseComplianceTab({ t, lang, canUse, activePlan }) {
       {loading && (
         <div style={{ textAlign: 'center', padding: 24, fontSize: 12, color: t.textMuted }}>
           {fr ? 'Chargement...' : 'Loading...'}
+        </div>
+      )}
+
+      {!loading && kpis && scorecard && (
+        <div style={{ background: t.card, border: `2px solid ${BAND_COLOR[scorecard.band]}33`, borderRadius: 12, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 72 }}>
+            <div style={{ fontSize: 36, fontWeight: 900, color: BAND_COLOR[scorecard.band], fontFamily: "'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif", fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+              {scorecard.score}
+            </div>
+            <div style={{ fontSize: 9.5, color: t.textMuted, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', marginTop: 3 }}>/100</div>
+          </div>
+          <div style={{ flex: 1, minWidth: 160 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: BAND_COLOR[scorecard.band], marginBottom: 4 }}>
+              {fr
+                ? (scorecard.band === 'green' ? 'Conformité excellente' : scorecard.band === 'yellow' ? 'Conformité acceptable' : 'Conformité insuffisante')
+                : (scorecard.band === 'green' ? 'Excellent compliance' : scorecard.band === 'yellow' ? 'Acceptable compliance' : 'Compliance needs attention')}
+            </div>
+            <div style={{ fontSize: 10.5, color: t.textMuted, lineHeight: 1.5 }}>
+              {scorecard.topDetractor && scorecard.entries.find(e => e.key === scorecard.topDetractor)?.value != null && (
+                <>
+                  {fr ? 'Point faible: ' : 'Weakest: '}
+                  <span style={{ color: BAND_COLOR.red, fontWeight: 600 }}>
+                    {fr
+                      ? scorecard.entries.find(e => e.key === scorecard.topDetractor)?.labelFr
+                      : scorecard.entries.find(e => e.key === scorecard.topDetractor)?.label}
+                    {' '}({Math.round((scorecard.rates[scorecard.topDetractor] ?? 0) * 100)}%)
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {scorecard.entries.map(e => {
+              const v = e.value;
+              const pct = v != null ? Math.round(v * 100) : null;
+              const color = v == null ? t.textMuted : v >= 0.85 ? '#22c55e' : v >= 0.65 ? '#fbbf24' : '#ef4444';
+              return (
+                <div key={e.key} title={fr ? e.labelFr : e.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: t.section, border: `1px solid ${t.cardBorder}`, borderRadius: 7, padding: '4px 8px', minWidth: 50 }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color, fontVariantNumeric: 'tabular-nums' }}>{pct != null ? `${pct}%` : '—'}</div>
+                  <div style={{ fontSize: 8.5, color: t.textMuted, textAlign: 'center', maxWidth: 52, lineHeight: 1.3 }}>{fr ? e.labelFr : e.label}</div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
