@@ -53,6 +53,7 @@ export const PLAN_FEATURES = {
     franchiseeScorecards: false,
     consolidatedAging: false,
     whiteLabel: false,
+    reportingAdvanced: false,
   },
   pro: {
     clientDatabase: true,
@@ -93,6 +94,7 @@ export const PLAN_FEATURES = {
     franchiseeScorecards: false,
     consolidatedAging: false,
     whiteLabel: false,
+    reportingAdvanced: true,
   },
   // Franchisee in a franchisor network — cloud sync included + all Pro features
   // ($5/mo Network Pro, or free sync covered by franchisor at base 'network' level)
@@ -135,6 +137,7 @@ export const PLAN_FEATURES = {
     franchiseeScorecards: false,
     consolidatedAging: false,
     whiteLabel: false,
+    reportingAdvanced: true,
   },
   franchise: {
     clientDatabase: true,
@@ -175,6 +178,7 @@ export const PLAN_FEATURES = {
     franchiseeScorecards: true,
     consolidatedAging: true,
     whiteLabel: true,
+    reportingAdvanced: true,
   },
 };
 
