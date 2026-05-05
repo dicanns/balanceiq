@@ -479,8 +479,9 @@ contextBridge.exposeInMainWorld('api', {
       verify:         (opts)     => ipcRenderer.invoke('identity:verify', opts),
     },
     compliance: {
-      kpis:  (opts) => ipcRenderer.invoke('close:compliance:kpis',  opts),
-      lists: (opts) => ipcRenderer.invoke('close:compliance:lists', opts),
+      kpis:            (opts) => ipcRenderer.invoke('close:compliance:kpis',             opts),
+      lists:           (opts) => ipcRenderer.invoke('close:compliance:lists',            opts),
+      exceptionPatterns: (opts) => ipcRenderer.invoke('close:compliance:exceptionPatterns', opts),
     },
   },
   depositVerify: {

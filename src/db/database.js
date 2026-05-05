@@ -4813,6 +4813,72 @@ function complianceGetKPIs({ dateFrom, dateTo } = {}, _db) {
   };
 }
 
+function closeExceptionPatterns({ dateFrom, dateTo } = {}, _db) {
+  const db = _db || getDb();
+  const from = dateFrom || new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+  const to   = dateTo   || new Date().toISOString().slice(0, 10);
+
+  // Per-cashier variance summary using $5 threshold
+  const cashierSummary = db.prepare(
+    `SELECT rc.cashier_name,
+            COUNT(*) as total_closures,
+            SUM(CASE WHEN ABS(rc.variance_cents) > 500 THEN 1 ELSE 0 END) as variance_closures
+     FROM register_closures rc
+     JOIN close_sessions cs ON rc.close_session_id = cs.id
+     WHERE cs.date_key >= ? AND cs.date_key <= ?
+       AND rc.cashier_name IS NOT NULL AND rc.cashier_name != ''
+     GROUP BY rc.cashier_name`
+  ).all(from, to);
+
+  // Per-register variance summary using $5 threshold
+  const registerSummary = db.prepare(
+    `SELECT rc.register_key,
+            COUNT(*) as total_closures,
+            SUM(CASE WHEN ABS(rc.variance_cents) > 500 THEN 1 ELSE 0 END) as variance_closures
+     FROM register_closures rc
+     JOIN close_sessions cs ON rc.close_session_id = cs.id
+     WHERE cs.date_key >= ? AND cs.date_key <= ?
+       AND rc.register_key IS NOT NULL AND rc.register_key != ''
+     GROUP BY rc.register_key`
+  ).all(from, to);
+
+  // Per-day-of-week variance summary (SQLite strftime %w: 0=Sunday)
+  const dowSummary = db.prepare(
+    `SELECT CAST(STRFTIME('%w', cs.date_key) AS INTEGER) as dow,
+            COUNT(*) as total_closures,
+            SUM(CASE WHEN ABS(rc.variance_cents) > 500 THEN 1 ELSE 0 END) as variance_closures
+     FROM register_closures rc
+     JOIN close_sessions cs ON rc.close_session_id = cs.id
+     WHERE cs.date_key >= ? AND cs.date_key <= ?
+     GROUP BY dow`
+  ).all(from, to);
+
+  // Session counts for reopen pattern
+  const sessionCountRow = db.prepare(
+    `SELECT COUNT(DISTINCT cs.id) as sessionCount,
+            COUNT(DISTINCT ca.close_session_id) as reopenCount
+     FROM close_sessions cs
+     LEFT JOIN close_approvals ca ON ca.close_session_id = cs.id AND ca.stage = 'reopened'
+     WHERE cs.date_key >= ? AND cs.date_key <= ?`
+  ).get(from, to);
+  const sessionCounts = {
+    sessionCount: sessionCountRow?.sessionCount ?? 0,
+    reopenCount:  sessionCountRow?.reopenCount  ?? 0,
+  };
+
+  // Approval lags in minutes (submit_at -> finalize approval created_at)
+  const lagRows = db.prepare(
+    `SELECT (JULIANDAY(ca.created_at) - JULIANDAY(cs.submitted_at)) * 1440 as lag_minutes
+     FROM close_approvals ca
+     JOIN close_sessions cs ON ca.close_session_id = cs.id
+     WHERE cs.date_key >= ? AND cs.date_key <= ?
+       AND ca.stage = 'approved' AND cs.submitted_at IS NOT NULL`
+  ).all(from, to);
+  const approvalLags = lagRows.map(r => Math.max(0, Math.round(r.lag_minutes)));
+
+  return { cashierSummary, registerSummary, dowSummary, sessionCounts, approvalLags };
+}
+
 function complianceGetLists({ dateFrom, dateTo } = {}, _db) {
   const db = _db || getDb();
   const from = dateFrom || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
@@ -4958,7 +5024,7 @@ module.exports = {
   closeExceptionList, closeExceptionAcknowledge,
   closeSessionsByDate, closeStoreCarryForward, closeGetPrecedingCarryForward, closeDaySummary,
   evaluateCloseAssurance,
-  complianceGetKPIs, complianceGetLists,
+  complianceGetKPIs, complianceGetLists, closeExceptionPatterns,
   registerClosureSave,
   denominationSave,
   safeDropSave,

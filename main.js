@@ -88,7 +88,7 @@ const {
   closeVarianceReveal,
   closeExceptionList, closeExceptionAcknowledge,
   evaluateCloseAssurance,
-  complianceGetKPIs, complianceGetLists,
+  complianceGetKPIs, complianceGetLists, closeExceptionPatterns,
   registerClosureSave,
   denominationSave,
   safeDropSave,
@@ -2583,8 +2583,9 @@ ipcMain.handle('close:denomination:save',     (_e, closureId, denoms) => denomin
 ipcMain.handle('close:safedrop:save',         (_e, opts)              => safeDropSave(opts || {}));
 ipcMain.handle('close:safedrop:list',         (_e, dateKey)           => safeDropList(dateKey));
 ipcMain.handle('close:safedrop:delete',       (_e, id)                => safeDropDelete(id));
-ipcMain.handle('close:compliance:kpis',       (_e, opts)              => complianceGetKPIs(opts || {}));
-ipcMain.handle('close:compliance:lists',      (_e, opts)              => complianceGetLists(opts || {}));
+ipcMain.handle('close:compliance:kpis',               (_e, opts) => complianceGetKPIs(opts || {}));
+ipcMain.handle('close:compliance:lists',              (_e, opts) => complianceGetLists(opts || {}));
+ipcMain.handle('close:compliance:exceptionPatterns',  (_e, opts) => closeExceptionPatterns(opts || {}));
 ipcMain.handle('deposit:verify:create',       (_e, opts)              => depositVerificationCreate(opts || {}));
 ipcMain.handle('deposit:verify:listPending',  (_e, beforeDate)        => depositVerificationListPending(beforeDate));
 ipcMain.handle('deposit:verify:markVerified', (_e, opts)              => depositVerificationMarkVerified(opts || {}));
