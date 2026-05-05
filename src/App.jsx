@@ -6831,7 +6831,7 @@ export default function App(){
     }
     setCloseReviewData({evaluation,cashes:dayCashes,checklistItems:chkItems,posDataPresent,depositsPresent});
     setShowCloseReview(true);
-  },[selectedDate,closePolicy,checklistTemplates,checklistEntries]);
+  },[selectedDate,closePolicy,checklistTemplates,checklistEntries,currentShiftKey]);
 
   // ── closeDay: persist snapshot + state after modal confirms (2E/4C) ──────────
   const closeDay=useCallback(async(localReasons={},overrideData={})=>{
@@ -6918,7 +6918,7 @@ export default function App(){
           .then(all=>setSessionsForDay(all||[])).catch(()=>{});
       }).catch(()=>{});
     }
-  },[selectedDate,closedDays,computeDay,updCash,closePolicy,closeReviewData,shiftIsFinal]);
+  },[selectedDate,closedDays,computeDay,updCash,closePolicy,closeReviewData,shiftIsFinal,currentShiftKey]);
 
   // Load checklist entries for the selected date (fills gaps not covered by range load)
   useEffect(()=>{
