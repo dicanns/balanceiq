@@ -488,7 +488,7 @@ export const FR = {
  taxExemptNumber:        "Numéro d'exemption / carte de statut",
  taxExemptExpiry:        "Date d'expiration (optionnelle)",
  taxExemptNotes:         "Notes",
- taxExemptNoDoc:         "Avertissement : aucun document justificatif lié dans le Coffre-fort. Recommandé pour la vérification (CRA, 3 ans).",
+ taxExemptNoDoc:         "Avertissement : aucun document justificatif lié dans le Coffre-fort. Recommandé pour la vérification (ARC — Agence du revenu du Canada, 3 ans).",
  taxExemptDisclaimer:    "BalanceIQ n'évalue pas l'admissibilité à l'exemption. Vérifiez auprès de votre client et de votre comptable.",
  taxExemptTypeIndian:    "Loi sur les Indiens (art. 87)",
  taxExemptTypeGovFed:    "Gouvernement fédéral",
@@ -1080,7 +1080,7 @@ export const FR = {
   facOverdue:       "En retard",
 
   // ── FACTURATION — AGING ──
-  agingTitle:       "Âge des comptes",
+  agingTitle:       "Comptes clients",
   agingSummary:     "Sommaire",
   agingDetailed:    "Détaillé",
   agingCurrent:     "Courant",
@@ -1274,7 +1274,7 @@ export const FR = {
   // ── CONFIG — GL ACCOUNTS ──
   cfgGLAccounts:    "Numéros de comptes GL — Acomba / Sage 50",
   cfgGLAccountsHint:"Associez chaque poste à un numéro de compte de votre plan comptable. Vérifiez avec votre comptable.",
-  cfgGLRevenue:     "Ventes (chiffre d'affaires)",
+  cfgGLRevenue:     "Revenus d'exploitation",
   cfgGLAR:          "Comptes clients (AR)",
   cfgGLBank:        "Caisse / Banque",
   cfgGLFP:          "Achats / F&P",
@@ -2921,7 +2921,7 @@ export const EN = {
   taxExemptNumber:        "Exemption / status card number",
   taxExemptExpiry:        "Expiry date (optional)",
   taxExemptNotes:         "Notes",
-  taxExemptNoDoc:         "Warning: no supporting document linked in the Vault. Recommended for audit (CRA, 3 years).",
+  taxExemptNoDoc:         "Warning: no supporting document linked in the Vault. Recommended for audit (Canada Revenue Agency — CRA, 3 years).",
   taxExemptDisclaimer:    "BalanceIQ does not assess exemption eligibility. Verify with your client and accountant.",
   taxExemptTypeIndian:    "Indian Act (s. 87)",
   taxExemptTypeGovFed:    "Federal government",
@@ -3707,7 +3707,7 @@ export const EN = {
  // ── CONFIG — GL ACCOUNTS ──
  cfgGLAccounts: "GL Account Numbers — Acomba / Sage 50",
  cfgGLAccountsHint:"Map each line item to an account number in your chart of accounts. Verify with your accountant.",
- cfgGLRevenue: "Sales Revenue",
+ cfgGLRevenue: "Revenue (Sales)",
  cfgGLAR: "Accounts Receivable (AR)",
  cfgGLBank: "Cash / Bank",
  cfgGLFP: "Purchases / F&P",
