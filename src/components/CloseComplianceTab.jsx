@@ -99,13 +99,6 @@ function exportCsv(kpis, lists, fr) {
   URL.revokeObjectURL(url);
 }
 
-function b64ToBlob(b64) {
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new Blob([bytes], { type: 'application/pdf' });
-}
-
 const PERIODS = ['today', 'yesterday', 'week', 'month', 'custom'];
 
 export default function CloseComplianceTab({ t, lang, canUse, activePlan }) {
@@ -155,27 +148,15 @@ export default function CloseComplianceTab({ t, lang, canUse, activePlan }) {
     return computeCloseScore(deriveRates(kpis));
   }, [kpis]);
 
-  const handleExportPdf = useCallback(async () => {
+  const handleExportPdf = useCallback(() => {
     if (!kpis || !lists) return;
     if (!canUse('reportingAdvanced')) {
-      // Trigger upgrade via custom event (same pattern as other Pro gates in App.jsx)
       window.dispatchEvent(new CustomEvent('biq:upgrade-prompt', { detail: { feature: 'reportingAdvanced' } }));
       return;
     }
     const html = buildCompliancePdfHTML({ kpis, lists, scorecard, lang });
-    if (window.api?.pdf?.toPDF) {
-      const b64 = await window.api.pdf.toPDF(html);
-      const blob = b64ToBlob(b64);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `fermeture-conformite-${new Date().toISOString().slice(0, 10)}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } else {
-      // Fallback for non-Electron (dev browser)
-      window.dispatchEvent(new CustomEvent('biq:pdf-preview', { detail: html }));
-    }
+    // Same pattern as every other PDF button in the app: open preview overlay
+    window.dispatchEvent(new CustomEvent('biq:pdf-preview', { detail: { html } }));
   }, [kpis, lists, scorecard, lang, canUse]);
 
   const varColor = (pct) => pct == null ? t.textMuted : pct >= 90 ? '#16a34a' : pct >= 70 ? '#f59e0b' : '#ef4444';
