@@ -1230,6 +1230,36 @@ const MIGRATIONS = [
       )`).run();
     },
   },
+  {
+    version: 32,
+    description: 'Sprint 8E - Franchise onboarding packets',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS franchise_onboarding_packets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        franchisor_org_id TEXT NOT NULL DEFAULT '',
+        packet_name TEXT NOT NULL,
+        setup_checklist_json TEXT,
+        required_docs_list_json TEXT,
+        opening_chart_template_id INTEGER,
+        royalty_profile_template_id INTEGER,
+        close_checklist_template_id INTEGER,
+        reporting_cadence TEXT NOT NULL DEFAULT 'monthly',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`).run();
+      database.prepare(`CREATE TABLE IF NOT EXISTS franchise_location_onboarding (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        location_id INTEGER NOT NULL,
+        packet_id INTEGER NOT NULL,
+        checklist_json TEXT,
+        royalty_rate REAL,
+        ad_rate REAL,
+        reporting_cadence TEXT NOT NULL DEFAULT 'monthly',
+        applied_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(location_id)
+      )`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -3635,6 +3665,88 @@ function royaltyExceptionResolve(id, _db = null) {
   return db.prepare('SELECT * FROM royalty_exceptions WHERE id=?').get(id);
 }
 
+// ── Franchise Onboarding Packets (Sprint 8E) ─────────────────────────────────
+
+function onboardingPacketSave(data, _db = null) {
+  const db = _db ?? getDb();
+  const now = new Date().toISOString();
+  const {
+    id = null,
+    franchisorOrgId = '',
+    packetName,
+    setupChecklistJson = null,
+    requiredDocsListJson = null,
+    openingChartTemplateId = null,
+    royaltyProfileTemplateId = null,
+    closeChecklistTemplateId = null,
+    reportingCadence = 'monthly',
+  } = data;
+  if (id) {
+    db.prepare(`
+      UPDATE franchise_onboarding_packets SET
+        packet_name=?, setup_checklist_json=?, required_docs_list_json=?,
+        opening_chart_template_id=?, royalty_profile_template_id=?,
+        close_checklist_template_id=?, reporting_cadence=?, updated_at=?
+      WHERE id=?
+    `).run(packetName, setupChecklistJson, requiredDocsListJson,
+           openingChartTemplateId, royaltyProfileTemplateId,
+           closeChecklistTemplateId, reportingCadence, now, id);
+    return db.prepare('SELECT * FROM franchise_onboarding_packets WHERE id=?').get(id);
+  }
+  const info = db.prepare(`
+    INSERT INTO franchise_onboarding_packets
+      (franchisor_org_id, packet_name, setup_checklist_json, required_docs_list_json,
+       opening_chart_template_id, royalty_profile_template_id,
+       close_checklist_template_id, reporting_cadence, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(franchisorOrgId, packetName, setupChecklistJson, requiredDocsListJson,
+         openingChartTemplateId, royaltyProfileTemplateId,
+         closeChecklistTemplateId, reportingCadence, now, now);
+  return db.prepare('SELECT * FROM franchise_onboarding_packets WHERE id=?').get(info.lastInsertRowid);
+}
+
+function onboardingPacketList(_db = null) {
+  const db = _db ?? getDb();
+  return db.prepare('SELECT * FROM franchise_onboarding_packets ORDER BY created_at DESC').all();
+}
+
+function onboardingPacketGet(id, _db = null) {
+  const db = _db ?? getDb();
+  return db.prepare('SELECT * FROM franchise_onboarding_packets WHERE id=?').get(id) ?? null;
+}
+
+function onboardingPacketDelete(id, _db = null) {
+  const db = _db ?? getDb();
+  db.prepare('DELETE FROM franchise_location_onboarding WHERE packet_id=?').run(id);
+  db.prepare('DELETE FROM franchise_onboarding_packets WHERE id=?').run(id);
+}
+
+function onboardingPacketApply(packetId, locationId, royaltyRate = null, adRate = null, _db = null) {
+  const db = _db ?? getDb();
+  const packet = db.prepare('SELECT * FROM franchise_onboarding_packets WHERE id=?').get(packetId);
+  if (!packet) throw new Error(`Packet ${packetId} not found`);
+  const now = new Date().toISOString();
+  db.prepare(`
+    INSERT INTO franchise_location_onboarding
+      (location_id, packet_id, checklist_json, royalty_rate, ad_rate, reporting_cadence, applied_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(location_id) DO UPDATE SET
+      packet_id=excluded.packet_id,
+      checklist_json=excluded.checklist_json,
+      royalty_rate=excluded.royalty_rate,
+      ad_rate=excluded.ad_rate,
+      reporting_cadence=excluded.reporting_cadence,
+      applied_at=excluded.applied_at
+  `).run(locationId, packetId, packet.setup_checklist_json,
+         royaltyRate, adRate, packet.reporting_cadence, now);
+  return db.prepare('SELECT * FROM franchise_location_onboarding WHERE location_id=?').get(locationId);
+}
+
+function locationOnboardingGet(locationId, _db = null) {
+  const db = _db ?? getDb();
+  return db.prepare('SELECT * FROM franchise_location_onboarding WHERE location_id=?').get(locationId) ?? null;
+}
+
 // ── Supplier Bills (Relational AP) ────────────────────────────────────────────
 
 function supplierBillList({ monthKey = null, paid = null, supplierName = null } = {}) {
@@ -5314,6 +5426,8 @@ module.exports = {
   vaultComplianceCheck,
   networkScoreSave, networkScoreGet, networkScoreList,
   royaltyExceptionSave, royaltyExceptionList, royaltyExceptionAcknowledge, royaltyExceptionResolve,
+  onboardingPacketSave, onboardingPacketList, onboardingPacketGet, onboardingPacketDelete,
+  onboardingPacketApply, locationOnboardingGet,
   supplierBillList, supplierBillCreate, supplierBillUpdate, supplierBillMarkPaid, supplierBillMarkUnpaid,
   supplierPaymentsList, supplierPaymentCreate,
   assetList, assetCreate, assetUpdate, assetDelete,

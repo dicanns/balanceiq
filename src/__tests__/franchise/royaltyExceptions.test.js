@@ -207,8 +207,8 @@ describe('ROYALTY-EX-002 royalty_exceptions table', () => {
     expect(tbl).toBeTruthy();
   });
 
-  it('schema version is 31', () => {
-    expect(db.pragma('user_version', { simple: true })).toBe(31);
+  it('schema version is >= 31', () => {
+    expect(db.pragma('user_version', { simple: true })).toBeGreaterThanOrEqual(31);
   });
 });
 

@@ -1190,6 +1190,36 @@ const MIGRATIONS = [
       )`).run();
     },
   },
+  {
+    version: 32,
+    description: 'Sprint 8E - Franchise onboarding packets',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS franchise_onboarding_packets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        franchisor_org_id TEXT NOT NULL DEFAULT '',
+        packet_name TEXT NOT NULL,
+        setup_checklist_json TEXT,
+        required_docs_list_json TEXT,
+        opening_chart_template_id INTEGER,
+        royalty_profile_template_id INTEGER,
+        close_checklist_template_id INTEGER,
+        reporting_cadence TEXT NOT NULL DEFAULT 'monthly',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`).run();
+      database.prepare(`CREATE TABLE IF NOT EXISTS franchise_location_onboarding (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        location_id INTEGER NOT NULL,
+        packet_id INTEGER NOT NULL,
+        checklist_json TEXT,
+        royalty_rate REAL,
+        ad_rate REAL,
+        reporting_cadence TEXT NOT NULL DEFAULT 'monthly',
+        applied_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(location_id)
+      )`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.

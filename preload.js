@@ -319,6 +319,14 @@ contextBridge.exposeInMainWorld('api', {
     acknowledge: (id, by)   => ipcRenderer.invoke('royalty:exception:acknowledge', id, by),
     resolve:     (id)       => ipcRenderer.invoke('royalty:exception:resolve', id),
   },
+  franchiseOnboarding: {
+    savePacket:       (data)                               => ipcRenderer.invoke('franchise:onboarding:packet:save', data),
+    listPackets:      ()                                   => ipcRenderer.invoke('franchise:onboarding:packet:list'),
+    getPacket:        (id)                                 => ipcRenderer.invoke('franchise:onboarding:packet:get', id),
+    deletePacket:     (id)                                 => ipcRenderer.invoke('franchise:onboarding:packet:delete', id),
+    applyPacket:      (packetId, locationId, rr, ar)       => ipcRenderer.invoke('franchise:onboarding:packet:apply', packetId, locationId, rr, ar),
+    getLocationState: (locationId)                         => ipcRenderer.invoke('franchise:onboarding:location:get', locationId),
+  },
   bilan: {
     compute:  (asOfDate, opts) => ipcRenderer.invoke('bilan:compute', asOfDate, opts),
     blockers: (asOfDate)       => ipcRenderer.invoke('bilan:blockers', asOfDate),

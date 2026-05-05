@@ -27,6 +27,7 @@ const NetworkStandardsLazy        = lazy(() => import('./components/franchise/Ne
 const RoyaltyExceptionQueueLazy   = lazy(() => import('./components/franchise/RoyaltyExceptionQueue.jsx'));
 const ActionCenterLazy            = lazy(() => import('./components/franchise/ActionCenter.jsx'));
 const CohortBenchmarkLazy         = lazy(() => import('./components/franchise/CohortBenchmark.jsx'));
+const OnboardingPacketBuilderLazy = lazy(() => import('./components/franchise/OnboardingPacketBuilder.jsx'));
 import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./config/features.js";
 import { calcRoyaltyFull } from "./utils/calculations.js";
@@ -4986,7 +4987,7 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
  return(<div style={{padding:24,textAlign:"center",color:"#8b8fa3",fontSize:13}}>{T.reseauLocked}</div>);
  }
 
- return(<div style={{display:"flex",flexDirection:"column",gap:12}}>{/* Sub-tabs */}<div style={{display:"flex",gap:2,borderBottom:`1px solid ${t.dividerMid}`,paddingBottom:1}}>{[{id:"performance",label:"Performance"},{id:"actions",label:lang==="fr"?"Actions":"Actions"},{id:"benchmark",label:lang==="fr"?"Benchmark":"Benchmark"},{id:"scorecards",label:" Scorecards"},{id:"standards",label:lang==="fr"?"Standards réseau":"Network Standards"},{id:"exceptions",label:lang==="fr"?"Exceptions":"Exceptions"},{id:"redevances",label:T.reseauRedevances},{id:"reconciliation",label:T.reseauRecon},{id:"retards",label:T.reseauRetards||" Retards"},{id:"audit",label:T.reseauAudit},{id:"documents",label:T.reseauDocs}].map(st=>(<button key={st.id} onClick={()=>setScoreTab(st.id)} style={{background:"none",border:"none",color:scoreTab===st.id?"#a78bfa":t.textMuted,fontSize:11,fontWeight:scoreTab===st.id?700:500,padding:"5px 11px",cursor:"pointer",borderBottom:scoreTab===st.id?"2px solid #a78bfa":"2px solid transparent",whiteSpace:"nowrap"}}>
+ return(<div style={{display:"flex",flexDirection:"column",gap:12}}>{/* Sub-tabs */}<div style={{display:"flex",gap:2,borderBottom:`1px solid ${t.dividerMid}`,paddingBottom:1}}>{[{id:"performance",label:"Performance"},{id:"actions",label:lang==="fr"?"Actions":"Actions"},{id:"benchmark",label:lang==="fr"?"Benchmark":"Benchmark"},{id:"onboarding",label:lang==="fr"?"Intégration":"Onboarding"},{id:"scorecards",label:" Scorecards"},{id:"standards",label:lang==="fr"?"Standards réseau":"Network Standards"},{id:"exceptions",label:lang==="fr"?"Exceptions":"Exceptions"},{id:"redevances",label:T.reseauRedevances},{id:"reconciliation",label:T.reseauRecon},{id:"retards",label:T.reseauRetards||" Retards"},{id:"audit",label:T.reseauAudit},{id:"documents",label:T.reseauDocs}].map(st=>(<button key={st.id} onClick={()=>setScoreTab(st.id)} style={{background:"none",border:"none",color:scoreTab===st.id?"#a78bfa":t.textMuted,fontSize:11,fontWeight:scoreTab===st.id?700:500,padding:"5px 11px",cursor:"pointer",borderBottom:scoreTab===st.id?"2px solid #a78bfa":"2px solid transparent",whiteSpace:"nowrap"}}>
  {st.label}</button>))}</div>{/* Performance sub-tab */}
  {scoreTab==="performance"&&(<>{/* Summary cards */}<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[
  {label:T.netSales,value:fmtFull(networkTotal),accent:"#a78bfa"},
@@ -5062,6 +5063,10 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
  {/* Benchmark sub-tab */}
  {scoreTab==="benchmark"&&(
  <Suspense fallback={<div style={{color:t.textMuted,fontSize:12,padding:16}}>{T.loading}</div>}><CohortBenchmarkLazy monthlyData={monthlyData} locations={activeLocs} lang={lang} t={t}/></Suspense>)}
+
+ {/* Onboarding packets sub-tab */}
+ {scoreTab==="onboarding"&&(
+ <Suspense fallback={<div style={{color:t.textMuted,fontSize:12,padding:16}}>{T.loading}</div>}><OnboardingPacketBuilderLazy t={t} lang={lang} locations={activeLocs}/></Suspense>)}
 
  {/* Scorecards sub-tab */}
  {scoreTab==="scorecards"&&(

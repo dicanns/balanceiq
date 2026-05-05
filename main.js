@@ -68,6 +68,8 @@ const {
   vaultComplianceCheck,
   networkScoreSave, networkScoreGet, networkScoreList,
   royaltyExceptionSave, royaltyExceptionList, royaltyExceptionAcknowledge, royaltyExceptionResolve,
+  onboardingPacketSave, onboardingPacketList, onboardingPacketGet, onboardingPacketDelete,
+  onboardingPacketApply, locationOnboardingGet,
   supplierBillList, supplierBillCreate, supplierBillUpdate, supplierBillMarkPaid, supplierBillMarkUnpaid,
   supplierPaymentsList, supplierPaymentCreate,
   assetList, assetCreate, assetUpdate, assetDelete,
@@ -1681,6 +1683,14 @@ ipcMain.handle('royalty:exception:save',        (_e, data)                      
 ipcMain.handle('royalty:exception:list',        (_e, opts)                              => royaltyExceptionList(opts || {}));
 ipcMain.handle('royalty:exception:acknowledge', (_e, id, by)                            => royaltyExceptionAcknowledge(id, by || 'franchisor'));
 ipcMain.handle('royalty:exception:resolve',     (_e, id)                                => royaltyExceptionResolve(id));
+
+// ── Franchise Onboarding Packets — Sprint 8E ─────────────────────────────────
+ipcMain.handle('franchise:onboarding:packet:save',    (_e, data)                              => onboardingPacketSave(data));
+ipcMain.handle('franchise:onboarding:packet:list',    ()                                      => onboardingPacketList());
+ipcMain.handle('franchise:onboarding:packet:get',     (_e, id)                                => onboardingPacketGet(id));
+ipcMain.handle('franchise:onboarding:packet:delete',  (_e, id)                                => onboardingPacketDelete(id));
+ipcMain.handle('franchise:onboarding:packet:apply',   (_e, packetId, locationId, rr, ar)      => onboardingPacketApply(packetId, locationId, rr ?? null, ar ?? null));
+ipcMain.handle('franchise:onboarding:location:get',   (_e, locationId)                        => locationOnboardingGet(locationId));
 
 // ── Bilan (Balance Sheet) — Sprint 6 ─────────────────────────────────────────
 try {

@@ -94,7 +94,7 @@ describe('MIG-001 fresh accounting install', () => {
   it('PRAGMA user_version is 14 after all accounting migrations run', () => {
     runMigrations(db);
     const version = db.pragma('user_version', { simple: true });
-    expect(version).toBe(31);
+    expect(version).toBe(32);
   });
 
   it('running migrations again is a no-op (idempotency)', () => {
@@ -108,6 +108,6 @@ describe('MIG-001 fresh accounting install', () => {
     expect(countAfterSecond).toBe(countAfterFirst);
 
     const version = db.pragma('user_version', { simple: true });
-    expect(version).toBe(31);
+    expect(version).toBe(32);
   });
 });
