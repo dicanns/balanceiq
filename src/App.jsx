@@ -6748,8 +6748,10 @@ export default function App(){
     return'in_progress';
   },[closedDays,computeDay]);
   const closeStatus=getCloseStatus(selectedDate);
-  // Flag if a "clean" close was re-opened by edits that broke balance
-  const editedAfterClose=isClosed&&closedDays[selectedDate]?.allBal===true&&!today.allBal;
+  // Flag if data was modified after finalization — shift-aware in shift mode
+  const editedAfterClose=_shiftMode
+    ?(activeCloseSession?.status==='finalized'&&cashes.some(c=>computeRegisterVariance(c)!==0))
+    :(isClosed&&closedDays[selectedDate]?.allBal===true&&!today.allBal);
 
   // ── Onboarding Checklist ────────────────────────────────────────────────
   const obIsAutoComplete=React.useCallback((key)=>{
@@ -6929,8 +6931,20 @@ export default function App(){
     }).catch(()=>{});
   },[selectedDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Clear stale close packet whenever the active session changes (e.g. switching shifts)
-  useEffect(()=>{setClosePacket(null);},[activeCloseSession?.id]);
+  // Auto-generate close packet when navigating to a finalized session; clear otherwise
+  useEffect(()=>{
+    setClosePacket(null);
+    if(activeCloseSession?.status!=='finalized')return;
+    if(!window.api?.closeAssurance?.session)return;
+    const id=activeCloseSession.id;
+    Promise.all([
+      window.api.closeAssurance.session.get(id),
+      window.api.closeAssurance.approval.list(id),
+    ]).then(([full,approvals])=>{
+      const packet=buildClosePacket({session:full,registers:full?.register_closures||[],approvals:approvals||[],safeDrops:safeDrops.filter(sd=>sd.date===selectedDate)});
+      setClosePacket(packet);
+    }).catch(()=>{});
+  },[activeCloseSession?.id,activeCloseSession?.status]); // safeDrops/selectedDate omitted — packet is a snapshot
 
   // Load existing close session when navigating to a closed day
   useEffect(()=>{
@@ -7302,26 +7316,30 @@ export default function App(){
             )}
             {activeCloseSession?.status==='finalized'&&(
               <div style={{marginTop:4}}>
-                <button
-                  onClick={async()=>{
-                    try{
-                      const full=await window.api.closeAssurance.session.get(activeCloseSession.id);
-                      const approvals=await window.api.closeAssurance.approval.list(activeCloseSession.id);
-                      const packet=buildClosePacket({session:full,registers:full?.register_closures||[],approvals:approvals||[],safeDrops:safeDrops.filter(sd=>sd.date===selectedDate)});
-                      setClosePacket(packet);
-                    }catch(e){console.error('packet build failed',e);}
-                  }}
-                  style={{width:'100%',padding:'7px 0',borderRadius:7,border:'1px solid rgba(167,139,250,0.3)',background:'rgba(167,139,250,0.07)',color:'#a78bfa',fontSize:12,fontWeight:700,cursor:'pointer',display:'block'}}
-                >
-                  {lang==='en'?'Generate Close Packet':'Générer le dossier de fermeture'}
-                </button>
-                <div style={{fontSize:10.5,color:t.textMuted,textAlign:'center',marginTop:4}}>
-                  {lang==='en'?'Snapshot of this session: variance, approval chain, register breakdown.':'Instantané de cette session : écart, historique d\'approbation, détail par caisse.'}
-                </div>
-                {closePacket&&(
-                  <div style={{marginTop:8,padding:12,borderRadius:8,background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.08)'}}>
-                    <CloseEvidencePanel packet={closePacket} T={T} t={t} lang={lang}/>
+                {!closePacket&&(
+                  <div style={{textAlign:'center',padding:'10px 0',fontSize:11.5,color:t.textMuted}}>
+                    {lang==='en'?'Loading close packet...':'Chargement du dossier de fermeture...'}
                   </div>
+                )}
+                {closePacket&&(
+                  <>
+                    <div style={{marginBottom:6,padding:12,borderRadius:8,background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.08)'}}>
+                      <CloseEvidencePanel packet={closePacket} T={T} t={t} lang={lang}/>
+                    </div>
+                    <button
+                      onClick={async()=>{
+                        try{
+                          const full=await window.api.closeAssurance.session.get(activeCloseSession.id);
+                          const approvals=await window.api.closeAssurance.approval.list(activeCloseSession.id);
+                          const packet=buildClosePacket({session:full,registers:full?.register_closures||[],approvals:approvals||[],safeDrops:safeDrops.filter(sd=>sd.date===selectedDate)});
+                          setClosePacket(packet);
+                        }catch(e){console.error('packet build failed',e);}
+                      }}
+                      style={{width:'100%',padding:'5px 0',borderRadius:7,border:'1px solid rgba(167,139,250,0.2)',background:'transparent',color:'#6b7280',fontSize:11,cursor:'pointer',display:'block'}}
+                    >
+                      {lang==='en'?'Refresh packet':'Actualiser le dossier'}
+                    </button>
+                  </>
                 )}
               </div>
             )}
