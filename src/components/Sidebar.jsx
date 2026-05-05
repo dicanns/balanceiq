@@ -28,6 +28,7 @@ const TAB_COLORS = {
   recettes:     { stroke: '#F7CE46', bg: 'rgba(247,206,70,0.12)' },
   waste:        { stroke: '#E25B5B', bg: 'rgba(226,91,91,0.12)' },
   eco:          { stroke: '#63B76C', bg: 'rgba(99,183,108,0.12)' },
+  compliance:   { stroke: '#38BDF8', bg: 'rgba(56,189,248,0.12)' },
   reseau:       { stroke: '#A78BFA', bg: 'rgba(167,139,250,0.12)' },
   mylocations:  { stroke: '#4A90D9', bg: 'rgba(74,144,217,0.12)' },
   settings:     { stroke: '#8E8FA3', bg: 'rgba(142,143,163,0.10)' },
@@ -48,6 +49,7 @@ function TabIcon({ id, active }) {
     recettes:     <IconCalculator size={sz} stroke={stroke}/>,
     waste:        <IconTrendingDown size={sz} stroke={stroke}/>,
     eco:          <IconLeaf size={sz} stroke={stroke}/>,
+    compliance:   <IconActivity size={sz} stroke={stroke}/>,
     reseau:       <IconBuilding size={sz} stroke={stroke}/>,
     mylocations:  <IconMapPin size={sz} stroke={stroke}/>,
     settings:     <IconSettings size={sz} stroke={stroke}/>,
@@ -120,6 +122,7 @@ export default function Sidebar({
   canUse,
   myLinkedLocations,
   prevInsightCount,
+  hasClosePolicy,
   themeName,
   toggleTheme,
   T,
@@ -204,6 +207,9 @@ export default function Sidebar({
         <NavItem id="waste" label={T.tabWaste || 'Gaspillage'} active={isActive('waste')} onClick={setActiveTab} t={t}/>
         {appMode === 'franchiseur' && (
           <NavItem id="eco" label="Écocontrib." active={isActive('eco')} onClick={setActiveTab} t={t}/>
+        )}
+        {hasClosePolicy && (
+          <NavItem id="compliance" label={lang === 'en' ? 'Compliance' : 'Conformité'} active={isActive('compliance')} onClick={setActiveTab} t={t}/>
         )}
 
         {/* ANALYSE */}

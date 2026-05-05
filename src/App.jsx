@@ -7209,6 +7209,7 @@ export default function App(){
           canUse={canUse}
           myLinkedLocations={myLinkedLocations}
           prevInsightCount={prevInsightCount}
+          hasClosePolicy={!!closePolicy}
           themeName={themeName}
           toggleTheme={toggleTheme}
           T={T}
