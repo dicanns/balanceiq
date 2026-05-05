@@ -5974,10 +5974,10 @@ export default function App(){
   const encaisseTimer=useRef(null);
   const [appMode,setAppMode]=useState(null);
   const [closePolicy,setClosePolicy]=useState(null);
-  const activeCloseSession=useMemo(()=>{if(closePolicy?.shift_mode_enabled){if(!currentShiftKey)return null;return sessionsForDay.find(s=>s.shift_key===currentShiftKey&&s.status!=='draft')||sessionsForDay.find(s=>s.shift_key===currentShiftKey)||null;}return sessionsForDay.find(s=>s.status!=='draft')||null;},[sessionsForDay,currentShiftKey,closePolicy?.shift_mode_enabled]);
   const [closePacket,setClosePacket]=useState(null);
   const [currentShiftKey,setCurrentShiftKey]=useState(null);
   const [sessionsForDay,setSessionsForDay]=useState([]);
+  const activeCloseSession=useMemo(()=>{if(closePolicy?.shift_mode_enabled){if(!currentShiftKey)return null;return sessionsForDay.find(s=>s.shift_key===currentShiftKey&&s.status!=='draft')||sessionsForDay.find(s=>s.shift_key===currentShiftKey)||null;}return sessionsForDay.find(s=>s.status!=='draft')||null;},[sessionsForDay,currentShiftKey,closePolicy?.shift_mode_enabled]);
   const [shiftFloatOverride,setShiftFloatOverride]=useState(null); // cents | null
   const [shiftIsFinal,setShiftIsFinal]=useState(false);
   const [lang,setLang]=useState("fr");
