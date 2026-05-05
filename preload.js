@@ -313,6 +313,12 @@ contextBridge.exposeInMainWorld('api', {
     get:  (locationId, period)=> ipcRenderer.invoke('network:score:get', locationId, period),
     list: (period)            => ipcRenderer.invoke('network:score:list', period),
   },
+  royaltyException: {
+    save:        (data)     => ipcRenderer.invoke('royalty:exception:save', data),
+    list:        (opts)     => ipcRenderer.invoke('royalty:exception:list', opts),
+    acknowledge: (id, by)   => ipcRenderer.invoke('royalty:exception:acknowledge', id, by),
+    resolve:     (id)       => ipcRenderer.invoke('royalty:exception:resolve', id),
+  },
   bilan: {
     compute:  (asOfDate, opts) => ipcRenderer.invoke('bilan:compute', asOfDate, opts),
     blockers: (asOfDate)       => ipcRenderer.invoke('bilan:blockers', asOfDate),

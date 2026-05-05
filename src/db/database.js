@@ -1207,6 +1207,29 @@ const MIGRATIONS = [
       )`).run();
     },
   },
+  {
+    version: 31,
+    description: 'Sprint 8B - Royalty exception queue table',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS royalty_exceptions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        location_id INTEGER NOT NULL,
+        exception_type TEXT NOT NULL,
+        period TEXT NOT NULL,
+        severity TEXT NOT NULL DEFAULT 'warning',
+        description_fr TEXT NOT NULL DEFAULT '',
+        description_en TEXT NOT NULL DEFAULT '',
+        amount_at_risk REAL,
+        days_overdue INTEGER,
+        invoice_ref TEXT,
+        acknowledged_at TEXT,
+        acknowledged_by TEXT,
+        resolved_at TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(location_id, period, exception_type)
+      )`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -3547,6 +3570,71 @@ function networkScoreList(period, _db = null) {
   return db.prepare('SELECT * FROM network_compliance_score WHERE period=? ORDER BY total_score DESC').all(period);
 }
 
+// ── Royalty Exception Queue (Sprint 8B) ──────────────────────────────────────
+
+function royaltyExceptionSave(data, _db = null) {
+  const db = _db ?? getDb();
+  const {
+    locationId,
+    exceptionType,
+    period,
+    severity = 'warning',
+    descriptionFr = '',
+    descriptionEn = '',
+    amountAtRisk = null,
+    daysOverdue = null,
+    invoiceRef = null,
+  } = data;
+  const now = new Date().toISOString();
+  db.prepare(`
+    INSERT INTO royalty_exceptions
+      (location_id, exception_type, period, severity,
+       description_fr, description_en, amount_at_risk,
+       days_overdue, invoice_ref, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(location_id, period, exception_type) DO UPDATE SET
+      severity=excluded.severity,
+      description_fr=excluded.description_fr,
+      description_en=excluded.description_en,
+      amount_at_risk=excluded.amount_at_risk,
+      days_overdue=excluded.days_overdue,
+      invoice_ref=excluded.invoice_ref,
+      created_at=excluded.created_at,
+      acknowledged_at=NULL,
+      acknowledged_by=NULL,
+      resolved_at=NULL
+  `).run(locationId, exceptionType, period, severity,
+         descriptionFr, descriptionEn, amountAtRisk,
+         daysOverdue, invoiceRef, now);
+  return db.prepare('SELECT * FROM royalty_exceptions WHERE location_id=? AND period=? AND exception_type=?')
+    .get(locationId, period, exceptionType);
+}
+
+function royaltyExceptionList({ period, includeResolved = false } = {}, _db = null) {
+  const db = _db ?? getDb();
+  const severityOrder = "CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END";
+  if (period) {
+    const where = includeResolved ? 'WHERE period=?' : 'WHERE period=? AND resolved_at IS NULL';
+    return db.prepare(`SELECT * FROM royalty_exceptions ${where} ORDER BY ${severityOrder}, created_at DESC`).all(period);
+  }
+  const where = includeResolved ? '' : 'WHERE resolved_at IS NULL';
+  return db.prepare(`SELECT * FROM royalty_exceptions ${where} ORDER BY ${severityOrder}, created_at DESC`).all();
+}
+
+function royaltyExceptionAcknowledge(id, acknowledgedBy = 'franchisor', _db = null) {
+  const db = _db ?? getDb();
+  const now = new Date().toISOString();
+  db.prepare('UPDATE royalty_exceptions SET acknowledged_at=?, acknowledged_by=? WHERE id=?').run(now, acknowledgedBy, id);
+  return db.prepare('SELECT * FROM royalty_exceptions WHERE id=?').get(id);
+}
+
+function royaltyExceptionResolve(id, _db = null) {
+  const db = _db ?? getDb();
+  const now = new Date().toISOString();
+  db.prepare('UPDATE royalty_exceptions SET resolved_at=? WHERE id=?').run(now, id);
+  return db.prepare('SELECT * FROM royalty_exceptions WHERE id=?').get(id);
+}
+
 // ── Supplier Bills (Relational AP) ────────────────────────────────────────────
 
 function supplierBillList({ monthKey = null, paid = null, supplierName = null } = {}) {
@@ -5225,6 +5313,7 @@ module.exports = {
   taxRegistrationGet, taxRegistrationSave,
   vaultComplianceCheck,
   networkScoreSave, networkScoreGet, networkScoreList,
+  royaltyExceptionSave, royaltyExceptionList, royaltyExceptionAcknowledge, royaltyExceptionResolve,
   supplierBillList, supplierBillCreate, supplierBillUpdate, supplierBillMarkPaid, supplierBillMarkUnpaid,
   supplierPaymentsList, supplierPaymentCreate,
   assetList, assetCreate, assetUpdate, assetDelete,

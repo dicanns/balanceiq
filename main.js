@@ -67,6 +67,7 @@ const {
   taxRegistrationGet, taxRegistrationSave,
   vaultComplianceCheck,
   networkScoreSave, networkScoreGet, networkScoreList,
+  royaltyExceptionSave, royaltyExceptionList, royaltyExceptionAcknowledge, royaltyExceptionResolve,
   supplierBillList, supplierBillCreate, supplierBillUpdate, supplierBillMarkPaid, supplierBillMarkUnpaid,
   supplierPaymentsList, supplierPaymentCreate,
   assetList, assetCreate, assetUpdate, assetDelete,
@@ -1676,6 +1677,10 @@ ipcMain.handle('vault:compliance:check',        ()                              
 ipcMain.handle('network:score:save',            (_e, data)                              => networkScoreSave(data));
 ipcMain.handle('network:score:get',             (_e, locationId, period)                => networkScoreGet(locationId, period));
 ipcMain.handle('network:score:list',            (_e, period)                            => networkScoreList(period));
+ipcMain.handle('royalty:exception:save',        (_e, data)                              => royaltyExceptionSave(data));
+ipcMain.handle('royalty:exception:list',        (_e, opts)                              => royaltyExceptionList(opts || {}));
+ipcMain.handle('royalty:exception:acknowledge', (_e, id, by)                            => royaltyExceptionAcknowledge(id, by || 'franchisor'));
+ipcMain.handle('royalty:exception:resolve',     (_e, id)                                => royaltyExceptionResolve(id));
 
 // ── Bilan (Balance Sheet) — Sprint 6 ─────────────────────────────────────────
 try {

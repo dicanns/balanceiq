@@ -1167,6 +1167,29 @@ const MIGRATIONS = [
       )`).run();
     },
   },
+  {
+    version: 31,
+    description: 'Sprint 8B - Royalty exception queue table',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS royalty_exceptions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        location_id INTEGER NOT NULL,
+        exception_type TEXT NOT NULL,
+        period TEXT NOT NULL,
+        severity TEXT NOT NULL DEFAULT 'warning',
+        description_fr TEXT NOT NULL DEFAULT '',
+        description_en TEXT NOT NULL DEFAULT '',
+        amount_at_risk REAL,
+        days_overdue INTEGER,
+        invoice_ref TEXT,
+        acknowledged_at TEXT,
+        acknowledged_by TEXT,
+        resolved_at TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(location_id, period, exception_type)
+      )`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.

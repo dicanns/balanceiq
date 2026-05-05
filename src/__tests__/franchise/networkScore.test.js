@@ -198,8 +198,8 @@ describe('NETWORK-SCORE-002 network_compliance_score table', () => {
     expect(tbl).toBeTruthy();
   });
 
-  it('schema version is 30', () => {
-    expect(db.pragma('user_version', { simple: true })).toBe(30);
+  it('schema version is at least 30', () => {
+    expect(db.pragma('user_version', { simple: true })).toBeGreaterThanOrEqual(30);
   });
 });
 
