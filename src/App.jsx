@@ -5974,7 +5974,7 @@ export default function App(){
   const encaisseTimer=useRef(null);
   const [appMode,setAppMode]=useState(null);
   const [closePolicy,setClosePolicy]=useState(null);
-  const [activeCloseSession,setActiveCloseSession]=useState(null);
+  const activeCloseSession=useMemo(()=>{if(closePolicy?.shift_mode_enabled){if(!currentShiftKey)return null;return sessionsForDay.find(s=>s.shift_key===currentShiftKey&&s.status!=='draft')||sessionsForDay.find(s=>s.shift_key===currentShiftKey)||null;}return sessionsForDay.find(s=>s.status!=='draft')||null;},[sessionsForDay,currentShiftKey,closePolicy?.shift_mode_enabled]);
   const [closePacket,setClosePacket]=useState(null);
   const [currentShiftKey,setCurrentShiftKey]=useState(null);
   const [sessionsForDay,setSessionsForDay]=useState([]);
@@ -6911,9 +6911,8 @@ export default function App(){
           });
         }
         return session;
-      }).then(session=>{
-        setActiveCloseSession(session||null);
-        // Refresh sessionsForDay so ShiftHandoff shows the new session status
+      }).then(()=>{
+        // Refresh sessionsForDay — activeCloseSession derives from it automatically
         window.api.closeAssurance.session.list({dateFrom:key,dateTo:key,limit:20})
           .then(all=>setSessionsForDay(all||[])).catch(()=>{});
       }).catch(()=>{});
@@ -6931,7 +6930,6 @@ export default function App(){
 
   // Load existing close session when navigating to a closed day
   useEffect(()=>{
-    setActiveCloseSession(null);
     setClosePacket(null);
     setSessionsForDay([]);
     setShiftFloatOverride(null);
@@ -6940,8 +6938,7 @@ export default function App(){
       .then(sessions=>{
         const all=sessions||[];
         setSessionsForDay(all);
-        const nonDraft=all.find(s=>s.status!=='draft');
-        if(nonDraft) setActiveCloseSession(nonDraft);
+        // activeCloseSession derives from sessionsForDay automatically
         // Sync closedDays from DB so the dot/badge reflects finalized sessions
         // loaded on navigation (not just sessions closed in this app session)
         const finalised=all.find(s=>s.status==='finalized');
@@ -7296,7 +7293,7 @@ export default function App(){
                 closePolicy={closePolicy}
                 t={t} T={T} lang={lang}
                 cloudUser={cloudUser}
-                onSessionChange={s=>{setActiveCloseSession(s);setClosePacket(null);if(s?.status==='reopened'){const next={...closedDays};delete next[selectedDate];setClosedDays(next);window.api.storage.set("balanceiq-closed-days",JSON.stringify(next)).catch(()=>{});}}}
+                onSessionChange={s=>{setSessionsForDay(prev=>s?prev.map(p=>p.id===s.id?s:p):prev);setClosePacket(null);if(s?.status==='reopened'){const next={...closedDays};delete next[selectedDate];setClosedDays(next);window.api.storage.set("balanceiq-closed-days",JSON.stringify(next)).catch(()=>{});}}}
               />
             )}
             {activeCloseSession?.status==='finalized'&&(
