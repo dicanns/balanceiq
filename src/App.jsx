@@ -25,6 +25,7 @@ const SettingsAboutPanelLazy     = lazy(() => import('./components/SettingsAbout
 const FranchiseCloseScorecardLazy = lazy(() => import('./components/FranchiseCloseScorecard.jsx'));
 const NetworkStandardsLazy        = lazy(() => import('./components/franchise/NetworkStandards.jsx'));
 const RoyaltyExceptionQueueLazy   = lazy(() => import('./components/franchise/RoyaltyExceptionQueue.jsx'));
+const ActionCenterLazy            = lazy(() => import('./components/franchise/ActionCenter.jsx'));
 import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./config/features.js";
 import { calcRoyaltyFull } from "./utils/calculations.js";
@@ -4984,7 +4985,7 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
  return(<div style={{padding:24,textAlign:"center",color:"#8b8fa3",fontSize:13}}>{T.reseauLocked}</div>);
  }
 
- return(<div style={{display:"flex",flexDirection:"column",gap:12}}>{/* Sub-tabs */}<div style={{display:"flex",gap:2,borderBottom:`1px solid ${t.dividerMid}`,paddingBottom:1}}>{[{id:"performance",label:"Performance"},{id:"scorecards",label:" Scorecards"},{id:"standards",label:lang==="fr"?"Standards réseau":"Network Standards"},{id:"exceptions",label:lang==="fr"?"Exceptions":"Exceptions"},{id:"redevances",label:T.reseauRedevances},{id:"reconciliation",label:T.reseauRecon},{id:"retards",label:T.reseauRetards||" Retards"},{id:"audit",label:T.reseauAudit},{id:"documents",label:T.reseauDocs}].map(st=>(<button key={st.id} onClick={()=>setScoreTab(st.id)} style={{background:"none",border:"none",color:scoreTab===st.id?"#a78bfa":t.textMuted,fontSize:11,fontWeight:scoreTab===st.id?700:500,padding:"5px 11px",cursor:"pointer",borderBottom:scoreTab===st.id?"2px solid #a78bfa":"2px solid transparent",whiteSpace:"nowrap"}}>
+ return(<div style={{display:"flex",flexDirection:"column",gap:12}}>{/* Sub-tabs */}<div style={{display:"flex",gap:2,borderBottom:`1px solid ${t.dividerMid}`,paddingBottom:1}}>{[{id:"performance",label:"Performance"},{id:"actions",label:lang==="fr"?"Actions":"Actions"},{id:"scorecards",label:" Scorecards"},{id:"standards",label:lang==="fr"?"Standards réseau":"Network Standards"},{id:"exceptions",label:lang==="fr"?"Exceptions":"Exceptions"},{id:"redevances",label:T.reseauRedevances},{id:"reconciliation",label:T.reseauRecon},{id:"retards",label:T.reseauRetards||" Retards"},{id:"audit",label:T.reseauAudit},{id:"documents",label:T.reseauDocs}].map(st=>(<button key={st.id} onClick={()=>setScoreTab(st.id)} style={{background:"none",border:"none",color:scoreTab===st.id?"#a78bfa":t.textMuted,fontSize:11,fontWeight:scoreTab===st.id?700:500,padding:"5px 11px",cursor:"pointer",borderBottom:scoreTab===st.id?"2px solid #a78bfa":"2px solid transparent",whiteSpace:"nowrap"}}>
  {st.label}</button>))}</div>{/* Performance sub-tab */}
  {scoreTab==="performance"&&(<>{/* Summary cards */}<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[
  {label:T.netSales,value:fmtFull(networkTotal),accent:"#a78bfa"},
@@ -5052,6 +5053,10 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
  const remitAmt=r.labC>0?r.labC*remitRate/100:0;
  return(<tr key={r.locId} style={{borderTop:`1px solid ${t.divider}`,background:i===0?'rgba(34,197,94,0.03)':r.np<0?'rgba(239,68,68,0.03)':'transparent'}}><td style={{padding:'7px 10px',fontWeight:600,color:t.text}}>{r.locName}{i===0&&<span style={{marginLeft:5,fontSize:9,color:'#16a34a'}}></span>}{r.np<0&&<span style={{marginLeft:5,fontSize:9,color:'#ef4444'}}></span>}</td><td style={{padding:'7px 10px',fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:'#a78bfa'}}>{fmtFull(r.revenue)}</td><td style={{padding:'7px 10px',fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:r.fpP>fpMax?'#ef4444':r.fpP>(fpMax*0.9)?'#fbbf24':'#22c55e'}}>{r.revenue>0?`${r.fpP.toFixed(1)}%`:'—'}</td><td style={{padding:'7px 10px',fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:r.labP>labMax?'#ef4444':r.labP>(labMax*0.9)?'#fbbf24':'#22c55e'}}>{r.revenue>0?`${r.labP.toFixed(1)}%`:'—'}</td><td style={{padding:'7px 10px',fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:t.textSub}}>{fmtFull(r.expT)}</td><td style={{padding:'7px 10px',fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontWeight:700,color:r.np>=0?'#22c55e':'#ef4444'}}>{fmtFull(r.np)}</td><td style={{padding:'7px 10px',fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:r.npP>=0?'#22c55e':'#ef4444'}}>{r.revenue>0?`${r.npP.toFixed(1)}%`:'—'}</td><td style={{padding:'7px 10px',fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:'#f59e0b'}}>{remitAmt>0?fmtFull(remitAmt):'—'}</td><td style={{padding:'7px 10px',fontSize:10,color:t.textSub,whiteSpace:'nowrap'}}>{freqLabel(loc)}</td></tr>)})}</tbody></table>);})()}</div>)}</div>);
  })()}</>)}
+
+ {/* Action center sub-tab */}
+ {scoreTab==="actions"&&(
+ <Suspense fallback={<div style={{color:t.textMuted,fontSize:12,padding:16}}>{T.loading}</div>}><ActionCenterLazy t={t} lang={lang} locations={activeLocs} onNavigate={(tab)=>setScoreTab(tab)}/></Suspense>)}
 
  {/* Scorecards sub-tab */}
  {scoreTab==="scorecards"&&(
