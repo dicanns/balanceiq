@@ -36,6 +36,7 @@ export default function ShiftHandoff({
   daySummary = null,
   advancedMode = false,
   registerCountPerShift = {},
+  dayVarianceCents = null,
   T,
   t,
   lang,
@@ -124,6 +125,18 @@ export default function ShiftHandoff({
           );
         })}
       </div>
+
+      {/* Day-total variance across all shifts */}
+      {dayVarianceCents != null && (
+        <div style={{ marginBottom: 10, padding: '7px 10px', borderRadius: 7, background: 'rgba(255,255,255,0.03)', border: `1px solid rgba(${dayVarianceCents===0?'22,197,94':dayVarianceCents>0?'74,222,128':'248,113,113'},0.25)`, fontSize: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ color: '#94a3b8', fontWeight: 600 }}>
+            {fr ? 'Écart total du jour (toutes caisses)' : 'Day total variance (all registers)'}
+          </span>
+          <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: dayVarianceCents===0?'#16a34a':dayVarianceCents>0?'#4ade80':'#f87171' }}>
+            {fmtCents(dayVarianceCents)}
+          </span>
+        </div>
+      )}
 
       {/* Carry-forward float display — only relevant in Advanced/Tender mode */}
       {advancedMode && currentShiftKey && currentShiftKey !== 'dawn' && (
