@@ -186,6 +186,14 @@ export function IconChevronRight({ size = defaultSize, stroke, strokeWidth } = {
 
 // NavIcon: colored rounded-square container + SVG inside
 // color: hex stroke color, bg: background tint color
+export function IconShield({ size = defaultSize, stroke, strokeWidth } = {}) {
+  return (
+    <svg {...svgProps(size, stroke, strokeWidth)}>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+    </svg>
+  );
+}
+
 export function NavIcon({ color, bg, children, size = 28 }) {
   return (
     <div style={{

@@ -15,6 +15,7 @@ import {
   IconSettings,
   IconSun,
   IconMoon,
+  IconShield,
 } from './Icons.jsx';
 
 // Color palette per tab ID
@@ -28,7 +29,8 @@ const TAB_COLORS = {
   recettes:     { stroke: '#F7CE46', bg: 'rgba(247,206,70,0.12)' },
   waste:        { stroke: '#E25B5B', bg: 'rgba(226,91,91,0.12)' },
   eco:          { stroke: '#63B76C', bg: 'rgba(99,183,108,0.12)' },
-  compliance:   { stroke: '#38BDF8', bg: 'rgba(56,189,248,0.12)' },
+  compliance:      { stroke: '#38BDF8', bg: 'rgba(56,189,248,0.12)' },
+  taxconformite:   { stroke: '#22c55e', bg: 'rgba(34,197,94,0.12)' },
   reseau:       { stroke: '#A78BFA', bg: 'rgba(167,139,250,0.12)' },
   mylocations:  { stroke: '#4A90D9', bg: 'rgba(74,144,217,0.12)' },
   settings:     { stroke: '#8E8FA3', bg: 'rgba(142,143,163,0.10)' },
@@ -49,7 +51,8 @@ function TabIcon({ id, active }) {
     recettes:     <IconCalculator size={sz} stroke={stroke}/>,
     waste:        <IconTrendingDown size={sz} stroke={stroke}/>,
     eco:          <IconLeaf size={sz} stroke={stroke}/>,
-    compliance:   <IconActivity size={sz} stroke={stroke}/>,
+    compliance:      <IconActivity size={sz} stroke={stroke}/>,
+    taxconformite:   <IconShield size={sz} stroke={stroke}/>,
     reseau:       <IconBuilding size={sz} stroke={stroke}/>,
     mylocations:  <IconMapPin size={sz} stroke={stroke}/>,
     settings:     <IconSettings size={sz} stroke={stroke}/>,
@@ -215,6 +218,7 @@ export default function Sidebar({
         {/* ANALYSE */}
         <SectionLabel label={lang === 'en' ? 'Analysis' : 'Analyse'} t={t}/>
         <NavItem id="intelligence" label={T.tabIntelligence} active={isActive('intelligence')} onClick={setActiveTab} t={t}/>
+        <NavItem id="taxconformite" label={lang === 'en' ? 'Tax Compliance' : 'Conformité fiscale'} active={isActive('taxconformite')} onClick={setActiveTab} t={t}/>
 
         {/* Divider before settings */}
         <div style={{ height: 1, background: t.divider, margin: '12px 2px 8px' }}/>

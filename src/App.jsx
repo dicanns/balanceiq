@@ -20,6 +20,7 @@ const TaxPeriodTabLazy        = lazy(() => import('./components/TaxPeriodTab.jsx
 const VaultTabLazy            = lazy(() => import('./components/VaultTab.jsx'));
 const RecurringRulesTabLazy   = lazy(() => import('./components/RecurringRulesTab.jsx'));
 const CloseComplianceTabLazy     = lazy(() => import('./components/CloseComplianceTab.jsx'));
+const ComplianceTabLazy          = lazy(() => import('./components/ComplianceTab.jsx'));
 const FranchiseCloseScorecardLazy = lazy(() => import('./components/FranchiseCloseScorecard.jsx'));
 import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./config/features.js";
@@ -7177,6 +7178,7 @@ export default function App(){
     {id:"waste",label:T.tabWaste||"Gaspillage"},
     ...(appMode==="franchiseur"?[{id:"eco",label:"Écocontrib."}]:[]),
     ...(closePolicy?[{id:"compliance",label:lang==='fr'?'Conformité':'Compliance'}]:[]),
+    {id:"taxconformite",label:lang==='fr'?'Conformité fiscale':'Tax Compliance'},
     {id:"settings",label:T.tabConfig}
   ];
 
@@ -7527,6 +7529,8 @@ export default function App(){
           {activeTab==="eco"&&(<Suspense fallback={<div style={{padding:16,fontSize:12,opacity:0.5}}>Chargement...</div>}><EcocontributionTabLazy t={t} T={T} lang={lang}/></Suspense>)}
 
           {activeTab==="compliance"&&closePolicy&&(<Suspense fallback={<div style={{padding:16,fontSize:12,opacity:0.5}}>Chargement...</div>}><CloseComplianceTabLazy t={t} lang={lang} canUse={canUse} activePlan={activePlan}/></Suspense>)}
+
+          {activeTab==="taxconformite"&&(<Suspense fallback={<div style={{padding:16,fontSize:12,opacity:0.5}}>Chargement...</div>}><ComplianceTabLazy t={t} lang={lang} canUse={canUse}/></Suspense>)}
 
           {/* SETTINGS TAB */}
           {activeTab==="settings"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>{/* Config sub-tab bar */}
