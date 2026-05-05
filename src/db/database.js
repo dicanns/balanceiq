@@ -1109,6 +1109,60 @@ const MIGRATIONS = [
       database.prepare(`ALTER TABLE close_policies ADD COLUMN tender_mode_enabled INTEGER NOT NULL DEFAULT 0`).run();
     },
   },
+  {
+    version: 28,
+    description: 'Sprint 7B - Province-aware tax profiles',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS province_tax_profiles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        province_code TEXT NOT NULL UNIQUE,
+        name_fr TEXT NOT NULL,
+        name_en TEXT NOT NULL,
+        gst_rate REAL NOT NULL DEFAULT 0,
+        pst_rate REAL NOT NULL DEFAULT 0,
+        hst_rate REAL NOT NULL DEFAULT 0,
+        qst_rate REAL NOT NULL DEFAULT 0,
+        is_default INTEGER NOT NULL DEFAULT 0,
+        notes TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`).run();
+
+      database.prepare(`INSERT OR IGNORE INTO province_tax_profiles
+        (province_code, name_fr, name_en, gst_rate, qst_rate, is_default)
+        VALUES ('QC', 'Québec', 'Quebec', 0.05, 0.09975, 1)`).run();
+      database.prepare(`INSERT OR IGNORE INTO province_tax_profiles
+        (province_code, name_fr, name_en, hst_rate)
+        VALUES ('ON', 'Ontario', 'Ontario', 0.13)`).run();
+      database.prepare(`INSERT OR IGNORE INTO province_tax_profiles
+        (province_code, name_fr, name_en, gst_rate, pst_rate)
+        VALUES ('BC', 'Colombie-Britannique', 'British Columbia', 0.05, 0.07)`).run();
+      database.prepare(`INSERT OR IGNORE INTO province_tax_profiles
+        (province_code, name_fr, name_en, gst_rate)
+        VALUES ('AB', 'Alberta', 'Alberta', 0.05)`).run();
+      database.prepare(`INSERT OR IGNORE INTO province_tax_profiles
+        (province_code, name_fr, name_en, gst_rate, pst_rate)
+        VALUES ('SK', 'Saskatchewan', 'Saskatchewan', 0.05, 0.06)`).run();
+      database.prepare(`INSERT OR IGNORE INTO province_tax_profiles
+        (province_code, name_fr, name_en, gst_rate, pst_rate)
+        VALUES ('MB', 'Manitoba', 'Manitoba', 0.05, 0.07)`).run();
+      database.prepare(`INSERT OR IGNORE INTO province_tax_profiles
+        (province_code, name_fr, name_en, hst_rate)
+        VALUES ('NB', 'Nouveau-Brunswick', 'New Brunswick', 0.15)`).run();
+      database.prepare(`INSERT OR IGNORE INTO province_tax_profiles
+        (province_code, name_fr, name_en, hst_rate)
+        VALUES ('NS', 'Nouvelle-Écosse', 'Nova Scotia', 0.15)`).run();
+      database.prepare(`INSERT OR IGNORE INTO province_tax_profiles
+        (province_code, name_fr, name_en, hst_rate)
+        VALUES ('NL', 'Terre-Neuve-et-Labrador', 'Newfoundland and Labrador', 0.15)`).run();
+      database.prepare(`INSERT OR IGNORE INTO province_tax_profiles
+        (province_code, name_fr, name_en, hst_rate)
+        VALUES ('PE', 'Île-du-Prince-Édouard', 'Prince Edward Island', 0.15)`).run();
+
+      database.prepare(`ALTER TABLE supplier_tax_profiles ADD COLUMN province_tax_profile_id INTEGER REFERENCES province_tax_profiles(id)`).run();
+      database.prepare(`ALTER TABLE tax_calc_log ADD COLUMN province_tax_profile_id INTEGER`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -3305,17 +3359,17 @@ function taxProfileList() {
 
 function taxProfileUpsert(data) {
   const db = getDb();
-  const { id, supplierName, tpsRate = 0.05, tvqRate = 0.09975, appliesTps = 1, appliesTvq = 1, notes = null } = data;
+  const { id, supplierName, tpsRate = 0.05, tvqRate = 0.09975, appliesTps = 1, appliesTvq = 1, notes = null, provinceTaxProfileId = null } = data;
   if (id) {
     db.prepare(
-      `UPDATE supplier_tax_profiles SET supplier_name=?, tps_rate=?, tvq_rate=?, applies_tps=?, applies_tvq=?, notes=? WHERE id=?`
-    ).run(supplierName, tpsRate, tvqRate, appliesTps ? 1 : 0, appliesTvq ? 1 : 0, notes, id);
+      `UPDATE supplier_tax_profiles SET supplier_name=?, tps_rate=?, tvq_rate=?, applies_tps=?, applies_tvq=?, notes=?, province_tax_profile_id=? WHERE id=?`
+    ).run(supplierName, tpsRate, tvqRate, appliesTps ? 1 : 0, appliesTvq ? 1 : 0, notes, provinceTaxProfileId, id);
     return db.prepare(`SELECT * FROM supplier_tax_profiles WHERE id=?`).get(id);
   }
   const { lastInsertRowid } = db.prepare(
-    `INSERT OR REPLACE INTO supplier_tax_profiles (supplier_name, tps_rate, tvq_rate, applies_tps, applies_tvq, notes)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(supplierName, tpsRate, tvqRate, appliesTps ? 1 : 0, appliesTvq ? 1 : 0, notes);
+    `INSERT OR REPLACE INTO supplier_tax_profiles (supplier_name, tps_rate, tvq_rate, applies_tps, applies_tvq, notes, province_tax_profile_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(supplierName, tpsRate, tvqRate, appliesTps ? 1 : 0, appliesTvq ? 1 : 0, notes, provinceTaxProfileId);
   return db.prepare(`SELECT * FROM supplier_tax_profiles WHERE id=?`).get(lastInsertRowid);
 }
 
