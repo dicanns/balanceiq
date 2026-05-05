@@ -305,6 +305,9 @@ contextBridge.exposeInMainWorld('api', {
       save: (data)       => ipcRenderer.invoke('tax:registration:save', data),
     },
   },
+  vaultCompliance: {
+    check: () => ipcRenderer.invoke('vault:compliance:check'),
+  },
   bilan: {
     compute:  (asOfDate, opts) => ipcRenderer.invoke('bilan:compute', asOfDate, opts),
     blockers: (asOfDate)       => ipcRenderer.invoke('bilan:blockers', asOfDate),

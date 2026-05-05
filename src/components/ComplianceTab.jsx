@@ -16,9 +16,123 @@ const PLACEHOLDER_ICONS = {
 
 const PLACEHOLDER_NEXT = {
   filings:    { fr: 'Contenu disponible dans la sous-étape 7D', en: 'Content available in sub-sprint 7D' },
-  documents:  { fr: 'Contenu disponible dans la sous-étape 7E', en: 'Content available in sub-sprint 7E' },
   accountant: { fr: 'Contenu disponible dans une prochaine sous-étape', en: 'Content available in a future sub-sprint' },
 };
+
+const UI_DOCS = {
+  fr: {
+    title: 'Documents requis — CTI/RTI (art. 169(4) LTA)',
+    subtitle: 'Factures d\'achat de plus de 100 $ avec CTI/RTI réclamés mais sans pièce justificative dans le Coffre-fort.',
+    allClear: 'Toutes les factures avec CTI/RTI sont documentées.',
+    flagged: (n) => `${n} facture(s) sans pièce justificative`,
+    goVault: 'Ouvrir le Coffre-fort',
+    supplier: 'Fournisseur',
+    amount: 'Montant',
+    cti: 'CTI+RTI',
+    date: 'Date',
+    period: 'Période',
+    noDoc: 'Pièce manquante',
+  },
+  en: {
+    title: 'Required Documents — ITC/ITR (s. 169(4) ETA)',
+    subtitle: 'Purchase bills over $100 with ITC/ITR claimed but no supporting document in the Vault.',
+    allClear: 'All bills with ITC/ITR claims are documented.',
+    flagged: (n) => `${n} bill(s) missing supporting documents`,
+    goVault: 'Open Vault',
+    supplier: 'Supplier',
+    amount: 'Amount',
+    cti: 'ITC+ITR',
+    date: 'Date',
+    period: 'Period',
+    noDoc: 'Doc missing',
+  },
+};
+
+function DocumentsSubTab({ lang, t }) {
+  const fr = lang !== 'en';
+  const T = UI_DOCS[fr ? 'fr' : 'en'];
+  const [bills, setBills] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!window.api?.vaultCompliance?.check) { setLoading(false); return; }
+    window.api.vaultCompliance.check().then(rows => {
+      setBills(rows || []);
+      setLoading(false);
+    });
+  }, []);
+
+  if (loading) return <div style={{ fontSize: 12, color: '#64748b', padding: 12 }}>…</div>;
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 4 }}>{T.title}</div>
+      <div style={{ fontSize: 11, color: t.textMuted, marginBottom: 16, lineHeight: 1.5 }}>{T.subtitle}</div>
+
+      {bills.length === 0 ? (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '12px 16px', borderRadius: 8,
+          background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)',
+        }}>
+          <span style={{ fontSize: 18 }}>✓</span>
+          <span style={{ fontSize: 12, fontWeight: 600, color: '#16a34a' }}>{T.allClear}</span>
+        </div>
+      ) : (
+        <>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12,
+            padding: '8px 14px', borderRadius: 8,
+            background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)',
+          }}>
+            <span style={{ fontSize: 16 }}>⚠️</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#dc2626' }}>
+              {T.flagged(bills.length)}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {bills.map(b => {
+              const cti = ((parseFloat(b.tps_paid) || 0) + (parseFloat(b.tvq_paid) || 0)).toFixed(2);
+              return (
+                <div key={b.id} style={{
+                  background: t.card,
+                  border: `1px solid rgba(239,68,68,0.2)`,
+                  borderRadius: 8,
+                  padding: '10px 14px',
+                  display: 'grid',
+                  gridTemplateColumns: '1fr auto auto auto auto',
+                  gap: '0 16px',
+                  alignItems: 'center',
+                }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: t.text, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {b.supplier_name}
+                  </span>
+                  <span style={{ fontSize: 11, color: t.textSub, fontFamily: 'monospace' }}>
+                    ${parseFloat(b.amount).toFixed(2)}
+                  </span>
+                  <span style={{ fontSize: 11, color: '#dc2626', fontFamily: 'monospace' }}>
+                    CTI ${cti}
+                  </span>
+                  <span style={{ fontSize: 10, color: t.textMuted }}>
+                    {b.bill_date || b.month_key || '—'}
+                  </span>
+                  <span style={{
+                    fontSize: 9, fontWeight: 700, padding: '2px 7px',
+                    borderRadius: 8, background: 'rgba(239,68,68,0.1)', color: '#dc2626',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {T.noDoc}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 const STATUS_COLORS = {
   open:   { bg: 'rgba(100,116,139,0.15)', text: '#94a3b8' },
@@ -209,8 +323,11 @@ export default function ComplianceTab({ t, lang, canUse }) {
         {/* Periods sub-tab — live data */}
         {subTab === 'periods' && <PeriodsSubTab lang={lang} t={t} />}
 
+        {/* Documents sub-tab — vault compliance check */}
+        {subTab === 'documents' && <DocumentsSubTab lang={lang} t={t} />}
+
         {/* Other sub-tabs — placeholder */}
-        {subTab !== 'periods' && (
+        {subTab !== 'periods' && subTab !== 'documents' && (
           <div style={{
             background: t.card,
             border: `1px solid ${t.cardBorder}`,

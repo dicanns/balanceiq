@@ -65,6 +65,7 @@ const {
   taxSuspenseList, taxSuspenseClassifyAsCashExpense, taxSuspenseReverseCategorization,
   taxProfileList, taxProfileUpsert, taxProfileDelete,
   taxRegistrationGet, taxRegistrationSave,
+  vaultComplianceCheck,
   supplierBillList, supplierBillCreate, supplierBillUpdate, supplierBillMarkPaid, supplierBillMarkUnpaid,
   supplierPaymentsList, supplierPaymentCreate,
   assetList, assetCreate, assetUpdate, assetDelete,
@@ -1670,6 +1671,7 @@ ipcMain.handle('tax:profile:upsert',            (_e, data)                      
 ipcMain.handle('tax:profile:delete',            (_e, id)                                => taxProfileDelete(id));
 ipcMain.handle('tax:registration:get',          (_e, locationId)                        => taxRegistrationGet(locationId ?? null));
 ipcMain.handle('tax:registration:save',         (_e, data)                              => taxRegistrationSave(data));
+ipcMain.handle('vault:compliance:check',        ()                                      => vaultComplianceCheck());
 
 // ── Bilan (Balance Sheet) — Sprint 6 ─────────────────────────────────────────
 try {

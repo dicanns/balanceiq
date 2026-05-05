@@ -21,6 +21,7 @@ const VaultTabLazy            = lazy(() => import('./components/VaultTab.jsx'));
 const RecurringRulesTabLazy   = lazy(() => import('./components/RecurringRulesTab.jsx'));
 const CloseComplianceTabLazy     = lazy(() => import('./components/CloseComplianceTab.jsx'));
 const ComplianceTabLazy          = lazy(() => import('./components/ComplianceTab.jsx'));
+const SettingsAboutPanelLazy     = lazy(() => import('./components/SettingsAboutPanel.jsx'));
 const FranchiseCloseScorecardLazy = lazy(() => import('./components/FranchiseCloseScorecard.jsx'));
 import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./config/features.js";
@@ -7552,6 +7553,7 @@ export default function App(){
                 {id:"recurrences",      label:lang==="fr"?`Récurrences${recurringPendingCount>0?` (${recurringPendingCount})`:""}`:(`Recurring${recurringPendingCount>0?` (${recurringPendingCount})`:""}`)}  ,
                 {id:"donnees",          label:T.cfgData},
                 {id:"application",      label:T.cfgApplication},
+                {id:"apropos",          label:lang==="fr"?"Conformité":"About"},
                 ...(appMode==="franchiseur"?[{id:"succursales",label:T.cfgLocations},{id:"redevances",label:T.cfgRoyalties},{id:"marqueblanche",label:T.cfgWhiteLabel}]:[]),
               ];
               const scrollCfgTabs=(dir)=>{const el=document.getElementById('biq-cfg-tabs');if(el)el.scrollBy({left:dir*140,behavior:'smooth'});};
@@ -7780,7 +7782,8 @@ export default function App(){
             {/*  IMMOBILISATIONS (Fixed Assets + CCA) — Sprint 6 Accounting Suite */}
             {configSubTab==="immobilisations"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><ImmobilisationsTabLazy lang={lang} canUsePro={canUse("excelExport")} onUpgrade={()=>showUpgradePrompt("excelExport")}/></Suspense>)}
             {configSubTab==="coffre"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><VaultTabLazy lang={lang} canUsePro={canUse("excelExport")} onUpgrade={()=>showUpgradePrompt("excelExport")}/></Suspense>)}
-            {configSubTab==="recurrences"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><RecurringRulesTabLazy lang={lang} canUsePro={canUse("excelExport")} onUpgrade={()=>showUpgradePrompt("excelExport")}/></Suspense>)}</div></div>)}</div></div>{/* end scrollable */}</div>{/* end main area */}</div>
+            {configSubTab==="recurrences"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><RecurringRulesTabLazy lang={lang} canUsePro={canUse("excelExport")} onUpgrade={()=>showUpgradePrompt("excelExport")}/></Suspense>)}
+            {configSubTab==="apropos"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><SettingsAboutPanelLazy lang={lang}/></Suspense>)}</div></div>)}</div></div>{/* end scrollable */}</div>{/* end main area */}</div>
             {/* Global Search (Cmd+K) — top-level so it works from any tab */}
             {searchOpen&&(<Suspense fallback={null}><GlobalSearchLazy isOpen={searchOpen} onClose={()=>setSearchOpen(false)} onNavigate={handleSearchNavigate} lang={lang} isDark={themeName!=='warm'}/></Suspense>)}
             </ThemeCtx.Provider></LangCtx.Provider>

@@ -3402,6 +3402,18 @@ function taxProfileDelete(id) {
   return true;
 }
 
+function vaultComplianceCheck(_db = null) {
+  const db = _db ?? getDb();
+  return db.prepare(`
+    SELECT id, supplier_name, amount, bill_date, tps_paid, tvq_paid, invoice_number, month_key
+    FROM supplier_bills
+    WHERE (COALESCE(tps_paid, 0) + COALESCE(tvq_paid, 0)) > 0
+      AND COALESCE(amount, 0) > 100
+      AND (vault_document_id IS NULL OR vault_document_id = 0)
+    ORDER BY bill_date DESC, id DESC
+  `).all();
+}
+
 function taxRegistrationGet(locationId = null) {
   const db = getDb();
   if (locationId != null) {
@@ -5144,6 +5156,7 @@ module.exports = {
   taxSuspenseList, taxSuspenseClassifyAsCashExpense, taxSuspenseReverseCategorization,
   taxProfileList, taxProfileUpsert, taxProfileDelete,
   taxRegistrationGet, taxRegistrationSave,
+  vaultComplianceCheck,
   supplierBillList, supplierBillCreate, supplierBillUpdate, supplierBillMarkPaid, supplierBillMarkUnpaid,
   supplierPaymentsList, supplierPaymentCreate,
   assetList, assetCreate, assetUpdate, assetDelete,
