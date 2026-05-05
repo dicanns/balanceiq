@@ -308,6 +308,11 @@ contextBridge.exposeInMainWorld('api', {
   vaultCompliance: {
     check: () => ipcRenderer.invoke('vault:compliance:check'),
   },
+  networkScore: {
+    save: (data)              => ipcRenderer.invoke('network:score:save', data),
+    get:  (locationId, period)=> ipcRenderer.invoke('network:score:get', locationId, period),
+    list: (period)            => ipcRenderer.invoke('network:score:list', period),
+  },
   bilan: {
     compute:  (asOfDate, opts) => ipcRenderer.invoke('bilan:compute', asOfDate, opts),
     blockers: (asOfDate)       => ipcRenderer.invoke('bilan:blockers', asOfDate),

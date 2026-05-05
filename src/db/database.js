@@ -1187,6 +1187,26 @@ const MIGRATIONS = [
       )`).run();
     },
   },
+  {
+    version: 30,
+    description: 'Sprint 8A - Network compliance score table',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS network_compliance_score (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        location_id INTEGER NOT NULL,
+        period TEXT NOT NULL,
+        close_on_time REAL NOT NULL DEFAULT 0,
+        deposit_reconciled REAL NOT NULL DEFAULT 0,
+        royalty_data_complete REAL NOT NULL DEFAULT 0,
+        documents_complete REAL NOT NULL DEFAULT 0,
+        no_anomalies REAL NOT NULL DEFAULT 0,
+        month_end_ready REAL NOT NULL DEFAULT 0,
+        total_score REAL NOT NULL DEFAULT 0,
+        computed_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(location_id, period)
+      )`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -3480,6 +3500,53 @@ function taxRegistrationSave(data) {
   return db.prepare('SELECT * FROM tax_registration WHERE id=?').get(lastInsertRowid);
 }
 
+// ── Network Compliance Score (Sprint 8A) ──────────────────────────────────────
+
+function networkScoreSave(data, _db = null) {
+  const db = _db ?? getDb();
+  const {
+    locationId,
+    period,
+    closeOnTime = 0,
+    depositReconciled = 0,
+    royaltyDataComplete = 0,
+    documentsComplete = 0,
+    noAnomalies = 0,
+    monthEndReady = 0,
+    totalScore = 0,
+  } = data;
+  const now = new Date().toISOString();
+  db.prepare(`
+    INSERT INTO network_compliance_score
+      (location_id, period, close_on_time, deposit_reconciled,
+       royalty_data_complete, documents_complete, no_anomalies,
+       month_end_ready, total_score, computed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(location_id, period) DO UPDATE SET
+      close_on_time=excluded.close_on_time,
+      deposit_reconciled=excluded.deposit_reconciled,
+      royalty_data_complete=excluded.royalty_data_complete,
+      documents_complete=excluded.documents_complete,
+      no_anomalies=excluded.no_anomalies,
+      month_end_ready=excluded.month_end_ready,
+      total_score=excluded.total_score,
+      computed_at=excluded.computed_at
+  `).run(locationId, period, closeOnTime, depositReconciled,
+         royaltyDataComplete, documentsComplete, noAnomalies,
+         monthEndReady, totalScore, now);
+  return db.prepare('SELECT * FROM network_compliance_score WHERE location_id=? AND period=?').get(locationId, period);
+}
+
+function networkScoreGet(locationId, period, _db = null) {
+  const db = _db ?? getDb();
+  return db.prepare('SELECT * FROM network_compliance_score WHERE location_id=? AND period=?').get(locationId, period) ?? null;
+}
+
+function networkScoreList(period, _db = null) {
+  const db = _db ?? getDb();
+  return db.prepare('SELECT * FROM network_compliance_score WHERE period=? ORDER BY total_score DESC').all(period);
+}
+
 // ── Supplier Bills (Relational AP) ────────────────────────────────────────────
 
 function supplierBillList({ monthKey = null, paid = null, supplierName = null } = {}) {
@@ -5157,6 +5224,7 @@ module.exports = {
   taxProfileList, taxProfileUpsert, taxProfileDelete,
   taxRegistrationGet, taxRegistrationSave,
   vaultComplianceCheck,
+  networkScoreSave, networkScoreGet, networkScoreList,
   supplierBillList, supplierBillCreate, supplierBillUpdate, supplierBillMarkPaid, supplierBillMarkUnpaid,
   supplierPaymentsList, supplierPaymentCreate,
   assetList, assetCreate, assetUpdate, assetDelete,

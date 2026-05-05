@@ -23,6 +23,7 @@ const CloseComplianceTabLazy     = lazy(() => import('./components/CloseComplian
 const ComplianceTabLazy          = lazy(() => import('./components/ComplianceTab.jsx'));
 const SettingsAboutPanelLazy     = lazy(() => import('./components/SettingsAboutPanel.jsx'));
 const FranchiseCloseScorecardLazy = lazy(() => import('./components/FranchiseCloseScorecard.jsx'));
+const NetworkStandardsLazy        = lazy(() => import('./components/franchise/NetworkStandards.jsx'));
 import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./config/features.js";
 import { calcRoyaltyFull } from "./utils/calculations.js";
@@ -4982,7 +4983,7 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
  return(<div style={{padding:24,textAlign:"center",color:"#8b8fa3",fontSize:13}}>{T.reseauLocked}</div>);
  }
 
- return(<div style={{display:"flex",flexDirection:"column",gap:12}}>{/* Sub-tabs */}<div style={{display:"flex",gap:2,borderBottom:`1px solid ${t.dividerMid}`,paddingBottom:1}}>{[{id:"performance",label:"Performance"},{id:"scorecards",label:" Scorecards"},{id:"redevances",label:T.reseauRedevances},{id:"reconciliation",label:T.reseauRecon},{id:"retards",label:T.reseauRetards||" Retards"},{id:"audit",label:T.reseauAudit},{id:"documents",label:T.reseauDocs}].map(st=>(<button key={st.id} onClick={()=>setScoreTab(st.id)} style={{background:"none",border:"none",color:scoreTab===st.id?"#a78bfa":t.textMuted,fontSize:11,fontWeight:scoreTab===st.id?700:500,padding:"5px 11px",cursor:"pointer",borderBottom:scoreTab===st.id?"2px solid #a78bfa":"2px solid transparent",whiteSpace:"nowrap"}}>
+ return(<div style={{display:"flex",flexDirection:"column",gap:12}}>{/* Sub-tabs */}<div style={{display:"flex",gap:2,borderBottom:`1px solid ${t.dividerMid}`,paddingBottom:1}}>{[{id:"performance",label:"Performance"},{id:"scorecards",label:" Scorecards"},{id:"standards",label:lang==="fr"?"Standards réseau":"Network Standards"},{id:"redevances",label:T.reseauRedevances},{id:"reconciliation",label:T.reseauRecon},{id:"retards",label:T.reseauRetards||" Retards"},{id:"audit",label:T.reseauAudit},{id:"documents",label:T.reseauDocs}].map(st=>(<button key={st.id} onClick={()=>setScoreTab(st.id)} style={{background:"none",border:"none",color:scoreTab===st.id?"#a78bfa":t.textMuted,fontSize:11,fontWeight:scoreTab===st.id?700:500,padding:"5px 11px",cursor:"pointer",borderBottom:scoreTab===st.id?"2px solid #a78bfa":"2px solid transparent",whiteSpace:"nowrap"}}>
  {st.label}</button>))}</div>{/* Performance sub-tab */}
  {scoreTab==="performance"&&(<>{/* Summary cards */}<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{[
  {label:T.netSales,value:fmtFull(networkTotal),accent:"#a78bfa"},
@@ -5060,6 +5061,10 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
  return(<div key={loc.id} style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,overflow:"hidden"}}><div style={{padding:"10px 14px",borderBottom:`1px solid ${t.dividerMid}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{fontSize:13,fontWeight:700,color:t.text}}>{loc.nom}</span><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:10,color:t.textMuted}}>{T.scoreGlobal}</span><span style={{fontSize:18,fontWeight:800,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:scoreColor}}>{sc.score}/100</span></div></div><table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}><thead><tr style={{background:t.section}}>{[T.scoreMetric,T.scoreValue,T.scoreTarget,T.colStatus].map(h=><th key={h} style={{padding:"6px 12px",textAlign:"left",fontWeight:600,color:t.textSub,fontSize:10.5}}>{h}</th>)}</tr></thead><tbody>{sc.metrics.map((m,i)=>(<tr key={i} style={{borderTop:`1px solid ${t.divider}`}}><td style={{padding:"6px 12px",color:t.text}}>{m.label}</td><td style={{padding:"6px 12px",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:t.text}}>{m.val}</td><td style={{padding:"6px 12px",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:t.textMuted}}>{m.target}</td><td style={{padding:"6px 12px",fontWeight:700,color:m.ok?"#22c55e":"#ef4444"}}>{m.val==="—"?"—":m.ok?T.scoreAchieved:T.scoreMissed}</td></tr>))}</tbody></table><div style={{padding:"0 14px 14px"}}><Suspense fallback={null}><FranchiseCloseScorecardLazy lang={lang} t={t} canUse={canUse}/></Suspense></div></div>);
  })}
  {activeLocs.length===0&&<div style={{color:t.textMuted,fontSize:12,padding:16,textAlign:"center"}}>{T.noActiveStoresShort}</div>}</div>)}
+
+ {/* Standards réseau sub-tab */}
+ {scoreTab==="standards"&&(
+ !canUse('franchiseeScorecards')?<div style={{padding:24,textAlign:"center",color:"#8b8fa3",fontSize:13}}>{T.scorecardsLocked}</div>:<Suspense fallback={<div style={{color:t.textMuted,fontSize:12,padding:16}}>{T.loading}</div>}><NetworkStandardsLazy t={t} lang={lang} locations={activeLocs} canUse={canUse}/></Suspense>)}
 
  {/* Redevances sub-tab */}
  {scoreTab==="redevances"&&(

@@ -1147,6 +1147,26 @@ const MIGRATIONS = [
       )`).run();
     },
   },
+  {
+    version: 30,
+    description: 'Sprint 8A - Network compliance score table',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS network_compliance_score (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        location_id INTEGER NOT NULL,
+        period TEXT NOT NULL,
+        close_on_time REAL NOT NULL DEFAULT 0,
+        deposit_reconciled REAL NOT NULL DEFAULT 0,
+        royalty_data_complete REAL NOT NULL DEFAULT 0,
+        documents_complete REAL NOT NULL DEFAULT 0,
+        no_anomalies REAL NOT NULL DEFAULT 0,
+        month_end_ready REAL NOT NULL DEFAULT 0,
+        total_score REAL NOT NULL DEFAULT 0,
+        computed_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(location_id, period)
+      )`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.

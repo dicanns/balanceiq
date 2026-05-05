@@ -115,7 +115,7 @@ describe('MIG-002 upgrade pre-ledger database', () => {
 
   it('user_version advances to 12 after migration', () => {
     runMigrations(db);
-    expect(db.pragma("user_version", { simple: true })).toBe(29);
+    expect(db.pragma("user_version", { simple: true })).toBe(30);
   });
 
   it('re-running migration is a no-op', () => {
@@ -126,6 +126,6 @@ describe('MIG-002 upgrade pre-ledger database', () => {
 
     const kvCount2 = db.prepare(`SELECT COUNT(*) AS n FROM kv_store`).get().n;
     expect(kvCount2).toBe(kvCount1);
-    expect(db.pragma("user_version", { simple: true })).toBe(29);
+    expect(db.pragma("user_version", { simple: true })).toBe(30);
   });
 });

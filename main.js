@@ -66,6 +66,7 @@ const {
   taxProfileList, taxProfileUpsert, taxProfileDelete,
   taxRegistrationGet, taxRegistrationSave,
   vaultComplianceCheck,
+  networkScoreSave, networkScoreGet, networkScoreList,
   supplierBillList, supplierBillCreate, supplierBillUpdate, supplierBillMarkPaid, supplierBillMarkUnpaid,
   supplierPaymentsList, supplierPaymentCreate,
   assetList, assetCreate, assetUpdate, assetDelete,
@@ -1672,6 +1673,9 @@ ipcMain.handle('tax:profile:delete',            (_e, id)                        
 ipcMain.handle('tax:registration:get',          (_e, locationId)                        => taxRegistrationGet(locationId ?? null));
 ipcMain.handle('tax:registration:save',         (_e, data)                              => taxRegistrationSave(data));
 ipcMain.handle('vault:compliance:check',        ()                                      => vaultComplianceCheck());
+ipcMain.handle('network:score:save',            (_e, data)                              => networkScoreSave(data));
+ipcMain.handle('network:score:get',             (_e, locationId, period)                => networkScoreGet(locationId, period));
+ipcMain.handle('network:score:list',            (_e, period)                            => networkScoreList(period));
 
 // ── Bilan (Balance Sheet) — Sprint 6 ─────────────────────────────────────────
 try {
