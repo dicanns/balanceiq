@@ -457,6 +457,16 @@ ipcMain.handle('snapshot:listDates', () => {
   return snapshotListDates();
 });
 
+// ── Cloud auth token cache ─────────────────────────────────────────────────
+// Renderer calls auth:setToken on sign-in/out so main.js can validate bearer.
+let _accessToken = null;
+
+ipcMain.handle('auth:getAccessToken', () => _accessToken);
+ipcMain.handle('auth:setToken', (_e, tok) => {
+  _accessToken = typeof tok === 'string' && tok ? tok : null;
+  return true;
+});
+
 // IPC handlers — audit log (append-only, never update/delete)
 ipcMain.handle('audit:log', (event, entry) => {
   return auditInsert(entry);
@@ -2350,14 +2360,15 @@ function generateAcceptanceToken() {
 }
 
 // Send quote for acceptance: create token via edge function (has service role), return acceptance URL
-ipcMain.handle('soumission:sendAcceptance', async (_e, { quoteId, quoteNumber, quoteHtml, clientName, clientEmail, operatorEmail, orgId, expiresAt }) => {
+ipcMain.handle('soumission:sendAcceptance', async (_e, { accessToken, quoteId, quoteNumber, quoteHtml, clientName, clientEmail, operatorEmail, orgId, expiresAt }) => {
   if (!SUPABASE_URL) return { error: 'no_supabase', message: 'Supabase not configured.' };
+  const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+  if (!accessToken || accessToken === anonKey) return { error: 'no_session' };
   try {
-    const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
     const token = generateAcceptanceToken();
     const res = await net.fetch(`${ACCEPTANCE_BASE_URL}?action=create`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${anonKey}` },
+      headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${accessToken}` },
       body: JSON.stringify({ token, org_id: orgId, quote_id: quoteId, quote_number: quoteNumber, quote_html: quoteHtml, client_name: clientName || null, client_email: clientEmail || null, operator_email: operatorEmail || null, expires_at: expiresAt }),
     });
     if (!res.ok) { const text = await res.text(); return { error: 'insert_failed', message: text }; }
@@ -2369,12 +2380,13 @@ ipcMain.handle('soumission:sendAcceptance', async (_e, { quoteId, quoteNumber, q
 });
 
 // Check acceptance status: poll via edge function
-ipcMain.handle('soumission:checkAcceptance', async (_e, { token }) => {
+ipcMain.handle('soumission:checkAcceptance', async (_e, { accessToken, token }) => {
   if (!SUPABASE_URL) return { error: 'no_supabase' };
+  const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+  if (!accessToken || accessToken === anonKey) return { error: 'no_session' };
   try {
-    const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
     const res = await net.fetch(`${ACCEPTANCE_BASE_URL}?action=check&token=${encodeURIComponent(token)}`, {
-      headers: { 'apikey': anonKey, 'Authorization': `Bearer ${anonKey}` },
+      headers: { 'apikey': anonKey, 'Authorization': `Bearer ${accessToken}` },
     });
     if (!res.ok) return { error: 'fetch_failed' };
     return await res.json();
@@ -2384,13 +2396,14 @@ ipcMain.handle('soumission:checkAcceptance', async (_e, { token }) => {
 });
 
 // Revoke token: mark as expired via edge function
-ipcMain.handle('soumission:revokeToken', async (_e, { token }) => {
+ipcMain.handle('soumission:revokeToken', async (_e, { accessToken, token }) => {
   if (!SUPABASE_URL) return { error: 'no_supabase' };
+  const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+  if (!accessToken || accessToken === anonKey) return { error: 'no_session' };
   try {
-    const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
     const res = await net.fetch(`${ACCEPTANCE_BASE_URL}?action=revoke&token=${encodeURIComponent(token)}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${anonKey}` },
+      headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${accessToken}` },
     });
     return res.ok ? { ok: true } : { error: 'revoke_failed' };
   } catch (e) {
@@ -2402,13 +2415,14 @@ ipcMain.handle('soumission:revokeToken', async (_e, { token }) => {
 
 const PAD_BASE_URL = `${SUPABASE_URL}/functions/v1`;
 
-ipcMain.handle('pad:createMandate', async (_e, { org_id, client_id, client_name, client_email, operator_email, followup_enabled, stripe_secret_key }) => {
+ipcMain.handle('pad:createMandate', async (_e, { accessToken, org_id, client_id, client_name, client_email, operator_email, followup_enabled, stripe_secret_key }) => {
   if (!SUPABASE_URL) return { error: 'no_supabase', message: 'Supabase not configured.' };
+  const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+  if (!accessToken || accessToken === anonKey) return { error: 'no_session' };
   try {
-    const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
     const res = await net.fetch(`${PAD_BASE_URL}/create-pad-mandate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${anonKey}` },
+      headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${accessToken}` },
       body: JSON.stringify({ org_id, client_id, client_name, client_email, operator_email, followup_enabled, stripe_secret_key }),
     });
     if (!res.ok) { const t = await res.text(); return { error: 'request_failed', message: t }; }
@@ -2418,14 +2432,15 @@ ipcMain.handle('pad:createMandate', async (_e, { org_id, client_id, client_name,
   }
 });
 
-ipcMain.handle('pad:listMandates', async (_e, { org_id, client_id }) => {
+ipcMain.handle('pad:listMandates', async (_e, { accessToken, org_id, client_id }) => {
   if (!SUPABASE_URL) return { error: 'no_supabase' };
+  const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+  if (!accessToken || accessToken === anonKey) return { error: 'no_session' };
   try {
-    const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
     let url = `${SUPABASE_URL}/rest/v1/pad_mandates?org_id=eq.${encodeURIComponent(org_id)}&order=created_at.desc`;
     if (client_id) url += `&client_id=eq.${encodeURIComponent(client_id)}`;
     const res = await net.fetch(url, {
-      headers: { 'apikey': anonKey, 'Authorization': `Bearer ${anonKey}`, 'Accept': 'application/json' },
+      headers: { 'apikey': anonKey, 'Authorization': `Bearer ${accessToken}`, 'Accept': 'application/json' },
     });
     if (!res.ok) return { error: 'request_failed' };
     return { ok: true, mandates: await res.json() };
@@ -2434,13 +2449,14 @@ ipcMain.handle('pad:listMandates', async (_e, { org_id, client_id }) => {
   }
 });
 
-ipcMain.handle('pad:cancelMandate', async (_e, { org_id, mandate_id }) => {
+ipcMain.handle('pad:cancelMandate', async (_e, { accessToken, org_id, mandate_id }) => {
   if (!SUPABASE_URL) return { error: 'no_supabase' };
+  const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+  if (!accessToken || accessToken === anonKey) return { error: 'no_session' };
   try {
-    const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
     const res = await net.fetch(`${SUPABASE_URL}/rest/v1/pad_mandates?id=eq.${encodeURIComponent(mandate_id)}&org_id=eq.${encodeURIComponent(org_id)}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${anonKey}`, 'Prefer': 'return=minimal' },
+      headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${accessToken}`, 'Prefer': 'return=minimal' },
       body: JSON.stringify({ status: 'cancelled', updated_at: new Date().toISOString() }),
     });
     return res.ok ? { ok: true } : { error: 'cancel_failed' };
@@ -2449,13 +2465,14 @@ ipcMain.handle('pad:cancelMandate', async (_e, { org_id, mandate_id }) => {
   }
 });
 
-ipcMain.handle('pad:chargeMandate', async (_e, { org_id, mandate_id, amount_cents, invoice_id, description }) => {
+ipcMain.handle('pad:chargeMandate', async (_e, { accessToken, org_id, mandate_id, amount_cents, invoice_id, description }) => {
   if (!SUPABASE_URL) return { error: 'no_supabase' };
+  const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+  if (!accessToken || accessToken === anonKey) return { error: 'no_session' };
   try {
-    const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
     const res = await net.fetch(`${PAD_BASE_URL}/charge-pad-mandate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${anonKey}` },
+      headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${accessToken}` },
       body: JSON.stringify({ org_id, mandate_id, amount_cents, invoice_id, description }),
     });
     if (!res.ok) { const t = await res.text(); return { error: 'request_failed', message: t }; }
@@ -2465,13 +2482,14 @@ ipcMain.handle('pad:chargeMandate', async (_e, { org_id, mandate_id, amount_cent
   }
 });
 
-ipcMain.handle('pad:saveConfig', async (_e, { org_id, webhook_secret }) => {
+ipcMain.handle('pad:saveConfig', async (_e, { accessToken, org_id, webhook_secret }) => {
   if (!SUPABASE_URL) return { error: 'no_supabase' };
+  const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+  if (!accessToken || accessToken === anonKey) return { error: 'no_session' };
   try {
-    const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
     const res = await net.fetch(`${PAD_BASE_URL}/set-pad-config`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${anonKey}` },
+      headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${accessToken}` },
       body: JSON.stringify({ org_id, webhook_secret }),
     });
     if (!res.ok) { const t = await res.text(); return { error: 'request_failed', message: t }; }
@@ -2481,13 +2499,14 @@ ipcMain.handle('pad:saveConfig', async (_e, { org_id, webhook_secret }) => {
   }
 });
 
-ipcMain.handle('pad:runFollowup', async (_e, { org_id, resend_api_key, resend_from, operator_email }) => {
+ipcMain.handle('pad:runFollowup', async (_e, { accessToken, org_id, resend_api_key, resend_from, operator_email }) => {
   if (!SUPABASE_URL) return { error: 'no_supabase' };
+  const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+  if (!accessToken || accessToken === anonKey) return { error: 'no_session' };
   try {
-    const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
     const res = await net.fetch(`${PAD_BASE_URL}/pad-followup`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${anonKey}` },
+      headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${accessToken}` },
       body: JSON.stringify({ org_id, resend_api_key, resend_from, operator_email }),
     });
     if (!res.ok) { const t = await res.text(); return { error: 'request_failed', message: t }; }

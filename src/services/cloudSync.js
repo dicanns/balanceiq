@@ -279,6 +279,7 @@ export async function refreshPlan() {
 
 // ── GETTERS ────────────────────────────────────────────────────────────────
 export function getCloudSession() { return _session; }
+export function getAccessToken() { return _session?.access_token || null; }
 export function getCloudPlan() { return _plan; }
 export function getCloudOrgId() { return _orgId; }
 export function getCloudParentOrgId() { return _parentOrgId; }

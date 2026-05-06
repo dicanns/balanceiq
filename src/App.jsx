@@ -34,7 +34,7 @@ import { calcRoyaltyFull } from "./utils/calculations.js";
 import { buildFlashReportHTML } from "./services/flashReport.js";
 import * as XLSX from "xlsx";
 import { logCreate, logUpdate, logVoid, logCorrection, isFinancialField, promptCorrectionReason } from "./services/auditLogger.js";
-import { initCloudSync, signIn as cloudSignIn, signUp as cloudSignUp, signOut as cloudSignOut, requestPasswordReset, schedulePush, onSyncStatus, onPlanChange, refreshPlan, getCloudOrgId, getCloudParentOrgId, getMyLinkedLocations, getLastSyncedAt } from "./services/cloudSync.js";
+import { initCloudSync, signIn as cloudSignIn, signUp as cloudSignUp, signOut as cloudSignOut, requestPasswordReset, schedulePush, onSyncStatus, onPlanChange, refreshPlan, getCloudOrgId, getCloudParentOrgId, getMyLinkedLocations, getLastSyncedAt, getAccessToken as getCloudAccessToken } from "./services/cloudSync.js";
 import { supabase as _supabaseClient } from "./services/supabase.js";
 import { initTelemetry, getTelemetryConsent, setTelemetryConsent, trackEvent } from "./services/telemetry.js";
 import { POS_CONFIG, POS_COMING_SOON } from "./config/posConfig.js";
@@ -2277,7 +2277,9 @@ function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveD
      const expires=new Date(Date.now()+30*86400000).toISOString();
      const orgId=apiConfig?.orgId||apiConfig?.org_id||savedId||'local';
      const operatorEmail=apiConfig?.resendFrom||companyInfo?.courriel||'';
-     const res=await window.api?.soumissions?.sendAcceptance?.({quoteId:savedId,quoteNumber:num,quoteHtml:html,clientName:client.entreprise,clientEmail:client.courriel,operatorEmail,orgId,expiresAt:expires});
+     const accessToken=getCloudAccessToken();
+     if(!accessToken){setQaMsg({type:'error',text:lang==='en'?'Session expired — sign in to continue.':'Session expirée — reconnectez-vous.'});setQaSending(false);return;}
+     const res=await window.api?.soumissions?.sendAcceptance?.({accessToken,quoteId:savedId,quoteNumber:num,quoteHtml:html,clientName:client.entreprise,clientEmail:client.courriel,operatorEmail,orgId,expiresAt:expires});
      if(res?.error){setQaMsg({type:'error',text:`${T.qaSendError} (${res.error})`});return;}
      const token=res?.token;
      const acceptanceUrl=res?.acceptanceUrl;
@@ -2303,7 +2305,7 @@ function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveD
  const doCheckAcceptance=async()=>{
    if(!qaToken)return;
    setQaChecking(true);setQaMsg(null);
-   const res=await window.api?.soumissions?.checkAcceptance?.({token:qaToken});
+   const res=await window.api?.soumissions?.checkAcceptance?.({accessToken:getCloudAccessToken(),token:qaToken});
    if(res?.ok){
      setQaStatus(res.status);
      if(res.status==='accepted'){
@@ -2318,7 +2320,7 @@ function SoumissionEditor({soumission,clients,produits,companyInfo,docNums,saveD
  const doRevokeToken=async()=>{
    if(!qaToken)return;
    if(!window.confirm(T.qaRevokeConfirm))return;
-   await window.api?.soumissions?.revokeToken?.({token:qaToken});
+   await window.api?.soumissions?.revokeToken?.({accessToken:getCloudAccessToken(),token:qaToken});
    setQaStatus(null);setQaToken(null);setQaExpiresAt(null);
    const updSoum={...form,id:savedId,lignes,acceptance_status:null,acceptance_token:null,acceptance_token_expires_at:null};
    saveSoumissions(soumissions.map(s=>s.id===savedId?updSoum:s));
@@ -2635,7 +2637,7 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
  useEffect(()=>{
   if(!form.clientId||!window.api?.pad)return;
   const orgId=apiConfig?.orgId||apiConfig?.org_id||'local';
-  window.api.pad.listMandates({org_id:orgId,client_id:form.clientId}).then(r=>{
+  window.api.pad.listMandates({accessToken:getCloudAccessToken(),org_id:orgId,client_id:form.clientId}).then(r=>{
    if(r?.ok)setPadMandate((r.mandates||[]).find(m=>m.status==='active')||null);
   }).catch(()=>{});
  },[form.clientId]);
@@ -2645,7 +2647,7 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
   try{
    const orgId=apiConfig?.orgId||apiConfig?.org_id||'local';
    const amountCents=Math.round(soldeDu*100);
-   const r=await window.api.pad.chargeMandate({org_id:orgId,mandate_id:padMandate.id,amount_cents:amountCents,invoice_id:savedId,description:`PAD — facture ${savedNumero||savedId}`});
+   const r=await window.api.pad.chargeMandate({accessToken:getCloudAccessToken(),org_id:orgId,mandate_id:padMandate.id,amount_cents:amountCents,invoice_id:savedId,description:`PAD — facture ${savedNumero||savedId}`});
    if(r?.error){setPadChargeMsg({type:'error',text:`${T.padChargeError}: ${r.error}`});return;}
    setPadChargeMsg({type:'success',text:T.padChargeSuccess});
   }catch(e){setPadChargeMsg({type:'error',text:T.padChargeError});}
@@ -3565,7 +3567,7 @@ function ClientProfile({client,saveClient,onBack,onNewDoc,onOpenDoc,soumissions,
  const [padCheckoutUrl,setPadCheckoutUrl]=useState('');
  const doSave=()=>{if(!form.entreprise?.trim())return;saveClient({...form,entreprise:form.entreprise.trim()});setSaved(true);setTimeout(()=>setSaved(false),2000);};
  const toggleStatut=()=>{const updated={...form,statut:form.statut==="actif"?"inactif":"actif"};setForm(updated);saveClient(updated);};
- const loadPadMandates=async()=>{const orgId=apiConfig?.orgId||apiConfig?.org_id||'local';if(!window.api?.pad)return;const r=await window.api.pad.listMandates({org_id:orgId,client_id:client.id});if(r?.ok)setPadMandates(r.mandates||[]);};
+ const loadPadMandates=async()=>{const orgId=apiConfig?.orgId||apiConfig?.org_id||'local';if(!window.api?.pad)return;const r=await window.api.pad.listMandates({accessToken:getCloudAccessToken(),org_id:orgId,client_id:client.id});if(r?.ok)setPadMandates(r.mandates||[]);};
  useEffect(()=>{loadPadMandates();},[client.id]);
  const activeMandate=padMandates.find(m=>m.status==='active');
  const pendingMandate=padMandates.find(m=>m.status==='pending');
@@ -3575,7 +3577,7 @@ function ClientProfile({client,saveClient,onBack,onNewDoc,onOpenDoc,soumissions,
   setPadSending(true);setPadMsg(null);setPadCheckoutUrl('');
   try{
    const orgId=apiConfig?.orgId||apiConfig?.org_id||'local';
-   const r=await window.api.pad.createMandate({org_id:orgId,client_id:client.id,client_name:client.entreprise,client_email:client.courriel,operator_email:apiConfig?.reportEmail||'',followup_enabled:!!form.padFollowupEnabled,stripe_secret_key:apiConfig?.stripeSecretKey||''});
+   const r=await window.api.pad.createMandate({accessToken:getCloudAccessToken(),org_id:orgId,client_id:client.id,client_name:client.entreprise,client_email:client.courriel,operator_email:apiConfig?.reportEmail||'',followup_enabled:!!form.padFollowupEnabled,stripe_secret_key:apiConfig?.stripeSecretKey||''});
    if(r?.error){setPadMsg({type:'error',text:T.padSendError});return;}
    const checkoutUrl=r.checkout_url||'';
    setPadCheckoutUrl(checkoutUrl);
@@ -3601,7 +3603,7 @@ function ClientProfile({client,saveClient,onBack,onNewDoc,onOpenDoc,soumissions,
  const doCancelMandate=async(mandate)=>{
   if(!window.confirm(T.padCancelConfirm))return;
   const orgId=apiConfig?.orgId||apiConfig?.org_id||'local';
-  await window.api.pad.cancelMandate({org_id:orgId,mandate_id:mandate.id});
+  await window.api.pad.cancelMandate({accessToken:getCloudAccessToken(),org_id:orgId,mandate_id:mandate.id});
   await loadPadMandates();
  };
  // Per-client filtered lists, sorted date desc
@@ -6200,7 +6202,7 @@ export default function App(){
         const cfgRaw=await window.api.storage.get('dicann-api-config');
         const cfg=cfgRaw?JSON.parse(cfgRaw):null;
         if(!cfg?.orgId||!window.api?.pad?.listMandates)return;
-        const mandates=await window.api.pad.listMandates({org_id:cfg.orgId});
+        const mandates=await window.api.pad.listMandates({accessToken:getCloudAccessToken(),org_id:cfg.orgId});
         const nsfWithInvoice=(mandates||[]).filter(m=>m.status==='nsf'&&m.nsf_invoice_id);
         if(!nsfWithInvoice.length)return;
         const stored=await window.api.storage.get('dicann-fac-factures');
@@ -6235,7 +6237,7 @@ export default function App(){
         const cfgRaw=await window.api.storage.get('dicann-api-config');
         const cfg=cfgRaw?JSON.parse(cfgRaw):null;
         if(cfg?.orgId&&cfg?.resendKey&&window.api?.pad?.runFollowup){
-          await window.api.pad.runFollowup({org_id:cfg.orgId,resend_api_key:cfg.resendKey,resend_from:cfg.resendFrom||'noreply@balanceiq.ca',operator_email:cfg.reportEmail||''});
+          await window.api.pad.runFollowup({accessToken:getCloudAccessToken(),org_id:cfg.orgId,resend_api_key:cfg.resendKey,resend_from:cfg.resendFrom||'noreply@balanceiq.ca',operator_email:cfg.reportEmail||''});
         }
       }catch(_){}
     },12000);
@@ -6249,6 +6251,7 @@ export default function App(){
           setCloudUser({email:cloud.session.user.email,plan:cloud.plan});
           setMyLinkedLocations(getMyLinkedLocations());
           if(cloud.plan){setPlan(cloud.plan);setActivePlan(cloud.plan);}
+          window.api?.auth?.setToken?.(cloud.session.access_token||null);
         }
       }catch(_){}
     },1000);
@@ -6553,10 +6556,10 @@ export default function App(){
   const saveWhiteLabel=useCallback(cfg=>{setWhiteLabelConfig(cfg);window.api.storage.set("balanceiq-whitelabel",JSON.stringify(cfg)).catch(()=>{})},[]);
   const saveLockConfig=useCallback(cfg=>{setLockConfig(cfg);window.api.storage.set("balanceiq-lock",JSON.stringify(cfg)).catch(()=>{})},[]);
   const saveInvConfig=useCallback(cfg=>{setInvConfig(cfg);const v=JSON.stringify(cfg);window.api.storage.set("dicann-inv-config",v).catch(()=>{});schedulePush("dicann-inv-config",v);},[]);
-  const handleCloudSignIn=useCallback(async(creds)=>{const res=await cloudSignIn(creds);setCloudUser({email:res.session.user.email,plan:res.plan});setMyLinkedLocations(getMyLinkedLocations());setPlan(res.plan);setActivePlan(res.plan);},[]);
+  const handleCloudSignIn=useCallback(async(creds)=>{const res=await cloudSignIn(creds);setCloudUser({email:res.session.user.email,plan:res.plan});setMyLinkedLocations(getMyLinkedLocations());setPlan(res.plan);setActivePlan(res.plan);window.api?.auth?.setToken?.(res.session?.access_token||null);},[]);
   const handleCloudSignUp=useCallback(async(creds)=>{await cloudSignUp(creds);/* trigger creates org/user server-side; user must confirm email then sign in */},[]);
   const handleCloudResetPassword=useCallback(async(email)=>{await requestPasswordReset(email);},[]);
-  const handleCloudSignOut=useCallback(async()=>{await cloudSignOut();setCloudUser(null);setSyncStatus(null);setMyLinkedLocations([]);setActiveMUOLocationId(null);},[]);
+  const handleCloudSignOut=useCallback(async()=>{await cloudSignOut();window.api?.auth?.setToken?.(null);setCloudUser(null);setSyncStatus(null);setMyLinkedLocations([]);setActiveMUOLocationId(null);},[]);
   const handleRefreshPlan=useCallback(async()=>{const p=await refreshPlan();if(p){setPlan(p);setActivePlan(p);setCloudUser(u=>u?{...u,plan:p}:u);}},[])
 
   // ── CMD+K / CTRL+K GLOBAL SEARCH ─────────────────────────────────────────
@@ -7702,7 +7705,7 @@ export default function App(){
    if(!secret.startsWith('whsec_')){setPadConfigStatus({err:T===EN?"Must start with whsec_":"Doit commencer par whsec_"});return;}
    setPadConfigStatus('saving');
    const orgId=apiConfig?.orgId||apiConfig?.org_id||'local';
-   const r=await window.api.pad.saveConfig({org_id:orgId,webhook_secret:secret});
+   const r=await window.api.pad.saveConfig({accessToken:getCloudAccessToken(),org_id:orgId,webhook_secret:secret});
    if(r?.ok)setPadConfigStatus({ok:true});
    else setPadConfigStatus({err:r?.error||r?.message||'error'});
   }} disabled={!apiConfig.padWebhookSecret||padConfigStatus==='saving'} style={{padding:"5px 14px",borderRadius:5,border:`1px solid ${apiConfig.padWebhookSecret?"rgba(34,197,94,0.3)":t.cardBorder}`,background:apiConfig.padWebhookSecret?"rgba(34,197,94,0.08)":t.section,color:apiConfig.padWebhookSecret?"#16a34a":t.textDim,cursor:apiConfig.padWebhookSecret?"pointer":"default",fontWeight:700,fontSize:11,whiteSpace:"nowrap"}}>

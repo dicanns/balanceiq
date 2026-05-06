@@ -422,6 +422,10 @@ contextBridge.exposeInMainWorld('api', {
   file: {
     save: (opts) => ipcRenderer.invoke('file:save', opts),
   },
+  auth: {
+    getAccessToken: () => ipcRenderer.invoke('auth:getAccessToken'),
+    setToken: (tok) => ipcRenderer.invoke('auth:setToken', tok),
+  },
   soumissions: {
     sendAcceptance:  (opts) => ipcRenderer.invoke('soumission:sendAcceptance', opts),
     checkAcceptance: (opts) => ipcRenderer.invoke('soumission:checkAcceptance', opts),
