@@ -45,24 +45,25 @@ for f in supabase/functions/*/index.ts; do
   name=$(basename "$(dirname "$f")")
   if [ "$name" = "_shared" ]; then continue; fi
 
-  # Extract DB table names: .from('name') but not .storage.from('name')
+  # Extract DB table names: .from('name')
+  # Storage bucket references are excluded by name: real table names never contain
+  # hyphens, but Supabase storage bucket names often do (e.g. 'franchise-docs').
   while IFS= read -r tbl; do
     [ -z "$tbl" ] && continue
 
-    # Skip storage bucket references (line contains .storage.)
-    line=$(grep -n "\.from('$tbl'" "$f" 2>/dev/null | grep -v "\.storage\." | head -1 || true)
-    [ -z "$line" ] && continue
+    # Skip storage bucket names (contain a hyphen — not valid unquoted table names)
+    if echo "$tbl" | grep -q '-'; then continue; fi
 
-    # Skip allowlisted tables
+    # Skip allowlisted Supabase-managed tables
     if echo "$tbl" | grep -qE "^($ALLOWLIST)$"; then continue; fi
 
     # Check if table exists in known migrations
-    if ! echo "$KNOWN_TABLES" | grep -qw "$tbl"; then
+    if ! echo "$KNOWN_TABLES" | grep -qiw "$tbl"; then
       echo "FAIL: $f references table '$tbl' not found in any supabase/migrations/*.sql"
       TABLE_FAIL=1
       FAIL=1
     fi
-  done < <(grep -oP "(?<!\.storage)\.from\('\K[^']+" "$f" 2>/dev/null || true)
+  done < <(grep -oP "\.from\('\K[^']+" "$f" 2>/dev/null || true)
 done
 
 if [ "$TABLE_FAIL" -eq 0 ]; then
