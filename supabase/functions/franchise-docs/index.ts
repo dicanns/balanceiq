@@ -10,6 +10,16 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 
+function forbidden() {
+  return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: corsHeaders });
+}
+function notFound() {
+  return new Response(JSON.stringify({ error: 'not_found' }), { status: 404, headers: corsHeaders });
+}
+function ok(data: unknown) {
+  return new Response(JSON.stringify(data), { headers: corsHeaders });
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
@@ -28,22 +38,29 @@ serve(async (req) => {
     const { data: { user }, error: authErr } = await userClient.auth.getUser();
     if (authErr || !user) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: corsHeaders });
 
-    // Get caller's org_id
-    const { data: userData } = await svc.from('users').select('org_id').eq('id', user.id).single();
+    // Get caller's org_id and role
+    const { data: userData } = await svc.from('users').select('org_id, role').eq('id', user.id).single();
     if (!userData?.org_id) return new Response(JSON.stringify({ error: 'no_org' }), { status: 403, headers: corsHeaders });
     const callerOrgId = userData.org_id;
+    const callerRole: string = userData.role || 'member';
 
     const body = await req.json();
     const { action } = body;
 
     // Helper: verify caller owns the target orgId
-    async function verifyOwner(orgId: string) {
+    function verifyOwner(orgId: string) {
       return orgId === callerOrgId;
+    }
+
+    // Helper: verify caller has admin or owner role
+    function isAdminOrOwner() {
+      return callerRole === 'owner' || callerRole === 'admin';
     }
 
     if (action === 'upload') {
       const { orgId, folder, filename, fileBase64, mimeType, description } = body;
-      if (!(await verifyOwner(orgId))) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: corsHeaders });
+      if (!verifyOwner(orgId)) return forbidden();
+      if (!isAdminOrOwner()) return forbidden();
 
       const fileBytes = Uint8Array.from(atob(fileBase64), c => c.charCodeAt(0));
       const storagePath = `${orgId}/${folder}/${Date.now()}_${filename}`;
@@ -61,16 +78,27 @@ serve(async (req) => {
         .single();
 
       if (insertErr) return new Response(JSON.stringify({ error: insertErr.message }), { status: 500, headers: corsHeaders });
-      return new Response(JSON.stringify({ ok: true, doc }), { headers: corsHeaders });
+      return ok({ ok: true, doc });
     }
 
     if (action === 'delete_doc') {
-      const { docId, storagePath, orgId } = body;
-      if (!(await verifyOwner(orgId))) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: corsHeaders });
+      const { docId, orgId } = body; // storagePath from client is intentionally ignored
+      if (!verifyOwner(orgId)) return forbidden();
+      if (!isAdminOrOwner()) return forbidden();
 
-      await svc.storage.from('franchise-docs').remove([storagePath]);
-      await svc.from('franchise_documents').delete().eq('id', docId);
-      return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
+      // Reload storage_path from DB — never trust client-supplied paths
+      const { data: doc } = await svc
+        .from('franchise_documents')
+        .select('id, org_id, storage_path')
+        .eq('id', docId)
+        .maybeSingle();
+
+      if (!doc) return notFound();
+      if (doc.org_id !== orgId) return forbidden(); // cross-tenant attempt
+
+      await svc.storage.from('franchise-docs').remove([doc.storage_path]);
+      await svc.from('franchise_documents').delete().eq('id', docId).eq('org_id', orgId);
+      return ok({ ok: true });
     }
 
     if (action === 'get_signed_url') {
@@ -79,19 +107,20 @@ serve(async (req) => {
       const pathOrgId = storagePath.split('/')[0];
       const { data: orgRow } = await svc.from('organizations').select('parent_org_id').eq('id', callerOrgId).single();
       const canAccess = pathOrgId === callerOrgId || pathOrgId === orgRow?.parent_org_id;
-      if (!canAccess) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: corsHeaders });
+      if (!canAccess) return forbidden();
 
       const { data: urlData, error: urlErr } = await svc.storage
         .from('franchise-docs')
         .createSignedUrl(storagePath, 300); // 5 min expiry
 
       if (urlErr) return new Response(JSON.stringify({ error: urlErr.message }), { status: 500, headers: corsHeaders });
-      return new Response(JSON.stringify({ ok: true, url: urlData.signedUrl }), { headers: corsHeaders });
+      return ok({ ok: true, url: urlData.signedUrl });
     }
 
     if (action === 'post_announcement') {
       const { orgId, title, body: annBody } = body;
-      if (!(await verifyOwner(orgId))) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: corsHeaders });
+      if (!verifyOwner(orgId)) return forbidden();
+      if (!isAdminOrOwner()) return forbidden();
 
       const { data: ann, error: annErr } = await svc
         .from('franchise_announcements')
@@ -100,15 +129,17 @@ serve(async (req) => {
         .single();
 
       if (annErr) return new Response(JSON.stringify({ error: annErr.message }), { status: 500, headers: corsHeaders });
-      return new Response(JSON.stringify({ ok: true, ann }), { headers: corsHeaders });
+      return ok({ ok: true, ann });
     }
 
     if (action === 'delete_announcement') {
       const { annId, orgId } = body;
-      if (!(await verifyOwner(orgId))) return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: corsHeaders });
+      if (!verifyOwner(orgId)) return forbidden();
+      if (!isAdminOrOwner()) return forbidden();
 
-      await svc.from('franchise_announcements').delete().eq('id', annId);
-      return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
+      // org_id constraint ensures we only delete our own announcement
+      await svc.from('franchise_announcements').delete().eq('id', annId).eq('org_id', orgId);
+      return ok({ ok: true });
     }
 
     return new Response(JSON.stringify({ error: 'unknown_action' }), { status: 400, headers: corsHeaders });
