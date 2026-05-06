@@ -64,8 +64,11 @@ serve(async (req) => {
   try {
     const { image, imageType, orgId } = await req.json();
 
-    if (!image || !imageType) {
-      return ok({ error: 'missing_params', message: 'Missing image or imageType.' });
+    if (!image || !imageType || !orgId) {
+      return new Response(JSON.stringify({ error: 'missing_params', message: 'Missing image, imageType, or orgId.' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Validate size (max ~10MB base64)
@@ -90,26 +93,24 @@ serve(async (req) => {
       return ok({ error: 'no_auth', message: 'Session expired. Please sign in again.' });
     }
 
-    // Verify plan (Pro/Franchise/Network required for cloud OCR)
-    if (orgId) {
-      const serverOrgId = await getOrgForUser(supabaseAdmin, user.id);
-      if (!serverOrgId || serverOrgId !== orgId) {
-        return new Response(JSON.stringify({ error: 'Forbidden' }), {
-          status: 403,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
+    // Verify caller owns the org and has a paid plan
+    const serverOrgId = await getOrgForUser(supabaseAdmin, user.id);
+    if (!serverOrgId || serverOrgId !== orgId) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
-      const { data: orgRow } = await supabaseAdmin
-        .from('organizations')
-        .select('plan')
-        .eq('id', orgId)
-        .single();
+    const { data: orgRow } = await supabaseAdmin
+      .from('organizations')
+      .select('plan')
+      .eq('id', orgId)
+      .single();
 
-      const plan = orgRow?.plan || 'free';
-      if (plan !== 'pro' && plan !== 'franchise' && plan !== 'network') {
-        return ok({ error: 'upgrade_required', message: 'Cloud POS scanning requires a Pro plan.' });
-      }
+    const plan = orgRow?.plan || 'free';
+    if (plan !== 'pro' && plan !== 'franchise' && plan !== 'network') {
+      return ok({ error: 'upgrade_required', message: 'Cloud POS scanning requires a Pro plan.' });
     }
 
     const apiKey = Deno.env.get('ANTHROPIC_API_KEY');

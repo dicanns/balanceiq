@@ -38,13 +38,22 @@ test.describe('App launch', () => {
   let app;
 
   test.beforeEach(async () => {
-    app = await launchApp();
+    try {
+      app = await launchApp();
+    } catch (err) {
+      const detail = err?.stderr || err?.message || String(err);
+      throw new Error(`App launch failed: ${detail}`);
+    }
   });
 
   test.afterEach(async () => {
-    await app.close();
+    if (app && typeof app.close === 'function') {
+      try { await app.close(); } catch (_) {}
+      app = null;
+    }
   });
 
+  // SMOKE-001
   test('app starts and shows main window', async () => {
     const window = await app.firstWindow();
     await window.waitForLoadState('domcontentloaded');
@@ -52,6 +61,7 @@ test.describe('App launch', () => {
     expect(title).toContain('BalanceIQ');
   });
 
+  // SMOKE-002
   test('window is visible and not crashed', async () => {
     const window = await app.firstWindow();
     await window.waitForLoadState('domcontentloaded');
@@ -59,6 +69,14 @@ test.describe('App launch', () => {
     // Verify no crash banner
     const errorOverlay = await window.$('.error-overlay, #crash-reporter');
     expect(errorOverlay).toBeNull();
+  });
+
+  // SMOKE-003
+  test('main window has non-empty body', async () => {
+    const window = await app.firstWindow();
+    await window.waitForLoadState('domcontentloaded');
+    const bodyText = await window.textContent('body');
+    expect(bodyText.trim().length).toBeGreaterThan(0);
   });
 });
 
@@ -76,7 +94,10 @@ test.describe('Tab navigation', () => {
   });
 
   test.afterAll(async () => {
-    await app.close();
+    if (app && typeof app.close === 'function') {
+      try { await app.close(); } catch (_) {}
+      app = null;
+    }
   });
 
   const tabs = [
@@ -117,7 +138,10 @@ test.describe('Daily close-out data entry', () => {
   });
 
   test.afterAll(async () => {
-    await app.close();
+    if (app && typeof app.close === 'function') {
+      try { await app.close(); } catch (_) {}
+      app = null;
+    }
   });
 
   test('can enter POS sales data in a cash register', async () => {
@@ -158,7 +182,10 @@ test.describe('Language switching FR → EN', () => {
   });
 
   test.afterAll(async () => {
-    await app.close();
+    if (app && typeof app.close === 'function') {
+      try { await app.close(); } catch (_) {}
+      app = null;
+    }
   });
 
   test('language toggle button exists', async () => {
@@ -213,7 +240,10 @@ test.describe('Config tab loads', () => {
   });
 
   test.afterAll(async () => {
-    await app.close();
+    if (app && typeof app.close === 'function') {
+      try { await app.close(); } catch (_) {}
+      app = null;
+    }
   });
 
   test('Config tab is accessible', async () => {

@@ -788,10 +788,10 @@ function FlashReportPopup({data,lang,t,onClose}){
     const manT=mc?(c.interac||0)+(c.finalCash||0)+(c.deposits||0):null;
     const posT=(c.posVentes||0)+(c.posTPS||0)+(c.posTVQ||0);
     const expected=posT-(c.posLivraisons||0);
-    const ecart=mc&&c.posVentes?manT-expected:null;
+    const ecart=mc&&c.posVentes!=null&&Number.isFinite(c.posVentes)?manT-expected:null;
     const bal=ecart!=null&&Math.abs(ecart)<=1;
     const name=c.cashierId||`#${i+1}`;
-    if(!c.posVentes&&!c.interac&&!c.finalCash)return null;
+    if(c.posVentes==null&&!c.interac&&!c.finalCash)return null;
     return{name,bal,ecart};
   }).filter(Boolean);
   const allBal=cashSummary.length>0&&cashSummary.every(c=>c.bal);
@@ -6313,10 +6313,10 @@ export default function App(){
         posVN+=c.posVentes||0;posTPS_+=c.posTPS||0;posTVQ_+=c.posTVQ||0;
         manVN+=manT;
         if(c.posVentes!=null||c.interac!=null||c.finalCash!=null||(c.paid_ins_cents??0)!==0||(c.paid_outs_cents??0)!==0||(c.cash_tips_paid_cents??0)!==0||(c.till_transfers_in_cents??0)!==0||(c.till_transfers_out_cents??0)!==0)anyD=true;
-        if(mc&&c.posVentes)closedCnt++;
+        if(mc&&c.posVentes!=null)closedCnt++;
       });
       if(!anyD)return;
-      const hasPOS=posVN>0;
+      const hasPOS=cashes.some(c=>c.posVentes!=null);
       const venteNet=hasPOS?posVN:manVN;
       const total=hasPOS?posVN+posTPS_+posTVQ_:venteNet;
       const emps_=yRaw.employees||[];let labC=0;emps_.forEach(e=>{if(e.hours&&e.wage)labC+=e.hours*e.wage;});
@@ -6327,14 +6327,14 @@ export default function App(){
       for(let i=0;i<=6;i++){
         const d_=new Date(mon);d_.setDate(mon.getDate()+i);if(d_>yesterday)break;
         const dk_=d_.toISOString().slice(0,10);const day_=ld[dk_];
-        let s=0;if(day_&&Object.keys(day_).length){const cs=day_.cashes||[];let pv=0,mv=0;cs.forEach(c=>{pv+=c.posVentes||0;const mc=c.interac!=null&&c.finalCash!=null;mv+=mc?(c.interac||0)+(c.finalCash||0)+(c.deposits||0):0;});s=pv>0?pv:mv;}
+        let s=0;if(day_&&Object.keys(day_).length){const cs=day_.cashes||[];let pv=0,mv=0;cs.forEach(c=>{pv+=c.posVentes||0;const mc=c.interac!=null&&c.finalCash!=null;mv+=mc?(c.interac||0)+(c.finalCash||0)+(c.deposits||0):0;});s=cs.some(c=>c.posVentes!=null)?pv:mv;}
         wtdVals.push(s);if(s>0){wtdSales+=s;wtdDays_++;}
       }
       // Same day last week (PRO WoW)
       const prevWeekD_=new Date(yesterday);prevWeekD_.setDate(yesterday.getDate()-7);
       const prevDk_=prevWeekD_.toISOString().slice(0,10);
       const prevRaw=ld[prevDk_];let prevDay_=null;
-      if(prevRaw){const pcs=prevRaw.cashes||[];let pv=0,mv=0;pcs.forEach(c=>{pv+=c.posVentes||0;const mc=c.interac!=null&&c.finalCash!=null;mv+=mc?(c.interac||0)+(c.finalCash||0)+(c.deposits||0):0;});const s=pv>0?pv:mv;if(s>0)prevDay_={anyData:true,venteNet:s};}
+      if(prevRaw){const pcs=prevRaw.cashes||[];let pv=0,mv=0;pcs.forEach(c=>{pv+=c.posVentes||0;const mc=c.interac!=null&&c.finalCash!=null;mv+=mc?(c.interac||0)+(c.finalCash||0)+(c.deposits||0):0;});const s=pcs.some(c=>c.posVentes!=null)?pv:mv;if(s>0)prevDay_={anyData:true,venteNet:s};}
       const isPro=canUse('cloudSync');
       const flashLang_=cfg.flashLang||lang;
       const html=buildFlashReportHTML({
@@ -6374,10 +6374,10 @@ export default function App(){
           const manT=mc?(c.interac||0)+(c.finalCash||0)+(c.deposits||0):0;
           posVN+=c.posVentes||0;posTPS_+=c.posTPS||0;posTVQ_+=c.posTVQ||0;manVN+=manT;
           if(c.posVentes!=null||c.interac!=null||c.finalCash!=null||(c.paid_ins_cents??0)!==0||(c.paid_outs_cents??0)!==0||(c.cash_tips_paid_cents??0)!==0||(c.till_transfers_in_cents??0)!==0||(c.till_transfers_out_cents??0)!==0)anyD=true;
-          if(mc&&c.posVentes)closedCnt++;
+          if(mc&&c.posVentes!=null)closedCnt++;
         });
         if(!anyD)return;
-        const hasPOS=posVN>0;
+        const hasPOS=cashes_.some(c=>c.posVentes!=null);
         const venteNet_=hasPOS?posVN:manVN;
         const total_=hasPOS?posVN+posTPS_+posTVQ_:venteNet_;
         const emps_=yRaw.employees||[];let labC_=0;emps_.forEach(e=>{if(e.hours&&e.wage)labC_+=e.hours*e.wage;});
@@ -6388,7 +6388,7 @@ export default function App(){
         for(let i=0;i<=6;i++){
           const d_=new Date(mon_);d_.setDate(mon_.getDate()+i);if(d_>yesterday)break;
           const dk_=d_.toISOString().slice(0,10);const dr=liveData[dk_];
-          if(dr&&Object.keys(dr).length){const cs=dr.cashes||[];let pv=0,mv=0;cs.forEach(c=>{pv+=c.posVentes||0;const mc=c.interac!=null&&c.finalCash!=null;mv+=mc?(c.interac||0)+(c.finalCash||0)+(c.deposits||0):0;});const s=pv>0?pv:mv;if(s>0){wtdSales_+=s;wtdDays__++;}}
+          if(dr&&Object.keys(dr).length){const cs=dr.cashes||[];let pv=0,mv=0;cs.forEach(c=>{pv+=c.posVentes||0;const mc=c.interac!=null&&c.finalCash!=null;mv+=mc?(c.interac||0)+(c.finalCash||0)+(c.deposits||0):0;});const s=cs.some(c=>c.posVentes!=null)?pv:mv;if(s>0){wtdSales_+=s;wtdDays__++;}}
         }
         const reportData={date:ydk,venteNet:venteNet_,total:total_,wtdSales:wtdSales_,wtdDays:wtdDays__,closedCount:closedCnt,totalRegs:totalRegs_,isClosed:!!(closedDays||{})[ydk],labourCost:labC_,labourPct:labP_,cashes:cashes_,closePatterns:closePatterns||[]};
         setFlashReport(reportData);

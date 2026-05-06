@@ -132,21 +132,18 @@ serve(async (req) => {
       return ok({ error: 'upgrade_required', message: 'AI scanning requires a Pro plan.' }, corsHeaders);
     }
 
-    // Check and increment usage
+    // Atomically reserve a quota slot before calling Claude
     const month = new Date().toISOString().slice(0, 7); // YYYY-MM
-    const { data: usageRow } = await supabaseAdmin
-      .from('ocr_usage')
-      .select('count')
-      .eq('org_id', orgId)
-      .eq('month', month)
-      .single();
+    const { data: newCount, error: rpcErr } = await supabaseAdmin
+      .rpc('increment_usage_if_under_limit', {
+        p_table: 'ocr_usage', p_org_id: orgId, p_month: month, p_limit: OCR_MONTHLY_LIMIT,
+      });
 
-    const currentCount = usageRow?.count || 0;
-    if (currentCount >= OCR_MONTHLY_LIMIT) {
-      return ok({ error: 'limit_reached', scansUsed: currentCount, scansLimit: OCR_MONTHLY_LIMIT }, corsHeaders);
+    if (rpcErr || newCount === null || newCount === -1) {
+      const { data: usageRow } = await supabaseAdmin.from('ocr_usage').select('count').eq('org_id', orgId).eq('month', month).single();
+      const scansUsed = usageRow?.count ?? OCR_MONTHLY_LIMIT;
+      return ok({ error: 'limit_reached', scansUsed, scansLimit: OCR_MONTHLY_LIMIT }, corsHeaders);
     }
-
-    // Do NOT increment quota yet — only charge on success.
 
     // Decide which API key pays for the Anthropic call
     const apiKey = ownApiKey || Deno.env.get('ANTHROPIC_API_KEY');
@@ -182,11 +179,6 @@ serve(async (req) => {
       // API failed — do NOT increment quota
       return ok({ error: 'claude_error', message: `Erreur Anthropic (${claudeRes.status}): ${errBody.slice(0, 200)}` }, corsHeaders);
     }
-
-    // Increment quota only after a successful API response
-    await supabaseAdmin
-      .from('ocr_usage')
-      .upsert({ org_id: orgId, month, count: currentCount + 1 }, { onConflict: 'org_id,month' });
 
     const claudeData = await claudeRes.json();
     const text = claudeData.content?.[0]?.text || '{}';

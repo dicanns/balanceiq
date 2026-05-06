@@ -1025,7 +1025,7 @@ ipcMain.handle('pos:testConnection', async (_event, posType) => {
   try {
     if (posType === 'square') {
       const url = `${posBaseUrl('square')}/v2/locations`;
-      console.log('[pos:testConnection] square url:', url, 'token prefix:', cred.accessToken?.slice(0,20));
+      console.log('[pos:testConnection] square url:', url, 'merchant:', cred.merchantName || '(unknown)');
       const res = await netRequest({ method: 'GET', url, headers: { Authorization: `Bearer ${cred.accessToken}`, 'Square-Version': '2024-02-28' } });
       console.log('[pos:testConnection] square status:', res.status, 'body keys:', Object.keys(res.body||{}));
       const ok = res.status === 200;
@@ -1265,17 +1265,30 @@ ipcMain.handle('delivery:openPortal', (_event, platform) => {
 
 ipcMain.handle('docs:download', async (_event, { url, filename }) => {
   try {
+    // Allowlist: only Supabase signed storage URLs over https
+    let parsedUrl;
+    try { parsedUrl = new URL(url); } catch { return { error: 'Invalid URL' }; }
+    if (parsedUrl.protocol !== 'https:') return { error: 'Only https URLs are allowed' };
+    if (!parsedUrl.hostname.endsWith('.supabase.co')) return { error: 'Only Supabase storage URLs are allowed' };
+    if (!parsedUrl.pathname.startsWith('/storage/v1/object/sign/')) return { error: 'Only signed storage URLs are allowed' };
+
     const downloadsDir = app.getPath('downloads');
     const safeName = path.basename(filename);
     if (!safeName || safeName === '.' || safeName === '..') {
       return { error: 'Invalid filename' };
     }
     const destPath = path.join(downloadsDir, safeName);
+    const SIZE_LIMIT = 50 * 1024 * 1024; // 50 MB
     const response = await new Promise((resolve, reject) => {
       const req = net.request({ method: 'GET', url });
       const chunks = [];
+      let totalSize = 0;
       req.on('response', res => {
-        res.on('data', c => chunks.push(c));
+        res.on('data', c => {
+          totalSize += c.length;
+          if (totalSize > SIZE_LIMIT) { req.abort(); reject(new Error('File too large (max 50 MB)')); return; }
+          chunks.push(c);
+        });
         res.on('end', () => resolve(Buffer.concat(chunks)));
         res.on('error', reject);
       });

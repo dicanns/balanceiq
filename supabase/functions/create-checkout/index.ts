@@ -12,6 +12,30 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Server-side mapping: planKey → Stripe price ID.
+// Clients send planKey; the server resolves the price ID — clients never supply price IDs directly.
+const PLAN_PRICES: Record<string, string> = {
+  pro_monthly:                 'price_1TCLnfGcfc7VEkjZIMBbNl4n',
+  pro_annual:                  'price_1TCLnmGcfc7VEkjZX2wv763a',
+  network_monthly:             'price_1TCLkXGcfc7VEkjZyZIa4Pkr',
+  network_annual:              'price_1TCLkyGcfc7VEkjZZgwQGotm',
+  franchise_monthly:           'price_1TCLpmGcfc7VEkjZTuaZCNwp',
+  franchise_annual:            'price_1TCLq1Gcfc7VEkjZZK3UlWpz',
+  franchise_location_monthly:  'price_1TCLqxGcfc7VEkjZs19hWTOo',
+  franchise_location_annual:   'price_1TCLrZGcfc7VEkjZF2o6LLXs',
+};
+
+const ALLOWED_REDIRECT_HOSTS = ['balanceiq.app', 'balanceiq.ca'];
+
+function isAllowedRedirectUrl(url: string | undefined): boolean {
+  if (!url) return true; // undefined → use server default
+  try {
+    const p = new URL(url);
+    if (p.hostname === 'localhost' || p.hostname === '127.0.0.1') return true;
+    return p.protocol === 'https:' && ALLOWED_REDIRECT_HOSTS.some(h => p.hostname === h || p.hostname.endsWith('.' + h));
+  } catch { return false; }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -39,10 +63,23 @@ serve(async (req) => {
       });
     }
 
-    const { priceId, orgId, successUrl, cancelUrl } = await req.json();
+    const { planKey, orgId, successUrl, cancelUrl } = await req.json();
 
-    if (!priceId || !orgId) {
-      return new Response(JSON.stringify({ error: 'Missing priceId or orgId' }), {
+    if (!planKey || !orgId) {
+      return new Response(JSON.stringify({ error: 'Missing planKey or orgId' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const priceId = PLAN_PRICES[planKey];
+    if (!priceId) {
+      return new Response(JSON.stringify({ error: 'Invalid planKey' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!isAllowedRedirectUrl(successUrl) || !isAllowedRedirectUrl(cancelUrl)) {
+      return new Response(JSON.stringify({ error: 'Redirect URL not allowed' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }

@@ -12,6 +12,17 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const ALLOWED_REDIRECT_HOSTS = ['balanceiq.app', 'balanceiq.ca'];
+
+function isAllowedRedirectUrl(url: string | undefined): boolean {
+  if (!url) return true;
+  try {
+    const p = new URL(url);
+    if (p.hostname === 'localhost' || p.hostname === '127.0.0.1') return true;
+    return p.protocol === 'https:' && ALLOWED_REDIRECT_HOSTS.some(h => p.hostname === h || p.hostname.endsWith('.' + h));
+  } catch { return false; }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -42,6 +53,12 @@ serve(async (req) => {
 
     if (!orgId) {
       return new Response(JSON.stringify({ error: 'Missing orgId' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!isAllowedRedirectUrl(returnUrl)) {
+      return new Response(JSON.stringify({ error: 'Redirect URL not allowed' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }

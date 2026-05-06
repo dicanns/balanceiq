@@ -180,20 +180,18 @@ serve(async (req) => {
 
     const usageLimit = AI_LIMITS[plan] ?? 50;
 
+    // Atomically reserve a quota slot before calling Claude
     const month = new Date().toISOString().slice(0, 7);
-    const { data: usageRow } = await supabaseAdmin
-      .from('ai_usage')
-      .select('count')
-      .eq('org_id', orgId)
-      .eq('month', month)
-      .single();
+    const { data: newCount, error: rpcErr } = await supabaseAdmin
+      .rpc('increment_usage_if_under_limit', {
+        p_table: 'ai_usage', p_org_id: orgId, p_month: month, p_limit: usageLimit,
+      });
 
-    const usageCount = usageRow?.count || 0;
-    if (usageCount >= usageLimit) {
+    if (rpcErr || newCount === null || newCount === -1) {
+      const { data: usageRow } = await supabaseAdmin.from('ai_usage').select('count').eq('org_id', orgId).eq('month', month).single();
+      const usageCount = usageRow?.count ?? usageLimit;
       return ok({ error: 'limit_reached', usageCount, usageLimit }, corsHeaders);
     }
-
-    // Do NOT increment quota yet — only charge on success.
 
     // Decide which API key pays for the Anthropic call
     const apiKey = ownApiKey || Deno.env.get('ANTHROPIC_API_KEY');
@@ -231,12 +229,7 @@ serve(async (req) => {
     const claudeData = await claudeRes.json();
     const text = claudeData.content?.[0]?.text || '';
 
-    // Increment quota only after a successful API response
-    await supabaseAdmin
-      .from('ai_usage')
-      .upsert({ org_id: orgId, month, count: usageCount + 1 }, { onConflict: 'org_id,month' });
-
-    return ok({ text, usageCount: usageCount + 1, usageLimit, usedOwnKey: !!ownApiKey }, corsHeaders);
+    return ok({ text, usageCount: newCount as number, usageLimit, usedOwnKey: !!ownApiKey }, corsHeaders);
 
   } catch (err) {
     console.error('ai-intelligence error:', err);
