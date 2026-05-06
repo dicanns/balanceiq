@@ -17,16 +17,19 @@ export async function requireOrgMember(req: Request, orgId: string) {
     JSON.stringify({ error: 'invalid_token' }),
     { status: 401, headers: { 'Content-Type': 'application/json' } });
 
-  const { data: membership, error: memErr } = await supabase
-    .from('org_members')
-    .select('role')
-    .eq('org_id', orgId)
-    .eq('user_id', userData.user.id)
+  const { data: userRow, error: rowErr } = await supabase
+    .from('users')
+    .select('org_id, role')
+    .eq('id', userData.user.id)
     .maybeSingle();
 
-  if (memErr || !membership) throw new Response(
+  if (rowErr || !userRow) throw new Response(
+    JSON.stringify({ error: 'no_org' }),
+    { status: 403, headers: { 'Content-Type': 'application/json' } });
+
+  if (userRow.org_id !== orgId) throw new Response(
     JSON.stringify({ error: 'forbidden' }),
     { status: 403, headers: { 'Content-Type': 'application/json' } });
 
-  return { user: userData.user, role: membership.role };
+  return { user: userData.user, role: userRow.role };
 }
