@@ -145,6 +145,33 @@ const ALLOWED_URL_DOMAINS = [
   'restaurants.skipthedishes.com',
 ];
 
+// ── SUPABASE PROJECT URL ──────────────────────────────────────────────────────
+// Vite inlines VITE_* variables into the RENDERER bundle at build time; it does
+// not set them in the main process at runtime. dotenv only loads when the app is
+// unpackaged, so in a packaged build process.env.VITE_SUPABASE_URL is empty and
+// every main-process Supabase call failed ('supabase_not_configured' on sign-in,
+// 'no_supabase' for PAD and quote acceptance).
+//
+// The project URL is public - it already ships inside the renderer bundle and is
+// listed in ALLOWED_URL_DOMAINS above - so falling back to it here leaks nothing
+// while making packaged builds work. The env var still wins for local dev.
+const DEFAULT_SUPABASE_URL = 'https://etiwnesxjypdwhxqnqqq.supabase.co';
+
+function getSupabaseUrl() {
+  // .trim() guards against a trailing newline in the env var, which previously
+  // broke net.fetch header validation.
+  return (process.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL).trim();
+}
+
+// The renderer already holds the public anon key (Vite inlines it into the
+// bundle). It registers it here at startup so main-process handlers (PAD, quote
+// acceptance) can send it, rather than hardcoding a key into this file.
+let _supabaseAnonKey = '';
+
+function getSupabaseAnonKey() {
+  return (_supabaseAnonKey || process.env.VITE_SUPABASE_ANON_KEY || '').replace(/\s/g, '');
+}
+
 function isUrlSafe(urlString) {
   try {
     const parsed = new URL(urlString);
@@ -460,6 +487,13 @@ ipcMain.handle('snapshot:listDates', () => {
 // ── Cloud auth token cache ─────────────────────────────────────────────────
 // Renderer calls auth:setToken on sign-in/out so main.js can validate bearer.
 let _accessToken = null;
+
+// Renderer registers the public anon key at startup so main-process handlers
+// (PAD, quote acceptance) can authenticate without a key baked into this file.
+ipcMain.handle('supabase:setAnonKey', (_e, key) => {
+  _supabaseAnonKey = typeof key === 'string' ? key.replace(/\s/g, '') : '';
+  return true;
+});
 
 ipcMain.handle('auth:getAccessToken', () => _accessToken);
 ipcMain.handle('auth:setToken', (_e, tok) => {
@@ -2364,7 +2398,7 @@ ipcMain.handle('stripe:generateQR', async (_e, { url, size = 180 }) => {
 
 // ── Quote E-Acceptance (spec 3.9) ──────────────────────────────────────────
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || '';
+const SUPABASE_URL = getSupabaseUrl();
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const ACCEPTANCE_BASE_URL = `${SUPABASE_URL}/functions/v1/accept-quote`;
 
@@ -2376,7 +2410,7 @@ function generateAcceptanceToken() {
 // Send quote for acceptance: create token via edge function (has service role), return acceptance URL
 ipcMain.handle('soumission:sendAcceptance', async (_e, { accessToken, quoteId, quoteNumber, quoteHtml, clientName, clientEmail, operatorEmail, orgId, expiresAt }) => {
   if (!SUPABASE_URL) return { error: 'no_supabase', message: 'Supabase not configured.' };
-  const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+  const anonKey = getSupabaseAnonKey();
   if (!accessToken || accessToken === anonKey) return { error: 'no_session' };
   try {
     const token = generateAcceptanceToken();
@@ -2396,7 +2430,7 @@ ipcMain.handle('soumission:sendAcceptance', async (_e, { accessToken, quoteId, q
 // Check acceptance status: poll via edge function
 ipcMain.handle('soumission:checkAcceptance', async (_e, { accessToken, token }) => {
   if (!SUPABASE_URL) return { error: 'no_supabase' };
-  const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+  const anonKey = getSupabaseAnonKey();
   if (!accessToken || accessToken === anonKey) return { error: 'no_session' };
   try {
     const res = await net.fetch(`${ACCEPTANCE_BASE_URL}?action=check&token=${encodeURIComponent(token)}`, {
@@ -2412,7 +2446,7 @@ ipcMain.handle('soumission:checkAcceptance', async (_e, { accessToken, token }) 
 // Revoke token: mark as expired via edge function
 ipcMain.handle('soumission:revokeToken', async (_e, { accessToken, token }) => {
   if (!SUPABASE_URL) return { error: 'no_supabase' };
-  const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+  const anonKey = getSupabaseAnonKey();
   if (!accessToken || accessToken === anonKey) return { error: 'no_session' };
   try {
     const res = await net.fetch(`${ACCEPTANCE_BASE_URL}?action=revoke&token=${encodeURIComponent(token)}`, {
@@ -2431,7 +2465,7 @@ const PAD_BASE_URL = `${SUPABASE_URL}/functions/v1`;
 
 ipcMain.handle('pad:createMandate', async (_e, { accessToken, org_id, client_id, client_name, client_email, operator_email, followup_enabled, stripe_secret_key }) => {
   if (!SUPABASE_URL) return { error: 'no_supabase', message: 'Supabase not configured.' };
-  const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+  const anonKey = getSupabaseAnonKey();
   if (!accessToken || accessToken === anonKey) return { error: 'no_session' };
   try {
     const res = await net.fetch(`${PAD_BASE_URL}/create-pad-mandate`, {
@@ -2448,7 +2482,7 @@ ipcMain.handle('pad:createMandate', async (_e, { accessToken, org_id, client_id,
 
 ipcMain.handle('pad:listMandates', async (_e, { accessToken, org_id, client_id }) => {
   if (!SUPABASE_URL) return { error: 'no_supabase' };
-  const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+  const anonKey = getSupabaseAnonKey();
   if (!accessToken || accessToken === anonKey) return { error: 'no_session' };
   try {
     let url = `${SUPABASE_URL}/rest/v1/pad_mandates?org_id=eq.${encodeURIComponent(org_id)}&order=created_at.desc`;
@@ -2465,7 +2499,7 @@ ipcMain.handle('pad:listMandates', async (_e, { accessToken, org_id, client_id }
 
 ipcMain.handle('pad:cancelMandate', async (_e, { accessToken, org_id, mandate_id }) => {
   if (!SUPABASE_URL) return { error: 'no_supabase' };
-  const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+  const anonKey = getSupabaseAnonKey();
   if (!accessToken || accessToken === anonKey) return { error: 'no_session' };
   try {
     const res = await net.fetch(`${SUPABASE_URL}/rest/v1/pad_mandates?id=eq.${encodeURIComponent(mandate_id)}&org_id=eq.${encodeURIComponent(org_id)}`, {
@@ -2481,7 +2515,7 @@ ipcMain.handle('pad:cancelMandate', async (_e, { accessToken, org_id, mandate_id
 
 ipcMain.handle('pad:chargeMandate', async (_e, { accessToken, org_id, mandate_id, amount_cents, invoice_id, description }) => {
   if (!SUPABASE_URL) return { error: 'no_supabase' };
-  const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+  const anonKey = getSupabaseAnonKey();
   if (!accessToken || accessToken === anonKey) return { error: 'no_session' };
   try {
     const res = await net.fetch(`${PAD_BASE_URL}/charge-pad-mandate`, {
@@ -2498,7 +2532,7 @@ ipcMain.handle('pad:chargeMandate', async (_e, { accessToken, org_id, mandate_id
 
 ipcMain.handle('pad:saveConfig', async (_e, { accessToken, org_id, webhook_secret }) => {
   if (!SUPABASE_URL) return { error: 'no_supabase' };
-  const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+  const anonKey = getSupabaseAnonKey();
   if (!accessToken || accessToken === anonKey) return { error: 'no_session' };
   try {
     const res = await net.fetch(`${PAD_BASE_URL}/set-pad-config`, {
@@ -2515,7 +2549,7 @@ ipcMain.handle('pad:saveConfig', async (_e, { accessToken, org_id, webhook_secre
 
 ipcMain.handle('pad:runFollowup', async (_e, { accessToken, org_id, resend_api_key, resend_from, operator_email }) => {
   if (!SUPABASE_URL) return { error: 'no_supabase' };
-  const anonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+  const anonKey = getSupabaseAnonKey();
   if (!accessToken || accessToken === anonKey) return { error: 'no_session' };
   try {
     const res = await net.fetch(`${PAD_BASE_URL}/pad-followup`, {
@@ -2591,7 +2625,7 @@ ipcMain.handle('file:save', async (_e, { defaultPath, content }) => {
 // bypass renderer window.fetch "Invalid value" validation in Electron 31.
 // Restricted to our Supabase project host — prevents SSRF via renderer XSS.
 ipcMain.handle('supabase:fetch', async (_e, { url, method, headers, body }) => {
-  const _supabaseUrl = process.env.VITE_SUPABASE_URL || '';
+  const _supabaseUrl = getSupabaseUrl();
   if (!_supabaseUrl) throw new Error('supabase_not_configured');
   const _supabaseHost = new URL(_supabaseUrl).host;
   const parsed = new URL(url);

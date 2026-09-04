@@ -5,6 +5,11 @@ import { createClient } from '@supabase/supabase-js';
 export const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || '').trim();
 export const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').replace(/\s/g, '');
 
+// Give the main process the public anon key so its own handlers (PAD, quote
+// acceptance) can authenticate. Vite only inlines VITE_* into this bundle, not
+// into the main process, so without this they send an empty apikey.
+try { window.api?.supabaseSetAnonKey?.(SUPABASE_ANON_KEY); } catch (_) {}
+
 // Route all Supabase HTTP calls through Electron's net module in the main
 // process to bypass Electron 31 renderer window.fetch "Invalid value" errors.
 const netFetch = async (url, init = {}) => {

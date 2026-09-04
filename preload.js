@@ -204,6 +204,7 @@ contextBridge.exposeInMainWorld('api', {
     getRecent: (key, limit)     => ipcRenderer.invoke('plPriceIntel:getRecent', key, limit),
   },
   supabaseFetch: (opts) => ipcRenderer.invoke('supabase:fetch', opts),
+  supabaseSetAnonKey: (key) => ipcRenderer.invoke('supabase:setAnonKey', key),
   eco: {
     items: {
       getAll: ()       => ipcRenderer.invoke('eco:items:getAll'),
