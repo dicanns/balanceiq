@@ -22,3 +22,6 @@ docs/
 screenshots/
 supabase/.temp/
 certificates/
+
+# Local security audit - contains unpatched vulnerability detail, do not publish
+AUDIT_REPORT.md
