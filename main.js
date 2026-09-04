@@ -18,7 +18,7 @@ const {
   syncQueuePush, syncQueuePeek, syncQueueDelete, syncQueueIncrementAttempts, syncQueueLength,
   auditInsert, auditQuery, getDeviceId,
   snapshotSave, snapshotGetByDate, snapshotGetLatest, snapshotListDates,
-  forecastClearAll,
+  forecastClearAll, demoPurgeSqlite,
   forecastProductsGetAll, forecastProductUpsert,
   forecastSalesGetForDate, forecastSalesGetForProduct, forecastSalesGetRange, forecastSalesUpsert, forecastSalesDeleteForDate,
   forecastImportsGetAll, forecastImportLog, forecastImportDelete, forecastImportMarkReplaced,
@@ -1326,6 +1326,7 @@ ipcMain.handle('file:showInFolder', (_event, filePath) => {
 
 // ── FORECAST IPC ──
 ipcMain.handle('forecast:clearAll', () => forecastClearAll());
+ipcMain.handle('demo:purgeSqlite', () => demoPurgeSqlite());
 ipcMain.handle('forecast:products:getAll', () => forecastProductsGetAll());
 ipcMain.handle('forecast:products:upsert', (_e, p) => forecastProductUpsert(p));
 

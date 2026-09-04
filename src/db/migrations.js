@@ -1220,6 +1220,51 @@ const MIGRATIONS = [
       )`).run();
     },
   },
+  {
+    version: 33,
+    description: 'Fix forecast_products FTS5 delete/update triggers - the v7 fix left the ' +
+      'external-content-style special "delete" command (INSERT INTO fts(fts,rowid,cols...) ' +
+      'VALUES(\'delete\',...)) on a table that was switched to a plain (non-external-content) ' +
+      'FTS5 table. That special command form only works with content=\'\' or content=<table> ' +
+      'tables; on a plain table it throws SQLITE_ERROR ("SQL logic error") on every DELETE or ' +
+      'UPDATE against forecast_products, which is why forecast:clearAll (used by "Clear demo ' +
+      'data") and any product deletion have been failing.',
+    up: (database) => {
+      // Always drop the broken triggers - DROP ... IF EXISTS is safe on any schema.
+      database.prepare(`DROP TRIGGER IF EXISTS fts_fp_update`).run();
+      database.prepare(`DROP TRIGGER IF EXISTS fts_fp_delete`).run();
+
+      // Only rebuild if BOTH the base table and its FTS index exist. Partial schemas
+      // (test fixtures, restored backups, installs that never created the forecast
+      // module) must not abort startup - runMigrations rethrows, and a throw here
+      // would leave the app unable to open its database at all.
+      const has = (name) => !!database.prepare(
+        `SELECT 1 FROM sqlite_master WHERE type IN ('table','view') AND name = ?`
+      ).get(name);
+
+      if (!has('forecast_products') || !has('fts_forecast_products')) return;
+
+      // Plain rowid-based delete - correct for a non-external-content FTS5 table.
+      database.prepare(`CREATE TRIGGER fts_fp_delete AFTER DELETE ON forecast_products BEGIN
+        DELETE FROM fts_forecast_products WHERE rowid IN (
+          SELECT rowid FROM fts_forecast_products WHERE fp_id = old.id
+        );
+      END`).run();
+      database.prepare(`CREATE TRIGGER fts_fp_update AFTER UPDATE ON forecast_products BEGIN
+        DELETE FROM fts_forecast_products WHERE rowid IN (
+          SELECT rowid FROM fts_forecast_products WHERE fp_id = old.id
+        );
+        INSERT INTO fts_forecast_products(fp_id, name, category)
+          VALUES (new.id, new.name, COALESCE(new.category,''));
+      END`).run();
+
+      // Defensive rebuild: repopulate the index from forecast_products so any
+      // install is consistent regardless of prior failed-trigger history.
+      database.prepare(`DELETE FROM fts_forecast_products`).run();
+      database.prepare(`INSERT INTO fts_forecast_products(fp_id, name, category)
+        SELECT id, name, COALESCE(category,'') FROM forecast_products`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.

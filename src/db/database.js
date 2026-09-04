@@ -1260,6 +1260,51 @@ const MIGRATIONS = [
       )`).run();
     },
   },
+  {
+    version: 33,
+    description: 'Fix forecast_products FTS5 delete/update triggers - the v7 fix left the ' +
+      'external-content-style special "delete" command (INSERT INTO fts(fts,rowid,cols...) ' +
+      'VALUES(\'delete\',...)) on a table that was switched to a plain (non-external-content) ' +
+      'FTS5 table. That special command form only works with content=\'\' or content=<table> ' +
+      'tables; on a plain table it throws SQLITE_ERROR ("SQL logic error") on every DELETE or ' +
+      'UPDATE against forecast_products, which is why forecast:clearAll (used by "Clear demo ' +
+      'data") and any product deletion have been failing.',
+    up: (database) => {
+      // Always drop the broken triggers - DROP ... IF EXISTS is safe on any schema.
+      database.prepare(`DROP TRIGGER IF EXISTS fts_fp_update`).run();
+      database.prepare(`DROP TRIGGER IF EXISTS fts_fp_delete`).run();
+
+      // Only rebuild if BOTH the base table and its FTS index exist. Partial schemas
+      // (test fixtures, restored backups, installs that never created the forecast
+      // module) must not abort startup - runMigrations rethrows, and a throw here
+      // would leave the app unable to open its database at all.
+      const has = (name) => !!database.prepare(
+        `SELECT 1 FROM sqlite_master WHERE type IN ('table','view') AND name = ?`
+      ).get(name);
+
+      if (!has('forecast_products') || !has('fts_forecast_products')) return;
+
+      // Plain rowid-based delete - correct for a non-external-content FTS5 table.
+      database.prepare(`CREATE TRIGGER fts_fp_delete AFTER DELETE ON forecast_products BEGIN
+        DELETE FROM fts_forecast_products WHERE rowid IN (
+          SELECT rowid FROM fts_forecast_products WHERE fp_id = old.id
+        );
+      END`).run();
+      database.prepare(`CREATE TRIGGER fts_fp_update AFTER UPDATE ON forecast_products BEGIN
+        DELETE FROM fts_forecast_products WHERE rowid IN (
+          SELECT rowid FROM fts_forecast_products WHERE fp_id = old.id
+        );
+        INSERT INTO fts_forecast_products(fp_id, name, category)
+          VALUES (new.id, new.name, COALESCE(new.category,''));
+      END`).run();
+
+      // Defensive rebuild: repopulate the index from forecast_products so any
+      // install is consistent regardless of prior failed-trigger history.
+      database.prepare(`DELETE FROM fts_forecast_products`).run();
+      database.prepare(`INSERT INTO fts_forecast_products(fp_id, name, category)
+        SELECT id, name, COALESCE(category,'') FROM forecast_products`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -1797,8 +1842,8 @@ function snapshotListDates() {
 }
 
 // ── FORECAST: Clear all demo data ──
-function forecastClearAll() {
-  const db = getDb();
+function forecastClearAll(_db) {
+  const db = _db || getDb();
   db.prepare('DELETE FROM forecast_daily_sales').run();
   db.prepare('DELETE FROM forecast_products').run();
   db.prepare('DELETE FROM forecast_weather').run();
@@ -1806,6 +1851,71 @@ function forecastClearAll() {
   db.prepare('DELETE FROM learning_insights').run();
   db.prepare('DELETE FROM prediction_accuracy').run();
   return true;
+}
+
+// ── DEMO PURGE ────────────────────────────────────────────────────────────────
+// Removes the SQLite-side rows written by the demo seeders so "Clear demo data"
+// leaves a genuinely empty book. Without this, posted journal entries with
+// source_type='demo' survive the clear and silently contaminate the trial
+// balance, P&L and balance sheet once real invoices are entered.
+//
+// Deliberately conservative: only rows that carry an unambiguous demo marker are
+// removed. Anything the user could plausibly have created by hand is left alone.
+function demoPurgeSqlite(_db) {
+  const db = _db || getDb();
+  const removed = {};
+  const has = (name) => !!db.prepare(
+    `SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?`
+  ).get(name);
+  const del = (label, sql, ...params) => {
+    if (!has(label.split('.')[0])) return;
+    try { removed[label] = (removed[label] || 0) + db.prepare(sql).run(...params).changes; }
+    catch (_) { /* table shape differs on older installs - skip, never abort the purge */ }
+  };
+
+  db.transaction(() => {
+    // Journal lines first (FK child), then the demo entries themselves.
+    // 'demo' = weekly sales/expense seed rows; 'opening_balance' = the seeded
+    // opening entry. Both are created only by the demo seeder.
+    if (has('journal_entries') && has('journal_lines')) {
+      del('journal_lines',
+        `DELETE FROM journal_lines WHERE entry_id IN (
+           SELECT id FROM journal_entries WHERE source_type IN ('demo','opening_balance'))`);
+      del('journal_entries',
+        `DELETE FROM journal_entries WHERE source_type IN ('demo','opening_balance')`);
+    }
+
+    // Accounting seed tables - these are populated exclusively by the demo seeder.
+    del('bank_transactions',      `DELETE FROM bank_transactions`);
+    del('bank_statements',        `DELETE FROM bank_statements`);
+    del('bank_accounts',          `DELETE FROM bank_accounts`);
+    del('supplier_bills',         `DELETE FROM supplier_bills`);
+    del('supplier_payments',      `DELETE FROM supplier_payments`);
+    del('tax_periods',            `DELETE FROM tax_periods`);
+    del('balance_sheet_snapshots',`DELETE FROM balance_sheet_snapshots`);
+    del('accounting_periods',     `DELETE FROM accounting_periods`);
+
+    // Operational demo rows.
+    del('waste_entries',      `DELETE FROM waste_entries`);
+    del('recipe_ingredients', `DELETE FROM recipe_ingredients`);
+    del('recipes',            `DELETE FROM recipes`);
+    del('ingredients',        `DELETE FROM ingredients`);
+    del('daily_snapshots',    `DELETE FROM daily_snapshots`);
+    del('register_closures',  `DELETE FROM register_closures`);
+    del('close_sessions',     `DELETE FROM close_sessions`);
+    del('tip_pool_sessions',  `DELETE FROM tip_pool_sessions`);
+
+    // Forecast tables, each guarded individually - a partial schema (restored
+    // backup, test fixture) must not abort the whole purge.
+    del('forecast_daily_sales', `DELETE FROM forecast_daily_sales`);
+    del('forecast_products',    `DELETE FROM forecast_products`);
+    del('forecast_weather',     `DELETE FROM forecast_weather`);
+    del('learned_patterns',     `DELETE FROM learned_patterns`);
+    del('learning_insights',    `DELETE FROM learning_insights`);
+    del('prediction_accuracy',  `DELETE FROM prediction_accuracy`);
+  })();
+
+  return { ok: true, removed };
 }
 
 // ── FORECAST: Products ──
@@ -5378,6 +5488,7 @@ module.exports = {
   auditInsert, auditQuery, getDeviceId,
   snapshotSave, snapshotGetByDate, snapshotGetLatest, snapshotListDates,
   forecastClearAll,
+  demoPurgeSqlite,
   forecastProductsGetAll, forecastProductUpsert,
   forecastSalesGetForDate, forecastSalesGetForProduct, forecastSalesGetRange, forecastSalesUpsert, forecastSalesDeleteForDate,
   forecastImportsGetAll, forecastImportLog, forecastImportDelete, forecastImportMarkReplaced,

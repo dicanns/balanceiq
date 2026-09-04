@@ -1216,25 +1216,40 @@ export async function loadDemoData(lang = 'fr', presetKey = 'qsr') {
 export async function clearDemoData() {
   const api = window.api;
   try {
-    // Clear kv_store demo keys
-    const emptyKeys = [
-      'dicann-v7', 'dicann-encaisse',
+    // Clear kv_store demo keys. Must mirror every key loadDemoData() writes -
+    // anything missed here survives the clear and pollutes real data.
+    const emptyObjKeys = [
+      'dicann-v7', 'dicann-encaisse', 'dicann-encaisse-config',
       'dicann-fac-categories', 'dicann-fac-produits', 'dicann-fac-clients',
       'dicann-fac-soumissions', 'dicann-fac-commandes', 'dicann-fac-factures',
       'dicann-fac-creditnotes', 'dicann-fac-recurrents', 'dicann-company-info',
+      'dicann-doc-nums', 'dicann-inv-config',
     ];
-    for (const k of emptyKeys) await api.storage.set(k, JSON.stringify({}));
+    for (const k of emptyObjKeys) await api.storage.set(k, JSON.stringify({}));
 
-    // Clear P&L months (last 6 months to be safe)
+    // Roster/supplier/platform keys are arrays - reset to [] not {} so the UI
+    // (which calls .map/.filter on them) does not break after a clear.
+    const emptyArrKeys = [
+      'dicann-roster', 'dicann-emp-roster', 'dicann-suppliers-v2', 'dicann-platforms',
+    ];
+    for (const k of emptyArrKeys) await api.storage.set(k, JSON.stringify([]));
+
+    // Clear P&L months. The demo seeds a full year plus the current partial
+    // month, so a 6-month window left older demo months (with demo supplier
+    // bills) behind. Clear 24 months back and 2 forward to be certain.
     const today = new Date();
-    for (let i = 0; i < 6; i++) {
+    for (let i = -2; i < 24; i++) {
       const d = new Date(today); d.setDate(1); d.setMonth(d.getMonth() - i);
       const m = fmtDate(d).slice(0, 7);
       await api.storage.set(`dicann-pl-${m}`, JSON.stringify({}));
     }
 
-    // Clear all forecast SQLite tables
-    if (api.forecast?.clearAll) {
+    // Purge demo rows from SQLite (journal entries, bank, bills, recipes,
+    // snapshots, forecast). This is what leaves the ledger genuinely empty.
+    if (api.demo?.purgeSqlite) {
+      await api.demo.purgeSqlite();
+    } else if (api.forecast?.clearAll) {
+      // Older main process without the purge handler - at least clear forecast.
       await api.forecast.clearAll();
     }
 

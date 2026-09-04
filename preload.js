@@ -74,6 +74,9 @@ contextBridge.exposeInMainWorld('api', {
     global:      (params) => ipcRenderer.invoke('search:global', params),
     saveHistory: (params) => ipcRenderer.invoke('search:save-history', params),
   },
+  demo: {
+    purgeSqlite: () => ipcRenderer.invoke('demo:purgeSqlite'),
+  },
   forecast: {
     clearAll: () => ipcRenderer.invoke('forecast:clearAll'),
     products: {
