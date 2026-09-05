@@ -3190,7 +3190,7 @@ function _runMatchingEngine(db, bankAccountId, txIds) {
     const rule = learnedMap[normDesc];
     if (rule && rule.match_count >= 3) {
       db.prepare(`UPDATE bank_transactions SET match_status='suggested', coa_account_id=?, match_reason=? WHERE id=?`)
-        .run(rule.coa_account_id, `Description exacte (${rule.match_count}× utilisé)`, txId);
+        .run(rule.coa_account_id, `MATCH_EXACT|${rule.match_count}`, txId);
       continue;
     }
 
@@ -3198,7 +3198,7 @@ function _runMatchingEngine(db, bankAccountId, txIds) {
     for (const [pattern, lrule] of Object.entries(learnedMap)) {
       if (normDesc.includes(pattern) || pattern.includes(normDesc)) {
         db.prepare(`UPDATE bank_transactions SET match_status='suggested', coa_account_id=?, match_reason=? WHERE id=?`)
-          .run(lrule.coa_account_id, `Description partielle correspondante`, txId);
+          .run(lrule.coa_account_id, 'MATCH_PARTIAL', txId);
         break;
       }
     }

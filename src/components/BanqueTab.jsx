@@ -111,6 +111,8 @@ const UI = {
     etransferDirIn:   'Reçu',
     etransferDirOut:  'Envoyé',
     etransferNoAccount: (n) => `Compte ${n} introuvable dans le plan comptable.`,
+    matchExact:       (n) => `Description exacte (${n}× utilisé)`,
+    matchPartial:     'Description partielle correspondante',
     searchCoa:        'Chercher par numéro ou nom…',
     done:             'Terminé',
     deleteStmt:       'Supprimer',
@@ -227,6 +229,8 @@ const UI = {
     etransferDirIn:   'Received',
     etransferDirOut:  'Sent',
     etransferNoAccount: (n) => `Account ${n} not found in the chart of accounts.`,
+    matchExact:       (n) => `Exact description (used ${n}×)`,
+    matchPartial:     'Partial description match',
     searchCoa:        'Search by number or name…',
     done:             'Done',
     deleteStmt:       'Delete',
@@ -256,6 +260,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
     border:  theme?.cardBorder    ?? '#1e293b',
     divider: theme?.divider       ?? '#0f172a',
     inputBg: theme?.inputBg       ?? '#0f172a',
+    card:    theme?.card          ?? '#0f1724',
   };
 
   // Themed styles must live in component scope - C is not visible at module level.
@@ -263,6 +268,16 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   const th       = { textAlign: 'left', padding: '8px 10px', fontWeight: 600, fontSize: 12, color: C.sub };
   const kpiLabel = { fontSize: 11, color: C.muted, marginBottom: 2 };
   const kpiVal   = { fontSize: 16, fontWeight: 700, color: C.text };
+  const td          = { padding: '7px 10px', verticalAlign: 'middle', color: C.text };
+  const selectStyle = { background: C.card, color: C.text, border: `1px solid ${C.border}`, borderRadius: 6, padding: '5px 10px', fontSize: 12 };
+
+  // Learned-match reasons are stored as codes so they translate.
+  const matchReason = (raw) => {
+    const v = String(raw || '');
+    if (v.startsWith('MATCH_EXACT')) return T.matchExact(v.split('|')[1] || '');
+    if (v.startsWith('MATCH_PARTIAL')) return T.matchPartial;
+    return v;
+  };
   const pickerStyles = { inputFull, labelMuted: C.muted, panel: '#0f1724', border: '#334155', hi: 'rgba(167,139,250,0.18)' };
   const T = UI[lang] || UI.fr;
 
@@ -606,7 +621,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   ];
 
   return (
-    <div style={{ padding: '18px 20px', color: '#e2e8f0', fontFamily: 'inherit' }}>
+    <div style={{ padding: '18px 20px', color: C.text, fontFamily: 'inherit' }}>
       {/* Sub-tab bar */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: `1px solid ${C.border}`, paddingBottom: 0 }}>
         {SUB_TABS.map(t => (
@@ -630,7 +645,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {accounts.map(acc => (
-                <div key={acc.id} style={{ background: '#0f1724', border: `1px solid ${C.border}`, borderRadius: 8, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div key={acc.id} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 16 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 700, fontSize: 14, color: C.text }}>{acc.name}</div>
                     <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
@@ -711,7 +726,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
                             <span style={{ fontSize: 10, color: C.muted }}>{tx.account_number} {coaName(tx, 'coa_')}</span>
                           )}
                           {tx.match_status === 'suggested' && tx.match_reason && (
-                            <span style={{ fontSize: 9, color: '#78716c', fontStyle: 'italic' }}>{tx.match_reason}</span>
+                            <span style={{ fontSize: 9, color: C.muted, fontStyle: 'italic' }}>{matchReason(tx.match_reason)}</span>
                           )}
                         </div>
                       </td>
@@ -760,7 +775,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
               {recLoading ? (
                 <p style={{ color: C.muted }}>{T.loading}</p>
               ) : recPreview && (
-                <div style={{ background: '#0f1724', border: `1px solid ${C.border}`, borderRadius: 8, padding: '16px 20px', marginBottom: 20 }}>
+                <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: '16px 20px', marginBottom: 20 }}>
                   <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: C.text }}>{T.previewTitle(selectedAccount.name)}</div>
                   <div style={{ display: 'flex', gap: 24 }}>
                     <div><div style={kpiLabel}>{T.stmtBalance}</div><div style={kpiVal}>{fmt(recPreview.statementBalance)}</div></div>
@@ -1102,8 +1117,8 @@ const btnStyle = (bg, fontSize = 13) => ({
   cursor: 'pointer', fontWeight: 600, fontSize,
 });
 const btnSmallDanger= { background: '#450a0a', color: '#fca5a5', border: 'none', borderRadius: 5, padding: '4px 10px', cursor: 'pointer', fontSize: 12 };
-const selectStyle   = { background: '#0f1724', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 6, padding: '5px 10px', fontSize: 12 };
+
 const inputStyle    = { background: '#0f1724', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 6, padding: '5px 10px', fontSize: 12 };
 const inputFull     = { width: '100%', boxSizing: 'border-box', background: '#0f1724', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 6, padding: '7px 10px', fontSize: 13, marginBottom: 10 };
 const labelStyle    = { display: 'block', fontSize: 12, color: '#64748b', marginBottom: 4 };
-const td            = { padding: '7px 10px', verticalAlign: 'middle', color: '#e2e8f0' };
+

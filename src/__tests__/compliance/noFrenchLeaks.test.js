@@ -77,3 +77,32 @@ describe('NO-FR-LEAK-004 App.jsx loading text is localized', () => {
     expect(appSrc).not.toContain('>Chargement...</div>');
   });
 });
+
+describe('NO-FR-LEAK-005 bank match reasons are codes, not French', () => {
+  it('the matching engine stores codes', () => {
+    expect(dbSrc).toContain('MATCH_EXACT');
+    expect(dbSrc).toContain('MATCH_PARTIAL');
+    expect(dbSrc).not.toContain('Description partielle correspondante');
+    expect(dbSrc).not.toContain('Description exacte');
+  });
+
+  it('BanqueTab translates both in each language', () => {
+    expect(bankSrc.split('matchExact:').length - 1).toBe(2);
+    expect(bankSrc.split('matchPartial:').length - 1).toBe(2);
+  });
+});
+
+describe('THEME-001 BanqueTab follows the app theme', () => {
+  it('accepts a theme prop', () => {
+    expect(bankSrc).toMatch(/function BanqueTab\(\{[^)]*t:\s*theme/);
+  });
+
+  it('does not force a light body colour on the tab wrapper', () => {
+    expect(bankSrc).not.toContain("padding: '18px 20px', color: '#e2e8f0'");
+  });
+
+  it('table cells and on-surface selects take their colour from the theme', () => {
+    expect(bankSrc).toMatch(/const td\s*=\s*\{[^}]*color: C\.text/);
+    expect(bankSrc).toMatch(/const selectStyle\s*=\s*\{[^}]*color: C\.text/);
+  });
+});
