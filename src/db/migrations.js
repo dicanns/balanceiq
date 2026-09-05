@@ -1265,6 +1265,23 @@ const MIGRATIONS = [
         SELECT id, name, COALESCE(category,'') FROM forecast_products`).run();
     },
   },
+  {
+    version: 34,
+    description: 'Add 1050 Undeposited funds - receipts collected but not yet at the bank. '
+      + 'Invoice payments taken in cash land here rather than in 1010, which would claim '
+      + 'the money is already in the bank account.',
+    up: (database) => {
+      const has = database.prepare(
+        `SELECT 1 FROM sqlite_master WHERE type='table' AND name='chart_of_accounts'`
+      ).get();
+      if (!has) return;
+      database.prepare(
+        `INSERT OR IGNORE INTO chart_of_accounts
+           (account_number, name_fr, name_en, type, is_contra, is_simplified, tax_hint, is_system)
+         VALUES ('1050', 'Encaisse - depots en transit', 'Undeposited funds', 'asset', 0, 0, NULL, 0)`
+      ).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.

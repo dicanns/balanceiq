@@ -1305,6 +1305,23 @@ const MIGRATIONS = [
         SELECT id, name, COALESCE(category,'') FROM forecast_products`).run();
     },
   },
+  {
+    version: 34,
+    description: 'Add 1050 Undeposited funds - receipts collected but not yet at the bank. '
+      + 'Invoice payments taken in cash land here rather than in 1010, which would claim '
+      + 'the money is already in the bank account.',
+    up: (database) => {
+      const has = database.prepare(
+        `SELECT 1 FROM sqlite_master WHERE type='table' AND name='chart_of_accounts'`
+      ).get();
+      if (!has) return;
+      database.prepare(
+        `INSERT OR IGNORE INTO chart_of_accounts
+           (account_number, name_fr, name_en, type, is_contra, is_simplified, tax_hint, is_system)
+         VALUES ('1050', 'Encaisse - depots en transit', 'Undeposited funds', 'asset', 0, 0, NULL, 0)`
+      ).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -2815,6 +2832,18 @@ function glDeleteDraft(entryId) {
   db.prepare(`DELETE FROM journal_lines WHERE entry_id=?`).run(entryId);
   db.prepare(`DELETE FROM journal_entries WHERE id=?`).run(entryId);
   return true;
+}
+
+// Find a posted (or draft) entry created from a given source document. Used to
+// keep posting idempotent: recording the same payment twice must not book the
+// cash twice.
+function glFindEntryBySource(sourceType, sourceId, _db) {
+  const db = _db || getDb();
+  return db.prepare(
+    `SELECT * FROM journal_entries
+     WHERE source_type=? AND source_id=? AND status IN ('draft','posted')
+     ORDER BY id DESC LIMIT 1`
+  ).get(sourceType, String(sourceId)) ?? null;
 }
 
 function glGetEntry(entryId) {
@@ -5582,7 +5611,7 @@ module.exports = {
   searchWasteEntries,
   coaList, coaCreate, coaUpdate, coaArchive, coaUnarchive, coaImportCSV, coaExportCSV, coaMappingSuggestions,
   glDraftEntry, glUpdateDraft, glPostEntry, glReverseEntry, glCorrectEntry, glDeleteDraft,
-  glGetEntry, glListEntries, glGetAccountHistory, glExportLines,
+  glGetEntry, glListEntries, glGetAccountHistory, glFindEntryBySource, glExportLines,
   trialBalance,
   periodList, periodOpen, periodClose, periodReopen,
   glAuditLogList,

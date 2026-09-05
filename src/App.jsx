@@ -2794,7 +2794,11 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
  setStripeWorking(false);
  };
  const doApplyStripePayment=()=>{
- const updated=factures.map(f=>f.id===savedId?{...f,statut:"Payée",paiements:[...(f.paiements||[]),{id:Date.now().toString(),date:dk(new Date()),montant:totals.total,mode:"Stripe",reference:stripeSession.sessionId}]}:f);
+ const _stripePayId=Date.now().toString();
+ const _stripePayDate=dk(new Date());
+ const updated=factures.map(f=>f.id===savedId?{...f,statut:"Payée",paiements:[...(f.paiements||[]),{id:_stripePayId,date:_stripePayDate,montant:totals.total,mode:"Stripe",reference:stripeSession.sessionId}]}:f);
+ // Bridge phase 1: Stripe settles to the bank, so this credits AR like any other payment.
+ window.api?.ledger?.paymentPost?.({paymentId:_stripePayId,invoiceId:savedId,paymentDate:_stripePayDate,amountCents:Math.round((totals.total||0)*100),mode:"Stripe"}).catch(()=>{});
  saveFactures(updated);
  setStripeStatus(null);
  };
@@ -3014,6 +3018,15 @@ function EncaissementEditor({clientId,factureId,clients,factures,saveFactures,do
  const newSolde=computeSoumTotals(fac.lignes).total-dp-montant;
  const newStatut=newSolde<=0.005?"Payée":"Payée partiellement";
  const updFac={...fac,paiements:[...(fac.paiements||[]),paiement],statut:newStatut};
+ // Bridge phase 1: credit accounts receivable so the ledger tracks the invoice
+ // module. Idempotent on paymentId in the main process, and non-blocking - a
+ // ledger failure must not lose the payment the user just recorded.
+ window.api?.ledger?.paymentPost?.({
+   paymentId:id, invoiceId:fac.id, invoiceNumber:fac.numero,
+   paymentDate:paiement.date, amountCents:Math.round((montant||0)*100), mode:paiement.mode,
+ }).then(res=>{
+   if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(f=>f.id===fac.id?{...f,paiements:(f.paiements||[]).map(pp=>pp.id===id?{...pp,glEntryId:res.entryId}:pp)}:f));
+ }).catch(()=>{});
  logCreate('payment','paiement',id,{...paiement,factureId:fac.id,factureNumero:fac.numero});
  logUpdate('invoice','facture',fac.id,'statut',fac.statut,newStatut);
  return{updFactures:updFactures.map(f=>f.id===fac.id?updFac:f),paiement,updFac,numero};

@@ -52,7 +52,7 @@ const {
   storageGetByPrefix,
   coaList, coaCreate, coaUpdate, coaArchive, coaUnarchive, coaImportCSV, coaExportCSV, coaMappingSuggestions,
   glDraftEntry, glUpdateDraft, glPostEntry, glReverseEntry, glCorrectEntry, glDeleteDraft,
-  glGetEntry, glListEntries, glGetAccountHistory,
+  glGetEntry, glListEntries, glGetAccountHistory, glFindEntryBySource,
   trialBalance,
   periodList, periodOpen, periodClose, periodReopen,
   glAuditLogList,
@@ -1612,6 +1612,80 @@ ipcMain.handle('coa:getMappingSuggestions', (_e, names)       => coaMappingSugge
 
 // Create and immediately post a journal entry for an invoice finalization.
 // Called by the renderer when a Facture transitions from Brouillon → Envoyée.
+
+// ── Payment -> ledger (Bridge phase 1) ───────────────────────────────────────
+// An invoice DEBITS accounts receivable when it is raised. Nothing used to
+// credit it back when the customer paid, so GL receivables grew into the sum of
+// everything ever invoiced while the invoicing module showed the true balance.
+//
+// Where the money lands depends on how it arrived: cash sits in the till until
+// it is deposited, so it goes to 1050 undeposited funds rather than claiming to
+// be in the bank. Everything else settles into the operating account.
+const PAYMENT_MODE_ACCOUNT = {
+  'Comptant':             '1050',
+  'Chèque':               '1010',
+  'Virement/E-Transfer':  '1010',
+  'Carte de crédit':      '1010',
+  'Carte de débit':       '1010',
+  'Stripe':               '1010',
+  'Autre':                '1010',
+};
+
+ipcMain.handle('ledger:payment:post', async (_e, {
+  paymentId, invoiceId, paymentDate, amountCents, mode, invoiceNumber,
+}) => {
+  try {
+    if (!paymentId || !amountCents || amountCents <= 0) {
+      return { ok: false, error: 'invalid_payment' };
+    }
+
+    // Idempotent: the same payment must never book the cash twice.
+    const existing = glFindEntryBySource('payment', paymentId);
+    if (existing) return { ok: true, entryId: existing.id, alreadyPosted: true };
+
+    const accounts = coaList();
+    const find = (num) => accounts.find(a => a.account_number === num);
+    const ar   = find('1100');
+    const cashNum = PAYMENT_MODE_ACCOUNT[mode] || '1010';
+    // 1050 only exists after migration v34; fall back rather than fail the post.
+    const cash = find(cashNum) || find('1010');
+
+    if (!ar || !cash) {
+      return { ok: false, error: 'missing_coa_accounts', detail: `1100 / ${cashNum}` };
+    }
+
+    const label = `Paiement ${invoiceNumber || invoiceId || ''}`.trim();
+    const { entryId } = glDraftEntry({
+      entry_date: paymentDate,
+      description: label,
+      source_type: 'payment',
+      source_id: String(paymentId),
+      lines: [
+        { account_id: cash.id, debit_cents: amountCents, credit_cents: 0, memo: label },
+        { account_id: ar.id,   debit_cents: 0, credit_cents: amountCents, memo: 'Comptes clients' },
+      ],
+    });
+    glPostEntry(entryId);
+    return { ok: true, entryId, account: cashNum };
+  } catch (err) {
+    return { ok: false, error: 'post_failed', detail: String(err?.message ?? err) };
+  }
+});
+
+// Deleting or amending a payment reverses its entry rather than removing it -
+// the ledger stays append-only.
+ipcMain.handle('ledger:payment:reverse', async (_e, { paymentId, reason }) => {
+  try {
+    const entry = glFindEntryBySource('payment', paymentId);
+    if (!entry) return { ok: true, nothingToReverse: true };
+    if (entry.status === 'draft') { glDeleteDraft(entry.id); return { ok: true, deletedDraft: true }; }
+    const res = glReverseEntry(entry.id, reason || 'Paiement annulé');
+    return { ok: true, ...res };
+  } catch (err) {
+    return { ok: false, error: 'reverse_failed', detail: String(err?.message ?? err) };
+  }
+});
+
 ipcMain.handle('ledger:invoice:post', async (_e, {
   invoiceId, invoiceDate, subtotalCents, tpsCents, tvqCents, totalCents, taxExempt,
 }) => {
