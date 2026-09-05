@@ -3111,9 +3111,23 @@ function _parseBankOFX(text) {
     // OFX dates: YYYYMMDD[HHMMSS[...]]
     const dateStr = dtRaw.length >= 8 ? `${dtRaw.slice(0,4)}-${dtRaw.slice(4,6)}-${dtRaw.slice(6,8)}` : dtRaw;
     const amount = parseFloat(get('TRNAMT')) || 0;
+    // Banks truncate <NAME> (often 32 chars) and put the rest - payee names,
+    // e-transfer counterparties - in <MEMO>. Taking NAME alone silently lost that
+    // detail, so merge both unless one already contains the other.
+    const name = get('NAME');
+    const memo = get('MEMO');
+    let description;
+    if (name && memo) {
+      const n = name.toUpperCase(), m = memo.toUpperCase();
+      description = (m.includes(n)) ? memo
+                  : (n.includes(m)) ? name
+                  : `${name} ${memo}`;
+    } else {
+      description = name || memo || get('TRNTYPE');
+    }
     rows.push({
       transaction_date: dateStr,
-      description: get('NAME') || get('MEMO') || get('TRNTYPE'),
+      description: description.replace(/\s+/g, ' ').trim(),
       amount,
       running_balance: null,
     });

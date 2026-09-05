@@ -102,8 +102,13 @@ const UI = {
     etransferBadge:   'Virement Interac',
     etransferMatch:   'Matcher',
     etransferSender:  'Expéditeur',
-    etransferHint:    'Enregistrez le paiement sur la facture dans Facturation après avoir catégorisé cette transaction.',
-    etransferMatchBtn:'Catégoriser vers Comptes clients (1100)',
+    etransferHintIn:  'Enregistrez le paiement sur la facture dans Facturation après avoir catégorisé cette transaction.',
+    etransferHintOut: 'Enregistrez ce paiement sur la facture fournisseur correspondante après avoir catégorisé cette transaction.',
+    etransferBtnIn:   'Catégoriser vers Comptes clients (1100)',
+    etransferBtnOut:  'Catégoriser vers Comptes fournisseurs (2010)',
+    etransferDirIn:   'Reçu',
+    etransferDirOut:  'Envoyé',
+    etransferNoAccount: (n) => `Compte ${n} introuvable dans le plan comptable.`,
   },
   en: {
     tabComptes:       'Accounts',
@@ -205,8 +210,13 @@ const UI = {
     etransferBadge:   'Interac E-Transfer',
     etransferMatch:   'Match',
     etransferSender:  'Sender',
-    etransferHint:    'After categorizing this transaction, record the payment on the invoice in Facturation.',
-    etransferMatchBtn:'Categorize to Accounts Receivable (1100)',
+    etransferHintIn:  'After categorizing this transaction, record the payment on the invoice in Facturation.',
+    etransferHintOut: 'After categorizing this transaction, record this payment against the matching supplier bill.',
+    etransferBtnIn:   'Categorize to Accounts Receivable (1100)',
+    etransferBtnOut:  'Categorize to Accounts Payable (2010)',
+    etransferDirIn:   'Received',
+    etransferDirOut:  'Sent',
+    etransferNoAccount: (n) => `Account ${n} not found in the chart of accounts.`,
   },
 };
 
@@ -493,13 +503,26 @@ export default function BanqueTab({ lang = 'fr' }) {
     return '—';
   };
 
+  // An e-transfer RECEIVED is a customer settling what they owe us -> Accounts
+  // receivable (1100, asset). An e-transfer SENT is us paying someone -> Accounts
+  // payable (2010, liability). Posting an outgoing payment to AR would inflate
+  // money owed TO us by the amount we just paid OUT, in the wrong direction.
+  const etransferTarget = (tx) => (Number(tx?.amount) >= 0
+    ? { num: '1100', fr: 'clients',      en: 'receivable' }
+    : { num: '2010', fr: 'fournisseurs', en: 'payable' });
+
+  const findCoa = (t) =>
+    coa.find(a => a.account_number === t.num)
+    || coa.find(a => (a.name_fr || '').toLowerCase().includes(t.fr))
+    || coa.find(a => (a.name_en || '').toLowerCase().includes(t.en));
+
   const doEtransferCategorize = async () => {
     if (!etransferTx) return;
-    const arAccount = coa.find(a => a.account_number === '1100' || (a.name_fr || '').toLowerCase().includes('clients'));
-    const coaId = arAccount?.id;
-    if (!coaId) { alert(lang === 'fr' ? 'Compte Comptes clients (1100) introuvable.' : 'Accounts Receivable (1100) account not found.'); return; }
+    const target  = etransferTarget(etransferTx);
+    const account = findCoa(target);
+    if (!account?.id) { alert(T.etransferNoAccount(target.num)); return; }
     try {
-      await window.api.bank.transactions.categorize(etransferTx.id, coaId, lang === 'fr' ? 'Virement Interac' : 'Interac E-Transfer');
+      await window.api.bank.transactions.categorize(etransferTx.id, account.id, T.etransferBadge);
       setEtransferTx(null);
       loadTransactions();
     } catch (e) { alert(tErr(e)); }
@@ -863,15 +886,18 @@ export default function BanqueTab({ lang = 'fr' }) {
           <h3 style={{ margin: '0 0 10px', color: '#a78bfa' }}>{T.etransferBadge}</h3>
           <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 14 }}>
             <strong style={{ color: '#f1f5f9' }}>{etransferTx.description}</strong><br />
-            {fmtDate(etransferTx.transaction_date)} · <span style={{ color: '#86efac', fontWeight: 700 }}>{fmt(etransferTx.amount)}</span>
+            {fmtDate(etransferTx.transaction_date)} · <span style={{ color: Number(etransferTx.amount) >= 0 ? '#86efac' : '#f87171', fontWeight: 700 }}>{fmt(etransferTx.amount)}</span>
+            <span style={{ marginLeft: 8, fontSize: 11, color: '#94a3b8' }}>
+              ({Number(etransferTx.amount) >= 0 ? T.etransferDirIn : T.etransferDirOut})
+            </span>
           </div>
           <div style={{ marginBottom: 12, padding: '6px 10px', background: 'rgba(167,139,250,0.07)', border: '1px solid rgba(167,139,250,0.2)', borderRadius: 6 }}>
             <span style={{ fontSize: 11, color: '#94a3b8' }}>{T.etransferSender}: </span>
             <span style={{ fontSize: 13, fontWeight: 700, color: '#a78bfa' }}>{etransferTx.etSender}</span>
           </div>
-          <div style={{ fontSize: 11, color: '#f59e0b', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 5, padding: '6px 10px', marginBottom: 14 }}>{T.etransferHint}</div>
+          <div style={{ fontSize: 11, color: '#f59e0b', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 5, padding: '6px 10px', marginBottom: 14 }}>{Number(etransferTx.amount) >= 0 ? T.etransferHintIn : T.etransferHintOut}</div>
           <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-            <button onClick={doEtransferCategorize} style={btnStyle('#a78bfa')}>{T.etransferMatchBtn}</button>
+            <button onClick={doEtransferCategorize} style={btnStyle('#a78bfa')}>{Number(etransferTx.amount) >= 0 ? T.etransferBtnIn : T.etransferBtnOut}</button>
             <button onClick={() => setEtransferTx(null)} style={btnStyle('#374151')}>{T.cancel}</button>
           </div>
         </ModalOverlay>
