@@ -255,6 +255,12 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
     divider: theme?.divider       ?? '#0f172a',
     inputBg: theme?.inputBg       ?? '#0f172a',
   };
+
+  // Themed styles must live in component scope - C is not visible at module level.
+  const btnSmall = { background: C.panel, color: C.sub, border: 'none', borderRadius: 5, padding: '4px 10px', cursor: 'pointer', fontSize: 12 };
+  const th       = { textAlign: 'left', padding: '8px 10px', fontWeight: 600, fontSize: 12, color: C.sub };
+  const kpiLabel = { fontSize: 11, color: C.muted, marginBottom: 2 };
+  const kpiVal   = { fontSize: 16, fontWeight: 700, color: C.text };
   const T = UI[lang] || UI.fr;
 
   // Main-process errors cross IPC as strings, so they are thrown as stable codes
@@ -546,10 +552,13 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
     ? { num: '1100', fr: 'clients',      en: 'receivable' }
     : { num: '2010', fr: 'fournisseurs', en: 'payable' });
 
+  // NOTE: the accounts state is coaList. This previously read a non-existent
+  // `coa`, which threw a ReferenceError before the try/catch and made the
+  // Interac categorize button silently do nothing.
   const findCoa = (t) =>
-    coa.find(a => a.account_number === t.num)
-    || coa.find(a => (a.name_fr || '').toLowerCase().includes(t.fr))
-    || coa.find(a => (a.name_en || '').toLowerCase().includes(t.en));
+    coaList.find(a => a.account_number === t.num)
+    || coaList.find(a => (a.name_fr || '').toLowerCase().includes(t.fr))
+    || coaList.find(a => (a.name_en || '').toLowerCase().includes(t.en));
 
   // Remove a bad import (wrong date range / wrong account) so the same file can
   // be imported again - the stored file hash goes with the statement.
@@ -565,10 +574,10 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
 
   const doEtransferCategorize = async () => {
     if (!etransferTx) return;
-    const target  = etransferTarget(etransferTx);
-    const account = findCoa(target);
-    if (!account?.id) { alert(T.etransferNoAccount(target.num)); return; }
     try {
+      const target  = etransferTarget(etransferTx);
+      const account = findCoa(target);
+      if (!account?.id) { alert(T.etransferNoAccount(target.num)); return; }
       await window.api.bank.transactions.categorize(etransferTx.id, account.id, T.etransferBadge);
       setEtransferTx(null);
       loadTransactions();
@@ -980,7 +989,7 @@ function ModalOverlay({ children, onClose }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background: '#0f1724', border: `1px solid ${C.border}`, borderRadius: 10, padding: '24px 28px', minWidth: 360, maxWidth: 520, width: '90vw', maxHeight: '85vh', overflowY: 'auto' }}>
+      <div style={{ background: '#0f1724', border: '1px solid #1e293b', borderRadius: 10, padding: '24px 28px', minWidth: 360, maxWidth: 520, width: '90vw', maxHeight: '85vh', overflowY: 'auto' }}>
         {children}
       </div>
     </div>
@@ -992,13 +1001,9 @@ const btnStyle = (bg, fontSize = 13) => ({
   background: bg, color: '#fff', border: 'none', borderRadius: 6, padding: '7px 16px',
   cursor: 'pointer', fontWeight: 600, fontSize,
 });
-const btnSmall      = { background: C.panel, color: C.sub, border: 'none', borderRadius: 5, padding: '4px 10px', cursor: 'pointer', fontSize: 12 };
 const btnSmallDanger= { background: '#450a0a', color: '#fca5a5', border: 'none', borderRadius: 5, padding: '4px 10px', cursor: 'pointer', fontSize: 12 };
 const selectStyle   = { background: '#0f1724', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 6, padding: '5px 10px', fontSize: 12 };
 const inputStyle    = { background: '#0f1724', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 6, padding: '5px 10px', fontSize: 12 };
-const inputFull     = { width: '100%', boxSizing: 'border-box', background: C.panel, color: '#e2e8f0', border: '1px solid #334155', borderRadius: 6, padding: '7px 10px', fontSize: 13, marginBottom: 10 };
-const labelStyle    = { display: 'block', fontSize: 12, color: C.muted, marginBottom: 4 };
-const th            = { textAlign: 'left', padding: '8px 10px', fontWeight: 600, fontSize: 12, color: C.sub };
+const inputFull     = { width: '100%', boxSizing: 'border-box', background: '#0f1724', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 6, padding: '7px 10px', fontSize: 13, marginBottom: 10 };
+const labelStyle    = { display: 'block', fontSize: 12, color: '#64748b', marginBottom: 4 };
 const td            = { padding: '7px 10px', verticalAlign: 'middle', color: '#e2e8f0' };
-const kpiLabel      = { fontSize: 11, color: C.muted, marginBottom: 2 };
-const kpiVal        = { fontSize: 16, fontWeight: 700, color: C.text };

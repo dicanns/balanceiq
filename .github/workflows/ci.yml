@@ -32,5 +32,8 @@ jobs:
       - name: Edge function auth check
         run: npm run check:edge-auth
 
+      - name: Undefined-variable check
+        run: npm run lint:undef
+
       - name: npm audit (production, high+)
         run: npm run audit

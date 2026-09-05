@@ -1,6 +1,6 @@
 {
   "name": "balanceiq",
-  "version": "1.40.69",
+  "version": "1.40.70",
   "description": "L'intelligence derrière vos chiffres.",
   "main": "main.js",
   "scripts": {
@@ -23,7 +23,8 @@
     "test:backup-parity": "npm rebuild better-sqlite3 --quiet && vitest run src/__tests__/safety/backupSchemaParity.test.js",
     "check:edge-auth": "bash scripts/check-edge-function-auth.sh",
     "audit": "npm audit --production --audit-level=critical",
-    "scan:semgrep": "semgrep --config .semgrep.yml src/"
+    "scan:semgrep": "semgrep --config .semgrep.yml src/",
+    "lint:undef": "eslint --config eslint.undef.config.mjs \"src/components/**/*.jsx\" \"src/services/**/*.js\" \"src/utils/**/*.js\" \"src/db/**/*.js\""
   },
   "dependencies": {
     "@sentry/electron": "^7.10.0",
