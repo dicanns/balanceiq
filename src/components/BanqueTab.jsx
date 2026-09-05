@@ -329,6 +329,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   const [categorizeCoaId, setCategorizeCoaId]     = useState('');
   const [categorizeNotes, setCategorizeNotes]     = useState('');
   const [etransferTx, setEtransferTx]             = useState(null);
+  const [etransferCoaId, setEtransferCoaId]       = useState('');
 
   const [statements, setStatements]               = useState([]);
   const [recPreview, setRecPreview]               = useState(null);
@@ -590,13 +591,22 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
     } catch (e) { alert(tErr(e)); }
   };
 
+  // Pre-select the best account we know of when the modal opens: an existing
+  // categorization or learned suggestion beats the generic direction default,
+  // which would otherwise overwrite a correct answer with AR/AP.
+  React.useEffect(() => {
+    if (!etransferTx) { setEtransferCoaId(''); return; }
+    if (etransferTx.coa_account_id) { setEtransferCoaId(String(etransferTx.coa_account_id)); return; }
+    const fallback = findCoa(etransferTarget(etransferTx));
+    setEtransferCoaId(fallback?.id ? String(fallback.id) : '');
+  }, [etransferTx]);
+
   const doEtransferCategorize = async () => {
     if (!etransferTx) return;
     try {
-      const target  = etransferTarget(etransferTx);
-      const account = findCoa(target);
-      if (!account?.id) { alert(T.etransferNoAccount(target.num)); return; }
-      await window.api.bank.transactions.categorize(etransferTx.id, account.id, T.etransferBadge);
+      const chosen = parseInt(etransferCoaId, 10);
+      if (!chosen) { alert(T.etransferNoAccount(etransferTarget(etransferTx).num)); return; }
+      await window.api.bank.transactions.categorize(etransferTx.id, chosen, T.etransferBadge);
       setEtransferTx(null);
       loadTransactions();
     } catch (e) { alert(tErr(e)); }
@@ -984,9 +994,30 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
             <span style={{ fontSize: 11, color: C.sub }}>{T.etransferSender}: </span>
             <span style={{ fontSize: 13, fontWeight: 700, color: '#a78bfa' }}>{etransferTx.etSender}</span>
           </div>
-          <div style={{ fontSize: 11, color: '#f59e0b', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 5, padding: '6px 10px', marginBottom: 14 }}>{Number(etransferTx.amount) >= 0 ? T.etransferHintIn : T.etransferHintOut}</div>
-          <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-            <button onClick={doEtransferCategorize} style={btnStyle('#a78bfa')}>{Number(etransferTx.amount) >= 0 ? T.etransferBtnIn : T.etransferBtnOut}</button>
+          {(() => {
+            // The follow-up hint only applies to receivable/payable postings.
+            // A transfer categorized to wages or an owner draw has no invoice
+            // or supplier bill to record against.
+            const picked = coaList.find(a => String(a.id) === String(etransferCoaId));
+            const num = picked?.account_number;
+            if (num !== '1100' && num !== '2010') return null;
+            return (
+              <div style={{ fontSize: 11, color: '#f59e0b', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 5, padding: '6px 10px', marginBottom: 14 }}>
+                {num === '1100' ? T.etransferHintIn : T.etransferHintOut}
+              </div>
+            );
+          })()}
+          <label style={labelStyle}>{T.selectCoa}</label>
+          <CoaPicker
+            accounts={coaList}
+            value={etransferCoaId}
+            onChange={setEtransferCoaId}
+            placeholder={T.searchCoa}
+            nameOf={coaName}
+            styles={pickerStyles}
+          />
+          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <button onClick={doEtransferCategorize} disabled={!etransferCoaId} style={btnStyle(etransferCoaId ? '#a78bfa' : '#4b5563')}>{T.categorize}</button>
             <button onClick={() => setEtransferTx(null)} style={btnStyle('#374151')}>{T.cancel}</button>
           </div>
         </ModalOverlay>
