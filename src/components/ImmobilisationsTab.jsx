@@ -222,7 +222,7 @@ export default function ImmobilisationsTab({ lang = 'fr', canUsePro = false, onU
               <div style={label}>{L.coaAccount}</div>
               <select style={{ ...input, width: '100%', boxSizing: 'border-box' }} value={form.coa_account_id} onChange={e => setForm(f => ({ ...f, coa_account_id: e.target.value }))}>
                 <option value="">-- {lang === 'fr' ? 'Choisir' : 'Select'} --</option>
-                {coaAccounts.map(a => <option key={a.id} value={a.id}>{a.account_number} {a.name_fr}</option>)}
+                {coaAccounts.map(a => <option key={a.id} value={a.id}>{a.account_number} {(lang === 'en' && a.name_en) ? a.name_en : a.name_fr}</option>)}
               </select>
             </div>
             <div>

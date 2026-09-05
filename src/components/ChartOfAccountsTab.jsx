@@ -127,7 +127,13 @@ function AccountModal({ account, lang, onSave, onClose }) {
       }
       onSave();
     } catch (e) {
-      setError(e.message || t.saveErr);
+      setError(
+        String(e?.message || '').includes('ERR_ACCOUNT_NUMBER_TAKEN')
+          ? (lang === 'en'
+              ? `Account number ${String(e.message).split('|')[1] || ''} is already in use.`
+              : `Le numéro de compte ${String(e.message).split('|')[1] || ''} est déjà utilisé.`)
+          : (e.message || t.saveErr)
+      );
     }
   }
 

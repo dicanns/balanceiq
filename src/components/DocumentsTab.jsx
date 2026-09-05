@@ -33,6 +33,8 @@ function fileToBase64(file) {
 }
 
 export default function DocumentsTab({ isFranchisor, orgId, cloudUser, T, t, onUnreadCountChange }) {
+  // T is the active translation table. 'save' is 'Save' in EN, 'Enregistrer' in FR.
+  const isEn = String(T?.save ?? '').toLowerCase() === 'save';
   const [folders, setFolders] = useState(DEFAULT_FOLDERS);
   const [selectedFolder, setSelectedFolder] = useState(null);
   const [documents, setDocuments] = useState([]);
@@ -228,7 +230,7 @@ export default function DocumentsTab({ isFranchisor, orgId, cloudUser, T, t, onU
   }
 
   if (loadErr === '__setup__') {
-    return (<div style={{ padding: 20, background: 'rgba(249,115,22,0.06)', border: '1px solid rgba(249,115,22,0.2)', borderRadius: 10, maxWidth: 560 }}><div style={{ fontSize: 13, fontWeight: 700, color: '#f97316', marginBottom: 8 }}>Configuration requise — Documents réseau</div><div style={{ fontSize: 12, lineHeight: 1.7, opacity: 0.85, marginBottom: 12 }}>Les tables Supabase pour le partage de documents n'ont pas encore été créées.<br/>Exécuter la migration suivante dans le<strong>SQL Editor</strong>de votre projet Supabase&nbsp;:</div><code style={{ display: 'block', fontSize: 10.5, background: 'rgba(0,0,0,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 12, whiteSpace: 'pre', overflowX: 'auto', color: '#c0c3d4' }}>{`supabase/migrations/20260314_franchise_docs.sql`}</code><div style={{ fontSize: 11, opacity: 0.65, marginBottom: 12 }}>Ensuite, créer un bucket Storage nommé<strong>franchise-docs</strong>(privé, 10 MB max) dans Supabase Storage.</div><button onClick={loadData} style={{ padding: '5px 14px', borderRadius: 6, border: '1px solid rgba(249,115,22,0.4)', background: 'rgba(249,115,22,0.1)', color: '#f97316', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{T.docRetryAfterMig || 'Retry after migration'}</button></div>);
+    return (<div style={{ padding: 20, background: 'rgba(249,115,22,0.06)', border: '1px solid rgba(249,115,22,0.2)', borderRadius: 10, maxWidth: 560 }}><div style={{ fontSize: 13, fontWeight: 700, color: '#f97316', marginBottom: 8 }}>{isEn ? 'Setup required - Network documents' : 'Configuration requise - Documents réseau'}</div><div style={{ fontSize: 12, lineHeight: 1.7, opacity: 0.85, marginBottom: 12 }}>{isEn ? 'The Supabase tables for document sharing have not been created yet.' : "Les tables Supabase pour le partage de documents n'ont pas encore été créées."}<br/>{isEn ? 'Run the following migration in the' : 'Exécuter la migration suivante dans le'}<strong>SQL Editor</strong>{isEn ? ' of your Supabase project:' : ' de votre projet Supabase\u00a0:'}</div><code style={{ display: 'block', fontSize: 10.5, background: 'rgba(0,0,0,0.3)', borderRadius: 6, padding: '8px 12px', marginBottom: 12, whiteSpace: 'pre', overflowX: 'auto', color: '#c0c3d4' }}>{`supabase/migrations/20260314_franchise_docs.sql`}</code><div style={{ fontSize: 11, opacity: 0.65, marginBottom: 12 }}>{isEn ? 'Then create a Storage bucket named ' : 'Ensuite, créer un bucket Storage nommé '}<strong>franchise-docs</strong>{isEn ? ' (private, 10 MB max) in Supabase Storage.' : ' (privé, 10 MB max) dans Supabase Storage.'}</div><button onClick={loadData} style={{ padding: '5px 14px', borderRadius: 6, border: '1px solid rgba(249,115,22,0.4)', background: 'rgba(249,115,22,0.1)', color: '#f97316', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>{T.docRetryAfterMig || 'Retry after migration'}</button></div>);
   }
 
   if (loadErr) {

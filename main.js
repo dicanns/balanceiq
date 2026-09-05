@@ -57,7 +57,7 @@ const {
   periodList, periodOpen, periodClose, periodReopen,
   glAuditLogList,
   bankAccountsList, bankAccountCreate, bankAccountUpdate, bankAccountArchive,
-  bankStatementImport, bankStatementsList,
+  bankStatementImport, bankStatementsList, bankStatementDelete,
   bankTransactionsList, bankTransactionMatch, bankTransactionUnmatch, bankTransactionCategorize,
   bankReconcilePreview, bankReconcileClose, bankReconcileReopen,
   bankLearnedRulesList, bankLearnedRuleDelete,
@@ -1707,6 +1707,7 @@ ipcMain.handle('bank:accounts:update',     (_e, id, fields)            => bankAc
 ipcMain.handle('bank:accounts:archive',    (_e, id)                    => bankAccountArchive(id));
 
 ipcMain.handle('bank:statement:import',    (_e, opts)                  => bankStatementImport(opts));
+ipcMain.handle('bank:statement:delete', (_e, id) => bankStatementDelete(id));
 ipcMain.handle('bank:statement:list',      (_e, bankAccountId)         => bankStatementsList(bankAccountId));
 
 ipcMain.handle('bank:transactions:list',   (_e, bankAccountId, opts)   => bankTransactionsList(bankAccountId, opts));

@@ -2489,7 +2489,7 @@ function coaList() {
 
 function coaCreate({ account_number, name_fr, name_en, type, parent_account_id = null, is_contra = 0, is_simplified = 0, tax_hint = null }) {
   const existing = getDb().prepare('SELECT id FROM chart_of_accounts WHERE account_number = ?').get(account_number);
-  if (existing) throw new Error(`Numéro de compte ${account_number} déjà utilisé`);
+  if (existing) throw new Error(`ERR_ACCOUNT_NUMBER_TAKEN|${account_number}`);
   const info = getDb().prepare(
     `INSERT INTO chart_of_accounts (account_number, name_fr, name_en, type, parent_account_id, is_contra, is_simplified, tax_hint, is_system)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`
@@ -2692,8 +2692,8 @@ function glDraftEntry({ entry_date, description, source_type = 'manual', source_
 function glUpdateDraft(entryId, { entry_date, description, lines = [] }) {
   const db = getDb();
   const entry = db.prepare(`SELECT * FROM journal_entries WHERE id=?`).get(entryId);
-  if (!entry) throw new Error('Écriture introuvable');
-  if (entry.status !== 'draft') throw new Error('Seules les écritures en brouillon peuvent être modifiées');
+  if (!entry) throw new Error('ERR_ENTRY_NOT_FOUND');
+  if (entry.status !== 'draft') throw new Error('ERR_ENTRY_NOT_DRAFT');
 
   return db.transaction(() => {
     const updates = [];
@@ -2718,12 +2718,12 @@ function glUpdateDraft(entryId, { entry_date, description, lines = [] }) {
 function glPostEntry(entryId, _db) {
   const db = _db || getDb();
   const entry = db.prepare(`SELECT * FROM journal_entries WHERE id=?`).get(entryId);
-  if (!entry) throw new Error('Écriture introuvable');
-  if (entry.status === 'posted') throw new Error('Écriture déjà comptabilisée');
-  if (entry.status === 'reversed') throw new Error('Écriture annulée — ne peut pas être comptabilisée');
+  if (!entry) throw new Error('ERR_ENTRY_NOT_FOUND');
+  if (entry.status === 'posted') throw new Error('ERR_ENTRY_ALREADY_POSTED');
+  if (entry.status === 'reversed') throw new Error('ERR_ENTRY_REVERSED');
 
   const period = db.prepare(`SELECT * FROM accounting_periods WHERE id=?`).get(entry.period_id);
-  if (period && period.status === 'closed') throw new Error('La période est fermée — rouvrez-la avant de comptabiliser');
+  if (period && period.status === 'closed') throw new Error('ERR_PERIOD_CLOSED_POST');
 
   // An opening_balance entry must be unique per location — re-running a migration
   // or user error must never result in two opening balance postings.
@@ -2733,16 +2733,16 @@ function glPostEntry(entryId, _db) {
        WHERE source_type='opening_balance' AND status='posted'
          AND (location_id IS ? OR location_id=?) AND id != ?`
     ).get(entry.location_id, entry.location_id, entryId);
-    if (existing) throw new Error('Solde d\'ouverture déjà comptabilisé pour cet emplacement');
+    if (existing) throw new Error('ERR_OPENING_BALANCE_EXISTS');
   }
 
   const lines = db.prepare(`SELECT * FROM journal_lines WHERE entry_id=?`).all(entryId);
-  if (!lines.length) throw new Error('Écriture sans lignes');
+  if (!lines.length) throw new Error('ERR_ENTRY_NO_LINES');
 
   const totalDebits = lines.reduce((s, l) => s + l.debit_cents, 0);
   const totalCredits = lines.reduce((s, l) => s + l.credit_cents, 0);
   if (totalDebits !== totalCredits) {
-    throw new Error(`Déséquilibre: débit ${totalDebits}¢ ≠ crédit ${totalCredits}¢`);
+    throw new Error(`ERR_ENTRY_UNBALANCED|${totalDebits}|${totalCredits}`);
   }
 
   const now = new Date().toISOString();
@@ -2758,12 +2758,12 @@ function glPostEntry(entryId, _db) {
 function glReverseEntry(entryId, reason) {
   const db = getDb();
   const orig = db.prepare(`SELECT * FROM journal_entries WHERE id=?`).get(entryId);
-  if (!orig) throw new Error('Écriture introuvable');
-  if (orig.status !== 'posted') throw new Error('Seules les écritures comptabilisées peuvent être annulées');
-  if (orig.reversed_by_entry_id) throw new Error('Écriture déjà annulée');
+  if (!orig) throw new Error('ERR_ENTRY_NOT_FOUND');
+  if (orig.status !== 'posted') throw new Error('ERR_ENTRY_NOT_POSTED');
+  if (orig.reversed_by_entry_id) throw new Error('ERR_ENTRY_ALREADY_REVERSED');
 
   const period = db.prepare(`SELECT * FROM accounting_periods WHERE id=?`).get(orig.period_id);
-  if (period && period.status === 'closed') throw new Error('La période est fermée — rouvrez-la avant d\'annuler');
+  if (period && period.status === 'closed') throw new Error('ERR_PERIOD_CLOSED_REVERSE');
 
   const origLines = db.prepare(`SELECT * FROM journal_lines WHERE entry_id=? ORDER BY line_number`).all(entryId);
   const now = new Date().toISOString();
@@ -2810,8 +2810,8 @@ function glCorrectEntry(entryId, newData, reason) {
 function glDeleteDraft(entryId) {
   const db = getDb();
   const entry = db.prepare(`SELECT status FROM journal_entries WHERE id=?`).get(entryId);
-  if (!entry) throw new Error('Écriture introuvable');
-  if (entry.status !== 'draft') throw new Error('Seules les écritures en brouillon peuvent être supprimées');
+  if (!entry) throw new Error('ERR_ENTRY_NOT_FOUND');
+  if (entry.status !== 'draft') throw new Error('ERR_ENTRY_NOT_DRAFT_DELETE');
   db.prepare(`DELETE FROM journal_lines WHERE entry_id=?`).run(entryId);
   db.prepare(`DELETE FROM journal_entries WHERE id=?`).run(entryId);
   return true;
@@ -2943,7 +2943,7 @@ function periodOpen({ period_type = 'month', fiscal_year, start_date, end_date, 
       `SELECT id, status FROM accounting_periods WHERE period_type=? AND start_date=? AND end_date=? AND (location_id IS ? OR location_id=?)`
     ).get(period_type, start_date, end_date, location_id, location_id);
     if (existing && existing.status === 'closed') {
-      throw new Error('Période déjà fermée — utilisez "Rouvrir" pour la réouvrir');
+      throw new Error('ERR_PERIOD_ALREADY_CLOSED_REOPEN');
     }
     return { periodId: existing?.id };
   }
@@ -2953,8 +2953,8 @@ function periodOpen({ period_type = 'month', fiscal_year, start_date, end_date, 
 function periodClose(periodId) {
   const db = getDb();
   const period = db.prepare(`SELECT * FROM accounting_periods WHERE id=?`).get(periodId);
-  if (!period) throw new Error('Période introuvable');
-  if (period.status === 'closed') throw new Error('Période déjà fermée');
+  if (!period) throw new Error('ERR_PERIOD_NOT_FOUND');
+  if (period.status === 'closed') throw new Error('ERR_PERIOD_ALREADY_CLOSED');
 
   // Check for draft entries in this period
   const drafts = db.prepare(
@@ -2975,9 +2975,9 @@ function periodClose(periodId) {
 function periodReopen(periodId, reason) {
   const db = getDb();
   const period = db.prepare(`SELECT * FROM accounting_periods WHERE id=?`).get(periodId);
-  if (!period) throw new Error('Période introuvable');
-  if (period.status !== 'closed') throw new Error('La période n\'est pas fermée');
-  if (!reason || !reason.trim()) throw new Error('Une raison est requise pour rouvrir une période');
+  if (!period) throw new Error('ERR_PERIOD_NOT_FOUND');
+  if (period.status !== 'closed') throw new Error('ERR_PERIOD_NOT_CLOSED');
+  if (!reason || !reason.trim()) throw new Error('ERR_REOPEN_REASON_REQUIRED');
 
   const now = new Date().toISOString();
   const uuid = _getDeviceUuid();
@@ -3373,6 +3373,36 @@ function bankLearnedRulesList() {
 function bankLearnedRuleDelete(id) {
   getDb().prepare(`DELETE FROM bank_match_learned WHERE id=?`).run(id);
   return true;
+}
+
+// Delete an imported statement and the transactions it created, so a bad import
+// (wrong date range, wrong account) can be redone. The file hash goes with it,
+// which is what allows the same file to be re-imported afterwards.
+//
+// Refuses when the statement is reconciled, or when any of its transactions has
+// been reconciled or matched to a real entity - deleting those would silently
+// detach an invoice or bill from its payment.
+function bankStatementDelete(statementId, _db) {
+  const db = _db || getDb();
+  const stmt = db.prepare(`SELECT * FROM bank_statements WHERE id=?`).get(statementId);
+  if (!stmt) throw new Error('ERR_STATEMENT_NOT_FOUND');
+  if (stmt.reconciled) throw new Error('ERR_STATEMENT_RECONCILED_LOCKED');
+
+  const locked = db.prepare(
+    `SELECT COUNT(*) AS n FROM bank_transactions
+     WHERE bank_statement_id=? AND (reconciled=1 OR matched_entity_id IS NOT NULL)`
+  ).get(statementId).n;
+  if (locked > 0) throw new Error('ERR_STATEMENT_HAS_MATCHED_TX');
+
+  return db.transaction(() => {
+    const removed = db.prepare(`DELETE FROM bank_transactions WHERE bank_statement_id=?`).run(statementId).changes;
+    db.prepare(`DELETE FROM bank_statements WHERE id=?`).run(statementId);
+    db.prepare(
+      `INSERT INTO audit_log (device_id, module, action, record_type, record_id, reason)
+       VALUES (?, 'bank', 'delete_statement', 'bank_statement', ?, ?)`
+    ).run(getDeviceId(), String(statementId), `period ${stmt.period_start}..${stmt.period_end}, ${removed} tx`);
+    return { ok: true, removedTransactions: removed };
+  })();
 }
 
 function bankStatementsList(bankAccountId) {
@@ -5541,7 +5571,7 @@ module.exports = {
   periodList, periodOpen, periodClose, periodReopen,
   glAuditLogList,
   bankAccountsList, bankAccountCreate, bankAccountUpdate, bankAccountArchive,
-  bankStatementImport, bankStatementsList,
+  bankStatementImport, bankStatementsList, bankStatementDelete,
   bankTransactionsList, bankTransactionMatch, bankTransactionUnmatch, bankTransactionCategorize,
   bankReconcilePreview, bankReconcileClose, bankReconcileReopen,
   bankLearnedRulesList, bankLearnedRuleDelete,

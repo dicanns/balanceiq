@@ -49,6 +49,24 @@ function endOfMonth(yyyy, mm) {
   return new Date(yyyy, mm, 0).getDate();
 }
 
+// Main-process errors cross IPC as strings, so the DB layer throws stable ERR_*
+// codes and they are translated here. Unmapped errors fall back to raw text.
+function tLedgerErr(e, t) {
+  const raw = typeof e === 'string' ? e : (e?.message || '');
+  const code = Object.keys(t.ledgerErrors || {}).find(k => raw.includes(k));
+  if (!code) return raw || t.errorSave;
+  const v = t.ledgerErrors[code];
+  if (typeof v !== 'function') return v;
+  // Codes carry their arguments as CODE|arg1|arg2.
+  const args = raw.slice(raw.indexOf(code) + code.length).split('|').slice(1);
+  return v(...args);
+}
+
+// Chart-of-accounts rows carry both names; show the one matching the UI language.
+function coaLabel(row, lang) {
+  return (lang === 'en' && row?.name_en) ? row.name_en : (row?.name_fr || row?.name_en || '');
+}
+
 function monthLabel(yyyy, mm, lang) {
   const d = new Date(yyyy, mm - 1, 1);
   return d.toLocaleString(lang === 'fr' ? 'fr-CA' : 'en-CA', { month: 'long', year: 'numeric' });
@@ -111,6 +129,26 @@ const UI = {
     balanceOk:        '✓ Équilibré',
     balanceBad:       '⚠ Déséquilibré',
     errorSave:        'Erreur lors de la sauvegarde',
+    ledgerErrors: {
+      ERR_ENTRY_NOT_FOUND:              'Écriture introuvable.',
+      ERR_ENTRY_NOT_DRAFT:              'Seules les écritures en brouillon peuvent être modifiées.',
+      ERR_ENTRY_NOT_DRAFT_DELETE:       'Seules les écritures en brouillon peuvent être supprimées.',
+      ERR_ENTRY_ALREADY_POSTED:         'Écriture déjà comptabilisée.',
+      ERR_ENTRY_REVERSED:               'Écriture annulée - elle ne peut pas être comptabilisée.',
+      ERR_ENTRY_NOT_POSTED:             'Seules les écritures comptabilisées peuvent être annulées.',
+      ERR_ENTRY_ALREADY_REVERSED:       'Écriture déjà annulée.',
+      ERR_ENTRY_NO_LINES:               'Écriture sans lignes.',
+      ERR_ENTRY_UNBALANCED:             (d, c) => `Déséquilibre : débit ${d}¢ ≠ crédit ${c}¢.`,
+      ERR_OPENING_BALANCE_EXISTS:       "Solde d'ouverture déjà comptabilisé pour cet emplacement.",
+      ERR_PERIOD_CLOSED_POST:           'La période est fermée - rouvrez-la avant de comptabiliser.',
+      ERR_PERIOD_CLOSED_REVERSE:        "La période est fermée - rouvrez-la avant d'annuler.",
+      ERR_PERIOD_NOT_FOUND:             'Période introuvable.',
+      ERR_PERIOD_ALREADY_CLOSED:        'Période déjà fermée.',
+      ERR_PERIOD_ALREADY_CLOSED_REOPEN: 'Période déjà fermée - utilisez "Rouvrir" pour la réouvrir.',
+      ERR_PERIOD_NOT_CLOSED:            "La période n'est pas fermée.",
+      ERR_REOPEN_REASON_REQUIRED:       'Une raison est requise pour rouvrir une période.',
+    },
+
     errorPost:        'Erreur lors de la comptabilisation',
     successPost:      'Écriture comptabilisée',
     successReverse:   'Écriture annulée',
@@ -191,6 +229,26 @@ const UI = {
     balanceOk:        '✓ Balanced',
     balanceBad:       '⚠ Imbalanced',
     errorSave:        'Error saving entry',
+    ledgerErrors: {
+      ERR_ENTRY_NOT_FOUND:              'Entry not found.',
+      ERR_ENTRY_NOT_DRAFT:              'Only draft entries can be edited.',
+      ERR_ENTRY_NOT_DRAFT_DELETE:       'Only draft entries can be deleted.',
+      ERR_ENTRY_ALREADY_POSTED:         'This entry is already posted.',
+      ERR_ENTRY_REVERSED:               'This entry was reversed - it cannot be posted.',
+      ERR_ENTRY_NOT_POSTED:             'Only posted entries can be reversed.',
+      ERR_ENTRY_ALREADY_REVERSED:       'This entry is already reversed.',
+      ERR_ENTRY_NO_LINES:               'This entry has no lines.',
+      ERR_ENTRY_UNBALANCED:             (d, c) => `Out of balance: debit ${d}c does not equal credit ${c}c.`,
+      ERR_OPENING_BALANCE_EXISTS:       'An opening balance is already posted for this location.',
+      ERR_PERIOD_CLOSED_POST:           'The period is closed - reopen it before posting.',
+      ERR_PERIOD_CLOSED_REVERSE:        'The period is closed - reopen it before reversing.',
+      ERR_PERIOD_NOT_FOUND:             'Period not found.',
+      ERR_PERIOD_ALREADY_CLOSED:        'This period is already closed.',
+      ERR_PERIOD_ALREADY_CLOSED_REOPEN: 'This period is already closed - use "Reopen" to reopen it.',
+      ERR_PERIOD_NOT_CLOSED:            'This period is not closed.',
+      ERR_REOPEN_REASON_REQUIRED:       'A reason is required to reopen a period.',
+    },
+
     errorPost:        'Error posting entry',
     successPost:      'Entry posted',
     successReverse:   'Entry reversed',
@@ -288,7 +346,7 @@ function EntryFormModal({ lang, accounts, editEntry, onClose, onSaved }) {
       }
       onSaved(result);
     } catch (e) {
-      setError(e.message || t.errorSave);
+      setError(tLedgerErr(e, t));
     } finally {
       setSaving(false);
     }
@@ -338,7 +396,7 @@ function EntryFormModal({ lang, accounts, editEntry, onClose, onSaved }) {
                   <select value={line.account_id} onChange={e => updateLine(i, 'account_id', e.target.value)} style={{ ...inputStyle, margin: 0 }}>
                     <option value="">— {t.account} —</option>
                     {accounts.filter(a => !a.is_archived).map(a => (
-                      <option key={a.id} value={a.id}>{a.account_number} {a.name_fr}</option>
+                      <option key={a.id} value={a.id}>{a.account_number} {coaLabel(a, lang)}</option>
                     ))}
                   </select>
                 </td>
@@ -409,7 +467,7 @@ function ReverseModal({ lang, entry, onClose, onDone }) {
       await window.api.ledger.entry.reverse(entry.id, reason.trim());
       onDone(t.successReverse);
     } catch (e) {
-      setError(e.message);
+      setError(tLedgerErr(e, t));
     } finally {
       setSaving(false);
     }
@@ -470,7 +528,7 @@ function EntryDetailModal({ lang, entry, onClose }) {
             {(entry.lines || []).map((l, i) => (
               <tr key={i} style={{ borderBottom: '1px solid #1e293b' }}>
                 <td style={{ padding: '7px 4px', color: '#e2e8f0' }}>
-                  {l.account_number} {l.name_fr}
+                  {l.account_number} {coaLabel(l, lang)}
                 </td>
                 <td style={{ padding: '7px 4px', textAlign: 'right', color: '#86efac' }}>
                   {l.debit_cents ? fmtCents(l.debit_cents) : ''}
@@ -546,7 +604,7 @@ function JournalTab({ lang, accounts }) {
       showToast(t.successPost);
       load(offset);
     } catch (e) {
-      showToast(e.message);
+      showToast(tLedgerErr(e, t));
     }
   }
 
@@ -556,7 +614,7 @@ function JournalTab({ lang, accounts }) {
       showToast(t.successDelete);
       load(offset);
     } catch (e) {
-      showToast(e.message);
+      showToast(tLedgerErr(e, t));
     }
   }
 
@@ -786,7 +844,7 @@ function TrialBalanceTab({ lang }) {
                   onMouseEnter={e => e.currentTarget.style.background = '#1e2235'}
                   onMouseLeave={e => e.currentTarget.style.background = ''}>
                   <span style={{ color: '#64748b', fontFamily: 'monospace', fontSize: 13 }}>{r.account_number}</span>
-                  <span style={{ color: '#cbd5e1', fontSize: 13 }}>{r.name_fr}</span>
+                  <span style={{ color: '#cbd5e1', fontSize: 13 }}>{coaLabel(r, lang)}</span>
                   <span style={{ color: '#86efac', textAlign: 'right', fontFamily: 'monospace', fontSize: 13 }}>
                     {r.total_debit_cents ? fmtCents(r.total_debit_cents) : ''}
                   </span>
@@ -857,7 +915,7 @@ function PeriodsTab({ lang }) {
       showToast(lang === 'fr' ? 'Période fermée' : 'Period closed');
       load();
     } catch (e) {
-      setError(e.message);
+      setError(tLedgerErr(e, t));
     }
   }
 
@@ -870,7 +928,7 @@ function PeriodsTab({ lang }) {
       showToast(lang === 'fr' ? 'Période rouverte' : 'Period reopened');
       load();
     } catch (e) {
-      setError(e.message);
+      setError(tLedgerErr(e, t));
     }
   }
 

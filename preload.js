@@ -270,6 +270,7 @@ contextBridge.exposeInMainWorld('api', {
     statement: {
       import: (opts)          => ipcRenderer.invoke('bank:statement:import', opts),
       list:   (bankAccountId) => ipcRenderer.invoke('bank:statement:list', bankAccountId),
+      delete: (statementId)   => ipcRenderer.invoke('bank:statement:delete', statementId),
     },
     transactions: {
       list:       (bankAccountId, opts)        => ipcRenderer.invoke('bank:transactions:list', bankAccountId, opts),

@@ -36,6 +36,8 @@ const UI = {
       ERR_STATEMENT_NOT_FOUND:          'Relevé introuvable.',
       ERR_STATEMENT_ALREADY_RECONCILED: 'Ce relevé est déjà réconcilié.',
       ERR_RECONCILE_VARIANCE:           (ecart) => `Écart de ${Number(ecart).toFixed(2)} $ - réconciliez toutes les transactions avant de clôturer.`,
+      ERR_STATEMENT_RECONCILED_LOCKED:  'Ce relevé est réconcilié. Rouvrez le rapprochement avant de le supprimer.',
+      ERR_STATEMENT_HAS_MATCHED_TX:     'Ce relevé contient des transactions déjà appariées ou réconciliées. Désappariez-les avant de supprimer.',
       GENERIC:                          "Erreur lors de l'importation.",
     },
 
@@ -109,6 +111,10 @@ const UI = {
     etransferDirIn:   'Reçu',
     etransferDirOut:  'Envoyé',
     etransferNoAccount: (n) => `Compte ${n} introuvable dans le plan comptable.`,
+    deleteStmt:       'Supprimer',
+    confirmDeleteStmt:(a, b) => `Supprimer le relevé du ${a} au ${b} et toutes ses transactions importées? Le fichier pourra ensuite être réimporté.`,
+    deleteStmtDone:   (n) => `Relevé supprimé — ${n} transaction(s) retirée(s).`,
+    openingBalanceLbl:'Solde d\'ouverture',
   },
   en: {
     tabComptes:       'Accounts',
@@ -144,6 +150,8 @@ const UI = {
       ERR_STATEMENT_NOT_FOUND:          'Statement not found.',
       ERR_STATEMENT_ALREADY_RECONCILED: 'This statement is already reconciled.',
       ERR_RECONCILE_VARIANCE:           (ecart) => `Variance of $${Number(ecart).toFixed(2)} - reconcile all transactions before closing.`,
+      ERR_STATEMENT_RECONCILED_LOCKED:  'This statement is reconciled. Reopen the reconciliation before deleting it.',
+      ERR_STATEMENT_HAS_MATCHED_TX:     'This statement has transactions that are already matched or reconciled. Unmatch them before deleting.',
       GENERIC:                          'Import error.',
     },
 
@@ -217,6 +225,10 @@ const UI = {
     etransferDirIn:   'Received',
     etransferDirOut:  'Sent',
     etransferNoAccount: (n) => `Account ${n} not found in the chart of accounts.`,
+    deleteStmt:       'Delete',
+    confirmDeleteStmt:(a, b) => `Delete the statement from ${a} to ${b} and all transactions it imported? The file can then be re-imported.`,
+    deleteStmtDone:   (n) => `Statement deleted — ${n} transaction(s) removed.`,
+    openingBalanceLbl:'Opening balance',
   },
 };
 
@@ -516,6 +528,18 @@ export default function BanqueTab({ lang = 'fr' }) {
     || coa.find(a => (a.name_fr || '').toLowerCase().includes(t.fr))
     || coa.find(a => (a.name_en || '').toLowerCase().includes(t.en));
 
+  // Remove a bad import (wrong date range / wrong account) so the same file can
+  // be imported again - the stored file hash goes with the statement.
+  const deleteStatement = async (stmt) => {
+    if (!window.confirm(T.confirmDeleteStmt(fmtDate(stmt.period_start), fmtDate(stmt.period_end)))) return;
+    try {
+      const r = await window.api.bank.statement.delete(stmt.id);
+      alert(T.deleteStmtDone(r?.removedTransactions ?? 0));
+      loadStatements();
+      loadTransactions();
+    } catch (e) { alert(tErr(e)); }
+  };
+
   const doEtransferCategorize = async () => {
     if (!etransferTx) return;
     const target  = etransferTarget(etransferTx);
@@ -579,7 +603,7 @@ export default function BanqueTab({ lang = 'fr' }) {
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 13, color: '#94a3b8' }}>{fmt(acc.opening_balance)} {T.openingDate.replace(' *','').toLowerCase()}</div>
+                    <div style={{ fontSize: 13, color: '#94a3b8' }}>{T.openingBalanceLbl}: {fmt(acc.opening_balance)} · {fmtDate(acc.opening_date)}</div>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button onClick={() => { setSelectedAccount(acc); openImport(acc); }} style={btnStyle('#0ea5e9', 12)}>{T.importStatement}</button>
@@ -750,6 +774,9 @@ export default function BanqueTab({ lang = 'fr' }) {
                           )}
                           {stmt.reconciled && (
                             <button onClick={() => { setShowReopenModal(stmt); setReopenReason(''); }} style={btnSmall}>{T.reopenRec}</button>
+                          )}
+                          {!stmt.reconciled && (
+                            <button onClick={() => deleteStatement(stmt)} style={{ ...btnSmall, marginLeft: 6, color: '#f87171', border: '1px solid rgba(248,113,113,0.3)' }}>{T.deleteStmt}</button>
                           )}
                         </td>
                       </tr>
