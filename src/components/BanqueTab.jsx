@@ -111,6 +111,7 @@ const UI = {
     etransferDirIn:   'Reçu',
     etransferDirOut:  'Envoyé',
     etransferNoAccount: (n) => `Compte ${n} introuvable dans le plan comptable.`,
+    done:             'Terminé',
     deleteStmt:       'Supprimer',
     confirmDeleteStmt:(a, b) => `Supprimer le relevé du ${a} au ${b} et toutes ses transactions importées? Le fichier pourra ensuite être réimporté.`,
     deleteStmtDone:   (n) => `Relevé supprimé — ${n} transaction(s) retirée(s).`,
@@ -225,6 +226,7 @@ const UI = {
     etransferDirIn:   'Received',
     etransferDirOut:  'Sent',
     etransferNoAccount: (n) => `Account ${n} not found in the chart of accounts.`,
+    done:             'Done',
     deleteStmt:       'Delete',
     confirmDeleteStmt:(a, b) => `Delete the statement from ${a} to ${b} and all transactions it imported? The file can then be re-imported.`,
     deleteStmtDone:   (n) => `Statement deleted — ${n} transaction(s) removed.`,
@@ -240,7 +242,19 @@ const fmt = (n) => {
 const fmtDate = (d) => d ? d.slice(0, 10) : '—';
 
 // ── BanqueTab ─────────────────────────────────────────────────────────────────
-export default function BanqueTab({ lang = 'fr' }) {
+export default function BanqueTab({ lang = 'fr', t: theme }) {
+  // The tab previously hardcoded a dark palette, so every label rendered
+  // near-white on a light background in light mode. Derive colours from the
+  // app theme instead, falling back to the original dark values.
+  const C = {
+    text:    theme?.text          ?? C.text,
+    sub:     theme?.textSub       ?? C.sub,
+    muted:   theme?.textMuted     ?? C.muted,
+    panel:   theme?.section       ?? '#1e293b',
+    border:  theme?.cardBorder    ?? '#1e293b',
+    divider: theme?.divider       ?? '#0f172a',
+    inputBg: theme?.inputBg       ?? '#0f172a',
+  };
   const T = UI[lang] || UI.fr;
 
   // Main-process errors cross IPC as strings, so they are thrown as stable codes
@@ -280,6 +294,7 @@ export default function BanqueTab({ lang = 'fr' }) {
   const [importEndBal, setImportEndBal]           = useState('');
   const [importing, setImporting]                 = useState(false);
   const [importMsg, setImportMsg]                 = useState('');
+  const [importOk, setImportOk]                   = useState(null); // null | true | false
 
   const [transactions, setTransactions]           = useState([]);
   const [txFilter, setTxFilter]                   = useState('all');
@@ -368,7 +383,7 @@ export default function BanqueTab({ lang = 'fr' }) {
   // Guard AFTER all hooks — React Rules of Hooks require hooks before any early return
   if (!bankAvailable) {
     return (
-      <div style={{ padding: 32, color: '#64748b', textAlign: 'center' }}>
+      <div style={{ padding: 32, color: C.muted, textAlign: 'center' }}>
         <p style={{ fontSize: 14 }}>🔄 {lang === 'en' ? 'Please restart the app to load the Bank module.' : 'Veuillez redémarrer l\'application pour charger le module Banque.'}</p>
       </div>
     );
@@ -427,10 +442,16 @@ export default function BanqueTab({ lang = 'fr' }) {
     setShowImportModal(true);
   };
 
+  const closeImportModal = () => {
+    setShowImportModal(false);
+    setImportMsg(''); setImportOk(null); setImportFile(null);
+  };
+
   const handleImport = async () => {
     if (!importFile) return;
     setImporting(true);
     setImportMsg('');
+    setImportOk(null);
     try {
       const text = await importFile.text();
       const ext  = importFile.name.split('.').pop().toLowerCase();
@@ -444,10 +465,12 @@ export default function BanqueTab({ lang = 'fr' }) {
         endingBalance: importEndBal ? parseFloat(importEndBal) : undefined,
       });
       setImportMsg(T.importResult(result));
+      setImportOk(true);
       loadAccounts();
       if (selectedAccount?.id === importAccountId) { loadTransactions(); loadStatements(); loadRecPreview(); }
     } catch (e) {
       setImportMsg(tErr(e));
+      setImportOk(false);
     } finally {
       setImporting(false);
     }
@@ -573,11 +596,11 @@ export default function BanqueTab({ lang = 'fr' }) {
   return (
     <div style={{ padding: '18px 20px', color: '#e2e8f0', fontFamily: 'inherit' }}>
       {/* Sub-tab bar */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid #1e293b', paddingBottom: 0 }}>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: `1px solid ${C.border}`, paddingBottom: 0 }}>
         {SUB_TABS.map(t => (
           <button key={t.key} onClick={() => setSubTab(t.key)} style={{
             background: 'none', border: 'none', borderBottom: subTab === t.key ? '2px solid #f97316' : '2px solid transparent',
-            color: subTab === t.key ? '#f97316' : '#94a3b8', cursor: 'pointer', padding: '6px 14px', fontWeight: 600, fontSize: 13,
+            color: subTab === t.key ? '#f97316' : C.sub, cursor: 'pointer', padding: '6px 14px', fontWeight: 600, fontSize: 13,
           }}>{t.label}</button>
         ))}
       </div>
@@ -586,28 +609,28 @@ export default function BanqueTab({ lang = 'fr' }) {
       {subTab === 'comptes' && (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <h3 style={{ margin: 0, fontSize: 15, color: '#f1f5f9' }}>🏦 {T.tabComptes}</h3>
+            <h3 style={{ margin: 0, fontSize: 15, color: C.text }}>🏦 {T.tabComptes}</h3>
             <button onClick={openNewAccount} style={btnStyle('#f97316')}>{T.addAccount}</button>
           </div>
 
           {accounts.length === 0 ? (
-            <p style={{ color: '#64748b', textAlign: 'center', marginTop: 40 }}>{T.noAccounts}</p>
+            <p style={{ color: C.muted, textAlign: 'center', marginTop: 40 }}>{T.noAccounts}</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {accounts.map(acc => (
-                <div key={acc.id} style={{ background: '#0f1724', border: '1px solid #1e293b', borderRadius: 8, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div key={acc.id} style={{ background: '#0f1724', border: `1px solid ${C.border}`, borderRadius: 8, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 16 }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 14, color: '#f1f5f9' }}>{acc.name}</div>
-                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: C.text }}>{acc.name}</div>
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
                       {typeLabel(acc.account_type)} · {acc.account_number} {coaName(acc, 'coa_')}
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 13, color: '#94a3b8' }}>{T.openingBalanceLbl}: {fmt(acc.opening_balance)} · {fmtDate(acc.opening_date)}</div>
+                    <div style={{ fontSize: 13, color: C.sub }}>{T.openingBalanceLbl}: {fmt(acc.opening_balance)} · {fmtDate(acc.opening_date)}</div>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button onClick={() => { setSelectedAccount(acc); openImport(acc); }} style={btnStyle('#0ea5e9', 12)}>{T.importStatement}</button>
-                    <button onClick={() => { setSelectedAccount(acc); setSubTab('transactions'); }} style={btnStyle('#64748b', 12)}>{T.viewTransactions}</button>
+                    <button onClick={() => { setSelectedAccount(acc); setSubTab('transactions'); }} style={btnStyle(C.muted, 12)}>{T.viewTransactions}</button>
                     <button onClick={() => openEditAccount(acc)} style={btnSmall}>{T.editAccount}</button>
                     <button onClick={() => archiveAccount(acc.id)} style={btnSmallDanger}>{T.archiveAccount}</button>
                   </div>
@@ -643,14 +666,14 @@ export default function BanqueTab({ lang = 'fr' }) {
           </div>
 
           {!selectedAccount ? (
-            <p style={{ color: '#64748b', textAlign: 'center', marginTop: 40 }}>{T.selectAccountFirst}</p>
+            <p style={{ color: C.muted, textAlign: 'center', marginTop: 40 }}>{T.selectAccountFirst}</p>
           ) : transactions.length === 0 ? (
-            <p style={{ color: '#64748b', textAlign: 'center', marginTop: 40 }}>{T.noTransactions}</p>
+            <p style={{ color: C.muted, textAlign: 'center', marginTop: 40 }}>{T.noTransactions}</p>
           ) : (
-            <div style={{ overflowX: 'auto', background: '#0f172a', borderRadius: 8, padding: '0 0 4px' }}>
+            <div style={{ overflowX: 'auto', background: C.inputBg, borderRadius: 8, padding: '0 0 4px' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid #1e293b', color: '#64748b' }}>
+                  <tr style={{ borderBottom: `1px solid ${C.border}`, color: C.muted }}>
                     <th style={{ ...th, whiteSpace: 'nowrap', width: 90 }}>{T.colDate}</th>
                     <th style={th}>{T.colDesc}</th>
                     <th style={{ ...th, textAlign: 'right', width: 100 }}>{T.colAmount}</th>
@@ -662,7 +685,7 @@ export default function BanqueTab({ lang = 'fr' }) {
                   {transactions.map(tx => {
                     const etSender = detectEtransfer(tx.description);
                     return (
-                    <tr key={tx.id} style={{ borderBottom: '1px solid #0f172a' }}>
+                    <tr key={tx.id} style={{ borderBottom: `1px solid ${C.divider}` }}>
                       <td style={{ ...td, whiteSpace: 'nowrap', fontSize: 12 }}>{fmtDate(tx.transaction_date)}</td>
                       <td style={{ ...td, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 0 }} title={tx.description}>
                         {tx.description}
@@ -673,7 +696,7 @@ export default function BanqueTab({ lang = 'fr' }) {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                           <StatusBadge status={tx.match_status} />
                           {tx.account_number && (
-                            <span style={{ fontSize: 10, color: '#64748b' }}>{tx.account_number} {coaName(tx, 'coa_')}</span>
+                            <span style={{ fontSize: 10, color: C.muted }}>{tx.account_number} {coaName(tx, 'coa_')}</span>
                           )}
                           {tx.match_status === 'suggested' && tx.match_reason && (
                             <span style={{ fontSize: 9, color: '#78716c', fontStyle: 'italic' }}>{tx.match_reason}</span>
@@ -707,7 +730,7 @@ export default function BanqueTab({ lang = 'fr' }) {
       {subTab === 'rapprochements' && (
         <div>
           <div style={{ display: 'flex', gap: 10, marginBottom: 14, alignItems: 'center' }}>
-            <h3 style={{ margin: 0, fontSize: 15, color: '#f1f5f9', flex: 1 }}>✅ {T.tabRapprochements}</h3>
+            <h3 style={{ margin: 0, fontSize: 15, color: C.text, flex: 1 }}>✅ {T.tabRapprochements}</h3>
             <select value={selectedAccount?.id || ''} onChange={e => {
               const acc = accounts.find(a => a.id === parseInt(e.target.value, 10));
               setSelectedAccount(acc || null);
@@ -718,15 +741,15 @@ export default function BanqueTab({ lang = 'fr' }) {
           </div>
 
           {!selectedAccount ? (
-            <p style={{ color: '#64748b', textAlign: 'center', marginTop: 40 }}>{T.selectAccountRec}</p>
+            <p style={{ color: C.muted, textAlign: 'center', marginTop: 40 }}>{T.selectAccountRec}</p>
           ) : (
             <>
               {/* Preview card */}
               {recLoading ? (
-                <p style={{ color: '#64748b' }}>{T.loading}</p>
+                <p style={{ color: C.muted }}>{T.loading}</p>
               ) : recPreview && (
-                <div style={{ background: '#0f1724', border: '1px solid #1e293b', borderRadius: 8, padding: '16px 20px', marginBottom: 20 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: '#f1f5f9' }}>{T.previewTitle(selectedAccount.name)}</div>
+                <div style={{ background: '#0f1724', border: `1px solid ${C.border}`, borderRadius: 8, padding: '16px 20px', marginBottom: 20 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: C.text }}>{T.previewTitle(selectedAccount.name)}</div>
                   <div style={{ display: 'flex', gap: 24 }}>
                     <div><div style={kpiLabel}>{T.stmtBalance}</div><div style={kpiVal}>{fmt(recPreview.statementBalance)}</div></div>
                     <div><div style={kpiLabel}>{T.biqBalance}</div><div style={kpiVal}>{fmt(recPreview.biqBalance)}</div></div>
@@ -747,11 +770,11 @@ export default function BanqueTab({ lang = 'fr' }) {
 
               {/* Statements list */}
               {statements.length === 0 ? (
-                <p style={{ color: '#64748b', textAlign: 'center', marginTop: 20 }}>{T.noStatements}</p>
+                <p style={{ color: C.muted, textAlign: 'center', marginTop: 20 }}>{T.noStatements}</p>
               ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead>
-                    <tr style={{ borderBottom: '1px solid #1e293b', color: '#64748b' }}>
+                    <tr style={{ borderBottom: `1px solid ${C.border}`, color: C.muted }}>
                       <th style={th}>{T.colPeriod}</th>
                       <th style={{ ...th, textAlign: 'right' }}>{T.colEndBal}</th>
                       <th style={th}>{T.colStatut}</th>
@@ -760,7 +783,7 @@ export default function BanqueTab({ lang = 'fr' }) {
                   </thead>
                   <tbody>
                     {statements.map(stmt => (
-                      <tr key={stmt.id} style={{ borderBottom: '1px solid #0f172a' }}>
+                      <tr key={stmt.id} style={{ borderBottom: `1px solid ${C.divider}` }}>
                         <td style={td}>{fmtDate(stmt.period_start)} → {fmtDate(stmt.period_end)}</td>
                         <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{fmt(stmt.ending_balance)}</td>
                         <td style={td}>
@@ -792,13 +815,13 @@ export default function BanqueTab({ lang = 'fr' }) {
       {/* ── RÈGLES ─────────────────────────────────────────────────────────────── */}
       {subTab === 'regles' && (
         <div>
-          <h3 style={{ margin: '0 0 14px', fontSize: 15, color: '#f1f5f9' }}>🧠 {T.tabRegles}</h3>
+          <h3 style={{ margin: '0 0 14px', fontSize: 15, color: C.text }}>🧠 {T.tabRegles}</h3>
           {learnedRules.length === 0 ? (
-            <p style={{ color: '#64748b', textAlign: 'center', marginTop: 40 }}>{T.noRules}</p>
+            <p style={{ color: C.muted, textAlign: 'center', marginTop: 40 }}>{T.noRules}</p>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid #1e293b', color: '#64748b' }}>
+                <tr style={{ borderBottom: `1px solid ${C.border}`, color: C.muted }}>
                   <th style={th}>{T.rulePattern}</th>
                   <th style={th}>{T.ruleAccount}</th>
                   <th style={{ ...th, textAlign: 'center' }}>{T.ruleCount}</th>
@@ -808,14 +831,14 @@ export default function BanqueTab({ lang = 'fr' }) {
               </thead>
               <tbody>
                 {learnedRules.map(rule => (
-                  <tr key={rule.id} style={{ borderBottom: '1px solid #0f172a' }}>
+                  <tr key={rule.id} style={{ borderBottom: `1px solid ${C.divider}` }}>
                     <td style={{ ...td, fontFamily: 'monospace', fontSize: 12 }}>{rule.description_pattern}</td>
                     <td style={td}>{rule.account_number} {coaName(rule, 'coa_')}</td>
                     <td style={{ ...td, textAlign: 'center' }}>
                       <span style={{ color: rule.match_count >= 3 ? '#22c55e' : '#f59e0b', fontWeight: 700 }}>{rule.match_count}</span>
                       {rule.match_count >= 3 && <span style={{ color: '#22c55e', marginLeft: 4, fontSize: 11 }}>{T.autoLabel}</span>}
                     </td>
-                    <td style={{ ...td, color: '#64748b', fontSize: 12 }}>{fmtDate(rule.last_used_at)}</td>
+                    <td style={{ ...td, color: C.muted, fontSize: 12 }}>{fmtDate(rule.last_used_at)}</td>
                     <td style={td}>
                       <button onClick={() => deleteLearnedRule(rule.id)} style={btnSmallDanger}>{T.ruleDelete}</button>
                     </td>
@@ -830,7 +853,7 @@ export default function BanqueTab({ lang = 'fr' }) {
       {/* ── ACCOUNT MODAL ─────────────────────────────────────────────────────── */}
       {showAccountModal && (
         <ModalOverlay onClose={() => setShowAccountModal(false)}>
-          <h3 style={{ margin: '0 0 16px', color: '#f1f5f9' }}>{editingAccount ? T.editAccount : T.addAccount}</h3>
+          <h3 style={{ margin: '0 0 16px', color: C.text }}>{editingAccount ? T.editAccount : T.addAccount}</h3>
           <label style={labelStyle}>{T.accountName}</label>
           <input style={inputFull} value={accountForm.name} onChange={e => setAccountForm(f => ({ ...f, name: e.target.value }))} />
           <label style={labelStyle}>{T.accountType}</label>
@@ -860,10 +883,10 @@ export default function BanqueTab({ lang = 'fr' }) {
       {/* ── IMPORT MODAL ─────────────────────────────────────────────────────── */}
       {showImportModal && (
         <ModalOverlay onClose={() => setShowImportModal(false)}>
-          <h3 style={{ margin: '0 0 16px', color: '#f1f5f9' }}>{T.importTitle}</h3>
+          <h3 style={{ margin: '0 0 16px', color: C.text }}>{T.importTitle}</h3>
           <label style={labelStyle}>{T.fileLabel}</label>
           <input ref={fileInputRef} type='file' accept='.csv,.ofx,.qfx,.qbo' onChange={e => setImportFile(e.target.files?.[0] || null)}
-            style={{ ...inputFull, padding: '6px 0', color: '#94a3b8', background: 'none', border: 'none' }} />
+            style={{ ...inputFull, padding: '6px 0', color: C.sub, background: 'none', border: 'none' }} />
           <label style={labelStyle}>{T.periodStart} ({T.optional})</label>
           <input style={inputFull} type='date' value={importPeriodStart} onChange={e => setImportPeriodStart(e.target.value)} />
           <label style={labelStyle}>{T.periodEnd} ({T.optional})</label>
@@ -871,13 +894,19 @@ export default function BanqueTab({ lang = 'fr' }) {
           <label style={labelStyle}>{T.endingBalance} ({T.optional})</label>
           <input style={inputFull} type='number' step='0.01' placeholder={T.openingBalance2} value={importEndBal} onChange={e => setImportEndBal(e.target.value)} />
           {importMsg && (
-            <div style={{ marginTop: 10, padding: '8px 12px', background: importMsg.includes('Erreur') || importMsg.includes('déjà') || importMsg.includes('error') || importMsg.includes('already') ? '#450a0a' : '#052e16', borderRadius: 6, fontSize: 13, color: importMsg.includes('Erreur') || importMsg.includes('déjà') || importMsg.includes('error') || importMsg.includes('already') ? '#fca5a5' : '#86efac' }}>
+            <div style={{ marginTop: 10, padding: '8px 12px', background: importOk === false ? '#450a0a' : '#052e16', borderRadius: 6, fontSize: 13, color: importOk === false ? '#fca5a5' : '#86efac' }}>
               {importMsg}
             </div>
           )}
           <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
-            <button onClick={handleImport} disabled={!importFile || importing} style={btnStyle('#f97316')}>{importing ? T.importing : T.importBtn}</button>
-            <button onClick={() => setShowImportModal(false)} style={btnStyle('#374151')}>{T.cancel}</button>
+            {importOk === true ? (
+              <button onClick={closeImportModal} style={btnStyle('#22c55e')}>{T.done}</button>
+            ) : (
+              <>
+                <button onClick={handleImport} disabled={!importFile || importing} style={btnStyle('#f97316')}>{importing ? T.importing : T.importBtn}</button>
+                <button onClick={closeImportModal} style={btnStyle('#374151')}>{T.cancel}</button>
+              </>
+            )}
           </div>
         </ModalOverlay>
       )}
@@ -885,9 +914,9 @@ export default function BanqueTab({ lang = 'fr' }) {
       {/* ── CATEGORIZE MODAL ─────────────────────────────────────────────────── */}
       {categorizingTx && (
         <ModalOverlay onClose={() => setCategorizingTx(null)}>
-          <h3 style={{ margin: '0 0 10px', color: '#f1f5f9' }}>{T.categorize}</h3>
-          <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 14 }}>
-            <strong style={{ color: '#f1f5f9' }}>{categorizingTx.description}</strong><br />
+          <h3 style={{ margin: '0 0 10px', color: C.text }}>{T.categorize}</h3>
+          <div style={{ fontSize: 13, color: C.sub, marginBottom: 14 }}>
+            <strong style={{ color: C.text }}>{categorizingTx.description}</strong><br />
             {fmtDate(categorizingTx.transaction_date)} · <span style={{ color: categorizingTx.amount < 0 ? '#f87171' : '#86efac', fontWeight: 700 }}>{fmt(categorizingTx.amount)}</span>
           </div>
           {coaName(categorizingTx, 'coa_') && (
@@ -911,15 +940,15 @@ export default function BanqueTab({ lang = 'fr' }) {
       {etransferTx && (
         <ModalOverlay onClose={() => setEtransferTx(null)}>
           <h3 style={{ margin: '0 0 10px', color: '#a78bfa' }}>{T.etransferBadge}</h3>
-          <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 14 }}>
-            <strong style={{ color: '#f1f5f9' }}>{etransferTx.description}</strong><br />
+          <div style={{ fontSize: 13, color: C.sub, marginBottom: 14 }}>
+            <strong style={{ color: C.text }}>{etransferTx.description}</strong><br />
             {fmtDate(etransferTx.transaction_date)} · <span style={{ color: Number(etransferTx.amount) >= 0 ? '#86efac' : '#f87171', fontWeight: 700 }}>{fmt(etransferTx.amount)}</span>
-            <span style={{ marginLeft: 8, fontSize: 11, color: '#94a3b8' }}>
+            <span style={{ marginLeft: 8, fontSize: 11, color: C.sub }}>
               ({Number(etransferTx.amount) >= 0 ? T.etransferDirIn : T.etransferDirOut})
             </span>
           </div>
           <div style={{ marginBottom: 12, padding: '6px 10px', background: 'rgba(167,139,250,0.07)', border: '1px solid rgba(167,139,250,0.2)', borderRadius: 6 }}>
-            <span style={{ fontSize: 11, color: '#94a3b8' }}>{T.etransferSender}: </span>
+            <span style={{ fontSize: 11, color: C.sub }}>{T.etransferSender}: </span>
             <span style={{ fontSize: 13, fontWeight: 700, color: '#a78bfa' }}>{etransferTx.etSender}</span>
           </div>
           <div style={{ fontSize: 11, color: '#f59e0b', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 5, padding: '6px 10px', marginBottom: 14 }}>{Number(etransferTx.amount) >= 0 ? T.etransferHintIn : T.etransferHintOut}</div>
@@ -933,7 +962,7 @@ export default function BanqueTab({ lang = 'fr' }) {
       {/* ── REOPEN MODAL ─────────────────────────────────────────────────────── */}
       {showReopenModal && (
         <ModalOverlay onClose={() => setShowReopenModal(null)}>
-          <h3 style={{ margin: '0 0 14px', color: '#f1f5f9' }}>{T.reopenRec}</h3>
+          <h3 style={{ margin: '0 0 14px', color: C.text }}>{T.reopenRec}</h3>
           <label style={labelStyle}>{T.reopenReason}</label>
           <input style={inputFull} value={reopenReason} onChange={e => setReopenReason(e.target.value)} />
           <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
@@ -951,7 +980,7 @@ function ModalOverlay({ children, onClose }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background: '#0f1724', border: '1px solid #1e293b', borderRadius: 10, padding: '24px 28px', minWidth: 360, maxWidth: 520, width: '90vw', maxHeight: '85vh', overflowY: 'auto' }}>
+      <div style={{ background: '#0f1724', border: `1px solid ${C.border}`, borderRadius: 10, padding: '24px 28px', minWidth: 360, maxWidth: 520, width: '90vw', maxHeight: '85vh', overflowY: 'auto' }}>
         {children}
       </div>
     </div>
@@ -963,13 +992,13 @@ const btnStyle = (bg, fontSize = 13) => ({
   background: bg, color: '#fff', border: 'none', borderRadius: 6, padding: '7px 16px',
   cursor: 'pointer', fontWeight: 600, fontSize,
 });
-const btnSmall      = { background: '#1e293b', color: '#94a3b8', border: 'none', borderRadius: 5, padding: '4px 10px', cursor: 'pointer', fontSize: 12 };
+const btnSmall      = { background: C.panel, color: C.sub, border: 'none', borderRadius: 5, padding: '4px 10px', cursor: 'pointer', fontSize: 12 };
 const btnSmallDanger= { background: '#450a0a', color: '#fca5a5', border: 'none', borderRadius: 5, padding: '4px 10px', cursor: 'pointer', fontSize: 12 };
 const selectStyle   = { background: '#0f1724', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 6, padding: '5px 10px', fontSize: 12 };
 const inputStyle    = { background: '#0f1724', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 6, padding: '5px 10px', fontSize: 12 };
-const inputFull     = { width: '100%', boxSizing: 'border-box', background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 6, padding: '7px 10px', fontSize: 13, marginBottom: 10 };
-const labelStyle    = { display: 'block', fontSize: 12, color: '#64748b', marginBottom: 4 };
-const th            = { textAlign: 'left', padding: '8px 10px', fontWeight: 600, fontSize: 12, color: '#94a3b8' };
+const inputFull     = { width: '100%', boxSizing: 'border-box', background: C.panel, color: '#e2e8f0', border: '1px solid #334155', borderRadius: 6, padding: '7px 10px', fontSize: 13, marginBottom: 10 };
+const labelStyle    = { display: 'block', fontSize: 12, color: C.muted, marginBottom: 4 };
+const th            = { textAlign: 'left', padding: '8px 10px', fontWeight: 600, fontSize: 12, color: C.sub };
 const td            = { padding: '7px 10px', verticalAlign: 'middle', color: '#e2e8f0' };
-const kpiLabel      = { fontSize: 11, color: '#64748b', marginBottom: 2 };
-const kpiVal        = { fontSize: 16, fontWeight: 700, color: '#f1f5f9' };
+const kpiLabel      = { fontSize: 11, color: C.muted, marginBottom: 2 };
+const kpiVal        = { fontSize: 16, fontWeight: 700, color: C.text };

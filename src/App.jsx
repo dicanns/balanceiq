@@ -7803,7 +7803,7 @@ export default function App(){
             {/*  GRAND LIVRE (General Ledger) — Sprint 2 Accounting Suite */}
             {configSubTab==="grandlivre"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><GrandLivreTabLazy lang={lang}/></Suspense>)}
             {/*  BANQUE (Bank Reconciliation) — Sprint 3 Accounting Suite */}
-            {configSubTab==="banque"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><BanqueTabLazy lang={lang}/></Suspense>)}
+            {configSubTab==="banque"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><BanqueTabLazy lang={lang} t={t}/></Suspense>)}
             {configSubTab==="taxperiod"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><TaxPeriodTabLazy lang={lang}/></Suspense>)}
             {/*  BILAN (Balance Sheet) — Sprint 6 Accounting Suite */}
             {configSubTab==="bilan"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><BilanTabLazy lang={lang} canUsePro={canUse("excelExport")} onUpgrade={()=>showUpgradePrompt("excelExport")}/></Suspense>)}
