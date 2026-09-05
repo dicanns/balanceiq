@@ -3302,17 +3302,86 @@ function bankTransactionMatch(txId, entityType, entityId) {
 }
 
 function bankTransactionUnmatch(txId) {
-  getDb().prepare(
-    `UPDATE bank_transactions SET match_status='unmatched', matched_entity_type=NULL, matched_entity_id=NULL, coa_account_id=NULL WHERE id=?`
-  ).run(txId);
+  const db = getDb();
+  db.transaction(() => {
+    // Clearing the classification must also unwind whatever it posted.
+    _reverseBankTransactionEntry(db, txId);
+    db.prepare(
+      `UPDATE bank_transactions SET match_status='unmatched', matched_entity_type=NULL, matched_entity_id=NULL, coa_account_id=NULL WHERE id=?`
+    ).run(txId);
+  })();
+  return true;
+}
+
+// Accounts whose balance is already driven by documents elsewhere in the app.
+// A customer payment recorded in Facturation posts Dr cash / Cr 1100 already, so
+// posting the matching bank line again would credit receivables twice and
+// double the cash. Those lines are categorized for reconciliation only.
+const GL_CONTROL_ACCOUNTS = ['1100'];
+
+// Post the journal entry a categorized bank line implies (bridge phase 2).
+// Money in  -> Dr bank account, Cr the chosen account.
+// Money out -> Dr the chosen account, Cr bank account.
+// Idempotent: re-categorizing reverses the previous entry before posting a new
+// one, so changing your mind never leaves a stale entry behind.
+function _postBankTransactionEntry(db, txId) {
+  const tx = db.prepare(`SELECT * FROM bank_transactions WHERE id=?`).get(txId);
+  if (!tx || !tx.coa_account_id) return null;
+
+  const target = db.prepare(`SELECT * FROM chart_of_accounts WHERE id=?`).get(tx.coa_account_id);
+  const account = db.prepare(`SELECT * FROM bank_accounts WHERE id=?`).get(tx.bank_account_id);
+  if (!target || !account?.coa_account_id) return null;
+  if (GL_CONTROL_ACCOUNTS.includes(target.account_number)) return null;
+
+  const bankCoa = db.prepare(`SELECT * FROM chart_of_accounts WHERE id=?`).get(account.coa_account_id);
+  if (!bankCoa || bankCoa.id === target.id) return null;
+
+  const cents = Math.round(Math.abs(Number(tx.amount) || 0) * 100);
+  if (!cents) return null;
+
+  const inflow = Number(tx.amount) > 0;
+  const lines = inflow
+    ? [{ account_id: bankCoa.id, debit_cents: cents, credit_cents: 0, memo: tx.description },
+       { account_id: target.id,  debit_cents: 0, credit_cents: cents, memo: tx.description }]
+    : [{ account_id: target.id,  debit_cents: cents, credit_cents: 0, memo: tx.description },
+       { account_id: bankCoa.id, debit_cents: 0, credit_cents: cents, memo: tx.description }];
+
+  const { entryId } = glDraftEntry({
+    entry_date: tx.transaction_date,
+    description: tx.description,
+    source_type: 'bank_tx',
+    source_id: String(txId),
+    lines,
+  }, db);
+  glPostEntry(entryId, db);
+  db.prepare(`UPDATE bank_transactions SET journal_entry_id=? WHERE id=?`).run(entryId, txId);
+  return entryId;
+}
+
+// Reverse whatever a bank line previously posted, so re-categorizing or
+// unmatching cannot leave the ledger holding the old classification.
+function _reverseBankTransactionEntry(db, txId) {
+  const tx = db.prepare(`SELECT journal_entry_id FROM bank_transactions WHERE id=?`).get(txId);
+  if (!tx?.journal_entry_id) return false;
+  const entry = db.prepare(`SELECT * FROM journal_entries WHERE id=?`).get(tx.journal_entry_id);
+  db.prepare(`UPDATE bank_transactions SET journal_entry_id=NULL WHERE id=?`).run(txId);
+  if (!entry) return false;
+  try {
+    if (entry.status === 'draft') glDeleteDraft(entry.id);
+    else if (entry.status === 'posted') glReverseEntry(entry.id, 'Recategorisation bancaire');
+  } catch (_) { return false; }
   return true;
 }
 
 function bankTransactionCategorize(txId, coaAccountId, notes) {
   const db = getDb();
-  db.prepare(
-    `UPDATE bank_transactions SET match_status='manual', coa_account_id=?, notes=? WHERE id=?`
-  ).run(coaAccountId, notes || null, txId);
+  db.transaction(() => {
+    _reverseBankTransactionEntry(db, txId);
+    db.prepare(
+      `UPDATE bank_transactions SET match_status='manual', coa_account_id=?, notes=? WHERE id=?`
+    ).run(coaAccountId, notes || null, txId);
+    _postBankTransactionEntry(db, txId);
+  })();
 
   // Learn pattern: increment or insert
   const tx = db.prepare(`SELECT * FROM bank_transactions WHERE id=?`).get(txId);
