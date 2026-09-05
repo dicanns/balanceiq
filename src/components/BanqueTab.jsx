@@ -111,6 +111,7 @@ const UI = {
     etransferDirIn:   'Reçu',
     etransferDirOut:  'Envoyé',
     etransferNoAccount: (n) => `Compte ${n} introuvable dans le plan comptable.`,
+    searchCoa:        'Chercher par numéro ou nom…',
     done:             'Terminé',
     deleteStmt:       'Supprimer',
     confirmDeleteStmt:(a, b) => `Supprimer le relevé du ${a} au ${b} et toutes ses transactions importées? Le fichier pourra ensuite être réimporté.`,
@@ -226,6 +227,7 @@ const UI = {
     etransferDirIn:   'Received',
     etransferDirOut:  'Sent',
     etransferNoAccount: (n) => `Account ${n} not found in the chart of accounts.`,
+    searchCoa:        'Search by number or name…',
     done:             'Done',
     deleteStmt:       'Delete',
     confirmDeleteStmt:(a, b) => `Delete the statement from ${a} to ${b} and all transactions it imported? The file can then be re-imported.`,
@@ -261,6 +263,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   const th       = { textAlign: 'left', padding: '8px 10px', fontWeight: 600, fontSize: 12, color: C.sub };
   const kpiLabel = { fontSize: 11, color: C.muted, marginBottom: 2 };
   const kpiVal   = { fontSize: 16, fontWeight: 700, color: C.text };
+  const pickerStyles = { inputFull, labelMuted: C.muted, panel: '#0f1724', border: '#334155', hi: 'rgba(167,139,250,0.18)' };
   const T = UI[lang] || UI.fr;
 
   // Main-process errors cross IPC as strings, so they are thrown as stable codes
@@ -872,12 +875,14 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
             <option value='line_of_credit'>{T.typeLOC}</option>
           </select>
           <label style={labelStyle}>{T.coaAccount}</label>
-          <select style={inputFull} value={accountForm.coa_account_id} onChange={e => setAccountForm(f => ({ ...f, coa_account_id: e.target.value }))}>
-            <option value=''>—</option>
-            {coaList.filter(a => ['asset','liability'].includes(a.type)).map(a => (
-              <option key={a.id} value={a.id}>{a.account_number} — {coaName(a)}</option>
-            ))}
-          </select>
+          <CoaPicker
+            accounts={coaList.filter(a => ['asset','liability'].includes(a.type))}
+            value={accountForm.coa_account_id}
+            onChange={v => setAccountForm(f => ({ ...f, coa_account_id: v }))}
+            placeholder={T.searchCoa}
+            nameOf={coaName}
+            styles={pickerStyles}
+          />
           <label style={labelStyle}>{T.openingBalance}</label>
           <input style={inputFull} type='number' step='0.01' value={accountForm.opening_balance} onChange={e => setAccountForm(f => ({ ...f, opening_balance: e.target.value }))} />
           <label style={labelStyle}>{T.openingDate}</label>
@@ -932,10 +937,14 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
             <div style={{ marginBottom: 10, fontSize: 12, color: '#f59e0b' }}>{T.suggestedCoa(coaName(categorizingTx, 'coa_'))}</div>
           )}
           <label style={labelStyle}>{T.selectCoa}</label>
-          <select style={inputFull} value={categorizeCoaId} onChange={e => setCategorizeCoaId(e.target.value)}>
-            <option value=''>—</option>
-            {coaList.map(a => <option key={a.id} value={a.id}>{a.account_number} — {coaName(a)}</option>)}
-          </select>
+          <CoaPicker
+            accounts={coaList}
+            value={categorizeCoaId}
+            onChange={setCategorizeCoaId}
+            placeholder={T.searchCoa}
+            nameOf={coaName}
+            styles={pickerStyles}
+          />
           <label style={labelStyle}>{T.notes}</label>
           <input style={inputFull} value={categorizeNotes} onChange={e => setCategorizeNotes(e.target.value)} />
           <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
@@ -979,6 +988,97 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
             <button onClick={() => setShowReopenModal(null)} style={btnStyle('#374151')}>{T.cancel}</button>
           </div>
         </ModalOverlay>
+      )}
+    </div>
+  );
+}
+
+
+// ── CoaPicker ─────────────────────────────────────────────────────────────────
+// Type-ahead account picker. Matches on account number AND name in both
+// languages, so "6110", "hydro" and "electricity" all find the same account.
+function CoaPicker({ accounts, value, onChange, placeholder, nameOf, styles }) {
+  const { inputFull, labelMuted, panel, border, hi } = styles;
+  const [query, setQuery]   = React.useState('');
+  const [open, setOpen]     = React.useState(false);
+  const [active, setActive] = React.useState(0);
+  const boxRef = React.useRef(null);
+
+  const selected = accounts.find(a => String(a.id) === String(value)) || null;
+
+  React.useEffect(() => {
+    const onDoc = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
+
+  const q = query.trim().toLowerCase();
+  const matches = !q ? accounts : accounts.filter(a =>
+    String(a.account_number).toLowerCase().includes(q)
+    || (a.name_fr || '').toLowerCase().includes(q)
+    || (a.name_en || '').toLowerCase().includes(q)
+  );
+
+  const commit = (acc) => {
+    onChange(acc ? String(acc.id) : '');
+    setQuery(''); setOpen(false); setActive(0);
+  };
+
+  const onKeyDown = (e) => {
+    if (!open && (e.key === 'ArrowDown' || e.key === 'Enter')) { setOpen(true); return; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(i => Math.min(i + 1, matches.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(i => Math.max(i - 1, 0)); }
+    else if (e.key === 'Enter')  { e.preventDefault(); if (matches[active]) commit(matches[active]); }
+    else if (e.key === 'Escape') { setOpen(false); setQuery(''); }
+  };
+
+  const display = open ? query : (selected ? `${selected.account_number} - ${nameOf(selected)}` : '');
+
+  return (
+    <div ref={boxRef} style={{ position: 'relative' }}>
+      <input
+        style={inputFull}
+        value={display}
+        placeholder={placeholder}
+        onChange={e => { setQuery(e.target.value); setOpen(true); setActive(0); }}
+        onFocus={() => { setOpen(true); setQuery(''); }}
+        onKeyDown={onKeyDown}
+        role="combobox"
+        aria-expanded={open}
+        aria-autocomplete="list"
+      />
+      {selected && !open && (
+        <button
+          type="button"
+          onClick={() => commit(null)}
+          aria-label="Clear"
+          style={{ position: 'absolute', right: 8, top: 6, background: 'none', border: 'none',
+                   color: labelMuted, cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: 2 }}
+        >x</button>
+      )}
+      {open && (
+        <div style={{ position: 'absolute', zIndex: 30, left: 0, right: 0, top: '100%', marginTop: 4,
+                      maxHeight: 240, overflowY: 'auto', background: panel,
+                      border: `1px solid ${border}`, borderRadius: 6,
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.28)' }}>
+          {matches.length === 0 ? (
+            <div style={{ padding: '9px 12px', fontSize: 12.5, color: labelMuted }}>-</div>
+          ) : matches.map((a, i) => (
+            <div
+              key={a.id}
+              onMouseDown={e => { e.preventDefault(); commit(a); }}
+              onMouseEnter={() => setActive(i)}
+              style={{ padding: '7px 12px', cursor: 'pointer', fontSize: 13,
+                       display: 'flex', gap: 10, alignItems: 'baseline',
+                       background: i === active ? hi : 'transparent' }}
+            >
+              <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12, opacity: 0.75, minWidth: 38 }}>
+                {a.account_number}
+              </span>
+              <span>{nameOf(a)}</span>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
