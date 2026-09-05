@@ -807,7 +807,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
                           {!stmt.reconciled && recPreview && Math.abs(recPreview.ecart) <= 0.02 && (
                             <button onClick={() => closeReconciliation(stmt.id)} style={btnStyle('#22c55e', 12)}>{T.closeRec}</button>
                           )}
-                          {stmt.reconciled && (
+                          {!!stmt.reconciled && (
                             <button onClick={() => { setShowReopenModal(stmt); setReopenReason(''); }} style={btnSmall}>{T.reopenRec}</button>
                           )}
                           {!stmt.reconciled && (

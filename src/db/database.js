@@ -3101,6 +3101,16 @@ function _parseBankCSV(csvText, columnMap) {
 }
 
 // Parse OFX/QFX/QBO — lightweight regex (no full XML parser needed for stable OFX 1.x)
+// Pull the closing ledger balance out of an OFX file: <LEDGERBAL><BALAMT>nnn.
+// Returns null when absent so the caller can fall back.
+function _parseOFXLedgerBalance(text) {
+  const block = text.match(/<LEDGERBAL>([\s\S]*?)<\/LEDGERBAL>/i)?.[1] ?? text;
+  const raw = block.match(/<BALAMT>([^<\r\n]+)/i)?.[1];
+  if (raw == null) return null;
+  const v = parseFloat(String(raw).trim().replace(/,/g, ''));
+  return Number.isFinite(v) ? v : null;
+}
+
 function _parseBankOFX(text) {
   const rows = [];
   const txBlocks = text.split(/<STMTTRN>|<\/STMTTRN>/i).filter((_, i) => i % 2 === 1);
@@ -3180,9 +3190,11 @@ function bankStatementImport({ bankAccountId, fileText, fileName, fileType, peri
   const savedMap = account.csv_column_map ? JSON.parse(account.csv_column_map) : null;
 
   let rows = [];
+  let parsedEndingBalance = null;
   const ft = (fileType || '').toLowerCase();
   if (ft === 'ofx' || ft === 'qfx' || ft === 'qbo') {
     rows = _parseBankOFX(fileText);
+    parsedEndingBalance = _parseOFXLedgerBalance(fileText);
   } else {
     rows = _parseBankCSV(fileText, savedMap);
   }
@@ -3191,7 +3203,11 @@ function bankStatementImport({ bankAccountId, fileText, fileName, fileType, peri
 
   const start = periodStart || rows.reduce((mn, r) => r.transaction_date < mn ? r.transaction_date : mn, rows[0].transaction_date);
   const end   = periodEnd   || rows.reduce((mx, r) => r.transaction_date > mx ? r.transaction_date : mx, rows[0].transaction_date);
-  const endBal = endingBalance !== undefined ? endingBalance : (rows[rows.length - 1].running_balance || 0);
+  const endBal = endingBalance !== undefined && endingBalance !== null && endingBalance !== ''
+    ? endingBalance
+    : (parsedEndingBalance != null
+        ? parsedEndingBalance
+        : (rows[rows.length - 1].running_balance ?? 0));
 
   return db.transaction(() => {
     const { lastInsertRowid: stmtId } = db.prepare(
