@@ -32,8 +32,15 @@ describe('COA-PICKER-001 finding an account by typing', () => {
     expect(matchAccounts(COA, '6110').map(a => a.id)).toEqual([4]);
   });
 
-  it('matches on a partial account number', () => {
-    expect(matchAccounts(COA, '10').map(a => a.account_number)).toEqual(['1010', '1100', '2010']);
+  it('matches on a partial account number, anywhere in the number', () => {
+    // '10' is a substring of 1010, 1100, 2010, 6110 and 6410.
+    expect(matchAccounts(COA, '10').map(a => a.account_number))
+      .toEqual(['1010', '1100', '2010', '6110', '6410']);
+  });
+
+  it('narrows as you type more digits', () => {
+    expect(matchAccounts(COA, '110').map(a => a.account_number)).toEqual(['1100', '6110']);
+    expect(matchAccounts(COA, '1100').map(a => a.account_number)).toEqual(['1100']);
   });
 
   it('matches on the English name when the UI is English', () => {
