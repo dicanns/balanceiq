@@ -3007,7 +3007,7 @@ function glAuditLogList({ entityType = null, entityId = null, dateFrom = null, d
 function bankAccountsList() {
   const db = getDb();
   return db.prepare(`
-    SELECT ba.*, ca.account_number, ca.name_fr AS coa_name_fr
+    SELECT ba.*, ca.account_number, ca.name_fr AS coa_name_fr, ca.name_en AS coa_name_en
     FROM bank_accounts ba
     LEFT JOIN chart_of_accounts ca ON ca.id = ba.coa_account_id
     WHERE ba.is_archived = 0
@@ -3158,11 +3158,11 @@ function bankStatementImport({ bankAccountId, fileText, fileName, fileType, peri
 
   // Duplicate file check
   const existing = db.prepare(`SELECT id FROM bank_statements WHERE source_file_hash=? AND bank_account_id=?`).get(fileHash, bankAccountId);
-  if (existing) throw new Error('Ce relevé semble déjà importé (fichier identique).');
+  if (existing) throw new Error('ERR_STATEMENT_DUPLICATE');
 
   // Parse
   const account = db.prepare(`SELECT * FROM bank_accounts WHERE id=?`).get(bankAccountId);
-  if (!account) throw new Error('Compte bancaire introuvable');
+  if (!account) throw new Error('ERR_BANK_ACCOUNT_NOT_FOUND');
   const savedMap = account.csv_column_map ? JSON.parse(account.csv_column_map) : null;
 
   let rows = [];
@@ -3173,7 +3173,7 @@ function bankStatementImport({ bankAccountId, fileText, fileName, fileType, peri
     rows = _parseBankCSV(fileText, savedMap);
   }
 
-  if (!rows.length) throw new Error('Aucune transaction trouvée dans le fichier.');
+  if (!rows.length) throw new Error('ERR_NO_TRANSACTIONS');
 
   const start = periodStart || rows.reduce((mn, r) => r.transaction_date < mn ? r.transaction_date : mn, rows[0].transaction_date);
   const end   = periodEnd   || rows.reduce((mx, r) => r.transaction_date > mx ? r.transaction_date : mx, rows[0].transaction_date);
@@ -3226,7 +3226,7 @@ function bankTransactionsList(bankAccountId, { dateFrom, dateTo, statusFilter, l
   if (statusFilter && statusFilter !== 'all') { conds.push('bt.match_status=?'); params.push(statusFilter); }
   params.push(limit);
   return db.prepare(`
-    SELECT bt.*, ca.account_number, ca.name_fr AS coa_name_fr
+    SELECT bt.*, ca.account_number, ca.name_fr AS coa_name_fr, ca.name_en AS coa_name_en
     FROM bank_transactions bt
     LEFT JOIN chart_of_accounts ca ON ca.id = bt.coa_account_id
     WHERE ${conds.join(' AND ')}
@@ -3276,7 +3276,7 @@ const RECONCILABLE_STATUSES = ['matched', 'manual'];
 function bankReconcilePreview(bankAccountId, asOfDate, _db) {
   const db = _db || getDb();
   const account = db.prepare(`SELECT * FROM bank_accounts WHERE id=?`).get(bankAccountId);
-  if (!account) throw new Error('Compte introuvable');
+  if (!account) throw new Error('ERR_BANK_ACCOUNT_NOT_FOUND');
 
   const lastStmt = db.prepare(
     `SELECT * FROM bank_statements WHERE bank_account_id=? ORDER BY period_end DESC LIMIT 1`
@@ -3311,12 +3311,13 @@ function bankReconcilePreview(bankAccountId, asOfDate, _db) {
 function bankReconcileClose(bankAccountId, statementId, _db) {
   const db = _db || getDb();
   const stmt = db.prepare(`SELECT * FROM bank_statements WHERE id=? AND bank_account_id=?`).get(statementId, bankAccountId);
-  if (!stmt) throw new Error('Relevé introuvable');
-  if (stmt.reconciled) throw new Error('Relevé déjà réconcilié');
+  if (!stmt) throw new Error('ERR_STATEMENT_NOT_FOUND');
+  if (stmt.reconciled) throw new Error('ERR_STATEMENT_ALREADY_RECONCILED');
 
   const preview = bankReconcilePreview(bankAccountId, stmt.period_end, db);
   if (Math.abs(preview.ecart) > 0.02) {
-    return { success: false, ecart: preview.ecart, message: `Écart de ${preview.ecart.toFixed(2)} $ — réconciliez toutes les transactions avant de clôturer.` };
+    // Return a code + the value; the renderer formats and translates it.
+    return { success: false, ecart: preview.ecart, errorCode: 'ERR_RECONCILE_VARIANCE' };
   }
 
   const placeholders = RECONCILABLE_STATUSES.map(() => '?').join(',');
@@ -3348,7 +3349,7 @@ function bankReconcileReopen(bankAccountId, statementId, reason) {
 
 function bankLearnedRulesList() {
   return getDb().prepare(`
-    SELECT bml.*, ca.account_number, ca.name_fr AS coa_name_fr
+    SELECT bml.*, ca.account_number, ca.name_fr AS coa_name_fr, ca.name_en AS coa_name_en
     FROM bank_match_learned bml
     LEFT JOIN chart_of_accounts ca ON ca.id = bml.coa_account_id
     ORDER BY bml.match_count DESC
@@ -3532,7 +3533,7 @@ function taxSuspenseList(opts = {}) {
   if (dateFrom) { where += ` AND transaction_date >= ?`; params.push(dateFrom); }
   if (dateTo)   { where += ` AND transaction_date <= ?`; params.push(dateTo); }
   return getDb().prepare(
-    `SELECT bt.*, ca.account_number, ca.name_fr AS coa_name_fr
+    `SELECT bt.*, ca.account_number, ca.name_fr AS coa_name_fr, ca.name_en AS coa_name_en
      FROM bank_transactions bt
      LEFT JOIN chart_of_accounts ca ON ca.id = bt.coa_account_id
      WHERE ${where}
@@ -3935,7 +3936,7 @@ function supplierPaymentCreate(data) {
 function assetList({ includeArchived = false } = {}) {
   const db = getDb();
   const where = includeArchived ? '' : 'WHERE is_archived=0';
-  return db.prepare(`SELECT a.*, c.account_number, c.name_fr AS coa_name_fr FROM assets a
+  return db.prepare(`SELECT a.*, c.account_number, c.name_fr AS coa_name_fr, c.name_en AS coa_name_en FROM assets a
     LEFT JOIN chart_of_accounts c ON c.id=a.coa_account_id ${where} ORDER BY a.acquisition_date ASC`).all();
 }
 

@@ -29,6 +29,16 @@ const UI = {
     importing:        'Importation…',
     importResult:     (r) => `${r.rowCount} transactions importées — ${r.autoMatched} auto, ${r.suggested} suggestions, ${r.unmatched} non appariées${r.duplicateRows ? `, ${r.duplicateRows} doublons ignorés` : ''}.`,
     importDupe:       'Ce relevé a déjà été importé (fichier identique).',
+    errors: {
+      ERR_STATEMENT_DUPLICATE:          'Ce relevé a déjà été importé (fichier identique).',
+      ERR_BANK_ACCOUNT_NOT_FOUND:       'Compte bancaire introuvable.',
+      ERR_NO_TRANSACTIONS:              'Aucune transaction trouvée dans le fichier.',
+      ERR_STATEMENT_NOT_FOUND:          'Relevé introuvable.',
+      ERR_STATEMENT_ALREADY_RECONCILED: 'Ce relevé est déjà réconcilié.',
+      ERR_RECONCILE_VARIANCE:           (ecart) => `Écart de ${Number(ecart).toFixed(2)} $ - réconciliez toutes les transactions avant de clôturer.`,
+      GENERIC:                          "Erreur lors de l'importation.",
+    },
+
     colMapTitle:      'Correspondance des colonnes',
     periodStart:      'Début de période',
     periodEnd:        'Fin de période',
@@ -122,6 +132,16 @@ const UI = {
     importing:        'Importing…',
     importResult:     (r) => `${r.rowCount} transactions imported — ${r.autoMatched} auto-matched, ${r.suggested} suggested, ${r.unmatched} unmatched${r.duplicateRows ? `, ${r.duplicateRows} duplicates skipped` : ''}.`,
     importDupe:       'This statement appears to be already imported (identical file).',
+    errors: {
+      ERR_STATEMENT_DUPLICATE:          'This statement has already been imported (identical file).',
+      ERR_BANK_ACCOUNT_NOT_FOUND:       'Bank account not found.',
+      ERR_NO_TRANSACTIONS:              'No transactions found in the file.',
+      ERR_STATEMENT_NOT_FOUND:          'Statement not found.',
+      ERR_STATEMENT_ALREADY_RECONCILED: 'This statement is already reconciled.',
+      ERR_RECONCILE_VARIANCE:           (ecart) => `Variance of $${Number(ecart).toFixed(2)} - reconcile all transactions before closing.`,
+      GENERIC:                          'Import error.',
+    },
+
     colMapTitle:      'Column Mapping',
     periodStart:      'Period Start',
     periodEnd:        'Period End',
@@ -200,6 +220,23 @@ const fmtDate = (d) => d ? d.slice(0, 10) : '—';
 // ── BanqueTab ─────────────────────────────────────────────────────────────────
 export default function BanqueTab({ lang = 'fr' }) {
   const T = UI[lang] || UI.fr;
+
+  // Main-process errors cross IPC as strings, so they are thrown as stable codes
+  // (ERR_*) and translated here. Falls back to the raw text for anything unmapped.
+  const tErr = (e, ...args) => {
+    const raw = typeof e === 'string' ? e : (e?.message || '');
+    const code = Object.keys(T.errors).find(k => raw.includes(k));
+    if (!code) return raw || T.errors.GENERIC;
+    const v = T.errors[code];
+    return typeof v === 'function' ? v(...args) : v;
+  };
+
+  // Chart-of-accounts rows carry both names; show the one matching the UI language.
+  const coaName = (row, prefix = '') => {
+    const en = prefix ? row?.[`${prefix}name_en`] : row?.name_en;
+    const fr = prefix ? row?.[`${prefix}name_fr`] : row?.name_fr;
+    return (lang === 'en' && en) ? en : (fr || en || '');
+  };
   const bankAvailable = !!window.api?.bank;
 
   // ALL hooks must be called unconditionally before any early return (Rules of Hooks)
@@ -388,7 +425,7 @@ export default function BanqueTab({ lang = 'fr' }) {
       loadAccounts();
       if (selectedAccount?.id === importAccountId) { loadTransactions(); loadStatements(); loadRecPreview(); }
     } catch (e) {
-      setImportMsg(e.message || (lang === 'en' ? 'Import error.' : 'Erreur lors de l\'importation.'));
+      setImportMsg(tErr(e));
     } finally {
       setImporting(false);
     }
@@ -424,7 +461,7 @@ export default function BanqueTab({ lang = 'fr' }) {
     try {
       const result = await window.api.bank.reconcile.close(selectedAccount.id, stmtId);
       if (result.success) { loadStatements(); loadRecPreview(); }
-      else alert(result.message);
+      else alert(result.errorCode ? tErr(result.errorCode, result.ecart) : (result.message || T.errors.GENERIC));
     } catch (_) {}
   };
 
@@ -465,7 +502,7 @@ export default function BanqueTab({ lang = 'fr' }) {
       await window.api.bank.transactions.categorize(etransferTx.id, coaId, lang === 'fr' ? 'Virement Interac' : 'Interac E-Transfer');
       setEtransferTx(null);
       loadTransactions();
-    } catch (e) { alert(e.message); }
+    } catch (e) { alert(tErr(e)); }
   };
 
   // ── Status badge ─────────────────────────────────────────────────────────────
@@ -515,7 +552,7 @@ export default function BanqueTab({ lang = 'fr' }) {
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 700, fontSize: 14, color: '#f1f5f9' }}>{acc.name}</div>
                     <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
-                      {typeLabel(acc.account_type)} · {acc.account_number} {acc.coa_name_fr}
+                      {typeLabel(acc.account_type)} · {acc.account_number} {coaName(acc, 'coa_')}
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
@@ -589,7 +626,7 @@ export default function BanqueTab({ lang = 'fr' }) {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                           <StatusBadge status={tx.match_status} />
                           {tx.account_number && (
-                            <span style={{ fontSize: 10, color: '#64748b' }}>{tx.account_number} {lang === 'en' && tx.coa_name_en ? tx.coa_name_en : tx.coa_name_fr}</span>
+                            <span style={{ fontSize: 10, color: '#64748b' }}>{tx.account_number} {coaName(tx, 'coa_')}</span>
                           )}
                           {tx.match_status === 'suggested' && tx.match_reason && (
                             <span style={{ fontSize: 9, color: '#78716c', fontStyle: 'italic' }}>{tx.match_reason}</span>
@@ -723,7 +760,7 @@ export default function BanqueTab({ lang = 'fr' }) {
                 {learnedRules.map(rule => (
                   <tr key={rule.id} style={{ borderBottom: '1px solid #0f172a' }}>
                     <td style={{ ...td, fontFamily: 'monospace', fontSize: 12 }}>{rule.description_pattern}</td>
-                    <td style={td}>{rule.account_number} {rule.coa_name_fr}</td>
+                    <td style={td}>{rule.account_number} {coaName(rule, 'coa_')}</td>
                     <td style={{ ...td, textAlign: 'center' }}>
                       <span style={{ color: rule.match_count >= 3 ? '#22c55e' : '#f59e0b', fontWeight: 700 }}>{rule.match_count}</span>
                       {rule.match_count >= 3 && <span style={{ color: '#22c55e', marginLeft: 4, fontSize: 11 }}>{T.autoLabel}</span>}
@@ -756,7 +793,7 @@ export default function BanqueTab({ lang = 'fr' }) {
           <select style={inputFull} value={accountForm.coa_account_id} onChange={e => setAccountForm(f => ({ ...f, coa_account_id: e.target.value }))}>
             <option value=''>—</option>
             {coaList.filter(a => ['asset','liability'].includes(a.type)).map(a => (
-              <option key={a.id} value={a.id}>{a.account_number} — {a.name_fr}</option>
+              <option key={a.id} value={a.id}>{a.account_number} — {coaName(a)}</option>
             ))}
           </select>
           <label style={labelStyle}>{T.openingBalance}</label>
@@ -803,13 +840,13 @@ export default function BanqueTab({ lang = 'fr' }) {
             <strong style={{ color: '#f1f5f9' }}>{categorizingTx.description}</strong><br />
             {fmtDate(categorizingTx.transaction_date)} · <span style={{ color: categorizingTx.amount < 0 ? '#f87171' : '#86efac', fontWeight: 700 }}>{fmt(categorizingTx.amount)}</span>
           </div>
-          {categorizingTx.coa_name_fr && (
-            <div style={{ marginBottom: 10, fontSize: 12, color: '#f59e0b' }}>{T.suggestedCoa(categorizingTx.coa_name_fr)}</div>
+          {coaName(categorizingTx, 'coa_') && (
+            <div style={{ marginBottom: 10, fontSize: 12, color: '#f59e0b' }}>{T.suggestedCoa(coaName(categorizingTx, 'coa_'))}</div>
           )}
           <label style={labelStyle}>{T.selectCoa}</label>
           <select style={inputFull} value={categorizeCoaId} onChange={e => setCategorizeCoaId(e.target.value)}>
             <option value=''>—</option>
-            {coaList.map(a => <option key={a.id} value={a.id}>{a.account_number} — {a.name_fr}</option>)}
+            {coaList.map(a => <option key={a.id} value={a.id}>{a.account_number} — {coaName(a)}</option>)}
           </select>
           <label style={labelStyle}>{T.notes}</label>
           <input style={inputFull} value={categorizeNotes} onChange={e => setCategorizeNotes(e.target.value)} />
