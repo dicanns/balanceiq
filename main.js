@@ -1795,7 +1795,7 @@ ipcMain.handle('bank:statement:list',      (_e, bankAccountId)         => bankSt
 ipcMain.handle('bank:transactions:list',   (_e, bankAccountId, opts)   => bankTransactionsList(bankAccountId, opts));
 ipcMain.handle('bank:transactions:match',  (_e, txId, etype, eid)      => bankTransactionMatch(txId, etype, eid));
 ipcMain.handle('bank:transactions:unmatch',(_e, txId)                  => bankTransactionUnmatch(txId));
-ipcMain.handle('bank:transactions:categorize', (_e, txId, coaId, notes) => bankTransactionCategorize(txId, coaId, notes));
+ipcMain.handle('bank:transactions:categorize', (_e, txId, coaId, notes, tax) => bankTransactionCategorize(txId, coaId, notes, tax));
 
 ipcMain.handle('bank:reconcile:preview',   (_e, bankAccountId, asOf)   => bankReconcilePreview(bankAccountId, asOf));
 ipcMain.handle('bank:reconcile:close',     (_e, bankAccountId, stmtId) => bankReconcileClose(bankAccountId, stmtId));

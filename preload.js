@@ -278,7 +278,7 @@ contextBridge.exposeInMainWorld('api', {
       list:       (bankAccountId, opts)        => ipcRenderer.invoke('bank:transactions:list', bankAccountId, opts),
       match:      (txId, entityType, entityId) => ipcRenderer.invoke('bank:transactions:match', txId, entityType, entityId),
       unmatch:    (txId)                       => ipcRenderer.invoke('bank:transactions:unmatch', txId),
-      categorize: (txId, coaId, notes)         => ipcRenderer.invoke('bank:transactions:categorize', txId, coaId, notes),
+      categorize: (txId, coaId, notes, tax)    => ipcRenderer.invoke('bank:transactions:categorize', txId, coaId, notes, tax),
     },
     reconcile: {
       preview: (bankAccountId, asOf)           => ipcRenderer.invoke('bank:reconcile:preview', bankAccountId, asOf),

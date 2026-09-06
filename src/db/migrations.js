@@ -1282,6 +1282,22 @@ const MIGRATIONS = [
       ).run();
     },
   },
+  {
+    version: 35,
+    description: 'Add tps_paid / tvq_paid to bank_transactions. Categorizing a bank line now '
+      + 'captures the tax portion, so input tax credits can come from the ledger instead of '
+      + 'only from hand-entered monthly P&L bills.',
+    up: (database) => {
+      const cols = database.prepare(`PRAGMA table_info(bank_transactions)`).all().map(c => c.name);
+      if (!cols.length) return;
+      if (!cols.includes('tps_paid')) {
+        database.prepare(`ALTER TABLE bank_transactions ADD COLUMN tps_paid REAL`).run();
+      }
+      if (!cols.includes('tvq_paid')) {
+        database.prepare(`ALTER TABLE bank_transactions ADD COLUMN tvq_paid REAL`).run();
+      }
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.

@@ -1322,6 +1322,22 @@ const MIGRATIONS = [
       ).run();
     },
   },
+  {
+    version: 35,
+    description: 'Add tps_paid / tvq_paid to bank_transactions. Categorizing a bank line now '
+      + 'captures the tax portion, so input tax credits can come from the ledger instead of '
+      + 'only from hand-entered monthly P&L bills.',
+    up: (database) => {
+      const cols = database.prepare(`PRAGMA table_info(bank_transactions)`).all().map(c => c.name);
+      if (!cols.length) return;
+      if (!cols.includes('tps_paid')) {
+        database.prepare(`ALTER TABLE bank_transactions ADD COLUMN tps_paid REAL`).run();
+      }
+      if (!cols.includes('tvq_paid')) {
+        database.prepare(`ALTER TABLE bank_transactions ADD COLUMN tvq_paid REAL`).run();
+      }
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -3340,10 +3356,30 @@ function _postBankTransactionEntry(db, txId) {
   if (!cents) return null;
 
   const inflow = Number(tx.amount) > 0;
+
+  // When the tax portion was captured, split it out to the input tax credit
+  // accounts so the expense is recorded net and the GST/QST becomes claimable.
+  // Falls back to a single-line split when the accounts are absent.
+  const gstAcc = db.prepare(`SELECT * FROM chart_of_accounts WHERE account_number='1400'`).get();
+  const qstAcc = db.prepare(`SELECT * FROM chart_of_accounts WHERE account_number='1410'`).get();
+  let tpsCents = Math.round((Number(tx.tps_paid) || 0) * 100);
+  let tvqCents = Math.round((Number(tx.tvq_paid) || 0) * 100);
+  if (!gstAcc) tpsCents = 0;
+  if (!qstAcc) tvqCents = 0;
+  // Tax can never exceed the transaction itself.
+  if (tpsCents + tvqCents >= cents) { tpsCents = 0; tvqCents = 0; }
+  const netCents = cents - tpsCents - tvqCents;
+
+  const taxLines = [];
+  if (tpsCents) taxLines.push({ acc: gstAcc.id, cents: tpsCents, memo: 'TPS (CTI)' });
+  if (tvqCents) taxLines.push({ acc: qstAcc.id, cents: tvqCents, memo: 'TVQ (RTI)' });
+
   const lines = inflow
     ? [{ account_id: bankCoa.id, debit_cents: cents, credit_cents: 0, memo: tx.description },
-       { account_id: target.id,  debit_cents: 0, credit_cents: cents, memo: tx.description }]
-    : [{ account_id: target.id,  debit_cents: cents, credit_cents: 0, memo: tx.description },
+       { account_id: target.id,  debit_cents: 0, credit_cents: netCents, memo: tx.description },
+       ...taxLines.map(t => ({ account_id: t.acc, debit_cents: 0, credit_cents: t.cents, memo: t.memo }))]
+    : [{ account_id: target.id,  debit_cents: netCents, credit_cents: 0, memo: tx.description },
+       ...taxLines.map(t => ({ account_id: t.acc, debit_cents: t.cents, credit_cents: 0, memo: t.memo })),
        { account_id: bankCoa.id, debit_cents: 0, credit_cents: cents, memo: tx.description }];
 
   const { entryId } = glDraftEntry({
@@ -3373,13 +3409,15 @@ function _reverseBankTransactionEntry(db, txId) {
   return true;
 }
 
-function bankTransactionCategorize(txId, coaAccountId, notes) {
+function bankTransactionCategorize(txId, coaAccountId, notes, tax) {
   const db = getDb();
+  const tpsPaid = Number(tax?.tpsPaid) || 0;
+  const tvqPaid = Number(tax?.tvqPaid) || 0;
   db.transaction(() => {
     _reverseBankTransactionEntry(db, txId);
     db.prepare(
-      `UPDATE bank_transactions SET match_status='manual', coa_account_id=?, notes=? WHERE id=?`
-    ).run(coaAccountId, notes || null, txId);
+      `UPDATE bank_transactions SET match_status='manual', coa_account_id=?, notes=?, tps_paid=?, tvq_paid=? WHERE id=?`
+    ).run(coaAccountId, notes || null, tpsPaid || null, tvqPaid || null, txId);
     _postBankTransactionEntry(db, txId);
   })();
 
@@ -3607,6 +3645,28 @@ function taxPeriodCompute(periodStart, periodEnd) {
     }
   }
 
+  // Input tax credits captured on categorized bank lines (bridge phase 4).
+  // Expenses recorded this way never appear as monthly P&L bills, so the two
+  // sources are additive - the same expense must be entered in one place only.
+  let tpsCtiFromBank = 0, tvqCtiFromBank = 0, bankTxCount = 0;
+  try {
+    const row = db.prepare(
+      `SELECT COALESCE(SUM(tps_paid),0) AS tps, COALESCE(SUM(tvq_paid),0) AS tvq, COUNT(*) AS n
+       FROM bank_transactions
+       WHERE transaction_date >= ? AND transaction_date <= ?
+         AND coa_account_id IS NOT NULL
+         AND (COALESCE(tps_paid,0) <> 0 OR COALESCE(tvq_paid,0) <> 0)`
+    ).get(periodStart, periodEnd);
+    tpsCtiFromBank = row?.tps || 0;
+    tvqCtiFromBank = row?.tvq || 0;
+    bankTxCount = row?.n || 0;
+  } catch (_) { /* pre-v35 schema - no tax columns yet */ }
+
+  const tpsCtiFromBills = tpsCti;
+  const tvqRtiFromBills = tvqRti;
+  tpsCti += tpsCtiFromBank;
+  tvqRti += tvqCtiFromBank;
+
   const netTpsOwed = tpsCollected - tpsCti;
   const netTvqOwed = tvqCollected - tvqRti;
 
@@ -3633,6 +3693,8 @@ function taxPeriodCompute(periodStart, periodEnd) {
   return {
     tpsCollected, tvqCollected, tpsCti, tvqRti,
     netTpsOwed, netTvqOwed,
+    // Broken out so the filing figure is auditable back to its two sources.
+    tpsCtiFromBills, tvqRtiFromBills, tpsCtiFromBank, tvqCtiFromBank, bankTxCount,
     suspenseCount,
     billCount: billIds.length,
     months,

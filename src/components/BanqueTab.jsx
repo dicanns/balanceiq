@@ -111,6 +111,11 @@ const UI = {
     etransferDirIn:   'Reçu',
     etransferDirOut:  'Envoyé',
     etransferNoAccount: (n) => `Compte ${n} introuvable dans le plan comptable.`,
+    taxCaptureTitle:  'Taxes payées (CTI/RTI)',
+    taxCaptureHint:   'Optionnel. Saisir la TPS et la TVQ pour les réclamer comme crédit de taxe sur intrants; la dépense est alors comptabilisée hors taxes.',
+    taxAutoFill:      'Calculer',
+    taxTps:           'TPS payée ($)',
+    taxTvq:           'TVQ payée ($)',
     matchExact:       (n) => `Description exacte (${n}× utilisé)`,
     matchPartial:     'Description partielle correspondante',
     searchCoa:        'Chercher par numéro ou nom…',
@@ -229,6 +234,11 @@ const UI = {
     etransferDirIn:   'Received',
     etransferDirOut:  'Sent',
     etransferNoAccount: (n) => `Account ${n} not found in the chart of accounts.`,
+    taxCaptureTitle:  'Tax paid (ITC/ITR)',
+    taxCaptureHint:   'Optional. Enter the GST and QST to claim them as input tax credits; the expense is then recorded net of tax.',
+    taxAutoFill:      'Calculate',
+    taxTps:           'GST paid ($)',
+    taxTvq:           'QST paid ($)',
     matchExact:       (n) => `Exact description (used ${n}×)`,
     matchPartial:     'Partial description match',
     searchCoa:        'Search by number or name…',
@@ -328,6 +338,8 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   const [categorizingTx, setCategorizingTx]       = useState(null);
   const [categorizeCoaId, setCategorizeCoaId]     = useState('');
   const [categorizeNotes, setCategorizeNotes]     = useState('');
+  const [catTps, setCatTps]                       = useState('');
+  const [catTvq, setCatTvq]                       = useState('');
   const [etransferTx, setEtransferTx]             = useState(null);
   const [etransferCoaId, setEtransferCoaId]       = useState('');
 
@@ -511,7 +523,10 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   const saveCategorize = async () => {
     if (!categorizingTx || !categorizeCoaId) return;
     try {
-      await window.api.bank.transactions.categorize(categorizingTx.id, parseInt(categorizeCoaId, 10), categorizeNotes);
+      await window.api.bank.transactions.categorize(
+        categorizingTx.id, parseInt(categorizeCoaId, 10), categorizeNotes,
+        { tpsPaid: parseFloat(catTps) || 0, tvqPaid: parseFloat(catTvq) || 0 },
+      );
       setCategorizingTx(null);
       loadTransactions();
       loadRecPreview();
@@ -600,6 +615,12 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
     const fallback = findCoa(etransferTarget(etransferTx));
     setEtransferCoaId(fallback?.id ? String(fallback.id) : '');
   }, [etransferTx]);
+
+  React.useEffect(() => {
+    if (!categorizingTx) { setCatTps(''); setCatTvq(''); return; }
+    setCatTps(categorizingTx.tps_paid ? String(categorizingTx.tps_paid) : '');
+    setCatTvq(categorizingTx.tvq_paid ? String(categorizingTx.tvq_paid) : '');
+  }, [categorizingTx]);
 
   const doEtransferCategorize = async () => {
     if (!etransferTx) return;
@@ -972,6 +993,37 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
           />
           <label style={labelStyle}>{T.notes}</label>
           <input style={inputFull} value={categorizeNotes} onChange={e => setCategorizeNotes(e.target.value)} />
+
+          {/* Capturing the tax here is what makes it claimable as an input tax
+              credit; the expense is then recorded net of it. */}
+          <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
+              <label style={{ ...labelStyle, marginBottom: 0 }}>{T.taxCaptureTitle}</label>
+              <button
+                type="button"
+                onClick={() => {
+                  const gross = Math.abs(Number(categorizingTx.amount) || 0);
+                  const net = gross / 1.14975;
+                  setCatTps((net * 0.05).toFixed(2));
+                  setCatTvq((net * 0.09975).toFixed(2));
+                }}
+                style={{ ...btnSmall, fontSize: 11 }}
+              >{T.taxAutoFill}</button>
+            </div>
+            <div style={{ fontSize: 10.5, color: C.muted, margin: '4px 0 8px' }}>{T.taxCaptureHint}</div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10, color: C.muted, marginBottom: 3 }}>{T.taxTps}</div>
+                <input style={inputFull} type="number" step="0.01" min="0" placeholder="0.00"
+                  value={catTps} onChange={e => setCatTps(e.target.value)} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10, color: C.muted, marginBottom: 3 }}>{T.taxTvq}</div>
+                <input style={inputFull} type="number" step="0.01" min="0" placeholder="0.00"
+                  value={catTvq} onChange={e => setCatTvq(e.target.value)} />
+              </div>
+            </div>
+          </div>
           <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
             <button onClick={saveCategorize} disabled={!categorizeCoaId} style={btnStyle('#f97316')}>{T.saveCategorize}</button>
             <button onClick={() => setCategorizingTx(null)} style={btnStyle('#374151')}>{T.cancel}</button>
