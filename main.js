@@ -1689,6 +1689,11 @@ ipcMain.handle('ledger:payment:reverse', async (_e, { paymentId, reason }) => {
 ipcMain.handle('ledger:invoice:post', async (_e, {
   invoiceId, invoiceDate, subtotalCents, tpsCents, tvqCents, totalCents, taxExempt,
 }) => {
+  // Idempotent: the renderer's glEntryId can be lost, and re-posting would
+  // double the revenue and the receivable.
+  const already = glFindEntryBySource('invoice', invoiceId);
+  if (already) return { ok: true, entryId: already.id, alreadyPosted: true };
+
   const { coaList } = require('./src/db/database.js');
   const accounts = coaList();
   const find = (num) => accounts.find(a => a.account_number === num);
@@ -1725,6 +1730,9 @@ ipcMain.handle('ledger:invoice:post', async (_e, {
 ipcMain.handle('ledger:creditnote:post', async (_e, {
   creditNoteId, creditNoteDate, subtotalCents, tpsCents, tvqCents, totalCents, taxExempt,
 }) => {
+  const already = glFindEntryBySource('credit_note', creditNoteId);
+  if (already) return { ok: true, entryId: already.id, alreadyPosted: true };
+
   const { coaList } = require('./src/db/database.js');
   const accounts = coaList();
   const find = (num) => accounts.find(a => a.account_number === num);

@@ -3192,6 +3192,24 @@ function NoteDeCreditEditor({creditNote,clients,factures,companyInfo,docNums,sav
  saveCreditNotes([...creditNotes,rec]);
  saveDocNums({...docNums,creditNote:docNums.creditNote+1});
  logCreate('invoice','note_de_credit',id,rec);
+ // CLAUDE.md rule 3: a credit note must reach the ledger. Without this the
+ // deduction reduced the invoice balance but revenue and receivables stayed
+ // overstated. Posts Cr 1100 / Dr contra-revenue and reverses the tax per line.
+ // Idempotent on creditNoteId in the main process.
+ if(window.api?.ledger?.creditNotePost){
+ const _cnClientId=form.clientId||linkedFac?.clientId;
+ const _cnExempt=!!(clients?.find(c=>c.id===_cnClientId)?.taxExempt);
+ window.api.ledger.creditNotePost({
+ creditNoteId:id,creditNoteDate:form.date,
+ subtotalCents:Math.round((totals.sousTotal||0)*100),
+ tpsCents:Math.round((totals.tpsTotal||0)*100),
+ tvqCents:Math.round((totals.tvqTotal||0)*100),
+ totalCents:Math.round((totals.total||0)*100),
+ taxExempt:_cnExempt,
+ }).then(res=>{
+ if(res?.ok&&res.entryId)saveCreditNotes(prev=>prev.map(n=>n.id===id?{...n,glEntryId:res.entryId}:n));
+ }).catch(()=>{});
+ }
  if(form.factureId&&linkedFac&&creditAmount>0){
  const pId=Date.now().toString()+"c";
  const newPaiements=[...(linkedFac.paiements||[]),{id:pId,numero,date:form.date,montant:creditAmount,mode:"Note de crédit",reference:numero,note:`Note de crédit ${numero}`,fromCredit:true}];
@@ -6648,8 +6666,36 @@ export default function App(){
   const saveDocNums=useCallback(nums=>{setDocNums(nums);const v=JSON.stringify(nums);window.api.storage.set("dicann-doc-nums",v).catch(()=>{});schedulePush("dicann-doc-nums",v);},[]);
   const saveFacSoumissions=useCallback(list=>{setFacSoumissions(list);const v=JSON.stringify(list);window.api.storage.set("dicann-fac-soumissions",v).catch(()=>{});schedulePush("dicann-fac-soumissions",v);},[]);
   const saveFacCommandes=useCallback(list=>{setFacCommandes(list);const v=JSON.stringify(list);window.api.storage.set("dicann-fac-commandes",v).catch(()=>{});schedulePush("dicann-fac-commandes",v);},[]);
-  const saveFacFactures=useCallback(list=>{setFacFactures(list);const v=JSON.stringify(list);window.api.storage.set("dicann-fac-factures",v).catch(()=>{});schedulePush("dicann-fac-factures",v);trackEvent('feature_used:invoice_created');},[]);
-  const saveFacCreditNotes=useCallback(list=>{setFacCreditNotes(list);const v=JSON.stringify(list);window.api.storage.set("dicann-fac-creditnotes",v).catch(()=>{});schedulePush("dicann-fac-creditnotes",v);},[]);
+  // These savers are called both with a plain list and with an updater function
+  // (the async glEntryId write-backs after invoicePost / paymentPost use the
+  // updater form). Passing a function straight to JSON.stringify yields
+  // undefined, so the ledger entry id updated React state but was never
+  // persisted - and an invoice that lost its glEntryId could be posted to the
+  // ledger a second time after a restart. Resolve the list first, via a ref so
+  // the updater always sees the newest value.
+  const facFacturesRef=useRef(facFactures);
+  useEffect(()=>{facFacturesRef.current=facFactures;},[facFactures]);
+  const saveFacFactures=useCallback(listOrFn=>{
+    const list=typeof listOrFn==='function'?listOrFn(facFacturesRef.current):listOrFn;
+    if(!Array.isArray(list))return;
+    facFacturesRef.current=list;
+    setFacFactures(list);
+    const v=JSON.stringify(list);
+    window.api.storage.set("dicann-fac-factures",v).catch(()=>{});
+    schedulePush("dicann-fac-factures",v);
+    trackEvent('feature_used:invoice_created');
+  },[]);
+  const facCreditNotesRef=useRef(facCreditNotes);
+  useEffect(()=>{facCreditNotesRef.current=facCreditNotes;},[facCreditNotes]);
+  const saveFacCreditNotes=useCallback(listOrFn=>{
+    const list=typeof listOrFn==='function'?listOrFn(facCreditNotesRef.current):listOrFn;
+    if(!Array.isArray(list))return;
+    facCreditNotesRef.current=list;
+    setFacCreditNotes(list);
+    const v=JSON.stringify(list);
+    window.api.storage.set("dicann-fac-creditnotes",v).catch(()=>{});
+    schedulePush("dicann-fac-creditnotes",v);
+  },[]);
   const saveFacRecurrents=useCallback(list=>{setFacRecurrents(list);const v=JSON.stringify(list);window.api.storage.set("dicann-fac-recurrents",v).catch(()=>{});schedulePush("dicann-fac-recurrents",v);},[]);
 
   // ── raw state updaters (no audit) ──
