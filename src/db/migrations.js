@@ -1367,6 +1367,19 @@ const MIGRATIONS = [
       }
     },
   },
+  {
+    version: 38,
+    description: 'Box 101 of the FPZ-500 needs the taxable supplies figure, which was never '
+      + 'stored. Collected tax was derived from daily register sales alone, so a business that '
+      + 'invoices its customers rather than ringing them through a till reported zero tax '
+      + 'collected and filed for a refund it was not owed.',
+    up: (database) => {
+      const cols = database.prepare(`PRAGMA table_info(tax_periods)`).all().map(c => c.name);
+      if (cols.length && !cols.includes('supplies')) {
+        database.prepare(`ALTER TABLE tax_periods ADD COLUMN supplies REAL DEFAULT 0`).run();
+      }
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.

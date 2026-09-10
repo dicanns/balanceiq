@@ -21,7 +21,7 @@ const UI = {
     computing: 'Calcul…',
     save: 'Enregistrer',
     markFiled: 'Marquer comme produite',
-    exportFPZ: 'Exporter FPZ-500-V',
+    exportFPZ: 'Exporter FPZ-500.IF',
     noData: 'Aucun CTI/RTI détecté dans cette période.',
     noBills: 'Aucune facture avec taxes dans cette période. Utilisez le bouton CTI/RTI dans le P&L mensuel pour saisir les taxes payées.',
     statusOpen: 'Ouverte',
@@ -82,7 +82,7 @@ const UI = {
     computing: 'Calculating…',
     save: 'Save',
     markFiled: 'Mark as filed',
-    exportFPZ: 'Export FPZ-500-V',
+    exportFPZ: 'Export FPZ-500.IF',
     noData: 'No ITC/ITR detected in this period.',
     noBills: 'No bills with tax amounts in this period. Use the CTI/RTI button in the monthly P&L to enter taxes paid.',
     statusOpen: 'Open',
@@ -148,61 +148,121 @@ function quarterEnd() {
   return `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function buildFPZ500HTML(period, T, lang) {
+// The business name and registration numbers are operator-entered and go straight
+// into the document, so they are escaped like every other PDF builder in the app.
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function buildFPZ500HTML(period, T, lang, company = {}) {
   const isFr = lang !== 'en';
-  const co = lang === 'en' ? 'Canada' : 'Canada';
   const today = new Date().toLocaleDateString(isFr ? 'fr-CA' : 'en-CA', { year: 'numeric', month: 'long', day: 'numeric' });
-  const netTps = Math.max(0, period.net_tps_owed || 0);
-  const netTvq = Math.max(0, period.net_tvq_owed || 0);
+
+  // The box numbers are Revenu Quebec's and the CRA's, not any one bank's: 101,
+  // 105, 108, 110, 111 and 113 on the GST/HST side, 205, 208, 210, 211 and 213 on
+  // the QST side. Every bank filing service (BMO, RBC, TD, Desjardins, Scotia,
+  // National Bank) submits the same FPZ-500.IF, and so does clicmesimpots and a
+  // paper return, so the same sheet transcribes into any of them, and an
+  // accountant reads it without translation. 113 and 213 are what the bank calls "Amount
+  // payable"; a negative net is a refund and belongs in the refund column, which
+  // is why each is printed on its own side rather than as one signed number.
+  const supplies   = period.supplies || 0;
+  const tpsColl    = period.tps_collected || 0;
+  const tpsItc     = period.tps_cti || 0;
+  const tpsNet     = tpsColl - tpsItc;
+  const tvqColl    = period.tvq_collected || 0;
+  const tvqItr     = period.tvq_rti || 0;
+  const tvqNet     = tvqColl - tvqItr;
+  const totalDue   = Math.max(0, tpsNet) + Math.max(0, tvqNet);
+  const totalRef   = Math.max(0, -tpsNet) + Math.max(0, -tvqNet);
+
+  const row = (box, label, value, sign = '') => `
+    <tr>
+      <td class="sign">${sign}</td>
+      <td class="box">${box}</td>
+      <td class="lbl">${label}</td>
+      <td class="val">${fmt(value)}</td>
+    </tr>`;
+  const total = (box, label, value, refund) => `
+    <tr class="tot">
+      <td class="sign">=</td>
+      <td class="box">${box}</td>
+      <td class="lbl">${label}</td>
+      <td class="val ${refund ? 'green' : 'red'}">${fmt(Math.abs(value))}${refund ? ` <span class="sub">(${isFr ? 'remboursement' : 'refund'})</span>` : ''}</td>
+    </tr>`;
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
-<title>FPZ-500-V — ${period.period_start} → ${period.period_end}</title>
+<title>FPZ-500.IF - ${period.period_start} to ${period.period_end}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font:11px/1.5 Arial,sans-serif;color:#222;padding:24px;max-width:720px}
-h1{font-size:16px;color:#ea580c;margin-bottom:4px}
-h2{font-size:12px;color:#555;text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 6px;padding-bottom:3px;border-bottom:1px solid #ddd}
-.field{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0f0f0;font-size:11px}
-.field-label{color:#555;flex:1}
-.field-value{font-weight:700;text-align:right;min-width:120px;font-family:Arial,sans-serif}
-.box{border:2px solid #ea580c;padding:10px 14px;border-radius:4px;margin:12px 0}
-.box-label{font-size:9px;text-transform:uppercase;color:#ea580c;letter-spacing:0.5px;margin-bottom:4px}
-.box-value{font-size:20px;font-weight:700;color:#222}
-.disclaimer{font-size:10px;color:#888;border-left:3px solid #f97316;padding:6px 10px;margin:14px 0;background:#fff8f0;line-height:1.5}
-.sub{font-size:9px;color:#aaa}
-.green{color:#16a34a}
-.red{color:#dc2626}
+body{font:12px/1.5 Arial,sans-serif;color:#222;padding:26px;max-width:700px}
+h1{font-size:17px;color:#ea580c;margin-bottom:2px}
+h2{font-size:12px;color:#1a5490;text-transform:uppercase;letter-spacing:.6px;margin:20px 0 4px;padding-bottom:4px;border-bottom:2px solid #1a5490}
+table{width:100%;border-collapse:collapse}
+td{padding:6px 4px;border-bottom:1px solid #eee;vertical-align:middle}
+.sign{width:14px;color:#888;font-weight:700;text-align:center}
+.box{width:38px}
+.box{background:#111;color:#fff;font-weight:700;text-align:center;border-radius:3px;padding:3px 0;font-size:11px}
+.lbl{color:#333}
+.val{text-align:right;font-weight:700;width:130px;font-variant-numeric:tabular-nums}
+.tot td{border-top:2px solid #111;border-bottom:none;padding-top:9px;font-size:13px}
+.red{color:#b91c1c}.green{color:#15803d}
+.sub{font-size:9px;color:#999;font-weight:400}
+.pay{border:2px solid #ea580c;border-radius:5px;padding:12px 16px;margin-top:22px;display:flex;justify-content:space-between;align-items:center}
+.pay-l{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:#ea580c;font-weight:700}
+.pay-v{font-size:22px;font-weight:700}
+.meta{display:flex;gap:26px;font-size:11px;color:#555;margin:10px 0 2px}
+.disclaimer{font-size:10px;color:#7a5a2a;border-left:3px solid #f97316;padding:7px 10px;margin:14px 0;background:#fff8f0;line-height:1.5}
+.foot{font-size:9.5px;color:#aaa;margin-top:22px}
 </style></head><body>
-<h1>${isFr ? 'Sommaire TPS/TVQ — FPZ-500-V' : 'GST/QST Summary — FPZ-500-V'}</h1>
-<p class="sub">${isFr ? 'Généré le' : 'Generated'} ${today} &nbsp;|&nbsp; BalanceIQ</p>
+<h1>${isFr ? 'Déclaration combinée TPS/TVQ - FPZ-500.IF' : 'Combined GST/QST return - FPZ-500.IF'}</h1>
+<div class="meta">
+  <span><strong>${isFr ? 'Période' : 'Period'}:</strong> ${period.period_start} &rarr; ${period.period_end}</span>
+  <span><strong>${isFr ? 'Généré le' : 'Generated'}:</strong> ${today}</span>
+</div>
+${company.nom || company.numeroTPS || company.numeroTVQ ? `<div class="meta">
+  ${company.nom ? `<span><strong>${isFr ? 'Entreprise' : 'Business'}:</strong> ${esc(company.nom)}</span>` : ''}
+  ${company.numeroTPS ? `<span><strong>${isFr ? 'No TPS' : 'GST no.'}:</strong> ${esc(company.numeroTPS)}</span>` : ''}
+  ${company.numeroTVQ ? `<span><strong>${isFr ? 'No TVQ' : 'QST no.'}:</strong> ${esc(company.numeroTVQ)}</span>` : ''}
+</div>` : ''}
+<p class="foot" style="margin:6px 0 0">${isFr
+  ? 'Formulaire FPZ-500.IF (Revenu Québec) / GST34 (ARC). Les mêmes numéros de case servent chez toutes les institutions et sur clicmesimpots.'
+  : 'Form FPZ-500.IF (Revenu Quebec) / GST34 (CRA). The same box numbers apply at every bank and on clicmesimpots.'}</p>
 <div class="disclaimer">${T.disclaimer}</div>
 
-<h2>${isFr ? 'Période de déclaration' : 'Reporting period'}</h2>
-<div class="field"><span class="field-label">${isFr ? 'Début' : 'Start'}</span><span class="field-value">${period.period_start}</span></div>
-<div class="field"><span class="field-label">${isFr ? 'Fin' : 'End'}</span><span class="field-value">${period.period_end}</span></div>
-<div class="field"><span class="field-label">${isFr ? 'Type' : 'Type'}</span><span class="field-value">${period.period_type}</span></div>
+<h2>${isFr ? 'Déclaration de TPS/TVH' : 'GST/HST return'}</h2>
+<table>
+${row('101', isFr ? 'Fournitures (chiffre des ventes)' : 'Supplies (sales figure)', supplies)}
+${row('105', isFr ? 'TPS/TVH percue et percevable' : 'GST/HST collected and collectible', tpsColl)}
+${row('108', isFr ? 'CTI et redressements' : 'ITCs payable and adjustments', tpsItc, '-')}
+${row('110', isFr ? 'Acomptes provisionnels TPS/TVH' : 'GST/HST instalments', 0, '-')}
+${row('111', isFr ? 'Autres remboursements TPS/TVH' : 'Other GST/HST rebates', 0, '-')}
+${total('113', tpsNet >= 0 ? (isFr ? 'TPS/TVH à payer' : 'GST/HST payable') : (isFr ? 'Remboursement de TPS/TVH' : 'GST/HST refund'), tpsNet, tpsNet < 0)}
+</table>
 
-<h2>TPS ${isFr ? '(Taxe sur les produits et services)' : '(Goods and Services Tax)'}</h2>
-<div class="field"><span class="field-label">${T.tpsCollected} (5%)</span><span class="field-value">${fmt(period.tps_collected)}</span></div>
-<div class="field"><span class="field-label">${T.tpsCti}</span><span class="field-value class="green"">${fmt(period.tps_cti)}</span></div>
-<div class="box">
-  <div class="box-label">${T.netTps}</div>
-  <div class="box-value ${netTps > 0 ? 'red' : 'green'}">${fmt(netTps)}</div>
+<h2>${isFr ? 'Déclaration de TVQ' : 'QST return'}</h2>
+<table>
+${row('205', isFr ? 'TVQ percue et percevable' : 'QST collected and collectible', tvqColl)}
+${row('208', isFr ? 'RTI et redressements' : 'ITRs payable and adjustments', tvqItr, '-')}
+${row('210', isFr ? 'Acomptes provisionnels TVQ' : 'QST instalment', 0, '-')}
+${row('211', isFr ? 'Autres remboursements TVQ' : 'Other QST rebates', 0, '-')}
+${total('213', tvqNet >= 0 ? (isFr ? 'TVQ à payer' : 'QST payable') : (isFr ? 'Remboursement de TVQ' : 'QST refund'), tvqNet, tvqNet < 0)}
+</table>
+
+<div class="pay">
+  <span class="pay-l">${totalRef > totalDue ? (isFr ? 'Remboursement total' : 'Total refund') : (isFr ? 'Montant à payer' : 'Amount payable')}</span>
+  <span class="pay-v ${totalRef > totalDue ? 'green' : 'red'}">${fmt(totalRef > totalDue ? totalRef : totalDue)}</span>
 </div>
 
-<h2>TVQ ${isFr ? '(Taxe de vente du Québec)' : '(Quebec Sales Tax)'}</h2>
-<div class="field"><span class="field-label">${T.tvqCollected} (9,975%)</span><span class="field-value">${fmt(period.tvq_collected)}</span></div>
-<div class="field"><span class="field-label">${T.tvqRti}</span><span class="field-value">${fmt(period.tvq_rti)}</span></div>
-<div class="box">
-  <div class="box-label">${T.netTvq}</div>
-  <div class="box-value ${netTvq > 0 ? 'red' : 'green'}">${fmt(netTvq)}</div>
-</div>
+${(period.tps_collected || 0) === 0 && (period.tvq_collected || 0) === 0 ? `<div class="disclaimer"><strong>${isFr ? 'Aucune taxe percue dans cette période.' : 'No tax collected in this period.'}</strong> ${isFr ? "Vérifiez que vos factures sont à l'état Envoyée et que vos ventes au comptoir sont saisies avant de produire." : 'Check that your invoices are set to Sent and that any counter sales are entered before you file.'}</div>` : ''}
 
 ${period.status === 'filed' ? `<h2>${isFr ? 'Déclaration produite' : 'Filing submitted'}</h2>
-<div class="field"><span class="field-label">${T.filedAt}</span><span class="field-value">${period.filed_at ? new Date(period.filed_at).toLocaleDateString(isFr ? 'fr-CA' : 'en-CA') : '—'}</span></div>
-${period.confirmation_number ? `<div class="field"><span class="field-label">${T.confirmNum}</span><span class="field-value">${period.confirmation_number}</span></div>` : ''}` : ''}
+<table>
+<tr><td class="lbl">${T.filedAt}</td><td class="val">${period.filed_at ? new Date(period.filed_at).toLocaleDateString(isFr ? 'fr-CA' : 'en-CA') : '-'}</td></tr>
+${period.confirmation_number ? `<tr><td class="lbl">${T.confirmNum}</td><td class="val">${period.confirmation_number}</td></tr>` : ''}
+</table>` : ''}
 
-<p class="sub" style="margin-top:20px">BalanceIQ &nbsp;|&nbsp; ${isFr ? 'À usage indicatif — validez avec votre comptable' : 'For reference only — validate with your accountant'}</p>
+<p class="foot">BalanceIQ &nbsp;|&nbsp; ${isFr ? 'Boîtes 110, 111, 210 et 211 à remplir manuellement si vous avez versé des acomptes ou demandé d\'autres remboursements.' : 'Boxes 110, 111, 210 and 211 are yours to fill in if you paid instalments or claimed other rebates.'}</p>
+<p class="foot">${isFr ? 'À usage indicatif - validez avec votre comptable' : 'For reference only - validate with your accountant'}</p>
 </body></html>`;
 }
 
@@ -213,6 +273,17 @@ export default function TaxPeriodTab({ lang }) {
 
   // All hooks unconditional
   const [subTab, setSubTab] = useState('periods');
+  // Every filing service asks for the registration numbers, so the sheet carries
+  // them rather than sending the operator back to Config to look them up.
+  const [company, setCompany] = useState({});
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await window.api?.storage?.get('dicann-company-info');
+        if (r?.value) setCompany(JSON.parse(r.value));
+      } catch (_) { /* not configured yet */ }
+    })();
+  }, []);
   const [periods, setPeriods] = useState([]);
   const [profiles, setProfiles] = useState([]);
   const [suspense, setSuspense] = useState([]);
@@ -306,6 +377,7 @@ export default function TaxPeriodTab({ lang }) {
         tpsCollected: computed.tpsCollected, tvqCollected: computed.tvqCollected,
         tpsCti: computed.tpsCti, tvqRti: computed.tvqRti,
         netTpsOwed: computed.netTpsOwed, netTvqOwed: computed.netTvqOwed,
+        supplies: computed.supplies,
       });
       setFlash(T.periodSaved);
       setTimeout(() => setFlash(''), 3000);
@@ -332,14 +404,14 @@ export default function TaxPeriodTab({ lang }) {
   }, [T, loadPeriods]);
 
   const doExportFPZ = useCallback((period) => {
-    const html = buildFPZ500HTML(period, T, lang);
+    const html = buildFPZ500HTML(period, T, lang, company);
     if (window.api?.pdf?.print) {
       window.api.pdf.print(html);
     } else {
       const w = window.open('', '_blank');
       if (w) { w.document.write(html); w.document.close(); w.print(); }
     }
-  }, [T, lang]);
+  }, [T, lang, company]);
 
   const doSaveProfile = useCallback(async () => {
     if (!window.api?.tax) return;

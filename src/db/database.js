@@ -1407,6 +1407,19 @@ const MIGRATIONS = [
       }
     },
   },
+  {
+    version: 38,
+    description: 'Box 101 of the FPZ-500 needs the taxable supplies figure, which was never '
+      + 'stored. Collected tax was derived from daily register sales alone, so a business that '
+      + 'invoices its customers rather than ringing them through a till reported zero tax '
+      + 'collected and filed for a refund it was not owed.',
+    up: (database) => {
+      const cols = database.prepare(`PRAGMA table_info(tax_periods)`).all().map(c => c.name);
+      if (cols.length && !cols.includes('supplies')) {
+        database.prepare(`ALTER TABLE tax_periods ADD COLUMN supplies REAL DEFAULT 0`).run();
+      }
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -3822,7 +3835,7 @@ function taxPeriodCompute(periodStart, periodEnd) {
     if (r?.value) liveData = JSON.parse(r.value);
   } catch (_) {}
 
-  let tpsCollected = 0, tvqCollected = 0, tpsCti = 0, tvqRti = 0;
+  let tpsCollected = 0, tvqCollected = 0, tpsCti = 0, tvqRti = 0, plRevenue = 0;
   const billIds = [];
 
   for (const month of months) {
@@ -3846,6 +3859,7 @@ function taxPeriodCompute(periodStart, periodEnd) {
       }
     }
 
+    plRevenue += monthRev;
     tpsCollected += monthRev * 0.05;
     tvqCollected += monthRev * 0.09975;
 
@@ -3885,6 +3899,55 @@ function taxPeriodCompute(periodStart, periodEnd) {
     bankTxCount = row?.n || 0;
   } catch (_) { /* pre-v35 schema - no tax columns yet */ }
 
+  // Tax collected on invoices. The figures above come from daily register sales,
+  // which is the whole story for a restaurant and none of it for a business that
+  // invoices its customers - that business reported zero tax collected and filed
+  // for a refund it was not owed. Scoped to invoice and credit note entries so the
+  // input tax credits that also debit 2100/2110 are not counted twice; they are
+  // already reported separately below. A reversal is judged by the entry it
+  // reverses, so a cancelled invoice takes its tax back out.
+  const _salesSourced = (accountNumber) => {
+    try {
+      const row = db.prepare(
+        `SELECT COALESCE(SUM(jl.credit_cents - jl.debit_cents), 0) / 100.0 AS amt
+         FROM journal_lines jl
+         JOIN journal_entries je ON je.id = jl.entry_id AND je.status IN ('posted','reversed')
+         LEFT JOIN journal_entries orig ON orig.id = je.reverses_entry_id
+         JOIN chart_of_accounts ca ON ca.id = jl.account_id
+         WHERE ca.account_number = ?
+           AND je.entry_date >= ? AND je.entry_date <= ?
+           AND COALESCE(orig.source_type, je.source_type) IN ('invoice','credit_note')`
+      ).get(accountNumber, periodStart, periodEnd);
+      return row?.amt || 0;
+    } catch (_) { return 0; }
+  };
+  const _salesRevenue = () => {
+    try {
+      const row = db.prepare(
+        `SELECT COALESCE(SUM(jl.credit_cents - jl.debit_cents), 0) / 100.0 AS amt
+         FROM journal_lines jl
+         JOIN journal_entries je ON je.id = jl.entry_id AND je.status IN ('posted','reversed')
+         LEFT JOIN journal_entries orig ON orig.id = je.reverses_entry_id
+         JOIN chart_of_accounts ca ON ca.id = jl.account_id
+         WHERE ca.type = 'revenue'
+           AND je.entry_date >= ? AND je.entry_date <= ?
+           AND COALESCE(orig.source_type, je.source_type) IN ('invoice','credit_note')`
+      ).get(periodStart, periodEnd);
+      return row?.amt || 0;
+    } catch (_) { return 0; }
+  };
+  const tpsCollectedFromInvoices = _salesSourced('2100');
+  const tvqCollectedFromInvoices = _salesSourced('2110');
+  const invoicedRevenue = _salesRevenue();
+
+  const tpsCollectedFromRegister = tpsCollected;
+  const tvqCollectedFromRegister = tvqCollected;
+  tpsCollected += tpsCollectedFromInvoices;
+  tvqCollected += tvqCollectedFromInvoices;
+
+  // Box 101: taxable supplies, before tax, from both channels.
+  const supplies = plRevenue + invoicedRevenue;
+
   const tpsCtiFromBills = tpsCti;
   const tvqRtiFromBills = tvqRti;
   tpsCti += tpsCtiFromBank;
@@ -3915,7 +3978,11 @@ function taxPeriodCompute(periodStart, periodEnd) {
 
   return {
     tpsCollected, tvqCollected, tpsCti, tvqRti,
-    netTpsOwed, netTvqOwed,
+    netTpsOwed, netTvqOwed, supplies,
+    // Each half of the filing figure stays visible so it can be traced back.
+    tpsCollectedFromRegister, tvqCollectedFromRegister,
+    tpsCollectedFromInvoices, tvqCollectedFromInvoices,
+    plRevenue, invoicedRevenue,
     // Broken out so the filing figure is auditable back to its two sources.
     tpsCtiFromBills, tvqRtiFromBills, tpsCtiFromBank, tvqCtiFromBank, bankTxCount,
     suspenseCount,
@@ -3932,22 +3999,22 @@ function taxPeriodSave(data) {
   const {
     id, periodType = 'quarterly', periodStart, periodEnd,
     tpsCollected = 0, tvqCollected = 0, tpsCti = 0, tvqRti = 0,
-    netTpsOwed = 0, netTvqOwed = 0, notes = null,
+    netTpsOwed = 0, netTvqOwed = 0, notes = null, supplies = 0,
   } = data;
 
   if (id) {
     db.prepare(
       `UPDATE tax_periods SET tps_collected=?, tvq_collected=?, tps_cti=?, tvq_rti=?,
-       net_tps_owed=?, net_tvq_owed=?, notes=? WHERE id=?`
-    ).run(tpsCollected, tvqCollected, tpsCti, tvqRti, netTpsOwed, netTvqOwed, notes, id);
+       net_tps_owed=?, net_tvq_owed=?, notes=?, supplies=? WHERE id=?`
+    ).run(tpsCollected, tvqCollected, tpsCti, tvqRti, netTpsOwed, netTvqOwed, notes, supplies, id);
     return db.prepare(`SELECT * FROM tax_periods WHERE id=?`).get(id);
   }
 
   const { lastInsertRowid } = db.prepare(
     `INSERT INTO tax_periods (period_type, period_start, period_end, tps_collected, tvq_collected,
-     tps_cti, tvq_rti, net_tps_owed, net_tvq_owed, status, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)`
-  ).run(periodType, periodStart, periodEnd, tpsCollected, tvqCollected, tpsCti, tvqRti, netTpsOwed, netTvqOwed, notes);
+     tps_cti, tvq_rti, net_tps_owed, net_tvq_owed, status, notes, supplies)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)`
+  ).run(periodType, periodStart, periodEnd, tpsCollected, tvqCollected, tpsCti, tvqRti, netTpsOwed, netTvqOwed, notes, supplies);
 
   return db.prepare(`SELECT * FROM tax_periods WHERE id=?`).get(lastInsertRowid);
 }
