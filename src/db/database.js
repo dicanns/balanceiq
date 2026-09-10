@@ -2819,9 +2819,15 @@ function glReverseEntry(entryId, reason, _db) {
   const origLines = db.prepare(`SELECT * FROM journal_lines WHERE entry_id=? ORDER BY line_number`).all(entryId);
   const now = new Date().toISOString();
   const today = now.slice(0, 10);
+  // Date the reversal in the SAME period as the entry it cancels, whenever that
+  // period is still open. Reversing an August entry always stamped it with
+  // today's date, so an as-of-August trial balance showed the original without
+  // its mirror - the correction appeared to have done nothing. A correction
+  // belongs in the period it corrects; only a closed period forces it forward.
+  const reversalDate = (period && period.status === 'closed') ? today : (orig.entry_date || today);
   const uuid = _getDeviceUuid(_db);
-  const year = new Date(today).getUTCFullYear();
-  const reversalPeriod = _ensurePeriod(db, today, orig.location_id);
+  const year = new Date(reversalDate).getUTCFullYear();
+  const reversalPeriod = _ensurePeriod(db, reversalDate, orig.location_id);
 
   return db.transaction(() => {
     const revNumber = _nextEntryNumber(db, year);
@@ -2829,9 +2835,9 @@ function glReverseEntry(entryId, reason, _db) {
       `INSERT INTO journal_entries (entry_number, entry_date, period_id, description, source_type, source_id, status, posted_at, posted_by_device_uuid, posting_date, reverses_entry_id, reversal_reason, device_uuid, location_id)
        VALUES (?, ?, ?, ?, 'reversal', ?, 'draft', ?, ?, ?, ?, ?, ?, ?)`
     ).run(
-      revNumber, today, reversalPeriod.id,
+      revNumber, reversalDate, reversalPeriod.id,
       `Annulation de ${orig.entry_number}${reason ? ': ' + reason : ''}`,
-      orig.source_id || null, now, uuid, today,
+      orig.source_id || null, now, uuid, reversalDate,
       entryId, reason || null, uuid, orig.location_id || null
     );
 
@@ -3657,8 +3663,30 @@ function bankPostMissingEntries(bankAccountId, _db) {
        AND bt.coa_account_id IS NOT NULL`
   ).all(bankAccountId);
 
-  let posted = 0, skipped = 0, orphansReversed = 0;
+  let posted = 0, skipped = 0, orphansReversed = 0, redated = 0;
   db.transaction(() => {
+    // Reversals created before the date fix carry the date they were run rather
+    // than the date they correct, so an as-of-August view showed the original
+    // without its mirror. Pull them back into the period they belong to, as long
+    // as that period is still open.
+    const misdated = db.prepare(
+      `SELECT rev.id, rev.entry_date AS rev_date, orig.entry_date AS orig_date, orig.period_id
+       FROM journal_entries rev
+       JOIN journal_entries orig ON orig.id = rev.reverses_entry_id
+       WHERE rev.reverses_entry_id IS NOT NULL AND rev.entry_date <> orig.entry_date`
+    ).all();
+    for (const m of misdated) {
+      const per = db.prepare(`SELECT status FROM accounting_periods WHERE id=?`).get(m.period_id);
+      if (per && per.status === 'closed') continue;
+      db.prepare(`UPDATE journal_entries SET entry_date=?, period_id=? WHERE id=?`)
+        .run(m.orig_date, m.period_id, m.id);
+      db.prepare(
+        `INSERT INTO audit_log (device_id, module, action, record_type, record_id, old_value, new_value, reason)
+         VALUES (?, 'GL', 'redate_reversal', 'journal_entry', ?, ?, ?, ?)`
+      ).run(getDeviceId(), String(m.id), m.rev_date, m.orig_date, 'Reversal re-dated to the period it corrects');
+      redated++;
+    }
+
     // Clear orphaned double-counts before adding anything new.
     for (const o of bankFindOrphanEntries(db)) {
       glReverseEntry(o.id, 'Ecriture orpheline - correction', db);
@@ -3671,7 +3699,7 @@ function bankPostMissingEntries(bankAccountId, _db) {
       if (id) posted++; else skipped++;
     }
   })();
-  return { ok: true, posted, skipped, orphansReversed, examined: rows.length };
+  return { ok: true, posted, skipped, orphansReversed, redated, examined: rows.length };
 }
 
 function bankStatementsList(bankAccountId) {

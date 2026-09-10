@@ -112,3 +112,40 @@ describe('ORPHAN-002 detecting and clearing existing orphans', () => {
     expect(findOrphans()).toHaveLength(0);
   });
 });
+
+describe('ORPHAN-003 a reversal is dated in the period it corrects', () => {
+  // Reversing an August entry stamped the mirror with today's date, so an
+  // as-of-August trial balance included the original but not its reversal - the
+  // correction looked like it had done nothing.
+  const asOf = (date, cutoff) => db.prepare(
+    `SELECT COALESCE(SUM(jl.debit_cents),0) - COALESCE(SUM(jl.credit_cents),0) AS bal
+     FROM journal_lines jl
+     JOIN journal_entries je ON je.id = jl.entry_id
+      AND je.status IN ('posted','reversed') AND je.entry_date <= ?
+     WHERE jl.account_id = ?`
+  ).get(cutoff, acc(date).id).bal;
+
+  it('the mirror carries the original entry date, not today', () => {
+    const id = postBankEntry('tx-1', '2210', 28977);
+    const orig = db.prepare(`SELECT entry_date FROM journal_entries WHERE id=?`).get(id);
+    glReverseEntry(id, 'orphan repair', db);
+    const mirror = db.prepare(
+      `SELECT entry_date FROM journal_entries WHERE reverses_entry_id=?`
+    ).get(id);
+    expect(mirror.entry_date).toBe(orig.entry_date);
+  });
+
+  it('an as-of-August balance nets to zero once reversed', () => {
+    const id = postBankEntry('tx-1', '2210', 28977);
+    expect(asOf('2210', '2026-08-31')).toBe(28977);
+    glReverseEntry(id, 'orphan repair', db);
+    expect(asOf('2210', '2026-08-31')).toBe(0);
+  });
+
+  it('the reversal does not leak into a later period only', () => {
+    const id = postBankEntry('tx-1', '2210', 28977);
+    glReverseEntry(id, 'orphan repair', db);
+    // Same answer whether you look at August or later.
+    expect(asOf('2210', '2026-08-31')).toBe(asOf('2210', '2026-12-31'));
+  });
+});
