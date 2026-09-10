@@ -235,6 +235,7 @@ contextBridge.exposeInMainWorld('api', {
     exportCSV:            ()             => ipcRenderer.invoke('coa:exportCSV'),
     getMappingSuggestions:(names)        => ipcRenderer.invoke('coa:getMappingSuggestions', names),
     setItcPct:            (id, pct)      => ipcRenderer.invoke('coa:setItcPct', id, pct),
+    rename:               (id, names)    => ipcRenderer.invoke('coa:rename', id, names),
   },
   ledger: {
     entry: {

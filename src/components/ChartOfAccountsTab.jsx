@@ -12,6 +12,8 @@ const TYPE_ORDER = ['asset','liability','equity','revenue','cogs','expense'];
 
 const UI = {
   fr: {
+    rename: 'Renommer',
+    builtinNote: "Compte intégré : vous pouvez changer son nom, mais pas son numéro ni son type. Le code comptabilise les factures au 4000 et les comptes clients au 1100 par numéro, et les rapports regroupent par type.",
     itcLabel: 'CTI',
     itcHelp: "Part de la TPS/TVQ payée sur ce compte qui peut être réclamée. 100 % pour la plupart des dépenses; les repas et représentation sont limités à 50 %. Validez avec votre comptable.",
     search:        'Rechercher un compte…',
@@ -49,6 +51,8 @@ const UI = {
     count:         (n) => `(${n})`,
   },
   en: {
+    rename: 'Rename',
+    builtinNote: "Built-in account: you can change its name, but not its number or type. Invoices post to 4000 and receivables to 1100 by number, and reports group by type.",
     itcLabel: 'ITC',
     itcHelp: "Share of the GST/QST paid on this account that can be claimed. 100% for most expenses; meals and entertainment are limited to 50%. Confirm with your accountant.",
     search:        'Search accounts…',
@@ -100,6 +104,9 @@ function AccountModal({ account, lang, onSave, onClose, C = { text:'#e2e8f0', su
   });
   const [error, setError] = useState('');
   const isEdit = !!account;
+  // A built-in account can be renamed but not restructured: its number and type
+  // are what the posting code and every grouped report rely on.
+  const locked = isEdit && !!account.is_system;
 
   function set(k, v) { setForm(f => ({ ...f, [k]: v })); }
 
@@ -109,7 +116,11 @@ function AccountModal({ account, lang, onSave, onClose, C = { text:'#e2e8f0', su
     }
     if (!window.api?.coa) { setError('API non disponible — redémarrez l\'application.'); return; }
     try {
-      if (isEdit) {
+      if (isEdit && account.is_system) {
+        // Only the label may change on a built-in account. The number and type are
+        // referenced by code and by every report that groups by them.
+        await window.api.coa.rename(account.id, { name_fr: form.name_fr, name_en: form.name_en });
+      } else if (isEdit) {
         await window.api.coa.update(account.id, {
           name_fr:       form.name_fr,
           name_en:       form.name_en,
@@ -162,15 +173,21 @@ function AccountModal({ account, lang, onSave, onClose, C = { text:'#e2e8f0', su
             <span>{t.nameEn}</span>
             <input style={inputStyle} value={form.name_en} onChange={e => set('name_en', e.target.value)} />
           </label>
+          {locked && (
+            <div style={{ fontSize: 12, color: '#a1791f', background: 'rgba(251,191,36,0.08)',
+              border: '1px solid rgba(251,191,36,0.22)', borderRadius: 5, padding: '8px 11px', lineHeight: 1.5 }}>
+              {t.builtinNote}
+            </div>
+          )}
           <label style={labelStyle}>
             <span>{t.type}</span>
-            <select style={inputStyle} value={form.type} onChange={e => set('type', e.target.value)}>
+            <select style={inputStyle} value={form.type} disabled={locked} onChange={e => set('type', e.target.value)}>
               {TYPE_ORDER.map(tp => <option key={tp} value={tp}>{TYPE_LABELS[tp][lang] || TYPE_LABELS[tp].fr}</option>)}
             </select>
           </label>
           <label style={labelStyle}>
             <span>{t.taxHint}</span>
-            <select style={inputStyle} value={form.tax_hint || ''} onChange={e => set('tax_hint', e.target.value)}>
+            <select style={inputStyle} value={form.tax_hint || ''} disabled={locked} onChange={e => set('tax_hint', e.target.value)}>
               <option value="">{t.noTax}</option>
               <option value="tps">{t.tpsOnly}</option>
               <option value="tvq">{t.tvqOnly}</option>
@@ -179,11 +196,11 @@ function AccountModal({ account, lang, onSave, onClose, C = { text:'#e2e8f0', su
           </label>
           <div style={{ display:'flex',gap:20 }}>
             <label style={{ color:C.sub,fontSize:13,display:'flex',alignItems:'center',gap:8,cursor:'pointer' }}>
-              <input type="checkbox" checked={!!form.is_contra} onChange={e => set('is_contra', e.target.checked ? 1 : 0)} />
+              <input type="checkbox" checked={!!form.is_contra} disabled={locked} onChange={e => set('is_contra', e.target.checked ? 1 : 0)} />
               {t.contra}
             </label>
             <label style={{ color:C.sub,fontSize:13,display:'flex',alignItems:'center',gap:8,cursor:'pointer' }}>
-              <input type="checkbox" checked={!!form.is_simplified} onChange={e => set('is_simplified', e.target.checked ? 1 : 0)} />
+              <input type="checkbox" checked={!!form.is_simplified} disabled={locked} onChange={e => set('is_simplified', e.target.checked ? 1 : 0)} />
               {t.simplified_cb}
             </label>
           </div>
@@ -378,8 +395,10 @@ export default function ChartOfAccountsTab({ lang = 'fr', t: theme }) {
                     )}
                   </td>
                   <td style={{ ...tdStyle, textAlign:'right', whiteSpace:'nowrap' }}>
-                    {!acct.is_system && !acct.is_archived && (
-                      <button onClick={() => setModal(acct)} style={rowBtnStyle}>{t.edit}</button>
+                    {!acct.is_archived && (
+                      <button onClick={() => setModal(acct)} style={rowBtnStyle}>
+                        {acct.is_system ? t.rename : t.edit}
+                      </button>
                     )}
                     {!acct.is_archived
                       ? <button onClick={() => handleArchive(acct)} style={{ ...rowBtnStyle, color:'#f87171' }}>{t.archive}</button>

@@ -2751,6 +2751,23 @@ function coaSetItcPct(id, pct, _db) {
   return true;
 }
 
+// A name is a label, not structure. The seeded chart is written for a restaurant
+// - "Ventes - repas", "Achats - nourriture", "Equipement de cuisine" - and every
+// one of those is wrong for a manufacturer, a consultancy or anyone earning
+// royalties. coaUpdate refuses system accounts because the number and the type
+// are load-bearing: code posts invoices to '4000' and receivables to '1100' by
+// number, and a report groups by type. Renaming touches neither, so it is allowed
+// everywhere. Refusing it just meant living with someone else's vocabulary.
+function coaRename(id, { name_fr, name_en }, _db) {
+  const db = _db || getDb();
+  const fr = String(name_fr ?? '').trim();
+  const en = String(name_en ?? '').trim();
+  if (!fr && !en) return false;
+  db.prepare(`UPDATE chart_of_accounts SET name_fr = ?, name_en = ? WHERE id = ?`)
+    .run(fr || en, en || fr, id);
+  return true;
+}
+
 function coaArchive(id) {
   getDb().prepare(`UPDATE chart_of_accounts SET is_archived = 1 WHERE id = ?`).run(id);
   return true;
@@ -6237,7 +6254,7 @@ function mergeApiConfigSecrets(incoming, current) {
 }
 
 module.exports = {
-  incomeStatement, coaSetItcPct,
+  incomeStatement, coaSetItcPct, coaRename,
   SECRET_CONFIG_FIELDS, stripApiConfigSecrets, mergeApiConfigSecrets,
   storageGet, storageSet, storageGetAll, storageGetByPrefix,
   getAllTablesForBackup, restoreAllTablesFromBackup,
