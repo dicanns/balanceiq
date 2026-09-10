@@ -1511,6 +1511,28 @@ const MIGRATIONS = [
       database.transaction(() => { for (const n of watch) upd.run(n); })();
     },
   },
+  {
+    version: 42,
+    description: 'CCA classes a manufacturer needs. The seed covered equipment, vehicles, small '
+      + 'tools, leasehold improvements and computers, which is a restaurant\'s list. Anyone who '
+      + 'makes a product had nowhere to put the machinery that makes it.',
+    up: (database) => {
+      const hasTable = !!database.prepare(
+        `SELECT 1 FROM sqlite_master WHERE type='table' AND name='cca_class_rates'`
+      ).get();
+      if (!hasTable) return;
+      const ins = database.prepare(
+        `INSERT OR IGNORE INTO cca_class_rates (class, rate, method, description_fr, description_en, first_year_rule, effective_from)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      );
+      database.transaction(() => {
+        ins.run('1',    0.04, 'declining', 'Batiments (4%)',                      'Buildings (4%)',                             'half_year', '2024-01-01');
+        ins.run('14.1', 0.05, 'declining', 'Achalandage et incorporels (5%)',     'Goodwill and intangibles (5%)',              'half_year', '2024-01-01');
+        ins.run('43',   0.30, 'declining', 'Machinerie de fabrication (30%)',     'Manufacturing and processing machinery (30%)','half_year', '2024-01-01');
+        ins.run('53',   0.50, 'declining', 'Machinerie de fabrication - acquise avant 2026 (50%)', 'Manufacturing machinery acquired before 2026 (50%)', 'half_year', '2024-01-01');
+      })();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.

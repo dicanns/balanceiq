@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { looksLikeCapitalPurchase } from '../utils/calculations.js';
+import CapexGuide from './CapexGuide.jsx';
 
 // ── i18n ─────────────────────────────────────────────────────────────────────
 const UI = {
@@ -125,6 +126,7 @@ const UI = {
     capexBody:        (amt) => `${amt} sur ce compte passe en dépense complète cette année. Un bien durable (ordinateur, équipement, mobilier) va plutôt au bilan et se déduit sur plusieurs années par l'amortissement fiscal (DPA).`,
     capexHow:         'Si c\'est le cas : choisissez plutôt un compte d\'actif (1500-1580), puis inscrivez le bien dans Immobilisations avec sa catégorie DPA. La TPS/TVQ reste réclamable en entier cette année.',
     capexDismiss:     'Non, c\'est une dépense',
+    capexLearn:       'Comment savoir ?',
     taxTps:           'TPS payée ($)',
     taxTvq:           'TVQ payée ($)',
     matchExact:       (n) => `Description exacte (${n}× utilisé)`,
@@ -265,6 +267,7 @@ const UI = {
     capexBody:        (amt) => `${amt} on this account is deducted in full this year. Something lasting - a computer, equipment, furniture - belongs on the balance sheet instead and is deducted over several years through capital cost allowance (CCA).`,
     capexHow:         'If it is: pick an asset account (1500-1580) instead, then record the item under Fixed Assets with its CCA class. The GST/QST stays fully claimable this year either way.',
     capexDismiss:     'No, this is an expense',
+    capexLearn:       'How do I tell?',
     taxTps:           'GST paid ($)',
     taxTvq:           'QST paid ($)',
     matchExact:       (n) => `Exact description (used ${n}×)`,
@@ -379,6 +382,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   const [categorizeCoaId, setCategorizeCoaId]     = useState('');
   const [categorizeNotes, setCategorizeNotes]     = useState('');
   const [capexDismissed, setCapexDismissed]       = useState(false);
+  const [capexGuideOpen, setCapexGuideOpen]       = useState(false);
   const [catTps, setCatTps]                       = useState('');
   const [catTvq, setCatTvq]                       = useState('');
 
@@ -1073,8 +1077,12 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>{T.capexTitle}</div>
                 <div style={{ color: C.muted }}>{T.capexBody(amt)}</div>
                 <div style={{ color: C.muted, marginTop: 5 }}>{T.capexHow}</div>
-                <button type="button" onClick={() => setCapexDismissed(true)}
-                  style={{ ...btnSmall, fontSize: 11, marginTop: 7 }}>{T.capexDismiss}</button>
+                <div style={{ display: 'flex', gap: 7, marginTop: 7, flexWrap: 'wrap' }}>
+                  <button type="button" onClick={() => setCapexGuideOpen(true)}
+                    style={{ ...btnSmall, fontSize: 11 }}>{T.capexLearn}</button>
+                  <button type="button" onClick={() => setCapexDismissed(true)}
+                    style={{ ...btnSmall, fontSize: 11 }}>{T.capexDismiss}</button>
+                </div>
               </div>
             );
           })()}
@@ -1155,6 +1163,8 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
           </div>
         </ModalOverlay>
       )}
+
+      {capexGuideOpen && <CapexGuide lang={lang} onClose={() => setCapexGuideOpen(false)} />}
     </div>
   );
 }
