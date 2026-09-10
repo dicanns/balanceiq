@@ -313,8 +313,8 @@ describe('ONBOARDING-002 packet application to new location', () => {
     expect(locationOnboardingGet(40, db)).toBeNull();
   });
 
-  it('schema is v36 after migration', () => {
-    expect(db.pragma('user_version', { simple: true })).toBe(36);
+  it('schema is v37 after migration', () => {
+    expect(db.pragma('user_version', { simple: true })).toBe(37);
   });
 
   it('both tables are included in backup', () => {

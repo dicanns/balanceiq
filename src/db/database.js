@@ -1356,6 +1356,57 @@ const MIGRATIONS = [
       ).run();
     },
   },
+  {
+    version: 37,
+    description: 'Append-only enforcement at the database level. audit_log and posted journal '
+      + 'lines were append-only by convention only - the functions merely never updated them - '
+      + 'so any other code path, or a bug, could rewrite history silently. These triggers make '
+      + 'the intent explicit and stop the accidental and casual paths. They cannot stop someone '
+      + 'with direct file access, who can drop the trigger; only a server-held database can.',
+    up: (database) => {
+      const has = (t) => !!database.prepare(
+        `SELECT 1 FROM sqlite_master WHERE type='table' AND name=?`
+      ).get(t);
+
+      // The audit trail is never edited by any code path.
+      if (has('audit_log')) {
+        database.prepare(`DROP TRIGGER IF EXISTS trg_audit_no_update`).run();
+        database.prepare(`DROP TRIGGER IF EXISTS trg_audit_no_delete`).run();
+        database.prepare(`CREATE TRIGGER trg_audit_no_update BEFORE UPDATE ON audit_log
+          BEGIN SELECT RAISE(ABORT, 'ERR_AUDIT_LOG_IMMUTABLE'); END`).run();
+        database.prepare(`CREATE TRIGGER trg_audit_no_delete BEFORE DELETE ON audit_log
+          BEGIN SELECT RAISE(ABORT, 'ERR_AUDIT_LOG_IMMUTABLE'); END`).run();
+      }
+
+      // A daily snapshot is a point-in-time record; altering one is the thing
+      // worth preventing. Deletion stays available because the demo reset needs
+      // to clear them, and a missing snapshot leaves a visible gap.
+      if (has('daily_snapshots')) {
+        database.prepare(`DROP TRIGGER IF EXISTS trg_snapshot_no_update`).run();
+        database.prepare(`CREATE TRIGGER trg_snapshot_no_update BEFORE UPDATE ON daily_snapshots
+          BEGIN SELECT RAISE(ABORT, 'ERR_SNAPSHOT_IMMUTABLE'); END`).run();
+      }
+
+      // Lines of a POSTED entry are immutable - that is what makes an amount in
+      // the ledger trustworthy. Drafts stay editable, and the demo seed data is
+      // exempt so a demo reset still works.
+      if (has('journal_lines') && has('journal_entries')) {
+        const guard = (op) => `
+          SELECT CASE WHEN (
+            SELECT status FROM journal_entries WHERE id = OLD.entry_id
+          ) = 'posted' AND COALESCE((
+            SELECT source_type FROM journal_entries WHERE id = OLD.entry_id
+          ), '') NOT IN ('demo', 'opening_balance')
+          THEN RAISE(ABORT, 'ERR_POSTED_LINE_IMMUTABLE') END;`;
+        database.prepare(`DROP TRIGGER IF EXISTS trg_jl_no_update_posted`).run();
+        database.prepare(`DROP TRIGGER IF EXISTS trg_jl_no_delete_posted`).run();
+        database.prepare(`CREATE TRIGGER trg_jl_no_update_posted BEFORE UPDATE ON journal_lines
+          BEGIN ${guard('update')} END`).run();
+        database.prepare(`CREATE TRIGGER trg_jl_no_delete_posted BEFORE DELETE ON journal_lines
+          BEGIN ${guard('delete')} END`).run();
+      }
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
