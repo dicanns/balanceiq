@@ -39,12 +39,12 @@ const showsHint = (coaId) => {
 };
 
 describe('ETRANSFER-PRE-001 an existing category is respected', () => {
-  it('the reported case: -$5,478.16 already on 6010 stays on 6010', () => {
-    expect(preselect({ amount: -5478.16, coa_account_id: 60 })).toBe('60');
+  it('the reported case: -$3,200.00 already on 6010 stays on 6010', () => {
+    expect(preselect({ amount: -3200.00, coa_account_id: 60 })).toBe('60');
   });
 
   it('does not fall back to payable just because the amount is negative', () => {
-    expect(preselect({ amount: -5478.16, coa_account_id: 60 })).not.toBe('20');
+    expect(preselect({ amount: -3200.00, coa_account_id: 60 })).not.toBe('20');
   });
 
   it('an owner draw keeps its equity account', () => {
@@ -62,7 +62,7 @@ describe('ETRANSFER-PRE-002 direction default for uncategorized rows', () => {
   });
 
   it('an uncategorized outgoing transfer defaults to payable', () => {
-    expect(preselect({ amount: -2299.5 })).toBe('20');
+    expect(preselect({ amount: -1450.00 })).toBe('20');
   });
 
   it('no transaction means no selection', () => {

@@ -6,7 +6,7 @@
  * bank_transactions.journal_entry_id BEFORE reversing, and swallowed a failed
  * reversal. Any failure therefore left the entry posted with nothing pointing at
  * it - an orphan that double-counts in the ledger forever, with no symptom in
- * the UI. Found in real data: JE-2026-000003 duplicated a $289.77 card payment,
+ * the UI. Found in real data: JE-2026-000003 duplicated a $175.40 card payment,
  * overstating the card liability and understating cash by the same amount.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -61,7 +61,7 @@ const balanceOf = (num) => db.prepare(
 
 describe('ORPHAN-001 a reversal that fails must not orphan the entry', () => {
   it('the fixed order reverses before clearing the pointer', () => {
-    const id = postBankEntry('tx-1', '2210', 28977);
+    const id = postBankEntry('tx-1', '2210', 17540);
     // Correct order: reverse, and only then would the pointer be cleared.
     glReverseEntry(id, 'recategorised', db);
     const after = db.prepare(`SELECT status FROM journal_entries WHERE id=?`).get(id);
@@ -69,15 +69,15 @@ describe('ORPHAN-001 a reversal that fails must not orphan the entry', () => {
   });
 
   it('a reversed entry nets to zero, so no double-count remains', () => {
-    const id = postBankEntry('tx-1', '2210', 28977);
-    expect(balanceOf('2210')).toBe(28977);
+    const id = postBankEntry('tx-1', '2210', 17540);
+    expect(balanceOf('2210')).toBe(17540);
     glReverseEntry(id, 'recategorised', db);
     expect(balanceOf('2210')).toBe(0);
     expect(balanceOf('1010')).toBe(0);
   });
 
   it('reversing twice is refused rather than compounding', () => {
-    const id = postBankEntry('tx-1', '2210', 28977);
+    const id = postBankEntry('tx-1', '2210', 17540);
     glReverseEntry(id, 'first', db);
     expect(() => glReverseEntry(id, 'second', db)).toThrow();
   });
@@ -85,14 +85,14 @@ describe('ORPHAN-001 a reversal that fails must not orphan the entry', () => {
 
 describe('ORPHAN-002 detecting and clearing existing orphans', () => {
   it('finds a posted bank_tx entry that nothing points at', () => {
-    postBankEntry('tx-1', '2210', 28977);
+    postBankEntry('tx-1', '2210', 17540);
     expect(findOrphans()).toHaveLength(1);
   });
 
-  it('the reported case: a duplicated $289.77 overstates the card', () => {
-    postBankEntry('tx-1', '2210', 28977);
-    postBankEntry('tx-1-dup', '2210', 28977);
-    expect(balanceOf('2210')).toBe(57954); // double
+  it('the reported case: a duplicated $175.40 overstates the card', () => {
+    postBankEntry('tx-1', '2210', 17540);
+    postBankEntry('tx-1-dup', '2210', 17540);
+    expect(balanceOf('2210')).toBe(35080); // double
 
     // Repair reverses the orphans.
     for (const o of findOrphans()) glReverseEntry(o.id, 'orphan repair', db);
@@ -126,7 +126,7 @@ describe('ORPHAN-003 a reversal is dated in the period it corrects', () => {
   ).get(cutoff, acc(date).id).bal;
 
   it('the mirror carries the original entry date, not today', () => {
-    const id = postBankEntry('tx-1', '2210', 28977);
+    const id = postBankEntry('tx-1', '2210', 17540);
     const orig = db.prepare(`SELECT entry_date FROM journal_entries WHERE id=?`).get(id);
     glReverseEntry(id, 'orphan repair', db);
     const mirror = db.prepare(
@@ -136,14 +136,14 @@ describe('ORPHAN-003 a reversal is dated in the period it corrects', () => {
   });
 
   it('an as-of-August balance nets to zero once reversed', () => {
-    const id = postBankEntry('tx-1', '2210', 28977);
-    expect(asOf('2210', '2026-08-31')).toBe(28977);
+    const id = postBankEntry('tx-1', '2210', 17540);
+    expect(asOf('2210', '2026-08-31')).toBe(17540);
     glReverseEntry(id, 'orphan repair', db);
     expect(asOf('2210', '2026-08-31')).toBe(0);
   });
 
   it('the reversal does not leak into a later period only', () => {
-    const id = postBankEntry('tx-1', '2210', 28977);
+    const id = postBankEntry('tx-1', '2210', 17540);
     glReverseEntry(id, 'orphan repair', db);
     // Same answer whether you look at August or later.
     expect(asOf('2210', '2026-08-31')).toBe(asOf('2210', '2026-12-31'));

@@ -74,15 +74,15 @@ describe('BANKPOST-001 direction follows the sign', () => {
   });
 
   it('the reported wage transfer debits wages', () => {
-    postBankTx({ amount: -5478.16, targetNumber: '6010' });
-    expect(balanceOf('6010')).toBe(547816);
-    expect(balanceOf('1010')).toBe(-547816);
+    postBankTx({ amount: -3200.00, targetNumber: '6010' });
+    expect(balanceOf('6010')).toBe(320000);
+    expect(balanceOf('1010')).toBe(-320000);
   });
 
   it('a credit card payment reduces the card liability', () => {
-    postBankTx({ amount: -1118.32, targetNumber: '2210' });
-    expect(balanceOf('2210')).toBe(111832);   // debit reduces a liability
-    expect(balanceOf('1010')).toBe(-111832);
+    postBankTx({ amount: -940.55, targetNumber: '2210' });
+    expect(balanceOf('2210')).toBe(94055);   // debit reduces a liability
+    expect(balanceOf('1010')).toBe(-94055);
   });
 
   it('money in debits the bank', () => {

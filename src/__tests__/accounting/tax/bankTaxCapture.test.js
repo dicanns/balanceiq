@@ -134,8 +134,8 @@ describe('TAXCAP-005 receipts carry no input tax credit', () => {
 
   it('a credit card payment carries no tax - it settles a liability', () => {
     // Categorized to 2210; the expenses were taxed on the card statement lines.
-    const r = splitWithDirection({ amount: -1118.32 });
+    const r = splitWithDirection({ amount: -940.55 });
     expect(r.tps + r.tvq).toBe(0);
-    expect(r.net).toBe(111832);
+    expect(r.net).toBe(94055);
   });
 });

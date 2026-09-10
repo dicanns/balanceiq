@@ -41,39 +41,39 @@ describe('ETRANSFER-001 money received goes to accounts receivable', () => {
 
 describe('ETRANSFER-002 money sent goes to accounts payable', () => {
   it('a negative amount targets 2010, never 1100', () => {
-    const t = etransferTarget({ amount: -2299.50 });
+    const t = etransferTarget({ amount: -1450.00 });
     expect(t.num).toBe('2010');
     expect(t.num).not.toBe('1100');
   });
 
-  it('the real reported case: -$2,299.50 sent is payable', () => {
-    expect(etransferTarget({ amount: -2299.5 }).num).toBe('2010');
+  it('the real reported case: -$1,450.00 sent is payable', () => {
+    expect(etransferTarget({ amount: -1450.00 }).num).toBe('2010');
   });
 
   it('string amounts from the DB layer are still read correctly', () => {
-    expect(etransferTarget({ amount: '-5478.16' }).num).toBe('2010');
+    expect(etransferTarget({ amount: '-3200.00' }).num).toBe('2010');
     expect(etransferTarget({ amount: '580.86' }).num).toBe('1100');
   });
 });
 
 describe('OFX-DESC-001 descriptions keep the full payee', () => {
   it('merges NAME and MEMO when they differ', () => {
-    expect(ofxDescription('INTERAC ETRNSFR SENT', 'NEOLOGIC INC'))
-      .toBe('INTERAC ETRNSFR SENT NEOLOGIC INC');
+    expect(ofxDescription('INTERAC ETRNSFR SENT', 'EXAMPLE INC'))
+      .toBe('INTERAC ETRNSFR SENT EXAMPLE INC');
   });
 
   it('does not duplicate when MEMO already contains NAME', () => {
-    expect(ofxDescription('AMEX BILL PYMT', 'AMEX BILL PYMT MSP/DIV'))
-      .toBe('AMEX BILL PYMT MSP/DIV');
+    expect(ofxDescription('CARD BILL PYMT', 'CARD BILL PYMT'))
+      .toBe('CARD BILL PYMT');
   });
 
   it('does not duplicate when NAME already contains MEMO', () => {
-    expect(ofxDescription('TD VISA/GM VIS PAYMENT', 'TD VISA')).toBe('TD VISA/GM VIS PAYMENT');
+    expect(ofxDescription('CARD PAYMENT MONTHLY', 'CARD PAYMENT')).toBe('CARD PAYMENT MONTHLY');
   });
 
   it('falls back cleanly when only one field is present', () => {
-    expect(ofxDescription('', 'CAF MILANO - LA')).toBe('CAF MILANO - LA');
-    expect(ofxDescription('QUE MSP/DIV', '')).toBe('QUE MSP/DIV');
+    expect(ofxDescription('', 'EXAMPLE CAFE')).toBe('EXAMPLE CAFE');
+    expect(ofxDescription('GOVT DEPOSIT', '')).toBe('GOVT DEPOSIT');
     expect(ofxDescription('', '', 'DEBIT')).toBe('DEBIT');
   });
 

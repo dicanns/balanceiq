@@ -30,25 +30,25 @@ const OFX = `
 OFXHEADER:100
 <OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS>
 <BANKTRANLIST>
-<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260825<TRNAMT>-289.77<NAME>TD VISA/GM VIS</STMTTRN>
+<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260825<TRNAMT>-175.40<NAME>CARD PAYMENT</STMTTRN>
 </BANKTRANLIST>
 <LEDGERBAL>
-<BALAMT>76786.45
+<BALAMT>88123.60
 <DTASOF>20260831120000
 </LEDGERBAL>
 </STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>`;
 
 describe('OFX-BAL-001 closing balance comes from the file', () => {
   it('reads BALAMT out of LEDGERBAL', () => {
-    expect(parseOFXLedgerBalance(OFX)).toBe(76786.45);
+    expect(parseOFXLedgerBalance(OFX)).toBe(88123.60);
   });
 
   it('handles a negative balance (credit card owing)', () => {
-    expect(parseOFXLedgerBalance('<LEDGERBAL><BALAMT>-1118.32<DTASOF>20260831</LEDGERBAL>')).toBe(-1118.32);
+    expect(parseOFXLedgerBalance('<LEDGERBAL><BALAMT>-940.55<DTASOF>20260831</LEDGERBAL>')).toBe(-940.55);
   });
 
   it('handles thousands separators', () => {
-    expect(parseOFXLedgerBalance('<LEDGERBAL><BALAMT>76,786.45</LEDGERBAL>')).toBe(76786.45);
+    expect(parseOFXLedgerBalance('<LEDGERBAL><BALAMT>88,123.60</LEDGERBAL>')).toBe(88123.60);
   });
 
   it('returns null when the file has no LEDGERBAL', () => {
@@ -63,12 +63,12 @@ describe('OFX-BAL-001 closing balance comes from the file', () => {
 
 describe('OFX-BAL-002 ending-balance precedence', () => {
   it('a value typed by the user wins over the file', () => {
-    expect(resolveEndingBalance(50000, 76786.45, null)).toBe(50000);
+    expect(resolveEndingBalance(50000, 88123.60, null)).toBe(50000);
   });
 
   it('the file balance is used when the field is left blank', () => {
-    expect(resolveEndingBalance('', 76786.45, null)).toBe(76786.45);
-    expect(resolveEndingBalance(undefined, 76786.45, null)).toBe(76786.45);
+    expect(resolveEndingBalance('', 88123.60, null)).toBe(88123.60);
+    expect(resolveEndingBalance(undefined, 88123.60, null)).toBe(88123.60);
   });
 
   it('a CSV running balance is used when there is no file balance', () => {
@@ -80,10 +80,10 @@ describe('OFX-BAL-002 ending-balance precedence', () => {
   });
 
   it('a legitimate zero entered by the user is respected', () => {
-    expect(resolveEndingBalance(0, 76786.45, null)).toBe(0);
+    expect(resolveEndingBalance(0, 88123.60, null)).toBe(0);
   });
 
   it('the reported case: blank field + OFX file no longer yields 0', () => {
-    expect(resolveEndingBalance(undefined, parseOFXLedgerBalance(OFX), null)).toBe(76786.45);
+    expect(resolveEndingBalance(undefined, parseOFXLedgerBalance(OFX), null)).toBe(88123.60);
   });
 });

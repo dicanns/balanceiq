@@ -5,7 +5,7 @@
  *
  * A bank account's opening balance lived only on bank_accounts, where
  * reconciliation used it. The ledger therefore started from zero, so the balance
- * sheet showed only the period's activity - $12,031.95 instead of $76,786.45 -
+ * sheet showed only the period's activity - $38,123.60 instead of $88,123.60 -
  * which reads like a categorizing error but is a missing starting entry.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -63,27 +63,27 @@ const balanceOf = (num) => db.prepare(
 
 describe('OPENBAL-001 the opening balance reaches the ledger', () => {
   it('debits cash and credits opening balance equity', () => {
-    postOpening(1, 64754.50);
-    expect(balanceOf('1010')).toBe(6475450);
-    expect(balanceOf('3400')).toBe(-6475450);
+    postOpening(1, 50000.00);
+    expect(balanceOf('1010')).toBe(5000000);
+    expect(balanceOf('3400')).toBe(-5000000);
   });
 
   it('cash then ties to the bank once activity is added', () => {
-    postOpening(1, 64754.50);
-    // August net activity of +$12,031.95 brings cash to the statement balance.
+    postOpening(1, 50000.00);
+    // August net activity of +$38,123.60 brings cash to the statement balance.
     const { entryId } = glDraftEntry({
       entry_date: '2026-08-31', description: 'activity', source_type: 'bank_tx', source_id: 'x',
       lines: [
-        { account_id: acc('1010').id, debit_cents: 1203195, credit_cents: 0 },
-        { account_id: acc('3400').id, debit_cents: 0, credit_cents: 1203195 },
+        { account_id: acc('1010').id, debit_cents: 3812360, credit_cents: 0 },
+        { account_id: acc('3400').id, debit_cents: 0, credit_cents: 3812360 },
       ],
     }, db);
     glPostEntry(entryId, db);
-    expect(balanceOf('1010')).toBe(7678645); // $76,786.45
+    expect(balanceOf('1010')).toBe(8812360); // $88,123.60
   });
 
   it('the entry balances', () => {
-    const { entryId } = postOpening(1, 64754.50);
+    const { entryId } = postOpening(1, 50000.00);
     const r = db.prepare(`SELECT SUM(debit_cents) d, SUM(credit_cents) c FROM journal_lines WHERE entry_id=?`).get(entryId);
     expect(r.d).toBe(r.c);
   });
@@ -91,9 +91,9 @@ describe('OPENBAL-001 the opening balance reaches the ledger', () => {
 
 describe('OPENBAL-002 repeat and negative balances', () => {
   it('posting twice does not double the opening balance', () => {
-    postOpening(1, 64754.50);
-    expect(postOpening(1, 64754.50).alreadyPosted).toBe(true);
-    expect(balanceOf('1010')).toBe(6475450);
+    postOpening(1, 50000.00);
+    expect(postOpening(1, 50000.00).alreadyPosted).toBe(true);
+    expect(balanceOf('1010')).toBe(5000000);
   });
 
   it('a credit card already owing flips both sides', () => {
@@ -107,7 +107,7 @@ describe('OPENBAL-002 repeat and negative balances', () => {
   });
 
   it('separate accounts each get their own entry', () => {
-    postOpening(1, 64754.50, '1010');
+    postOpening(1, 50000.00, '1010');
     postOpening(2, -1500, '2210');
     expect(db.prepare(`SELECT COUNT(*) c FROM journal_entries WHERE source_type='bank_opening'`).get().c).toBe(2);
   });

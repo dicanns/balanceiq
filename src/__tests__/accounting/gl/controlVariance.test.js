@@ -27,7 +27,7 @@ const coaId = () => db.prepare(`SELECT id FROM chart_of_accounts WHERE account_n
 function makeAccount(opening) {
   const { lastInsertRowid } = db.prepare(
     `INSERT INTO bank_accounts (name, account_type, coa_account_id, opening_balance, opening_date)
-     VALUES ('BMO checking','bank',?,?,'2026-08-01')`
+     VALUES ('Main chequing','bank',?,?,'2026-08-01')`
   ).run(coaId(), opening);
   return lastInsertRowid;
 }
@@ -53,11 +53,11 @@ function subledger(asOf) {
 
 describe('CONTROL-001 the bank subledger stands on its own', () => {
   it('is opening balance plus transactions, independent of any journal entry', () => {
-    const id = makeAccount(64754.50);
-    addTx(id, '2026-08-17', -2835.60);
+    const id = makeAccount(50000.00);
+    addTx(id, '2026-08-17', -1900.00);
     addTx(id, '2026-08-24', 2000);
     // No journal entries exist at all - the figure still computes.
-    expect(subledger('2026-08-31')[0].cents).toBe(6391890);
+    expect(subledger('2026-08-31')[0].cents).toBe(5010000);
   });
 
   it('respects the as-of date', () => {
@@ -69,9 +69,9 @@ describe('CONTROL-001 the bank subledger stands on its own', () => {
   });
 
   it('the reported August figure', () => {
-    const id = makeAccount(64754.50);
-    addTx(id, '2026-08-31', 12031.95);
-    expect(subledger('2026-08-31')[0].cents).toBe(7678645); // $76,786.45
+    const id = makeAccount(50000.00);
+    addTx(id, '2026-08-31', 38123.60);
+    expect(subledger('2026-08-31')[0].cents).toBe(8812360); // $88,123.60
   });
 });
 
@@ -80,25 +80,25 @@ describe('CONTROL-002 each real failure produces a variance', () => {
 
   it('a missing opening balance shows the whole opening figure', () => {
     // GL only saw the period activity; the bank knows about the opening balance.
-    expect(variance(1203195, 7678645)).toBe(-6475450); // -$64,754.50
+    expect(variance(3812360, 8812360)).toBe(-5000000); // -$50,000.00
   });
 
   it('a duplicated entry shows as the duplicated amount', () => {
-    // The $289.77 card payment posted twice: GL is short by it.
-    expect(variance(7678645 - 28977, 7678645)).toBe(-28977);
+    // The $175.40 card payment posted twice: GL is short by it.
+    expect(variance(8812360 - 17540, 8812360)).toBe(-17540);
   });
 
   it('a reversal filed in the wrong period shows in the earlier period', () => {
     // As of August the original counts but its September mirror does not.
-    expect(variance(7678645 - 28977, 7678645)).not.toBe(0);
+    expect(variance(8812360 - 17540, 8812360)).not.toBe(0);
   });
 
   it('a correct ledger shows zero', () => {
-    expect(variance(7678645, 7678645)).toBe(0);
+    expect(variance(8812360, 8812360)).toBe(0);
   });
 
   it('unposted customer receipts show as a genuine, explainable gap', () => {
     // Receipts with no invoice behind them: GL short by exactly that amount.
-    expect(variance(5340621, 7678645)).toBe(-2338024); // -$23,380.24
+    expect(variance(7362360, 8812360)).toBe(-1450000); // -$14,500.00
   });
 });
