@@ -3269,7 +3269,8 @@ function NoteDeCreditEditor({creditNote,clients,factures,companyInfo,docNums,sav
  const taxManual=isTaxOverride(form.tpsOverride)||isTaxOverride(form.tvqOverride);
  const linkedFac=factures.find(f=>f.id===form.factureId);
  const facTotalAmt=linkedFac?computeSoumTotals(linkedFac.lignes,linkedFac).total:0;
- const alreadyCredited=linkedFac?(linkedFac.paiements||[]).filter(p=>p.fromCredit).reduce((s,p)=>s+(p.montant||0),0):0;
+ const ownNumero=savedId?(creditNotes.find(n=>n.id===savedId)?.numero||null):null;
+ const alreadyCredited=linkedFac?(linkedFac.paiements||[]).filter(p=>p.fromCredit&&!(ownNumero&&p.reference===ownNumero)).reduce((s,p)=>s+(p.montant||0),0):0;
  const remainingCredit=Math.max(0,facTotalAmt-alreadyCredited);
  const creditExceedsAvailable=linkedFac&&totals.total>remainingCredit+0.005;
  const locked=!isNew&&form.statut!=="Brouillon";
@@ -3314,6 +3315,39 @@ function NoteDeCreditEditor({creditNote,clients,factures,companyInfo,docNums,sav
  } else {
  saveCreditNotes(creditNotes.map(n=>n.id===id?rec:n));
  logUpdate('invoice','note_de_credit',id,'document',null,JSON.stringify(rec));
+ // A credit note posts on its first save and stays editable while it is a draft.
+ // Without this, a corrected amount lived on the document while the ledger and
+ // the invoice still held the original, and nothing showed they had diverged.
+ // Reverse first and post the new figures only once the reversal succeeded: the
+ // other order leaves two live entries and double-counts the credit forever.
+ if(window.api?.ledger?.creditNoteReverse&&window.api?.ledger?.creditNotePost){
+ const _cnExempt=!!(clients?.find(c=>c.id===(form.clientId||linkedFac?.clientId))?.taxExempt);
+ (async()=>{
+ try{
+ const rev=await window.api.ledger.creditNoteReverse({creditNoteId:id,reason:T===EN?"Credit note edited":"Note de crédit modifiée"});
+ if(!rev?.ok){alert(T===EN?"The ledger entry could not be reversed, so the correction was not posted. The credit note was saved.":"L'écriture n'a pas pu être annulée, la correction n'a donc pas été comptabilisée. La note de crédit est enregistrée.");return;}
+ const res=await window.api.ledger.creditNotePost({
+ creditNoteId:id,creditNoteDate:form.date,
+ subtotalCents:Math.round((totals.sousTotal||0)*100),
+ tpsCents:Math.round((totals.tpsTotal||0)*100),
+ tvqCents:Math.round((totals.tvqTotal||0)*100),
+ totalCents:Math.round((totals.total||0)*100),
+ taxExempt:_cnExempt,
+ });
+ if(res?.ok&&res.entryId)saveCreditNotes(prev=>prev.map(n=>n.id===id?{...n,glEntryId:res.entryId}:n));
+ }catch(_){}
+ })();
+ }
+ // The credit line sitting on the invoice has to follow the new amount too,
+ // otherwise the invoice balance keeps crediting the figure that was replaced.
+ if(form.factureId&&linkedFac&&ownNumero){
+ const newPaiements=(linkedFac.paiements||[]).map(p=>(p.fromCredit&&p.reference===ownNumero)?{...p,montant:creditAmount,date:form.date}:p);
+ const totalPaye=newPaiements.reduce((s,p)=>s+(p.montant||0),0);
+ const solde=facTotalAmt-totalPaye;
+ const newStatut=solde<=0.005?"Créditée":totalPaye>0?"Payée partiellement":"Envoyée";
+ saveFactures(factures.map(f=>f.id===form.factureId?{...f,paiements:newPaiements,statut:newStatut}:f));
+ logUpdate('invoice','facture',form.factureId,'statut',linkedFac.statut,newStatut);
+ }
  }
  setSavedId(id);setSaved(true);setTimeout(()=>setSaved(false),2000);
  };

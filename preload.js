@@ -250,6 +250,7 @@ contextBridge.exposeInMainWorld('api', {
     paymentPost:    (opts) => ipcRenderer.invoke('ledger:payment:post', opts),
     paymentReverse: (opts) => ipcRenderer.invoke('ledger:payment:reverse', opts),
     creditNotePost: (opts) => ipcRenderer.invoke('ledger:creditnote:post', opts),
+    creditNoteReverse: (opts) => ipcRenderer.invoke('ledger:creditnote:reverse', opts),
     account: {
       history: (accountId, opts)        => ipcRenderer.invoke('ledger:account:history', accountId, opts),
     },

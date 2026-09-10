@@ -14,6 +14,7 @@ Sentry.init({
 });
 const {
   storageGet, storageSet, storageGetAll,
+  stripApiConfigSecrets, mergeApiConfigSecrets,
   getAllTablesForBackup, restoreAllTablesFromBackup,
   syncQueuePush, syncQueuePeek, syncQueueDelete, syncQueueIncrementAttempts, syncQueueLength,
   auditInsert, auditQuery, getDeviceId,
@@ -441,7 +442,7 @@ async function performAutoBackup() {
       roster:    all['dicann-roster']       || [],
       empRoster: all['dicann-emp-roster']   || [],
       suppliers: all['dicann-suppliers-v2'] || [],
-      apiConfig: all['dicann-api-config']   || {},
+      apiConfig: stripApiConfigSecrets(all['dicann-api-config'] || {}),
       plData: {},
     },
     sqlite,
@@ -577,7 +578,13 @@ ipcMain.handle('backup:restore', async () => {
   if (legacy.roster !== undefined)    storageSet('dicann-roster', JSON.stringify(legacy.roster));
   if (legacy.empRoster !== undefined) storageSet('dicann-emp-roster', JSON.stringify(legacy.empRoster));
   if (legacy.suppliers !== undefined) storageSet('dicann-suppliers-v2', JSON.stringify(legacy.suppliers));
-  if (legacy.apiConfig)               storageSet('dicann-api-config', JSON.stringify(legacy.apiConfig));
+  if (legacy.apiConfig) {
+    // A backup written since v1.50 carries no credentials, so a plain overwrite
+    // would log the operator out of Stripe and Resend. Keep what is already here.
+    let currentCfg = {};
+    try { currentCfg = JSON.parse(storageGet('dicann-api-config')?.value || '{}'); } catch { /* no config yet */ }
+    storageSet('dicann-api-config', JSON.stringify(mergeApiConfigSecrets(legacy.apiConfig, currentCfg)));
+  }
   if (legacy.plData) {
     Object.entries(legacy.plData).forEach(([month, val]) => {
       storageSet(`dicann-pl-${month}`, JSON.stringify(val));
@@ -1687,6 +1694,24 @@ ipcMain.handle('ledger:payment:reverse', async (_e, { paymentId, reason }) => {
   }
 });
 
+ipcMain.handle('ledger:creditnote:reverse', async (_e, { creditNoteId, reason }) => {
+  // An edited credit note has to carry its correction into the ledger. Reversing
+  // and re-posting leaves both the original entry and its mirror in place, which
+  // is the whole point of an append-only trail - the correction is visible rather
+  // than history being quietly rewritten. glFindEntryBySource only matches draft
+  // and posted entries, so the re-post that follows this is not blocked by the
+  // idempotency guard on the entry we just reversed.
+  try {
+    const entry = glFindEntryBySource('credit_note', creditNoteId);
+    if (!entry) return { ok: true, nothingToReverse: true };
+    if (entry.status === 'draft') { glDeleteDraft(entry.id); return { ok: true, deletedDraft: true }; }
+    const res = glReverseEntry(entry.id, reason || 'Note de crédit modifiée');
+    return { ok: true, ...res };
+  } catch (err) {
+    return { ok: false, error: 'reverse_failed', detail: String(err?.message ?? err) };
+  }
+});
+
 ipcMain.handle('ledger:invoice:post', async (_e, {
   invoiceId, invoiceDate, subtotalCents, tpsCents, tvqCents, totalCents, taxExempt,
 }) => {
@@ -2735,7 +2760,10 @@ ipcMain.handle('supabase:fetch', async (_e, { url, method, headers, body }) => {
 });
 
 // ── Cloud Sync Queue IPC ─────────────────────────────────────────────────────
-ipcMain.handle('syncQueue:push',              (_e, key, value) => syncQueuePush(key, value));
+// Stripping at the IPC boundary rather than at the caller means any future push
+// of this key is covered by the same guard.
+ipcMain.handle('syncQueue:push',              (_e, key, value) =>
+  syncQueuePush(key, key === 'dicann-api-config' ? stripApiConfigSecrets(value) : value));
 ipcMain.handle('syncQueue:peek',              (_e, limit)      => syncQueuePeek(limit));
 ipcMain.handle('syncQueue:delete',            (_e, id)         => syncQueueDelete(id));
 ipcMain.handle('syncQueue:incrementAttempts', (_e, id)         => syncQueueIncrementAttempts(id));

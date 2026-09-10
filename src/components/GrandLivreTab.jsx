@@ -1,4 +1,4 @@
-import { calcInvoiceOutstanding } from '../utils/calculations.js';
+import { calcInvoiceOutstanding, computeInvoiceTotals } from '../utils/calculations.js';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -1025,16 +1025,41 @@ function ControlVarianceTab({ lang }) {
             for (const c of (cRaw?.value ? JSON.parse(cRaw.value) : [])) clientsById[c.id] = c;
           } catch (_) {}
 
+          const exemptOf = (clientId) => {
+            const cl = clientsById[clientId];
+            return cl?.taxExempt
+              ? { exemptFromTps: true, exemptFromTvq: true }
+              : { exemptFromTps: cl?.exemptFromTps, exemptFromTvq: cl?.exemptFromTvq };
+          };
+
           let sum = 0;
           for (const f of factures) {
             if (['Payée','Créditée','Annulée','Brouillon'].includes(f.statut)) continue;
             if (f.documentType === 'proforma') continue;
-            const cl = clientsById[f.clientId];
-            const exempt = cl?.taxExempt
-              ? { exemptFromTps: true, exemptFromTvq: true }
-              : { exemptFromTps: cl?.exemptFromTps, exemptFromTvq: cl?.exemptFromTvq };
-            sum += calcInvoiceOutstanding(f, exempt);
+            // The ledger side is a trial balance as of a date, so the subledger has
+            // to stop at the same date. A future-dated invoice used to count here
+            // and not there, which reported a variance for a document that had
+            // simply not happened yet.
+            if (f.date && f.date > asOfDate) continue;
+            sum += calcInvoiceOutstanding(f, exemptOf(f.clientId));
           }
+
+          // A credit note with no invoice behind it credits 1100 in the ledger and
+          // reduces nothing here, because this walks invoices only. The customer
+          // genuinely owes less, so the subledger has to say so - otherwise every
+          // unapplied credit reported a variance indistinguishable from an error.
+          // A credit note that IS linked to an invoice is already reflected in that
+          // invoice's balance as a credit payment, and must not be counted twice.
+          try {
+            const nRaw = await window.api.storage.get('dicann-fac-creditnotes');
+            for (const n of (nRaw?.value ? JSON.parse(nRaw.value) : [])) {
+              if (n.factureId) continue;
+              if (n.statut === 'Annulée') continue;
+              if (n.date && n.date > asOfDate) continue;
+              sum -= computeInvoiceTotals(n.lignes, { ...exemptOf(n.clientId), tpsOverride: n.tpsOverride, tvqOverride: n.tvqOverride }).total;
+            }
+          } catch (_) {}
+
           arCents = Math.round(sum * 100);
         }
       } catch (_) {}

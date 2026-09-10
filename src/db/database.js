@@ -5925,7 +5925,41 @@ function complianceGetLists({ dateFrom, dateTo } = {}, _db) {
   return { unapproved, withWarnings, reopened, topVarianceCashiers, topVarianceRegisters, missingEvidence, missingDepositVerif };
 }
 
+// ── API CONFIG SECRETS ────────────────────────────────────────────────────────
+// These fields in dicann-api-config are live credentials. They are needed on this
+// machine to send mail and charge cards, and nowhere else. The config object was
+// pushed to Supabase on every save and written verbatim into every daily backup,
+// which put a working Stripe secret key into any copy of either. One list, used
+// by both boundaries (CLAUDE.md rule 5).
+const SECRET_CONFIG_FIELDS = ['stripeSecretKey', 'resendKey', 'padWebhookSecret'];
+
+// Everything except the credentials. Accepts an object or a JSON string and
+// returns the same shape, so it can sit directly on either boundary.
+function stripApiConfigSecrets(config) {
+  const wasString = typeof config === 'string';
+  let obj;
+  try { obj = wasString ? JSON.parse(config) : config; } catch { return config; }
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return config;
+  const out = { ...obj };
+  for (const f of SECRET_CONFIG_FIELDS) delete out[f];
+  return wasString ? JSON.stringify(out) : out;
+}
+
+// Restoring a backup must not wipe working credentials. The backup no longer
+// carries them, so a plain overwrite would silently log the operator out of
+// Stripe and Resend; anything the incoming config does carry still wins.
+function mergeApiConfigSecrets(incoming, current) {
+  const inc = stripApiConfigSecrets(incoming) || {};
+  const cur = (current && typeof current === 'object') ? current : {};
+  const out = { ...inc };
+  for (const f of SECRET_CONFIG_FIELDS) {
+    if (inc[f] === undefined && cur[f] !== undefined) out[f] = cur[f];
+  }
+  return out;
+}
+
 module.exports = {
+  SECRET_CONFIG_FIELDS, stripApiConfigSecrets, mergeApiConfigSecrets,
   storageGet, storageSet, storageGetAll, storageGetByPrefix,
   getAllTablesForBackup, restoreAllTablesFromBackup,
   syncQueuePush, syncQueuePeek, syncQueueDelete, syncQueueIncrementAttempts, syncQueueLength,
