@@ -14,7 +14,7 @@ Sentry.init({
 });
 const {
   storageGet, storageSet, storageGetAll,
-  stripApiConfigSecrets, mergeApiConfigSecrets,
+  stripApiConfigSecrets, mergeApiConfigSecrets, incomeStatement,
   getAllTablesForBackup, restoreAllTablesFromBackup,
   syncQueuePush, syncQueuePeek, syncQueueDelete, syncQueueIncrementAttempts, syncQueueLength,
   auditInsert, auditQuery, getDeviceId,
@@ -1802,6 +1802,7 @@ ipcMain.handle('ledger:entry:get',     (_e, id)                => glGetEntry(id)
 ipcMain.handle('ledger:entry:list',    (_e, opts)              => glListEntries(opts));
 ipcMain.handle('ledger:account:history', (_e, accountId, opts) => glGetAccountHistory(accountId, opts));
 ipcMain.handle('ledger:trial_balance', (_e, asOfDate, opts)    => trialBalance(asOfDate, opts));
+ipcMain.handle('ledger:income_statement', (_e, start, end, opts) => incomeStatement(start, end, opts || {}));
 ipcMain.handle('ledger:audit:list',    (_e, opts)              => glAuditLogList(opts));
 ipcMain.handle('period:list',          (_e, opts)              => periodList(opts));
 ipcMain.handle('period:open',          (_e, data)              => periodOpen(data));

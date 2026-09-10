@@ -255,6 +255,7 @@ contextBridge.exposeInMainWorld('api', {
       history: (accountId, opts)        => ipcRenderer.invoke('ledger:account:history', accountId, opts),
     },
     trialBalance: (asOfDate, opts)      => ipcRenderer.invoke('ledger:trial_balance', asOfDate, opts),
+    incomeStatement: (start, end, opts) => ipcRenderer.invoke('ledger:income_statement', start, end, opts),
     audit:        { list: (opts)        => ipcRenderer.invoke('ledger:audit:list', opts) },
   },
   period: {

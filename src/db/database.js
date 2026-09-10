@@ -1420,6 +1420,44 @@ const MIGRATIONS = [
       }
     },
   },
+  {
+    version: 39,
+    description: 'Split the accounts a tax reviewer looks at hardest. 6800 lumped travel in with '
+      + 'meals and entertainment, but only the meals half carries the 50% restriction on the '
+      + 'deduction and on the input tax credit, and gifts are different again. One account for '
+      + 'the three made the restricted figure impossible to read off the books.',
+    up: (database) => {
+      const hasTable = !!database.prepare(
+        `SELECT 1 FROM sqlite_master WHERE type='table' AND name='chart_of_accounts'`
+      ).get();
+      if (!hasTable) return;
+      const cols = database.prepare(`PRAGMA table_info(chart_of_accounts)`).all().map(c => c.name);
+      if (!cols.includes('account_number')) return;
+
+      const has = (n) => !!database.prepare(
+        `SELECT 1 FROM chart_of_accounts WHERE account_number=?`
+      ).get(n);
+      const ins = database.prepare(`INSERT OR IGNORE INTO chart_of_accounts
+        (account_number, name_fr, name_en, type, is_contra, is_simplified, is_system, tax_hint)
+        VALUES (?, ?, ?, ?, 0, 0, 1, 'both')`);
+
+      const add = [
+        ['6810', 'Repas et représentation (50%)', 'Meals and entertainment (50%)', 'expense'],
+        ['6820', 'Cadeaux et dons',               'Gifts and donations',           'expense'],
+        ['6830', 'Formation et congrès',          'Training and conferences',      'expense'],
+      ];
+      database.transaction(() => {
+        for (const row of add) if (!has(row[0])) ins.run(...row);
+        // 6800 keeps its number so nothing already posted to it moves, but its
+        // name stops implying it covers meals.
+        if (has('6800')) {
+          database.prepare(
+            `UPDATE chart_of_accounts SET name_fr=?, name_en=? WHERE account_number='6800'`
+          ).run('Déplacements (transport, hébergement)', 'Travel (transport, lodging)');
+        }
+      })();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -3030,6 +3068,76 @@ function glGetAccountHistory(accountId, { dateFrom = null, dateTo = null, locati
      WHERE ${conds.join(' AND ')}
      ORDER BY je.entry_date ASC, je.id ASC`
   ).all(...params);
+}
+
+// Income statement for a date range: where the money came from and where it went.
+// The trial balance answers "is the ledger internally consistent"; this answers the
+// question an owner actually asks, and it is the statement an accountant hands back
+// at year end. Revenue and expense accounts only - balance sheet accounts have no
+// place in a statement of a period's activity.
+//
+// Signs are normalised so an ordinary figure reads positive: revenue is
+// credit-natured and expenses are debit-natured. A contra account needs no
+// special case - sales returns hold debits, so credit-minus-debit is already the
+// negative that reduces revenue.
+function incomeStatement(periodStart, periodEnd, { locationId = null, _db } = {}) {
+  const db = _db || getDb();
+  const params = [periodStart, periodEnd];
+  const locCond = locationId != null ? '(je.location_id IS ? OR je.location_id=?)' : '1=1';
+  if (locationId != null) params.push(locationId, locationId);
+
+  const rows = db.prepare(
+    `SELECT coa.id AS account_id, coa.account_number, coa.name_fr, coa.name_en,
+            coa.type, coa.is_contra,
+            COALESCE(SUM(jl.debit_cents), 0)  AS debit_cents,
+            COALESCE(SUM(jl.credit_cents), 0) AS credit_cents
+     FROM journal_lines jl
+     JOIN journal_entries je ON je.id = jl.entry_id AND je.status IN ('posted','reversed')
+       AND je.entry_date >= ? AND je.entry_date <= ?
+     JOIN chart_of_accounts coa ON coa.id = jl.account_id
+     WHERE coa.type IN ('revenue','cogs','expense') AND ${locCond}
+     GROUP BY jl.account_id
+     ORDER BY coa.account_number ASC`
+  ).all(...params);
+
+  const lines = rows.map((r) => {
+    const natural = r.type === 'revenue'
+      ? r.credit_cents - r.debit_cents
+      : r.debit_cents - r.credit_cents;
+    return {
+      accountId: r.account_id, accountNumber: r.account_number,
+      nameFr: r.name_fr, nameEn: r.name_en, type: r.type,
+      isContra: !!r.is_contra,
+      // No sign flip for a contra account: the natural calculation already gives
+      // it. Sales returns hold debits, so credit-minus-debit is negative, which
+      // is exactly the reduction to revenue it should be. Flipping it turned a
+      // refund into extra income.
+      amountCents: natural,
+    };
+  }).filter(l => l.amountCents !== 0);
+
+  const sum = (type) => lines.filter(l => l.type === type)
+    .reduce((s, l) => s + l.amountCents, 0);
+
+  const revenueCents = sum('revenue');
+  const cogsCents    = sum('cogs');
+  const expenseCents = sum('expense');
+  const grossProfitCents = revenueCents - cogsCents;
+  const netIncomeCents   = grossProfitCents - expenseCents;
+
+  // Share of revenue is what makes a category legible: "meals are 4% of sales"
+  // is a sentence an owner and a reviewer both understand, where a dollar figure
+  // on its own is not. Guarded because a period can have costs and no sales.
+  const pct = (c) => revenueCents > 0 ? (c / revenueCents) * 100 : null;
+
+  return {
+    periodStart, periodEnd,
+    lines: lines.map(l => ({ ...l, pctOfRevenue: pct(l.amountCents) })),
+    revenueCents, cogsCents, expenseCents,
+    grossProfitCents, netIncomeCents,
+    grossMarginPct: pct(grossProfitCents),
+    netMarginPct: pct(netIncomeCents),
+  };
 }
 
 function trialBalance(asOfDate, { locationId = null } = {}) {
@@ -6026,6 +6134,7 @@ function mergeApiConfigSecrets(incoming, current) {
 }
 
 module.exports = {
+  incomeStatement,
   SECRET_CONFIG_FIELDS, stripApiConfigSecrets, mergeApiConfigSecrets,
   storageGet, storageSet, storageGetAll, storageGetByPrefix,
   getAllTablesForBackup, restoreAllTablesFromBackup,

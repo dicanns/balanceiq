@@ -79,7 +79,22 @@ const UI = {
   fr: {
     tabJournal:       'Journal',
     tabBalance:       'Balance de vérification',
+    tabResults:       'Résultats',
     tabControl:       'Comptes de contrôle',
+    isTitle:          'État des résultats',
+    isRevenue:        'Produits',
+    isCogs:           'Coût des ventes',
+    isGross:          'Marge brute',
+    isExpenses:       'Charges',
+    isNet:            'Bénéfice net',
+    isShare:          '% des ventes',
+    isAmount:         'Montant',
+    isAccount:        'Compte',
+    isNoData:         'Aucune écriture dans cette période.',
+    isFrom:           'Du',
+    isTo:             'au',
+    isGenerate:       'Générer',
+    isRestricted:     'Ces postes sont ceux qu\'un vérificateur regarde en premier. La déduction et le CTI/RTI sur les repas et représentation sont limités à 50 % - validez avec votre comptable.',
     tabPeriods:       'Périodes',
     tabExport:        'Exporter',
     ledgerExport:     'Exporter le journal',
@@ -179,7 +194,22 @@ const UI = {
   en: {
     tabJournal:       'Journal',
     tabBalance:       'Trial Balance',
+    tabResults:       'Income Statement',
     tabControl:       'Control Accounts',
+    isTitle:          'Income statement',
+    isRevenue:        'Revenue',
+    isCogs:           'Cost of sales',
+    isGross:          'Gross profit',
+    isExpenses:       'Expenses',
+    isNet:            'Net income',
+    isShare:          '% of sales',
+    isAmount:         'Amount',
+    isAccount:        'Account',
+    isNoData:         'No entries in this period.',
+    isFrom:           'From',
+    isTo:             'to',
+    isGenerate:       'Generate',
+    isRestricted:     'These are the lines a reviewer looks at first. The deduction and the input tax credit on meals and entertainment are limited to 50% - confirm with your accountant.',
     tabPeriods:       'Periods',
     tabExport:        'Export',
     ledgerExport:     'Export journal',
@@ -755,6 +785,127 @@ function JournalTab({ lang, accounts }) {
 
 // ── TrialBalanceTab ────────────────────────────────────────────────────────────
 
+// ── INCOME STATEMENT ─────────────────────────────────────────────────────────
+// The trial balance says the ledger adds up. This says where the money went,
+// which is the question an owner asks and the statement an accountant returns.
+// Every expense is shown as a share of sales as well as a dollar figure, because
+// "meals are 4% of sales" is a sentence both an owner and a reviewer understand.
+function IncomeStatementTab({ lang }) {
+  const t = UI[lang];
+  const [start, setStart] = useState(`${new Date().getFullYear()}-01-01`);
+  const [end, setEnd]     = useState(todayStr());
+  const [data, setData]   = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!window.api?.ledger?.incomeStatement) return;
+    setLoading(true);
+    try { setData(await window.api.ledger.incomeStatement(start, end, {})); }
+    catch (_) { setData(null); }
+    finally { setLoading(false); }
+  }, [start, end]);
+
+  // Generating on arrival and on any change of dates: making the user press a
+  // button to see a report they already asked for by opening the tab is friction
+  // for nothing.
+  useEffect(() => { load(); }, [load]);
+
+  const money = (c) => (c / 100).toLocaleString(lang === 'en' ? 'en-CA' : 'fr-CA',
+    { style: 'currency', currency: 'CAD' });
+  const share = (p) => p == null ? '-' : `${p.toFixed(1)} %`;
+  const name  = (l) => lang === 'en' ? (l.nameEn || l.nameFr) : (l.nameFr || l.nameEn);
+
+  // The accounts a reviewer tests first, called out where they sit.
+  const WATCHED = ['6810', '6820', '6800'];
+
+  const inputS = {
+    background: '#161822', border: '1px solid #2d3148', borderRadius: 5,
+    color: '#e2e8f0', fontSize: 13, padding: '5px 8px', outline: 'none',
+  };
+  const th = { textAlign: 'left', fontSize: 11, color: '#64748b', fontWeight: 600, padding: '6px 8px', textTransform: 'uppercase', letterSpacing: '.4px' };
+  const td = { padding: '5px 8px', fontSize: 13, color: '#cbd5e1', borderBottom: '1px solid #1e2131' };
+  const num = { ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
+
+  const section = (label, rows, totalCents) => rows.length === 0 ? null : (
+    <>
+      <tr><td colSpan={3} style={{ ...td, paddingTop: 16, color: '#f97316', fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: '.5px', borderBottom: '1px solid #2d3148' }}>{label}</td></tr>
+      {rows.map(l => {
+        const watched = WATCHED.includes(l.accountNumber);
+        return (
+          <tr key={l.accountId}>
+            <td style={{ ...td, color: watched ? '#fbbf24' : '#cbd5e1' }}>
+              <span style={{ color: '#64748b', marginRight: 8, fontVariantNumeric: 'tabular-nums' }}>{l.accountNumber}</span>
+              {name(l)}
+            </td>
+            <td style={num}>{money(l.amountCents)}</td>
+            <td style={{ ...num, color: '#64748b' }}>{share(l.pctOfRevenue)}</td>
+          </tr>
+        );
+      })}
+      <tr>
+        <td style={{ ...td, fontWeight: 700, color: '#e2e8f0' }}>{label}</td>
+        <td style={{ ...num, fontWeight: 700, color: '#e2e8f0' }}>{money(totalCents)}</td>
+        <td style={{ ...num, fontWeight: 700, color: '#64748b' }}>
+          {share(data.revenueCents > 0 ? (totalCents / data.revenueCents) * 100 : null)}
+        </td>
+      </tr>
+    </>
+  );
+
+  const totalRow = (label, cents, pct, strong) => (
+    <tr>
+      <td style={{ ...td, fontWeight: 700, fontSize: strong ? 14 : 13, color: strong ? '#f97316' : '#e2e8f0', borderTop: '2px solid #2d3148' }}>{label}</td>
+      <td style={{ ...num, fontWeight: 700, fontSize: strong ? 14 : 13, color: cents < 0 ? '#ef4444' : (strong ? '#22c55e' : '#e2e8f0'), borderTop: '2px solid #2d3148' }}>{money(cents)}</td>
+      <td style={{ ...num, fontWeight: 700, color: '#64748b', borderTop: '2px solid #2d3148' }}>{share(pct)}</td>
+    </tr>
+  );
+
+  const byType = (ty) => (data?.lines || []).filter(l => l.type === ty);
+  const showsWatched = (data?.lines || []).some(l => WATCHED.includes(l.accountNumber));
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 18, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, color: '#94a3b8' }}>{t.isFrom}</span>
+        <input type="date" value={start} onChange={e => setStart(e.target.value)} style={inputS} />
+        <span style={{ fontSize: 13, color: '#94a3b8' }}>{t.isTo}</span>
+        <input type="date" value={end} onChange={e => setEnd(e.target.value)} style={inputS} />
+        <button onClick={load} disabled={loading} style={{
+          padding: '5px 14px', borderRadius: 5, border: '1px solid #2d3148',
+          background: '#1e2131', color: '#e2e8f0', fontSize: 12, fontWeight: 600,
+          cursor: loading ? 'default' : 'pointer', opacity: loading ? 0.5 : 1,
+        }}>{t.isGenerate}</button>
+      </div>
+
+      {!data || data.lines.length === 0 ? (
+        <div style={{ color: '#64748b', fontSize: 13, padding: '20px 0' }}>{t.isNoData}</div>
+      ) : (
+        <>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr>
+              <th style={th}>{t.isAccount}</th>
+              <th style={{ ...th, textAlign: 'right' }}>{t.isAmount}</th>
+              <th style={{ ...th, textAlign: 'right' }}>{t.isShare}</th>
+            </tr></thead>
+            <tbody>
+              {section(t.isRevenue, byType('revenue'), data.revenueCents)}
+              {section(t.isCogs, byType('cogs'), data.cogsCents)}
+              {byType('cogs').length > 0 && totalRow(t.isGross, data.grossProfitCents, data.grossMarginPct, false)}
+              {section(t.isExpenses, byType('expense'), data.expenseCents)}
+              {totalRow(t.isNet, data.netIncomeCents, data.netMarginPct, true)}
+            </tbody>
+          </table>
+          {showsWatched && (
+            <div style={{ marginTop: 16, fontSize: 11.5, color: '#a1791f', background: 'rgba(251,191,36,0.07)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: 6, padding: '8px 11px', lineHeight: 1.5 }}>
+              {t.isRestricted}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function TrialBalanceTab({ lang }) {
   const t = UI[lang];
   // Default to previous month — last fully-closed period is more useful than mid-current-month
@@ -1274,6 +1425,7 @@ export default function GrandLivreTab({ lang = 'fr' }) {
         {[
           ['journal', t.tabJournal],
           ['balance', t.tabBalance],
+          ['results', t.tabResults],
           ['control', t.tabControl],
           ['periods', t.tabPeriods],
           ['export',  t.tabExport],
@@ -1293,6 +1445,7 @@ export default function GrandLivreTab({ lang = 'fr' }) {
 
       {subTab === 'journal'  && <JournalTab lang={lang} accounts={accounts} />}
       {subTab === 'balance'  && <TrialBalanceTab lang={lang} />}
+      {subTab === 'results'  && <IncomeStatementTab lang={lang} />}
       {subTab === 'control'  && <ControlVarianceTab lang={lang} />}
       {subTab === 'periods'  && <PeriodsTab lang={lang} />}
       {subTab === 'export'   && <ExportTab lang={lang} />}

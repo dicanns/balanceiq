@@ -1380,6 +1380,44 @@ const MIGRATIONS = [
       }
     },
   },
+  {
+    version: 39,
+    description: 'Split the accounts a tax reviewer looks at hardest. 6800 lumped travel in with '
+      + 'meals and entertainment, but only the meals half carries the 50% restriction on the '
+      + 'deduction and on the input tax credit, and gifts are different again. One account for '
+      + 'the three made the restricted figure impossible to read off the books.',
+    up: (database) => {
+      const hasTable = !!database.prepare(
+        `SELECT 1 FROM sqlite_master WHERE type='table' AND name='chart_of_accounts'`
+      ).get();
+      if (!hasTable) return;
+      const cols = database.prepare(`PRAGMA table_info(chart_of_accounts)`).all().map(c => c.name);
+      if (!cols.includes('account_number')) return;
+
+      const has = (n) => !!database.prepare(
+        `SELECT 1 FROM chart_of_accounts WHERE account_number=?`
+      ).get(n);
+      const ins = database.prepare(`INSERT OR IGNORE INTO chart_of_accounts
+        (account_number, name_fr, name_en, type, is_contra, is_simplified, is_system, tax_hint)
+        VALUES (?, ?, ?, ?, 0, 0, 1, 'both')`);
+
+      const add = [
+        ['6810', 'Repas et représentation (50%)', 'Meals and entertainment (50%)', 'expense'],
+        ['6820', 'Cadeaux et dons',               'Gifts and donations',           'expense'],
+        ['6830', 'Formation et congrès',          'Training and conferences',      'expense'],
+      ];
+      database.transaction(() => {
+        for (const row of add) if (!has(row[0])) ins.run(...row);
+        // 6800 keeps its number so nothing already posted to it moves, but its
+        // name stops implying it covers meals.
+        if (has('6800')) {
+          database.prepare(
+            `UPDATE chart_of_accounts SET name_fr=?, name_en=? WHERE account_number='6800'`
+          ).run('Déplacements (transport, hébergement)', 'Travel (transport, lodging)');
+        }
+      })();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
