@@ -2689,6 +2689,17 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
  saveFactures(factures.some(f=>f.id===id)?factures.map(f=>f.id===id?doc:f):[...factures,doc]);
  if(isNew)logCreate('invoice','facture',id,doc);
  else logUpdate('invoice','facture',id,'document',null,JSON.stringify(doc));
+ // Reverting a posted invoice to draft unlocks its lines for editing, but the
+ // ledger entry was already written and invoicePost only ever fires once - so
+ // the invoice and the ledger would silently drift apart. Reverse the entry on
+ // the way back to draft and clear the marker, so re-finalizing posts the
+ // corrected amounts.
+ if(!isProforma&&form.statut==='Brouillon'&&prevStatut&&prevStatut!=='Brouillon'&&form.glEntryId&&window.api?.ledger?.entry?.reverse){
+  const _revId=form.glEntryId;
+  window.api.ledger.entry.reverse(_revId,T===EN?'Invoice returned to draft for correction':"Facture remise en brouillon pour correction")
+   .then(()=>{saveFactures(prev=>prev.map(f=>f.id===id?{...f,glEntryId:null}:f));})
+   .catch(()=>{});
+ }
  const isFinalize=!isProforma&&form.statut!=='Brouillon'&&form.statut!=='Annulée'&&(isNew||prevStatut==='Brouillon')&&!form.glEntryId;
  if(isFinalize&&window.api?.ledger?.invoicePost){
   const taxExempt=!!(clients.find(c=>c.id===form.clientId)?.taxExempt);
