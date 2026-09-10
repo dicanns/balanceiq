@@ -1458,6 +1458,27 @@ const MIGRATIONS = [
       })();
     },
   },
+  {
+    version: 40,
+    description: 'Per-account input tax claim rate. Meals and entertainment carry a 50% limit on '
+      + 'the input tax credit, and knowing to halve it by hand is exactly the kind of thing a new '
+      + 'business owner does not know. The rate lives on the account, so choosing the account is '
+      + 'the only decision anyone has to make.',
+    up: (database) => {
+      const hasTable = !!database.prepare(
+        `SELECT 1 FROM sqlite_master WHERE type='table' AND name='chart_of_accounts'`
+      ).get();
+      if (!hasTable) return;
+      const cols = database.prepare(`PRAGMA table_info(chart_of_accounts)`).all().map(c => c.name);
+      if (!cols.includes('itc_pct')) {
+        database.prepare(`ALTER TABLE chart_of_accounts ADD COLUMN itc_pct INTEGER DEFAULT 100`).run();
+      }
+      database.prepare(`UPDATE chart_of_accounts SET itc_pct = 100 WHERE itc_pct IS NULL`).run();
+      // The one restricted account the standard chart ships with. Anything else is
+      // the operator's to set, with their accountant.
+      database.prepare(`UPDATE chart_of_accounts SET itc_pct = 50 WHERE account_number = '6810'`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -2634,7 +2655,8 @@ function storageGetByPrefix(prefix) {
 function coaList() {
   return getDb().prepare(
     `SELECT id, account_number, name_fr, name_en, type, parent_account_id,
-            is_contra, is_archived, is_system, is_simplified, tax_hint, created_at
+            is_contra, is_archived, is_system, is_simplified, tax_hint, created_at,
+            COALESCE(itc_pct, 100) AS itc_pct
      FROM chart_of_accounts
      ORDER BY account_number ASC`
   ).all();
@@ -2660,6 +2682,18 @@ function coaUpdate(id, fields) {
   if (!sets.length) return false;
   vals.push(id);
   getDb().prepare(`UPDATE chart_of_accounts SET ${sets.join(', ')} WHERE id = ? AND is_system = 0`).run(...vals);
+  return true;
+}
+
+// The input tax claim rate is a policy the operator's accountant sets, not part of
+// the account's structure, so unlike coaUpdate this reaches the seeded accounts
+// too - 6810 is a system account, and refusing to let anyone change its rate would
+// mean shipping one opinion about the restriction and no way to correct it.
+function coaSetItcPct(id, pct, _db) {
+  const db = _db || getDb();
+  const n = Math.max(0, Math.min(100, Math.round(Number(pct))));
+  if (!Number.isFinite(n)) return false;
+  db.prepare(`UPDATE chart_of_accounts SET itc_pct = ? WHERE id = ?`).run(n, id);
   return true;
 }
 
@@ -3570,6 +3604,18 @@ function _postBankTransactionEntry(db, txId) {
   if (!gstAcc) tpsCents = 0;
   if (!qstAcc) tvqCents = 0;
   // Tax can never exceed the transaction itself.
+  // Only part of the tax on some purchases can be claimed: meals and
+  // entertainment are restricted to 50%. The rest is not a credit, it is part of
+  // what the meal cost, so it stays in the expense - which happens by itself,
+  // because netCents is whatever is left after the claimable tax comes out.
+  // Knowing to halve it by hand is exactly what a new owner does not know, so the
+  // rate lives on the account and choosing the account is the only decision.
+  const claimPct = target.itc_pct == null ? 100 : Number(target.itc_pct);
+  if (claimPct !== 100) {
+    tpsCents = Math.round((tpsCents * claimPct) / 100);
+    tvqCents = Math.round((tvqCents * claimPct) / 100);
+  }
+
   if (tpsCents + tvqCents >= cents) { tpsCents = 0; tvqCents = 0; }
   const netCents = cents - tpsCents - tvqCents;
 
@@ -3996,11 +4042,14 @@ function taxPeriodCompute(periodStart, periodEnd) {
   let tpsCtiFromBank = 0, tvqCtiFromBank = 0, bankTxCount = 0;
   try {
     const row = db.prepare(
-      `SELECT COALESCE(SUM(tps_paid),0) AS tps, COALESCE(SUM(tvq_paid),0) AS tvq, COUNT(*) AS n
-       FROM bank_transactions
-       WHERE transaction_date >= ? AND transaction_date <= ?
-         AND coa_account_id IS NOT NULL
-         AND (COALESCE(tps_paid,0) <> 0 OR COALESCE(tvq_paid,0) <> 0)`
+      `SELECT COALESCE(SUM(bt.tps_paid * COALESCE(ca.itc_pct, 100) / 100.0), 0) AS tps,
+              COALESCE(SUM(bt.tvq_paid * COALESCE(ca.itc_pct, 100) / 100.0), 0) AS tvq,
+              COUNT(*) AS n
+       FROM bank_transactions bt
+       JOIN chart_of_accounts ca ON ca.id = bt.coa_account_id
+       WHERE bt.transaction_date >= ? AND bt.transaction_date <= ?
+         AND bt.coa_account_id IS NOT NULL
+         AND (COALESCE(bt.tps_paid,0) <> 0 OR COALESCE(bt.tvq_paid,0) <> 0)`
     ).get(periodStart, periodEnd);
     tpsCtiFromBank = row?.tps || 0;
     tvqCtiFromBank = row?.tvq || 0;
@@ -6134,7 +6183,7 @@ function mergeApiConfigSecrets(incoming, current) {
 }
 
 module.exports = {
-  incomeStatement,
+  incomeStatement, coaSetItcPct,
   SECRET_CONFIG_FIELDS, stripApiConfigSecrets, mergeApiConfigSecrets,
   storageGet, storageSet, storageGetAll, storageGetByPrefix,
   getAllTablesForBackup, restoreAllTablesFromBackup,

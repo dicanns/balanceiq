@@ -15,6 +15,11 @@ import { buildAccountingDb } from '../helpers/testSchema.js';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
+
+// Derived from the chain rather than hard-coded: every new migration used to fail
+// this for no reason other than the number having moved.
+const { MIGRATIONS: _CHAIN } = require('../../../db/migrations.js');
+const LATEST_VERSION = _CHAIN.reduce((m, x) => Math.max(m, x.version), 0);
 const { runMigrations } = require('../../../db/migrations.js');
 const { getAllTablesForBackup, restoreAllTablesFromBackup } = require('../../../db/database.js');
 
@@ -133,7 +138,7 @@ describe('MIG-007 backup and restore', () => {
     expect(() => runMigrations(restored)).not.toThrow();
     const kvCount2 = restored.prepare(`SELECT COUNT(*) AS n FROM kv_store`).get().n;
     expect(kvCount2).toBe(kvCount1);
-    expect(restored.pragma('user_version', { simple: true })).toBe(39);
+    expect(restored.pragma('user_version', { simple: true })).toBe(LATEST_VERSION);
   });
 });
 

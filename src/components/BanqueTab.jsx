@@ -118,6 +118,8 @@ const UI = {
     taxInflowNote:    'Aucune taxe à saisir sur un encaissement : la TPS/TVQ sur les ventes est déjà comptabilisée à la facturation.',
     taxAutoFillHint:  'Calculer suppose que la totalité du montant est taxable aux taux du Québec. Sinon, saisir les montants exacts de la facture.',
     taxAutoFill:      'Calculer',
+    taxRestricted:    (pct, tps, tvq) => `Ce compte est limité à ${pct} % : ${tps} de TPS et ${tvq} de TVQ seront réclamés. Le reste fait partie de la dépense.`,
+    taxRestrictedWhy: 'Saisissez les montants complets de la facture. La limite est appliquée automatiquement.',
     taxTps:           'TPS payée ($)',
     taxTvq:           'TVQ payée ($)',
     matchExact:       (n) => `Description exacte (${n}× utilisé)`,
@@ -252,6 +254,8 @@ const UI = {
     taxInflowNote:    'No tax to capture on a receipt: sales GST/QST was already recorded when the invoice was raised.',
     taxAutoFillHint:  'Calculate assumes the entire amount is taxable at Quebec rates. Otherwise enter the exact amounts from the invoice.',
     taxAutoFill:      'Calculate',
+    taxRestricted:    (pct, tps, tvq) => `This account is limited to ${pct}%: ${tps} GST and ${tvq} QST will be claimed. The rest is part of the expense.`,
+    taxRestrictedWhy: 'Enter the full amounts from the invoice. The limit is applied for you.',
     taxTps:           'GST paid ($)',
     taxTvq:           'QST paid ($)',
     matchExact:       (n) => `Exact description (used ${n}×)`,
@@ -1062,6 +1066,23 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
             </div>
             <div style={{ fontSize: 10.5, color: C.muted, margin: '4px 0 2px' }}>{T.taxCaptureHint}</div>
             <div style={{ fontSize: 10, color: C.muted, fontStyle: 'italic', margin: '0 0 8px' }}>{T.taxAutoFillHint}</div>
+            {(() => {
+              // A restricted account claims only part of the tax paid. Showing the
+              // claimable figure here means nobody has to know the rule, or do the
+              // arithmetic, to get the filing right.
+              const chosen = coaList.find(a => String(a.id) === String(categorizeCoaId));
+              const pct = chosen?.itc_pct == null ? 100 : Number(chosen.itc_pct);
+              if (pct === 100) return null;
+              const money = (v) => ((parseFloat(v) || 0) * pct / 100).toLocaleString(
+                lang === 'en' ? 'en-CA' : 'fr-CA', { style: 'currency', currency: 'CAD' });
+              return (
+                <div style={{ fontSize: 10.5, color: '#a1791f', background: 'rgba(251,191,36,0.08)',
+                  border: '1px solid rgba(251,191,36,0.25)', borderRadius: 5, padding: '6px 9px', margin: '0 0 8px', lineHeight: 1.45 }}>
+                  {T.taxRestricted(pct, money(catTps), money(catTvq))}
+                  <div style={{ marginTop: 3, opacity: 0.85 }}>{T.taxRestrictedWhy}</div>
+                </div>
+              );
+            })()}
             <div style={{ display: 'flex', gap: 10 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 10, color: C.muted, marginBottom: 3 }}>{T.taxTps}</div>

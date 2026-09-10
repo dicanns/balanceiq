@@ -14,6 +14,10 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const { MIGRATIONS, runMigrations } = require('../../../db/migrations.js');
 
+// Derived from the chain rather than hard-coded: every new migration used to fail
+// these tests for no reason other than the number having moved.
+const LATEST_VERSION = MIGRATIONS.reduce((m, x) => Math.max(m, x.version), 0);
+
 function buildPreAccountingDb() {
   const db = new Database(':memory:');
   db.pragma('foreign_keys = ON');
@@ -91,10 +95,10 @@ describe('MIG-001 fresh accounting install', () => {
     expect(count).toBeGreaterThanOrEqual(70);
   });
 
-  it('PRAGMA user_version is 14 after all accounting migrations run', () => {
+  it('PRAGMA user_version matches the migration chain', () => {
     runMigrations(db);
     const version = db.pragma('user_version', { simple: true });
-    expect(version).toBe(39);
+    expect(version).toBe(LATEST_VERSION);
   });
 
   it('running migrations again is a no-op (idempotency)', () => {
@@ -108,6 +112,6 @@ describe('MIG-001 fresh accounting install', () => {
     expect(countAfterSecond).toBe(countAfterFirst);
 
     const version = db.pragma('user_version', { simple: true });
-    expect(version).toBe(39);
+    expect(version).toBe(LATEST_VERSION);
   });
 });

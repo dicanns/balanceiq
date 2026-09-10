@@ -1418,6 +1418,27 @@ const MIGRATIONS = [
       })();
     },
   },
+  {
+    version: 40,
+    description: 'Per-account input tax claim rate. Meals and entertainment carry a 50% limit on '
+      + 'the input tax credit, and knowing to halve it by hand is exactly the kind of thing a new '
+      + 'business owner does not know. The rate lives on the account, so choosing the account is '
+      + 'the only decision anyone has to make.',
+    up: (database) => {
+      const hasTable = !!database.prepare(
+        `SELECT 1 FROM sqlite_master WHERE type='table' AND name='chart_of_accounts'`
+      ).get();
+      if (!hasTable) return;
+      const cols = database.prepare(`PRAGMA table_info(chart_of_accounts)`).all().map(c => c.name);
+      if (!cols.includes('itc_pct')) {
+        database.prepare(`ALTER TABLE chart_of_accounts ADD COLUMN itc_pct INTEGER DEFAULT 100`).run();
+      }
+      database.prepare(`UPDATE chart_of_accounts SET itc_pct = 100 WHERE itc_pct IS NULL`).run();
+      // The one restricted account the standard chart ships with. Anything else is
+      // the operator's to set, with their accountant.
+      database.prepare(`UPDATE chart_of_accounts SET itc_pct = 50 WHERE account_number = '6810'`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.

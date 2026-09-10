@@ -12,6 +12,8 @@ const TYPE_ORDER = ['asset','liability','equity','revenue','cogs','expense'];
 
 const UI = {
   fr: {
+    itcLabel: 'CTI',
+    itcHelp: "Part de la TPS/TVQ payée sur ce compte qui peut être réclamée. 100 % pour la plupart des dépenses; les repas et représentation sont limités à 50 %. Validez avec votre comptable.",
     search:        'Rechercher un compte…',
     simplified:    'Mode simplifié',
     showArchived:  'Afficher archivés',
@@ -47,6 +49,8 @@ const UI = {
     count:         (n) => `(${n})`,
   },
   en: {
+    itcLabel: 'ITC',
+    itcHelp: "Share of the GST/QST paid on this account that can be claimed. 100% for most expenses; meals and entertainment are limited to 50%. Confirm with your accountant.",
     search:        'Search accounts…',
     simplified:    'Simplified mode',
     showArchived:  'Show archived',
@@ -239,6 +243,14 @@ export default function ChartOfAccountsTab({ lang = 'fr', t: theme }) {
     rows: filtered.filter(a => a.type === type),
   })).filter(g => g.rows.length > 0);
 
+  // Written straight through on change: this is one number, and making the user
+  // open a dialog to move it from 100 to 50 would be friction for nothing.
+  async function handleItcPct(acct, value) {
+    const pct = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
+    setAccounts(prev => prev.map(a => a.id === acct.id ? { ...a, itc_pct: pct } : a));
+    try { await window.api?.coa?.setItcPct(acct.id, pct); } catch (_) { load(); }
+  }
+
   async function handleArchive(acct) {
     if (!window.api?.coa || !confirm(t.archiveConfirm(acct.account_number, acct.name_fr))) return;
     await window.api.coa.archive(acct.id);
@@ -349,7 +361,21 @@ export default function ChartOfAccountsTab({ lang = 'fr', t: theme }) {
                   <td style={tdStyle}>
                     {acct.tax_hint
                       ? <span style={tagStyle('#1a2a1a','#4ade80')}>{acct.tax_hint.toUpperCase()}</span>
-                      : <span style={{ color:C.border,fontSize:12 }}>—</span>}
+                      : <span style={{ color:C.border,fontSize:12 }}>-</span>}
+                    {['expense','cogs'].includes(acct.type) && (
+                      <span style={{ marginLeft: 8, whiteSpace: 'nowrap' }}>
+                        <span style={{ color:C.sub, fontSize:11 }}>{t.itcLabel}</span>
+                        <input type="number" min="0" max="100" step="5"
+                          value={acct.itc_pct == null ? 100 : acct.itc_pct}
+                          onChange={e => handleItcPct(acct, e.target.value)}
+                          title={t.itcHelp}
+                          style={{ width: 52, marginLeft: 5, background:'#0f1119',
+                            border:`1px solid ${(acct.itc_pct ?? 100) === 100 ? C.border : '#a1791f'}`,
+                            borderRadius:4, color:(acct.itc_pct ?? 100) === 100 ? C.sub : '#fbbf24',
+                            fontSize:12, padding:'2px 5px', textAlign:'right' }} />
+                        <span style={{ color:C.sub, fontSize:11, marginLeft:2 }}>%</span>
+                      </span>
+                    )}
                   </td>
                   <td style={{ ...tdStyle, textAlign:'right', whiteSpace:'nowrap' }}>
                     {!acct.is_system && !acct.is_archived && (

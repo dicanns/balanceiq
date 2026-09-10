@@ -14,6 +14,11 @@ import Database from 'better-sqlite3';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
+
+// Derived from the chain rather than hard-coded: every new migration used to fail
+// this for no reason other than the number having moved.
+const { MIGRATIONS: _CHAIN } = require('../../../db/migrations.js');
+const LATEST_VERSION = _CHAIN.reduce((m, x) => Math.max(m, x.version), 0);
 const { runMigrations } = require('../../../db/migrations.js');
 
 function buildLegacyDb() {
@@ -113,9 +118,9 @@ describe('MIG-002 upgrade pre-ledger database', () => {
     expect(bankCount).toBe(0);
   });
 
-  it('user_version advances to 12 after migration', () => {
+  it('user_version advances to the chain head', () => {
     runMigrations(db);
-    expect(db.pragma("user_version", { simple: true })).toBe(39);
+    expect(db.pragma("user_version", { simple: true })).toBe(LATEST_VERSION);
   });
 
   it('re-running migration is a no-op', () => {
@@ -126,6 +131,6 @@ describe('MIG-002 upgrade pre-ledger database', () => {
 
     const kvCount2 = db.prepare(`SELECT COUNT(*) AS n FROM kv_store`).get().n;
     expect(kvCount2).toBe(kvCount1);
-    expect(db.pragma("user_version", { simple: true })).toBe(39);
+    expect(db.pragma("user_version", { simple: true })).toBe(LATEST_VERSION);
   });
 });

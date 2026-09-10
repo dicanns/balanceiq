@@ -6,6 +6,11 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
+
+// Derived from the chain rather than hard-coded: every new migration used to fail
+// this for no reason other than the number having moved.
+const { MIGRATIONS: _CHAIN } = require('../../db/migrations.js');
+const LATEST_VERSION = _CHAIN.reduce((m, x) => Math.max(m, x.version), 0);
 const { runMigrations } = require('../../db/migrations.js');
 import {
   onboardingPacketSave,
@@ -313,8 +318,8 @@ describe('ONBOARDING-002 packet application to new location', () => {
     expect(locationOnboardingGet(40, db)).toBeNull();
   });
 
-  it('schema is v39 after migration', () => {
-    expect(db.pragma('user_version', { simple: true })).toBe(39);
+  it('schema matches the migration chain', () => {
+    expect(db.pragma('user_version', { simple: true })).toBe(LATEST_VERSION);
   });
 
   it('both tables are included in backup', () => {
