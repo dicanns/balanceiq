@@ -349,8 +349,6 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   const [categorizeNotes, setCategorizeNotes]     = useState('');
   const [catTps, setCatTps]                       = useState('');
   const [catTvq, setCatTvq]                       = useState('');
-  const [etransferTx, setEtransferTx]             = useState(null);
-  const [etransferCoaId, setEtransferCoaId]       = useState('');
 
   const [statements, setStatements]               = useState([]);
   const [recPreview, setRecPreview]               = useState(null);
@@ -524,8 +522,18 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
 
   // ── Categorize ──────────────────────────────────────────────────────────────
   const openCategorize = (tx) => {
-    setCategorizingTx(tx);
-    setCategorizeCoaId(tx.coa_account_id ? String(tx.coa_account_id) : '');
+    const etSender = detectEtransfer(tx.description || '');
+    setCategorizingTx({ ...tx, etSender });
+    // Whatever the row already carries wins; only an uncategorized e-transfer
+    // falls back to the receivable/payable default implied by its direction.
+    if (tx.coa_account_id) {
+      setCategorizeCoaId(String(tx.coa_account_id));
+    } else if (etSender) {
+      const fallback = findCoa(etransferTarget(tx));
+      setCategorizeCoaId(fallback?.id ? String(fallback.id) : '');
+    } else {
+      setCategorizeCoaId('');
+    }
     setCategorizeNotes(tx.notes || '');
   };
 
@@ -618,12 +626,6 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   // Pre-select the best account we know of when the modal opens: an existing
   // categorization or learned suggestion beats the generic direction default,
   // which would otherwise overwrite a correct answer with AR/AP.
-  React.useEffect(() => {
-    if (!etransferTx) { setEtransferCoaId(''); return; }
-    if (etransferTx.coa_account_id) { setEtransferCoaId(String(etransferTx.coa_account_id)); return; }
-    const fallback = findCoa(etransferTarget(etransferTx));
-    setEtransferCoaId(fallback?.id ? String(fallback.id) : '');
-  }, [etransferTx]);
 
   React.useEffect(() => {
     if (!categorizingTx) { setCatTps(''); setCatTvq(''); return; }
@@ -631,16 +633,6 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
     setCatTvq(categorizingTx.tvq_paid ? String(categorizingTx.tvq_paid) : '');
   }, [categorizingTx]);
 
-  const doEtransferCategorize = async () => {
-    if (!etransferTx) return;
-    try {
-      const chosen = parseInt(etransferCoaId, 10);
-      if (!chosen) { alert(T.etransferNoAccount(etransferTarget(etransferTx).num)); return; }
-      await window.api.bank.transactions.categorize(etransferTx.id, chosen, T.etransferBadge);
-      setEtransferTx(null);
-      loadTransactions();
-    } catch (e) { alert(tErr(e)); }
-  };
 
   // ── Status badge ─────────────────────────────────────────────────────────────
   const StatusBadge = ({ status }) => {
@@ -772,9 +764,6 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
                       </td>
                       <td style={{ ...td, textAlign: 'center' }}>
                         <div style={{ display: 'flex', gap: 4, justifyContent: 'center', flexWrap: 'wrap' }}>
-                          {etSender && tx.match_status !== 'matched' && (
-                            <button onClick={() => setEtransferTx({ ...tx, etSender })} style={{ ...btnSmall, background: 'rgba(167,139,250,0.12)', color: '#a78bfa', border: '1px solid rgba(167,139,250,0.25)' }}>{T.etransferMatch}</button>
-                          )}
                           {tx.match_status !== 'matched' && (
                             <button onClick={() => openCategorize(tx)} style={btnSmall}>{T.categorize}</button>
                           )}
@@ -991,6 +980,15 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
           {coaName(categorizingTx, 'coa_') && (
             <div style={{ marginBottom: 10, fontSize: 12, color: '#f59e0b' }}>{T.suggestedCoa(coaName(categorizingTx, 'coa_'))}</div>
           )}
+          {categorizingTx.etSender && (
+            <div style={{ marginBottom: 12, padding: '6px 10px', background: 'rgba(167,139,250,0.07)', border: '1px solid rgba(167,139,250,0.2)', borderRadius: 6 }}>
+              <span style={{ fontSize: 11, color: C.sub }}>{T.etransferSender}: </span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#a78bfa' }}>{categorizingTx.etSender}</span>
+              <span style={{ marginLeft: 8, fontSize: 11, color: C.sub }}>
+                ({Number(categorizingTx.amount) >= 0 ? T.etransferDirIn : T.etransferDirOut})
+              </span>
+            </div>
+          )}
           <label style={labelStyle}>{T.selectCoa}</label>
           <CoaPicker
             accounts={coaList}
@@ -1049,48 +1047,6 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
       )}
 
       {/* ── E-TRANSFER MATCH MODAL ──────────────────────────────────────────── */}
-      {etransferTx && (
-        <ModalOverlay surface={C.card} edge={C.border} onClose={() => setEtransferTx(null)}>
-          <h3 style={{ margin: '0 0 10px', color: '#a78bfa' }}>{T.etransferBadge}</h3>
-          <div style={{ fontSize: 13, color: C.sub, marginBottom: 14 }}>
-            <strong style={{ color: C.text }}>{etransferTx.description}</strong><br />
-            {fmtDate(etransferTx.transaction_date)} · <span style={{ color: Number(etransferTx.amount) >= 0 ? '#86efac' : '#f87171', fontWeight: 700 }}>{fmt(etransferTx.amount)}</span>
-            <span style={{ marginLeft: 8, fontSize: 11, color: C.sub }}>
-              ({Number(etransferTx.amount) >= 0 ? T.etransferDirIn : T.etransferDirOut})
-            </span>
-          </div>
-          <div style={{ marginBottom: 12, padding: '6px 10px', background: 'rgba(167,139,250,0.07)', border: '1px solid rgba(167,139,250,0.2)', borderRadius: 6 }}>
-            <span style={{ fontSize: 11, color: C.sub }}>{T.etransferSender}: </span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#a78bfa' }}>{etransferTx.etSender}</span>
-          </div>
-          {(() => {
-            // The follow-up hint only applies to receivable/payable postings.
-            // A transfer categorized to wages or an owner draw has no invoice
-            // or supplier bill to record against.
-            const picked = coaList.find(a => String(a.id) === String(etransferCoaId));
-            const num = picked?.account_number;
-            if (num !== '1100' && num !== '2010') return null;
-            return (
-              <div style={{ fontSize: 11, color: '#f59e0b', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 5, padding: '6px 10px', marginBottom: 14 }}>
-                {num === '1100' ? T.etransferHintIn : T.etransferHintOut}
-              </div>
-            );
-          })()}
-          <label style={labelStyle}>{T.selectCoa}</label>
-          <CoaPicker
-            accounts={coaList}
-            value={etransferCoaId}
-            onChange={setEtransferCoaId}
-            placeholder={T.searchCoa}
-            nameOf={coaName}
-            styles={pickerStyles}
-          />
-          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-            <button onClick={doEtransferCategorize} disabled={!etransferCoaId} style={btnStyle(etransferCoaId ? '#a78bfa' : '#4b5563')}>{T.categorize}</button>
-            <button onClick={() => setEtransferTx(null)} style={btnStyle('#374151')}>{T.cancel}</button>
-          </div>
-        </ModalOverlay>
-      )}
 
       {/* ── REOPEN MODAL ─────────────────────────────────────────────────────── */}
       {showReopenModal && (
