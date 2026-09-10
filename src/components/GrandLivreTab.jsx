@@ -1226,13 +1226,16 @@ function ControlVarianceTab({ lang }) {
         }
       } catch (_) {}
 
-      // AP subledger: sum unpaid bills
+      // AP subledger: what the bills themselves say is still owed. This called
+      // window.api.bills, which does not exist - the namespace is supplierBills -
+      // so the lookup threw into the catch on every run and apCents stayed null.
+      // The 2010 control check has therefore never compared anything, in exactly
+      // the way the AR check was broken before it. Now uses the date-aware
+      // subledger so it stops at the same as-of date the trial balance does.
       let apCents = null;
       try {
-        const bills = await window.api.bills.list({ paid: false });
-        if (Array.isArray(bills)) {
-          apCents = Math.round(bills.reduce((s, b) => s + (parseFloat(b.amount) || 0), 0) * 100);
-        }
+        const owed = await window.api.supplierBills.subledger(asOfDate);
+        if (typeof owed === 'number') apCents = owed;
       } catch (_) {}
 
       const ACCOUNTS = [

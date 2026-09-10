@@ -1533,6 +1533,19 @@ const MIGRATIONS = [
       })();
     },
   },
+  {
+    version: 43,
+    description: 'Transfers between your own accounts. Paying a credit card off the chequing '
+      + 'account is one movement of money that appears on two statements, and posting both sides '
+      + 'records it twice. Marking one side a transfer keeps it in the reconciliation - the money '
+      + 'really did leave - while leaving the entry to the other side.',
+    up: (database) => {
+      const cols = database.prepare(`PRAGMA table_info(bank_transactions)`).all().map(c => c.name);
+      if (cols.length && !cols.includes('is_transfer')) {
+        database.prepare(`ALTER TABLE bank_transactions ADD COLUMN is_transfer INTEGER DEFAULT 0`).run();
+      }
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -3653,6 +3666,12 @@ function _postBankTransactionEntry(db, txId) {
   if (!target || !account?.coa_account_id) return null;
   if (GL_CONTROL_ACCOUNTS.includes(target.account_number)) return null;
 
+  // A transfer between the operator's own accounts is one movement of money on two
+  // statements. Paying the credit card off the chequing account posts Dr 2210 /
+  // Cr 1010 from the chequing side; posting the card side as well would record it
+  // twice. The row stays categorized so it still reconciles - the money did move.
+  if (tx.is_transfer) return null;
+
   const bankCoa = db.prepare(`SELECT * FROM chart_of_accounts WHERE id=?`).get(account.coa_account_id);
   if (!bankCoa || bankCoa.id === target.id) return null;
 
@@ -3738,11 +3757,16 @@ function bankTransactionCategorize(txId, coaAccountId, notes, tax) {
   const db = getDb();
   const tpsPaid = Number(tax?.tpsPaid) || 0;
   const tvqPaid = Number(tax?.tvqPaid) || 0;
+  // A transfer carries no tax and no expense: it is the same money seen twice.
+  const isTransfer = tax?.isTransfer ? 1 : 0;
   db.transaction(() => {
     _reverseBankTransactionEntry(db, txId);
     db.prepare(
-      `UPDATE bank_transactions SET match_status='manual', coa_account_id=?, notes=?, tps_paid=?, tvq_paid=? WHERE id=?`
-    ).run(coaAccountId, notes || null, tpsPaid || null, tvqPaid || null, txId);
+      `UPDATE bank_transactions SET match_status='manual', coa_account_id=?, notes=?, tps_paid=?, tvq_paid=?, is_transfer=? WHERE id=?`
+    ).run(coaAccountId, notes || null,
+          isTransfer ? null : (tpsPaid || null),
+          isTransfer ? null : (tvqPaid || null),
+          isTransfer, txId);
     _postBankTransactionEntry(db, txId);
   })();
 
@@ -4653,6 +4677,132 @@ function supplierBillMarkUnpaid(id) {
   const db = getDb();
   db.prepare(`UPDATE supplier_bills SET paid=0, payment_date=NULL, payment_method=NULL, bank_transaction_id=NULL WHERE id=?`).run(id);
   return db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(id);
+}
+
+// ── SUPPLIER BILLS TO THE LEDGER ─────────────────────────────────────────────
+// supplier_bills has carried a journal_entry_id column since it was created and
+// nothing ever wrote to it. A bill recorded here moved no money in the books: the
+// expense was missing, accounts payable never rose, and the control-account check
+// on 2010 reported the whole balance as a variance. This is CLAUDE.md rule 3
+// applied to the buying side - a document that changes what you owe has to reach
+// the ledger the moment it is recorded.
+//
+//   Recording:  Dr expense (net)  Dr 2100/2110 (claimable tax)  Cr 2010 (total)
+//   Paying:     Dr 2010 (total)                                 Cr 1010 (total)
+//
+// The claim rate on the expense account applies here exactly as it does on a bank
+// line, so a restaurant bill claims half its tax and the other half stays in the
+// expense - the two routes into the books cannot disagree.
+function supplierBillPost(billId, _db) {
+  const db = _db || getDb();
+  const bill = db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(billId);
+  if (!bill) return { ok: false, error: 'bill_not_found' };
+
+  const existing = glFindEntryBySource('supplier_bill', String(billId), db);
+  if (existing) return { ok: true, entryId: existing.id, alreadyPosted: true };
+
+  const findNum = (num) => db.prepare(
+    `SELECT * FROM chart_of_accounts WHERE account_number=?`
+  ).get(num);
+  const ap = findNum('2010');
+  const target = bill.coa_account_id
+    ? db.prepare(`SELECT * FROM chart_of_accounts WHERE id=?`).get(bill.coa_account_id)
+    : null;
+  if (!ap || !target) return { ok: false, error: 'missing_coa_accounts' };
+
+  const totalCents = Math.round((Number(bill.amount) || 0) * 100);
+  if (!totalCents) return { ok: false, error: 'zero_amount' };
+
+  const claimPct = target.itc_pct == null ? 100 : Number(target.itc_pct);
+  const scale = (v) => Math.round(((Number(v) || 0) * 100 * claimPct) / 100);
+  let tpsCents = scale(bill.tps_paid);
+  let tvqCents = scale(bill.tvq_paid);
+  const gst = findNum('2100');
+  const qst = findNum('2110');
+  if (!gst) tpsCents = 0;
+  if (!qst) tvqCents = 0;
+  if (tpsCents + tvqCents >= totalCents) { tpsCents = 0; tvqCents = 0; }
+  const netCents = totalCents - tpsCents - tvqCents;
+
+  const lines = [{ account_id: target.id, debit_cents: netCents, credit_cents: 0, memo: bill.supplier_name }];
+  if (tpsCents) lines.push({ account_id: gst.id, debit_cents: tpsCents, credit_cents: 0, memo: 'TPS (CTI)' });
+  if (tvqCents) lines.push({ account_id: qst.id, debit_cents: tvqCents, credit_cents: 0, memo: 'TVQ (RTI)' });
+  lines.push({ account_id: ap.id, debit_cents: 0, credit_cents: totalCents, memo: bill.supplier_name });
+
+  const { entryId } = glDraftEntry({
+    entry_date: bill.bill_date || new Date().toISOString().slice(0, 10),
+    description: `Facture fournisseur - ${bill.supplier_name}`,
+    source_type: 'supplier_bill',
+    source_id: String(billId),
+    lines,
+  }, db);
+  glPostEntry(entryId, db);
+  db.prepare(`UPDATE supplier_bills SET journal_entry_id=? WHERE id=?`).run(entryId, billId);
+  return { ok: true, entryId };
+}
+
+// Reversing before re-posting, never the other way round: clearing the pointer
+// first and swallowing a failed reversal leaves the entry posted with nothing
+// pointing at it, double-counting in the ledger forever.
+function supplierBillUnpost(billId, reason, _db) {
+  const db = _db || getDb();
+  for (const type of ['supplier_bill', 'supplier_bill_payment']) {
+    const entry = glFindEntryBySource(type, String(billId), db);
+    if (!entry) continue;
+    if (entry.status === 'draft') glDeleteDraft(entry.id, db);
+    else glReverseEntry(entry.id, reason || 'Facture fournisseur annulée', db);
+  }
+  db.prepare(`UPDATE supplier_bills SET journal_entry_id=NULL WHERE id=?`).run(billId);
+  return { ok: true };
+}
+
+// Paying settles the payable against cash. Kept separate from the bill entry so
+// each carries its own date - a bill raised in August and paid in September
+// belongs in both periods, in the right one each time.
+function supplierBillPostPayment(billId, { paymentDate, bankCoaNumber = '1010' } = {}, _db) {
+  const db = _db || getDb();
+  const bill = db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(billId);
+  if (!bill) return { ok: false, error: 'bill_not_found' };
+
+  const existing = glFindEntryBySource('supplier_bill_payment', String(billId), db);
+  if (existing) return { ok: true, entryId: existing.id, alreadyPosted: true };
+
+  const findNum = (num) => db.prepare(
+    `SELECT * FROM chart_of_accounts WHERE account_number=?`
+  ).get(num);
+  const ap = findNum('2010');
+  const cash = findNum(bankCoaNumber);
+  if (!ap || !cash) return { ok: false, error: 'missing_coa_accounts' };
+
+  const totalCents = Math.round((Number(bill.amount) || 0) * 100);
+  if (!totalCents) return { ok: false, error: 'zero_amount' };
+
+  const { entryId } = glDraftEntry({
+    entry_date: paymentDate || bill.payment_date || new Date().toISOString().slice(0, 10),
+    description: `Paiement fournisseur - ${bill.supplier_name}`,
+    source_type: 'supplier_bill_payment',
+    source_id: String(billId),
+    lines: [
+      { account_id: ap.id,   debit_cents: totalCents, credit_cents: 0, memo: bill.supplier_name },
+      { account_id: cash.id, debit_cents: 0, credit_cents: totalCents, memo: bill.supplier_name },
+    ],
+  }, db);
+  glPostEntry(entryId, db);
+  return { ok: true, entryId };
+}
+
+// What the subledger says is owed, for the control-account check on 2010. Built
+// from the bills themselves rather than from the ledger, so it is an independent
+// second opinion - which is the only kind worth comparing against.
+function supplierBillSubledger(asOfDate, _db) {
+  const db = _db || getDb();
+  const row = db.prepare(
+    `SELECT COALESCE(SUM(amount), 0) AS owed
+     FROM supplier_bills
+     WHERE COALESCE(paid, 0) = 0
+       AND (bill_date IS NULL OR bill_date <= ?)`
+  ).get(asOfDate);
+  return Math.round((row?.owed || 0) * 100);
 }
 
 function supplierPaymentsList(billId) {
@@ -6255,6 +6405,7 @@ function mergeApiConfigSecrets(incoming, current) {
 
 module.exports = {
   incomeStatement, coaSetItcPct, coaRename,
+  supplierBillPost, supplierBillUnpost, supplierBillPostPayment, supplierBillSubledger,
   SECRET_CONFIG_FIELDS, stripApiConfigSecrets, mergeApiConfigSecrets,
   storageGet, storageSet, storageGetAll, storageGetByPrefix,
   getAllTablesForBackup, restoreAllTablesFromBackup,

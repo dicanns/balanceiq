@@ -15,6 +15,7 @@ Sentry.init({
 const {
   storageGet, storageSet, storageGetAll,
   stripApiConfigSecrets, mergeApiConfigSecrets, incomeStatement, coaSetItcPct, coaRename,
+  supplierBillPost, supplierBillUnpost, supplierBillPostPayment, supplierBillSubledger,
   getAllTablesForBackup, restoreAllTablesFromBackup,
   syncQueuePush, syncQueuePeek, syncQueueDelete, syncQueueIncrementAttempts, syncQueueLength,
   auditInsert, auditQuery, getDeviceId,
@@ -1805,6 +1806,7 @@ ipcMain.handle('ledger:trial_balance', (_e, asOfDate, opts)    => trialBalance(a
 ipcMain.handle('ledger:income_statement', (_e, start, end, opts) => incomeStatement(start, end, opts || {}));
 ipcMain.handle('coa:setItcPct', (_e, id, pct) => coaSetItcPct(id, pct));
 ipcMain.handle('coa:rename',    (_e, id, names) => coaRename(id, names || {}));
+ipcMain.handle('supplier:bill:subledger', (_e, asOf) => supplierBillSubledger(asOf));
 ipcMain.handle('ledger:audit:list',    (_e, opts)              => glAuditLogList(opts));
 ipcMain.handle('period:list',          (_e, opts)              => periodList(opts));
 ipcMain.handle('period:open',          (_e, data)              => periodOpen(data));
@@ -1878,7 +1880,14 @@ ipcMain.handle('supplier:bill:list',     (_e, opts)            => supplierBillLi
 ipcMain.handle('supplier:bill:create',   (_e, data)            => supplierBillCreate(data));
 ipcMain.handle('supplier:bill:update',   (_e, id, data)        => supplierBillUpdate(id, data));
 ipcMain.handle('supplier:bill:markPaid', (_e, id, payData)     => supplierBillMarkPaid(id, payData || {}));
-ipcMain.handle('supplier:bill:markUnpaid',(_e, id)             => supplierBillMarkUnpaid(id));
+ipcMain.handle('supplier:bill:markUnpaid',(_e, id)             => {
+  const bill = supplierBillMarkUnpaid(id);
+  try {
+    const pay = glFindEntryBySource('supplier_bill_payment', String(id));
+    if (pay) glReverseEntry(pay.id, 'Paiement fournisseur annulé');
+  } catch (_) {}
+  return bill;
+});
 ipcMain.handle('supplier:payments:list', (_e, billId)          => supplierPaymentsList(billId));
 ipcMain.handle('supplier:payments:create',(_e, data)           => supplierPaymentCreate(data));
 

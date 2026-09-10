@@ -1493,6 +1493,19 @@ const MIGRATIONS = [
       })();
     },
   },
+  {
+    version: 43,
+    description: 'Transfers between your own accounts. Paying a credit card off the chequing '
+      + 'account is one movement of money that appears on two statements, and posting both sides '
+      + 'records it twice. Marking one side a transfer keeps it in the reconciliation - the money '
+      + 'really did leave - while leaving the entry to the other side.',
+    up: (database) => {
+      const cols = database.prepare(`PRAGMA table_info(bank_transactions)`).all().map(c => c.name);
+      if (cols.length && !cols.includes('is_transfer')) {
+        database.prepare(`ALTER TABLE bank_transactions ADD COLUMN is_transfer INTEGER DEFAULT 0`).run();
+      }
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.

@@ -61,6 +61,8 @@ const UI = {
     selectAccount:    '— Sélectionner un compte —',
     notes:            'Notes',
     saveCategorize:   'Enregistrer',
+    transferLabel:    'Virement entre mes propres comptes',
+    transferHint:     'Un paiement de carte de crédit, ou de l\'argent déplacé entre deux de vos comptes. La ligne reste rapprochée, mais l\'écriture vient de l\'autre relevé - la comptabiliser ici la compterait deux fois.',
     previewTitle:     (name) => `Rapprochement — ${name}`,
     stmtBalance:      'Solde au relevé',
     biqBalance:       'Solde BalanceIQ',
@@ -202,6 +204,8 @@ const UI = {
     selectAccount:    '— Select an account —',
     notes:            'Notes',
     saveCategorize:   'Save',
+    transferLabel:    'Transfer between my own accounts',
+    transferHint:     'A credit card payment, or money moved between two of your accounts. The line still reconciles, but the entry comes from the other statement - recording it here would count it twice.',
     previewTitle:     (name) => `Reconciliation — ${name}`,
     stmtBalance:      'Statement Balance',
     biqBalance:       'BalanceIQ Balance',
@@ -381,6 +385,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   const [categorizingTx, setCategorizingTx]       = useState(null);
   const [categorizeCoaId, setCategorizeCoaId]     = useState('');
   const [categorizeNotes, setCategorizeNotes]     = useState('');
+  const [catTransfer, setCatTransfer]             = useState(false);
   const [capexDismissed, setCapexDismissed]       = useState(false);
   const [capexGuideOpen, setCapexGuideOpen]       = useState(false);
   const [catTps, setCatTps]                       = useState('');
@@ -578,7 +583,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
     try {
       await window.api.bank.transactions.categorize(
         categorizingTx.id, parseInt(categorizeCoaId, 10), categorizeNotes,
-        { tpsPaid: parseFloat(catTps) || 0, tvqPaid: parseFloat(catTvq) || 0 },
+        { tpsPaid: parseFloat(catTps) || 0, tvqPaid: parseFloat(catTvq) || 0, isTransfer: catTransfer },
       );
       setCategorizingTx(null);
       loadTransactions();
@@ -686,6 +691,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
 
   React.useEffect(() => {
     setCapexDismissed(false);
+    setCatTransfer(!!categorizingTx?.is_transfer);
     if (!categorizingTx) { setCatTps(''); setCatTvq(''); return; }
     setCatTps(categorizingTx.tps_paid ? String(categorizingTx.tps_paid) : '');
     setCatTvq(categorizingTx.tvq_paid ? String(categorizingTx.tvq_paid) : '');
@@ -1058,6 +1064,15 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
             nameOf={coaName}
             styles={pickerStyles}
           />
+          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', margin: '12px 0 4px', cursor: 'pointer' }}>
+            <input type="checkbox" checked={catTransfer} onChange={e => setCatTransfer(e.target.checked)}
+              style={{ accentColor: '#f97316', marginTop: 3 }} />
+            <span>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>{T.transferLabel}</span>
+              <span style={{ display: 'block', fontSize: 10.5, color: C.muted, lineHeight: 1.45, marginTop: 2 }}>{T.transferHint}</span>
+            </span>
+          </label>
+
           <label style={labelStyle}>{T.notes}</label>
           <input style={inputFull} value={categorizeNotes} onChange={e => setCategorizeNotes(e.target.value)} />
 
@@ -1068,7 +1083,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
             // purchase actually hides in are watched: flagging every large
             // expense would fire on rent and payroll and be ignored within a week.
             const chosen = coaList.find(a => String(a.id) === String(categorizeCoaId));
-            if (capexDismissed || !looksLikeCapitalPurchase(categorizingTx.amount, chosen)) return null;
+            if (catTransfer || capexDismissed || !looksLikeCapitalPurchase(categorizingTx.amount, chosen)) return null;
             const amt = Math.abs(Number(categorizingTx.amount) || 0).toLocaleString(
               lang === 'en' ? 'en-CA' : 'fr-CA', { style: 'currency', currency: 'CAD' });
             return (
@@ -1090,7 +1105,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
           {/* Input tax credits are tax PAID, so this only applies to money going
               out. On a receipt the sales tax was already recorded when the
               invoice was raised, and capturing it again would double-count. */}
-          {Number(categorizingTx.amount) < 0 ? (
+          {Number(categorizingTx.amount) < 0 && !catTransfer ? (
           <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
               <label style={{ ...labelStyle, marginBottom: 0 }}>{T.taxCaptureTitle}</label>

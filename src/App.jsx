@@ -17,6 +17,7 @@ const BanqueTabLazy           = lazy(() => import('./components/BanqueTab.jsx'))
 const BilanTabLazy            = lazy(() => import('./components/BilanTab.jsx'));
 const ImmobilisationsTabLazy  = lazy(() => import('./components/ImmobilisationsTab.jsx'));
 const TaxPeriodTabLazy        = lazy(() => import('./components/TaxPeriodTab.jsx'));
+const BillsTabLazy            = lazy(() => import('./components/BillsTab.jsx'));
 const VaultTabLazy            = lazy(() => import('./components/VaultTab.jsx'));
 const RecurringRulesTabLazy   = lazy(() => import('./components/RecurringRulesTab.jsx'));
 const CloseComplianceTabLazy     = lazy(() => import('./components/CloseComplianceTab.jsx'));
@@ -7812,6 +7813,7 @@ export default function App(){
                 {id:"comptabilite",     label:lang==="fr"?"Plan comptable":"Chart of Accounts"},
                 {id:"grandlivre",       label:lang==="fr"?"Grand livre":"General Ledger"},
                 {id:"banque",           label:lang==="fr"?"Banque":"Bank"},
+                {id:"facturesfourn",    label:lang==="fr"?"Fournisseurs":"Supplier Bills"},
                 {id:"taxperiod",        label:lang==="fr"?"TPS/TVQ":"GST/QST"},
                 {id:"bilan",            label:lang==="fr"?"Bilan":"Balance Sheet"},
                 {id:"immobilisations",  label:lang==="fr"?"DPA":"CCA"},
@@ -8042,6 +8044,7 @@ export default function App(){
             {configSubTab==="grandlivre"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><GrandLivreTabLazy lang={lang}/></Suspense>)}
             {/*  BANQUE (Bank Reconciliation) — Sprint 3 Accounting Suite */}
             {configSubTab==="banque"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><BanqueTabLazy lang={lang} t={t}/></Suspense>)}
+            {configSubTab==="facturesfourn"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><BillsTabLazy lang={lang}/></Suspense>)}
             {configSubTab==="taxperiod"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><TaxPeriodTabLazy lang={lang}/></Suspense>)}
             {/*  BILAN (Balance Sheet) — Sprint 6 Accounting Suite */}
             {configSubTab==="bilan"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><BilanTabLazy lang={lang} canUsePro={canUse("excelExport")} onUpgrade={()=>showUpgradePrompt("excelExport")}/></Suspense>)}

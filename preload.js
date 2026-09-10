@@ -356,6 +356,7 @@ contextBridge.exposeInMainWorld('api', {
     update:    (id, data)      => ipcRenderer.invoke('supplier:bill:update', id, data),
     markPaid:  (id, payData)   => ipcRenderer.invoke('supplier:bill:markPaid', id, payData),
     markUnpaid:(id)            => ipcRenderer.invoke('supplier:bill:markUnpaid', id),
+    subledger: (asOf)          => ipcRenderer.invoke('supplier:bill:subledger', asOf),
   },
   supplierPayments: {
     list:   (billId) => ipcRenderer.invoke('supplier:payments:list', billId),
