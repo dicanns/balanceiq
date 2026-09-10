@@ -416,11 +416,25 @@ export function getQCHoliday(date) {
 // how the AR control-account check silently broke: its copy read l.qte instead
 // of l.quantite, ignored line discounts, and treated an undefined tax flag as
 // taxable, so the subledger never matched the ledger.
-// taxExemptOpts: { exemptFromTps, exemptFromTvq }
-export function computeInvoiceTotals(lignes, taxExemptOpts) {
+// opts: { exemptFromTps, exemptFromTvq, tpsOverride, tvqOverride }
+//
+// The overrides exist because a document does not always carry the tax the rates
+// would produce. A grocery chain's deduction notice is the usual case: an $18.00
+// charge arrives with $0.01 GST and $0.02 QST because only a sliver of it was
+// taxable on their side. Recomputing 5% / 9.975% would post $0.90 and $1.80 and
+// leave the remittance wrong by the difference, so the figure on the notice wins.
+// Only a finite, non-negative number counts as an override; null, '' and NaN all
+// mean "use the rates".
+export function isTaxOverride(v) {
+  if (v === null || v === undefined || v === '') return false;
+  const n = typeof v === 'number' ? v : parseFloat(v);
+  return Number.isFinite(n) && n >= 0;
+}
+
+export function computeInvoiceTotals(lignes, opts) {
   let st = 0, tp = 0, tv = 0;
-  const skipTps = taxExemptOpts?.exemptFromTps;
-  const skipTvq = taxExemptOpts?.exemptFromTvq;
+  const skipTps = opts?.exemptFromTps;
+  const skipTvq = opts?.exemptFromTvq;
   (lignes || []).forEach((l) => {
     if (l.type === 'section') return;
     const lt = (l.quantite || 0) * (l.prixUnitaire || 0) * (1 - (l.remise || 0) / 100);
@@ -428,12 +442,27 @@ export function computeInvoiceTotals(lignes, taxExemptOpts) {
     if (l.tps && !skipTps) tp += lt * 0.05;
     if (l.tvq && !skipTvq) tv += lt * 0.09975;
   });
-  return { sousTotal: st, tpsTotal: tp, tvqTotal: tv, total: st + tp + tv };
+  // An exemption is a stronger statement than an override: an exempt customer is
+  // charged no tax at all, so a stale override must not put it back.
+  const ovTps = !skipTps && isTaxOverride(opts?.tpsOverride);
+  const ovTvq = !skipTvq && isTaxOverride(opts?.tvqOverride);
+  if (ovTps) tp = parseFloat(opts.tpsOverride);
+  if (ovTvq) tv = parseFloat(opts.tvqOverride);
+  return {
+    sousTotal: st, tpsTotal: tp, tvqTotal: tv, total: st + tp + tv,
+    tpsOverridden: ovTps, tvqOverridden: ovTvq,
+  };
 }
 
 // Outstanding balance on one invoice: total less what has been recorded against it.
+// Overrides live on the document itself, so a caller that only knows the customer's
+// exemption still gets the right total.
 export function calcInvoiceOutstanding(facture, taxExemptOpts) {
-  const total = computeInvoiceTotals(facture?.lignes, taxExemptOpts).total;
+  const total = computeInvoiceTotals(facture?.lignes, {
+    tpsOverride: facture?.tpsOverride,
+    tvqOverride: facture?.tvqOverride,
+    ...(taxExemptOpts || {}),
+  }).total;
   const paid = (facture?.paiements || []).reduce((s, p) => s + (parseFloat(p.montant) || 0), 0);
   return Math.max(0, total - paid);
 }
