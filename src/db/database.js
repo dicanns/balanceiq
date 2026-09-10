@@ -2806,8 +2806,8 @@ function glPostEntry(entryId, _db) {
 }
 
 // Reverse a posted entry: creates and immediately posts the mirror entry.
-function glReverseEntry(entryId, reason) {
-  const db = getDb();
+function glReverseEntry(entryId, reason, _db) {
+  const db = _db || getDb();
   const orig = db.prepare(`SELECT * FROM journal_entries WHERE id=?`).get(entryId);
   if (!orig) throw new Error('ERR_ENTRY_NOT_FOUND');
   if (orig.status !== 'posted') throw new Error('ERR_ENTRY_NOT_POSTED');
@@ -2819,7 +2819,7 @@ function glReverseEntry(entryId, reason) {
   const origLines = db.prepare(`SELECT * FROM journal_lines WHERE entry_id=? ORDER BY line_number`).all(entryId);
   const now = new Date().toISOString();
   const today = now.slice(0, 10);
-  const uuid = _getDeviceUuid();
+  const uuid = _getDeviceUuid(_db);
   const year = new Date(today).getUTCFullYear();
   const reversalPeriod = _ensurePeriod(db, today, orig.location_id);
 
@@ -2827,7 +2827,7 @@ function glReverseEntry(entryId, reason) {
     const revNumber = _nextEntryNumber(db, year);
     const { lastInsertRowid: revId } = db.prepare(
       `INSERT INTO journal_entries (entry_number, entry_date, period_id, description, source_type, source_id, status, posted_at, posted_by_device_uuid, posting_date, reverses_entry_id, reversal_reason, device_uuid, location_id)
-       VALUES (?, ?, ?, ?, 'reversal', ?, 'posted', ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, 'reversal', ?, 'draft', ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       revNumber, today, reversalPeriod.id,
       `Annulation de ${orig.entry_number}${reason ? ': ' + reason : ''}`,
@@ -2842,6 +2842,9 @@ function glReverseEntry(entryId, reason) {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(revId, i + 1, l.account_id, l.credit_cents, l.debit_cents, l.memo, l.location_id, l.contact_id, l.tax_code);
     }
+
+    // Lines are in place and balanced - now the mirror can be posted.
+    db.prepare(`UPDATE journal_entries SET status='posted' WHERE id=?`).run(revId);
 
     db.prepare(
       `UPDATE journal_entries SET status='reversed', reversed_by_entry_id=?, reversed_at=?, reversed_by_device_uuid=? WHERE id=?`
@@ -2858,8 +2861,8 @@ function glCorrectEntry(entryId, newData, reason) {
   return { reversalId, reversalNumber, newEntryId, newEntryNumber };
 }
 
-function glDeleteDraft(entryId) {
-  const db = getDb();
+function glDeleteDraft(entryId, _db) {
+  const db = _db || getDb();
   const entry = db.prepare(`SELECT status FROM journal_entries WHERE id=?`).get(entryId);
   if (!entry) throw new Error('ERR_ENTRY_NOT_FOUND');
   if (entry.status !== 'draft') throw new Error('ERR_ENTRY_NOT_DRAFT_DELETE');
@@ -2942,7 +2945,7 @@ function glExportLines({ dateFrom = null, dateTo = null, status = 'posted', loca
 
 function glGetAccountHistory(accountId, { dateFrom = null, dateTo = null, locationId = null } = {}) {
   const db = getDb();
-  const conds = ['jl.account_id=?', "je.status='posted'"];
+  const conds = ['jl.account_id=?', "je.status IN ('posted','reversed')"];
   const params = [accountId];
   if (dateFrom) { conds.push('je.entry_date>=?'); params.push(dateFrom); }
   if (dateTo) { conds.push('je.entry_date<=?'); params.push(dateTo); }
@@ -2969,7 +2972,7 @@ function trialBalance(asOfDate, { locationId = null } = {}) {
     `SELECT coa.id AS account_id, coa.account_number, coa.name_fr, coa.name_en, coa.type, coa.is_contra,
             SUM(jl.debit_cents) AS total_debit_cents, SUM(jl.credit_cents) AS total_credit_cents
      FROM journal_lines jl
-     JOIN journal_entries je ON je.id = jl.entry_id AND je.status='posted' AND je.entry_date <= ?
+     JOIN journal_entries je ON je.id = jl.entry_id AND je.status IN ('posted','reversed') AND je.entry_date <= ?
      JOIN chart_of_accounts coa ON coa.id = jl.account_id
      WHERE ${locCond}
      GROUP BY jl.account_id
@@ -3422,12 +3425,17 @@ function _reverseBankTransactionEntry(db, txId) {
   const tx = db.prepare(`SELECT journal_entry_id FROM bank_transactions WHERE id=?`).get(txId);
   if (!tx?.journal_entry_id) return false;
   const entry = db.prepare(`SELECT * FROM journal_entries WHERE id=?`).get(tx.journal_entry_id);
+  if (!entry) {
+    db.prepare(`UPDATE bank_transactions SET journal_entry_id=NULL WHERE id=?`).run(txId);
+    return false;
+  }
+  // Reverse FIRST, clear the pointer only once it succeeded. Clearing first and
+  // swallowing a failed reversal left the entry posted with nothing pointing at
+  // it - an orphan that double-counts in the ledger forever, silently. A failure
+  // here must roll the whole re-categorization back rather than be hidden.
+  if (entry.status === 'draft') glDeleteDraft(entry.id, db);
+  else if (entry.status === 'posted') glReverseEntry(entry.id, 'Recategorisation bancaire', db);
   db.prepare(`UPDATE bank_transactions SET journal_entry_id=NULL WHERE id=?`).run(txId);
-  if (!entry) return false;
-  try {
-    if (entry.status === 'draft') glDeleteDraft(entry.id);
-    else if (entry.status === 'posted') glReverseEntry(entry.id, 'Recategorisation bancaire');
-  } catch (_) { return false; }
   return true;
 }
 
@@ -3629,6 +3637,17 @@ function bankAccountPostOpeningBalance(bankAccountId, _db) {
 // existed (or while it was unavailable). Categorizing has posted since v1.42.0,
 // but nothing ever backfilled rows classified before that, so they sat with a
 // category and no entry - invisible to the ledger with no indication why.
+// An orphan is a posted bank_tx entry that no bank transaction points at any
+// more - the result of the reversal bug above. It double-counts until reversed.
+function bankFindOrphanEntries(_db) {
+  const db = _db || getDb();
+  return db.prepare(
+    `SELECT je.* FROM journal_entries je
+     WHERE je.source_type='bank_tx' AND je.status='posted'
+       AND NOT EXISTS (SELECT 1 FROM bank_transactions bt WHERE bt.journal_entry_id = je.id)`
+  ).all();
+}
+
 function bankPostMissingEntries(bankAccountId, _db) {
   const db = _db || getDb();
   const rows = db.prepare(
@@ -3638,8 +3657,13 @@ function bankPostMissingEntries(bankAccountId, _db) {
        AND bt.coa_account_id IS NOT NULL`
   ).all(bankAccountId);
 
-  let posted = 0, skipped = 0;
+  let posted = 0, skipped = 0, orphansReversed = 0;
   db.transaction(() => {
+    // Clear orphaned double-counts before adding anything new.
+    for (const o of bankFindOrphanEntries(db)) {
+      glReverseEntry(o.id, 'Ecriture orpheline - correction', db);
+      orphansReversed++;
+    }
     for (const r of rows) {
       // Control accounts return null by design - their entry comes from the
       // invoice or payment document, not from the bank line.
@@ -3647,7 +3671,7 @@ function bankPostMissingEntries(bankAccountId, _db) {
       if (id) posted++; else skipped++;
     }
   })();
-  return { ok: true, posted, skipped, examined: rows.length };
+  return { ok: true, posted, skipped, orphansReversed, examined: rows.length };
 }
 
 function bankStatementsList(bankAccountId) {
@@ -4379,7 +4403,7 @@ function buildBalanceSheet(asOfDate, { locationId = null } = {}) {
     `SELECT coa.id AS account_id, coa.account_number, coa.name_fr, coa.name_en, coa.type, coa.is_contra,
             SUM(jl.debit_cents) AS total_debit_cents, SUM(jl.credit_cents) AS total_credit_cents
      FROM journal_lines jl
-     JOIN journal_entries je ON je.id = jl.entry_id AND je.status='posted' AND je.entry_date <= ?
+     JOIN journal_entries je ON je.id = jl.entry_id AND je.status IN ('posted','reversed') AND je.entry_date <= ?
      JOIN chart_of_accounts coa ON coa.id = jl.account_id
      WHERE ${locCond}
      GROUP BY jl.account_id
@@ -5841,7 +5865,7 @@ module.exports = {
   glAuditLogList,
   bankAccountsList, bankAccountCreate, bankAccountUpdate, bankAccountArchive,
   bankStatementImport, bankStatementsList, bankStatementDelete,
-  bankAccountPostOpeningBalance, bankPostMissingEntries,
+  bankAccountPostOpeningBalance, bankPostMissingEntries, bankFindOrphanEntries,
   bankTransactionsList, bankTransactionMatch, bankTransactionUnmatch, bankTransactionCategorize,
   bankReconcilePreview, bankReconcileClose, bankReconcileReopen,
   bankLearnedRulesList, bankLearnedRuleDelete,

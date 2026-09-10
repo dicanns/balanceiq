@@ -129,7 +129,7 @@ const UI = {
     openingDone:      (v) => `Solde d'ouverture comptabilisé : ${Number(v).toFixed(2)} $.`,
     backfillBtn:      'Comptabiliser les manquants',
     backfillTitle:    'Créer les écritures pour les transactions catégorisées sans écriture',
-    backfillDone:     (p, sk) => `${p} écriture(s) créée(s). ${sk} ignorée(s) (comptes de contrôle).`,
+    backfillDone:     (p, sk, o) => `${p} écriture(s) créée(s). ${sk} ignorée(s) (comptes de contrôle).${o ? ` ${o} écriture(s) orpheline(s) annulée(s).` : ''}`,
     done:             'Terminé',
     deleteStmt:       'Supprimer',
     confirmDeleteStmt:(a, b) => `Supprimer le relevé du ${a} au ${b} et toutes ses transactions importées? Le fichier pourra ensuite être réimporté.`,
@@ -263,7 +263,7 @@ const UI = {
     openingDone:      (v) => `Opening balance posted: $${Number(v).toFixed(2)}.`,
     backfillBtn:      'Post missing entries',
     backfillTitle:    'Create ledger entries for categorized transactions that have none',
-    backfillDone:     (p, sk) => `${p} entr${p === 1 ? 'y' : 'ies'} created. ${sk} skipped (control accounts).`,
+    backfillDone:     (p, sk, o) => `${p} entr${p === 1 ? 'y' : 'ies'} created. ${sk} skipped (control accounts).${o ? ` ${o} orphaned entr${o === 1 ? 'y' : 'ies'} reversed.` : ''}`,
     done:             'Done',
     deleteStmt:       'Delete',
     confirmDeleteStmt:(a, b) => `Delete the statement from ${a} to ${b} and all transactions it imported? The file can then be re-imported.`,
@@ -647,7 +647,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   const postMissing = async (acc) => {
     try {
       const r = await window.api.bank.accounts.postMissing(acc.id);
-      alert(T.backfillDone(r?.posted ?? 0, r?.skipped ?? 0));
+      alert(T.backfillDone(r?.posted ?? 0, r?.skipped ?? 0, r?.orphansReversed ?? 0));
       loadTransactions();
     } catch (e) { alert(tErr(e)); }
   };
