@@ -1298,6 +1298,24 @@ const MIGRATIONS = [
       }
     },
   },
+  {
+    version: 36,
+    description: 'Add 3400 Opening balance equity. A bank account\'s opening balance lived only '
+      + 'on bank_accounts and never reached the ledger, so the balance sheet showed cash of just '
+      + 'the period activity. The offsetting side of an opening balance goes here until an '
+      + 'accountant reclassifies it.',
+    up: (database) => {
+      const has = database.prepare(
+        `SELECT 1 FROM sqlite_master WHERE type='table' AND name='chart_of_accounts'`
+      ).get();
+      if (!has) return;
+      database.prepare(
+        `INSERT OR IGNORE INTO chart_of_accounts
+           (account_number, name_fr, name_en, type, is_contra, is_simplified, tax_hint, is_system)
+         VALUES ('3400', 'Solde d''ouverture (capitaux)', 'Opening balance equity', 'equity', 0, 0, NULL, 0)`
+      ).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.

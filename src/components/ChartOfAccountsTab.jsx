@@ -83,7 +83,7 @@ const UI = {
   },
 };
 
-function AccountModal({ account, lang, onSave, onClose }) {
+function AccountModal({ account, lang, onSave, onClose, C = { text:'#e2e8f0', sub:'#94a3b8', muted:'#64748b', card:'#0f1724', border:'#1e293b', inputBg:'#0f1724' } }) {
   const t = UI[lang] || UI.fr;
   const [form, setForm] = useState({
     account_number: account?.account_number || '',
@@ -140,7 +140,7 @@ function AccountModal({ account, lang, onSave, onClose }) {
   return (
     <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999 }}>
       <div style={{ background:'#1a1d27',border:'1px solid #2a2d3a',borderRadius:12,padding:28,width:480,maxWidth:'90vw' }}>
-        <h3 style={{ margin:'0 0 20px',color:'#f1f5f9',fontSize:16 }}>
+        <h3 style={{ margin:'0 0 20px',color:C.text,fontSize:16 }}>
           {isEdit ? t.editAccount : t.newAccount}
         </h3>
         {error && <div style={{ background:'#7f1d1d',color:'#fca5a5',padding:'8px 12px',borderRadius:6,marginBottom:14,fontSize:13 }}>{error}</div>}
@@ -174,11 +174,11 @@ function AccountModal({ account, lang, onSave, onClose }) {
             </select>
           </label>
           <div style={{ display:'flex',gap:20 }}>
-            <label style={{ color:'#94a3b8',fontSize:13,display:'flex',alignItems:'center',gap:8,cursor:'pointer' }}>
+            <label style={{ color:C.sub,fontSize:13,display:'flex',alignItems:'center',gap:8,cursor:'pointer' }}>
               <input type="checkbox" checked={!!form.is_contra} onChange={e => set('is_contra', e.target.checked ? 1 : 0)} />
               {t.contra}
             </label>
-            <label style={{ color:'#94a3b8',fontSize:13,display:'flex',alignItems:'center',gap:8,cursor:'pointer' }}>
+            <label style={{ color:C.sub,fontSize:13,display:'flex',alignItems:'center',gap:8,cursor:'pointer' }}>
               <input type="checkbox" checked={!!form.is_simplified} onChange={e => set('is_simplified', e.target.checked ? 1 : 0)} />
               {t.simplified_cb}
             </label>
@@ -195,12 +195,19 @@ function AccountModal({ account, lang, onSave, onClose }) {
   );
 }
 
-export default function ChartOfAccountsTab() {
+export default function ChartOfAccountsTab({ lang = 'fr', t: theme }) {
+  const C = {
+    text:   theme?.text       ?? '#e2e8f0',
+    sub:    theme?.textSub    ?? '#94a3b8',
+    muted:  theme?.textMuted  ?? '#64748b',
+    card:   theme?.card       ?? '#0f1724',
+    border: theme?.cardBorder ?? '#1e293b',
+    inputBg:theme?.inputBg    ?? '#0f1724',
+  };
   const [accounts, setAccounts] = useState([]);
   const [search, setSearch] = useState('');
   const [simplified, setSimplified] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
-  const [lang, setLang] = useState('fr');
   const [modal, setModal] = useState(null); // null | 'create' | account object
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
@@ -267,7 +274,7 @@ export default function ChartOfAccountsTab() {
   }
 
   return (
-    <div style={{ padding:'16px 20px 40px', fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif", background:'#0c0e14', borderRadius:12, color:'#e2e8f0', minHeight:400 }}>
+    <div style={{ padding:'16px 20px 40px', fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif", background:'#0c0e14', borderRadius:12, color:C.text, minHeight:400 }}>
       {/* Header toolbar */}
       <div style={{ display:'flex',alignItems:'center',gap:12,marginBottom:20,flexWrap:'wrap' }}>
         <input
@@ -284,9 +291,7 @@ export default function ChartOfAccountsTab() {
         <button onClick={() => setShowArchived(s => !s)} style={{ ...btnSecStyle, fontSize:12 }}>
           {showArchived ? t.hideArchived : t.showArchived}
         </button>
-        <button onClick={() => setLang(l => l === 'fr' ? 'en' : 'fr')} style={{ ...btnSecStyle, fontSize:12 }}>
-          {lang === 'fr' ? 'EN' : 'FR'}
-        </button>
+
         <div style={{ flex:1 }} />
         <input ref={fileRef} type="file" accept=".csv" style={{ display:'none' }} onChange={handleImportFile} />
         <button onClick={() => fileRef.current?.click()} style={btnSecStyle} disabled={importing}>
@@ -315,10 +320,10 @@ export default function ChartOfAccountsTab() {
       {grouped.map(({ type, rows }) => (
         <div key={type} style={{ marginBottom:24 }}>
           <div style={{ display:'flex',alignItems:'center',gap:8,marginBottom:8 }}>
-            <span style={{ fontSize:11,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'0.08em' }}>
+            <span style={{ fontSize:11,fontWeight:700,color:C.muted,textTransform:'uppercase',letterSpacing:'0.08em' }}>
               {TYPE_LABELS[type][lang] || TYPE_LABELS[type].fr}
             </span>
-            <span style={{ fontSize:11,color:'#334155' }}>{t.count(rows.length)}</span>
+            <span style={{ fontSize:11,color:C.border }}>{t.count(rows.length)}</span>
           </div>
           <table style={{ width:'100%',borderCollapse:'collapse' }}>
             <thead>
@@ -333,18 +338,18 @@ export default function ChartOfAccountsTab() {
               {rows.map(acct => (
                 <tr key={acct.id} style={{ borderBottom:'1px solid #13151f', opacity: acct.is_archived ? 0.45 : 1 }}>
                   <td style={tdStyle}>
-                    <span style={{ fontFamily:'monospace',color:'#94a3b8',fontSize:13 }}>{acct.account_number}</span>
+                    <span style={{ fontFamily:'monospace',color:C.sub,fontSize:13 }}>{acct.account_number}</span>
                     {acct.is_system ? <span style={tagStyle('#1e3a5f','#60a5fa')}>sys</span> : null}
                     {acct.is_contra ? <span style={tagStyle('#3b1f00','#fb923c')}>contra</span> : null}
                     {acct.is_archived ? <span style={tagStyle('#1a1a2e','#6b7280')}>{lang === 'fr' ? 'archivé' : 'archived'}</span> : null}
                   </td>
                   <td style={tdStyle}>
-                    <span style={{ color:'#e2e8f0',fontSize:14 }}>{lang === 'fr' ? acct.name_fr : (acct.name_en || acct.name_fr)}</span>
+                    <span style={{ color:C.text,fontSize:14 }}>{lang === 'fr' ? acct.name_fr : (acct.name_en || acct.name_fr)}</span>
                   </td>
                   <td style={tdStyle}>
                     {acct.tax_hint
                       ? <span style={tagStyle('#1a2a1a','#4ade80')}>{acct.tax_hint.toUpperCase()}</span>
-                      : <span style={{ color:'#334155',fontSize:12 }}>—</span>}
+                      : <span style={{ color:C.border,fontSize:12 }}>—</span>}
                   </td>
                   <td style={{ ...tdStyle, textAlign:'right', whiteSpace:'nowrap' }}>
                     {!acct.is_system && !acct.is_archived && (
@@ -364,6 +369,7 @@ export default function ChartOfAccountsTab() {
 
       {modal && (
         <AccountModal
+          C={C}
           account={modal === 'create' ? null : modal}
           lang={lang}
           onSave={() => { setModal(null); load(); }}

@@ -1338,6 +1338,24 @@ const MIGRATIONS = [
       }
     },
   },
+  {
+    version: 36,
+    description: 'Add 3400 Opening balance equity. A bank account\'s opening balance lived only '
+      + 'on bank_accounts and never reached the ledger, so the balance sheet showed cash of just '
+      + 'the period activity. The offsetting side of an opening balance goes here until an '
+      + 'accountant reclassifies it.',
+    up: (database) => {
+      const has = database.prepare(
+        `SELECT 1 FROM sqlite_master WHERE type='table' AND name='chart_of_accounts'`
+      ).get();
+      if (!has) return;
+      database.prepare(
+        `INSERT OR IGNORE INTO chart_of_accounts
+           (account_number, name_fr, name_en, type, is_contra, is_simplified, tax_hint, is_system)
+         VALUES ('3400', 'Solde d''ouverture (capitaux)', 'Opening balance equity', 'equity', 0, 0, NULL, 0)`
+      ).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -3561,6 +3579,77 @@ function bankStatementDelete(statementId, _db) {
   })();
 }
 
+
+// Post a bank account's opening balance to the ledger. The balance lived only on
+// bank_accounts, where reconciliation used it, so the ledger and balance sheet
+// started from zero and cash was understated by the whole opening figure.
+//
+// Uses source_type 'bank_opening' rather than 'opening_balance': glPostEntry
+// enforces a single opening_balance entry per location, which would block a
+// second account (savings, credit card) from ever posting its own.
+function bankAccountPostOpeningBalance(bankAccountId, _db) {
+  const db = _db || getDb();
+  const account = db.prepare(`SELECT * FROM bank_accounts WHERE id=?`).get(bankAccountId);
+  if (!account) throw new Error('ERR_BANK_ACCOUNT_NOT_FOUND');
+
+  const sourceId = `bank:${bankAccountId}`;
+  const existing = glFindEntryBySource('bank_opening', sourceId, db);
+  if (existing) return { ok: true, entryId: existing.id, alreadyPosted: true };
+
+  const cents = Math.round((Number(account.opening_balance) || 0) * 100);
+  if (!cents) return { ok: false, error: 'ERR_NO_OPENING_BALANCE' };
+
+  const bankCoa = db.prepare(`SELECT * FROM chart_of_accounts WHERE id=?`).get(account.coa_account_id);
+  const equity  = db.prepare(`SELECT * FROM chart_of_accounts WHERE account_number='3400'`).get();
+  if (!bankCoa || !equity) return { ok: false, error: 'ERR_MISSING_COA' };
+
+  // A positive balance is an asset the business already held; a negative one
+  // (a credit card already owing) flips both sides.
+  const positive = cents > 0;
+  const abs = Math.abs(cents);
+  const memo = `Solde d'ouverture - ${account.name}`;
+  const lines = positive
+    ? [{ account_id: bankCoa.id, debit_cents: abs, credit_cents: 0, memo },
+       { account_id: equity.id,  debit_cents: 0, credit_cents: abs, memo }]
+    : [{ account_id: equity.id,  debit_cents: abs, credit_cents: 0, memo },
+       { account_id: bankCoa.id, debit_cents: 0, credit_cents: abs, memo }];
+
+  const { entryId } = glDraftEntry({
+    entry_date: account.opening_date || new Date().toISOString().slice(0, 10),
+    description: memo,
+    source_type: 'bank_opening',
+    source_id: sourceId,
+    lines,
+  }, db);
+  glPostEntry(entryId, db);
+  return { ok: true, entryId };
+}
+
+// Post ledger entries for bank lines that were categorized before posting
+// existed (or while it was unavailable). Categorizing has posted since v1.42.0,
+// but nothing ever backfilled rows classified before that, so they sat with a
+// category and no entry - invisible to the ledger with no indication why.
+function bankPostMissingEntries(bankAccountId, _db) {
+  const db = _db || getDb();
+  const rows = db.prepare(
+    `SELECT bt.id FROM bank_transactions bt
+     JOIN chart_of_accounts ca ON ca.id = bt.coa_account_id
+     WHERE bt.bank_account_id = ? AND bt.journal_entry_id IS NULL
+       AND bt.coa_account_id IS NOT NULL`
+  ).all(bankAccountId);
+
+  let posted = 0, skipped = 0;
+  db.transaction(() => {
+    for (const r of rows) {
+      // Control accounts return null by design - their entry comes from the
+      // invoice or payment document, not from the bank line.
+      const id = _postBankTransactionEntry(db, r.id);
+      if (id) posted++; else skipped++;
+    }
+  })();
+  return { ok: true, posted, skipped, examined: rows.length };
+}
+
 function bankStatementsList(bankAccountId) {
   return getDb().prepare(
     `SELECT * FROM bank_statements WHERE bank_account_id=? ORDER BY period_end DESC`
@@ -5752,6 +5841,7 @@ module.exports = {
   glAuditLogList,
   bankAccountsList, bankAccountCreate, bankAccountUpdate, bankAccountArchive,
   bankStatementImport, bankStatementsList, bankStatementDelete,
+  bankAccountPostOpeningBalance, bankPostMissingEntries,
   bankTransactionsList, bankTransactionMatch, bankTransactionUnmatch, bankTransactionCategorize,
   bankReconcilePreview, bankReconcileClose, bankReconcileReopen,
   bankLearnedRulesList, bankLearnedRuleDelete,

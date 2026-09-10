@@ -7858,7 +7858,7 @@ export default function App(){
             {configSubTab==="marqueblanche"&&appMode==="franchiseur"&&(<MarqueBlancheConfig whiteLabelConfig={whiteLabelConfig} saveWhiteLabel={saveWhiteLabel}/>)}
 
             {/*  PLAN COMPTABLE (Chart of Accounts) — Sprint 1 Accounting Suite */}
-            {configSubTab==="comptabilite"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><ChartOfAccountsTabLazy/></Suspense>)}
+            {configSubTab==="comptabilite"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><ChartOfAccountsTabLazy lang={lang} t={t}/></Suspense>)}
             {/*  GRAND LIVRE (General Ledger) — Sprint 2 Accounting Suite */}
             {configSubTab==="grandlivre"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}><GrandLivreTabLazy lang={lang}/></Suspense>)}
             {/*  BANQUE (Bank Reconciliation) — Sprint 3 Accounting Suite */}

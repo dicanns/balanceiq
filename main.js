@@ -58,6 +58,7 @@ const {
   glAuditLogList,
   bankAccountsList, bankAccountCreate, bankAccountUpdate, bankAccountArchive,
   bankStatementImport, bankStatementsList, bankStatementDelete,
+  bankAccountPostOpeningBalance, bankPostMissingEntries,
   bankTransactionsList, bankTransactionMatch, bankTransactionUnmatch, bankTransactionCategorize,
   bankReconcilePreview, bankReconcileClose, bankReconcileReopen,
   bankLearnedRulesList, bankLearnedRuleDelete,
@@ -1790,6 +1791,8 @@ ipcMain.handle('bank:accounts:archive',    (_e, id)                    => bankAc
 
 ipcMain.handle('bank:statement:import',    (_e, opts)                  => bankStatementImport(opts));
 ipcMain.handle('bank:statement:delete', (_e, id) => bankStatementDelete(id));
+ipcMain.handle('bank:accounts:postOpening', (_e, id) => bankAccountPostOpeningBalance(id));
+ipcMain.handle('bank:postMissingEntries',   (_e, id) => bankPostMissingEntries(id));
 ipcMain.handle('bank:statement:list',      (_e, bankAccountId)         => bankStatementsList(bankAccountId));
 
 ipcMain.handle('bank:transactions:list',   (_e, bankAccountId, opts)   => bankTransactionsList(bankAccountId, opts));

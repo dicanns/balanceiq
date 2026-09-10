@@ -268,6 +268,8 @@ contextBridge.exposeInMainWorld('api', {
       create:  (fields)       => ipcRenderer.invoke('bank:accounts:create', fields),
       update:  (id, fields)   => ipcRenderer.invoke('bank:accounts:update', id, fields),
       archive: (id)           => ipcRenderer.invoke('bank:accounts:archive', id),
+      postOpening: (id)       => ipcRenderer.invoke('bank:accounts:postOpening', id),
+      postMissing: (id)       => ipcRenderer.invoke('bank:postMissingEntries', id),
     },
     statement: {
       import: (opts)          => ipcRenderer.invoke('bank:statement:import', opts),

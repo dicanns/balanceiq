@@ -36,6 +36,8 @@ const UI = {
       ERR_STATEMENT_NOT_FOUND:          'Relevé introuvable.',
       ERR_STATEMENT_ALREADY_RECONCILED: 'Ce relevé est déjà réconcilié.',
       ERR_RECONCILE_VARIANCE:           (ecart) => `Écart de ${Number(ecart).toFixed(2)} $ - réconciliez toutes les transactions avant de clôturer.`,
+      ERR_NO_OPENING_BALANCE:           'Ce compte n\'a aucun solde d\'ouverture à comptabiliser.',
+      ERR_MISSING_COA:                  'Compte du plan comptable manquant (3400 ou le compte GL lié).',
       ERR_STATEMENT_RECONCILED_LOCKED:  'Ce relevé est réconcilié. Rouvrez le rapprochement avant de le supprimer.',
       ERR_STATEMENT_HAS_MATCHED_TX:     'Ce relevé contient des transactions déjà appariées ou réconciliées. Désappariez-les avant de supprimer.',
       GENERIC:                          "Erreur lors de l'importation.",
@@ -121,6 +123,13 @@ const UI = {
     matchExact:       (n) => `Description exacte (${n}× utilisé)`,
     matchPartial:     'Description partielle correspondante',
     searchCoa:        'Chercher par numéro ou nom…',
+    openingBtn:       'Solde d\'ouverture au GL',
+    openingTitle:     'Comptabiliser le solde d\'ouverture de ce compte au grand livre',
+    openingAlready:   'Le solde d\'ouverture de ce compte est déjà comptabilisé.',
+    openingDone:      (v) => `Solde d'ouverture comptabilisé : ${Number(v).toFixed(2)} $.`,
+    backfillBtn:      'Comptabiliser les manquants',
+    backfillTitle:    'Créer les écritures pour les transactions catégorisées sans écriture',
+    backfillDone:     (p, sk) => `${p} écriture(s) créée(s). ${sk} ignorée(s) (comptes de contrôle).`,
     done:             'Terminé',
     deleteStmt:       'Supprimer',
     confirmDeleteStmt:(a, b) => `Supprimer le relevé du ${a} au ${b} et toutes ses transactions importées? Le fichier pourra ensuite être réimporté.`,
@@ -161,6 +170,8 @@ const UI = {
       ERR_STATEMENT_NOT_FOUND:          'Statement not found.',
       ERR_STATEMENT_ALREADY_RECONCILED: 'This statement is already reconciled.',
       ERR_RECONCILE_VARIANCE:           (ecart) => `Variance of $${Number(ecart).toFixed(2)} - reconcile all transactions before closing.`,
+      ERR_NO_OPENING_BALANCE:           'This account has no opening balance to post.',
+      ERR_MISSING_COA:                  'Chart of accounts entry missing (3400, or the account\'s own GL account).',
       ERR_STATEMENT_RECONCILED_LOCKED:  'This statement is reconciled. Reopen the reconciliation before deleting it.',
       ERR_STATEMENT_HAS_MATCHED_TX:     'This statement has transactions that are already matched or reconciled. Unmatch them before deleting.',
       GENERIC:                          'Import error.',
@@ -246,6 +257,13 @@ const UI = {
     matchExact:       (n) => `Exact description (used ${n}×)`,
     matchPartial:     'Partial description match',
     searchCoa:        'Search by number or name…',
+    openingBtn:       'Post opening balance',
+    openingTitle:     'Post this account\'s opening balance to the general ledger',
+    openingAlready:   'This account\'s opening balance is already posted.',
+    openingDone:      (v) => `Opening balance posted: $${Number(v).toFixed(2)}.`,
+    backfillBtn:      'Post missing entries',
+    backfillTitle:    'Create ledger entries for categorized transactions that have none',
+    backfillDone:     (p, sk) => `${p} entr${p === 1 ? 'y' : 'ies'} created. ${sk} skipped (control accounts).`,
     done:             'Done',
     deleteStmt:       'Delete',
     confirmDeleteStmt:(a, b) => `Delete the statement from ${a} to ${b} and all transactions it imported? The file can then be re-imported.`,
@@ -613,6 +631,27 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
 
   // Remove a bad import (wrong date range / wrong account) so the same file can
   // be imported again - the stored file hash goes with the statement.
+  // The opening balance lived only on the account record, so the ledger started
+  // from zero and the balance sheet understated cash by the whole figure.
+  const postOpening = async (acc) => {
+    try {
+      const r = await window.api.bank.accounts.postOpening(acc.id);
+      if (r?.alreadyPosted) alert(T.openingAlready);
+      else if (r?.ok) alert(T.openingDone(acc.opening_balance));
+      else alert(tErr(r?.error || ''));
+      loadAccounts();
+    } catch (e) { alert(tErr(e)); }
+  };
+
+  // Rows categorized before posting existed have a category but no ledger entry.
+  const postMissing = async (acc) => {
+    try {
+      const r = await window.api.bank.accounts.postMissing(acc.id);
+      alert(T.backfillDone(r?.posted ?? 0, r?.skipped ?? 0));
+      loadTransactions();
+    } catch (e) { alert(tErr(e)); }
+  };
+
   const deleteStatement = async (stmt) => {
     if (!window.confirm(T.confirmDeleteStmt(fmtDate(stmt.period_start), fmtDate(stmt.period_end)))) return;
     try {
@@ -688,6 +727,8 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
                     <div style={{ fontSize: 13, color: C.sub }}>{T.openingBalanceLbl}: {fmt(acc.opening_balance)} · {fmtDate(acc.opening_date)}</div>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => postOpening(acc)} style={{ ...btnSmall, marginRight: 6 }} title={T.openingTitle}>{T.openingBtn}</button>
+                    <button onClick={() => postMissing(acc)} style={{ ...btnSmall, marginRight: 6 }} title={T.backfillTitle}>{T.backfillBtn}</button>
                     <button onClick={() => { setSelectedAccount(acc); openImport(acc); }} style={btnStyle('#0ea5e9', 12)}>{T.importStatement}</button>
                     <button onClick={() => { setSelectedAccount(acc); setSubTab('transactions'); }} style={btnStyle(C.muted, 12)}>{T.viewTransactions}</button>
                     <button onClick={() => openEditAccount(acc)} style={btnSmall}>{T.editAccount}</button>
