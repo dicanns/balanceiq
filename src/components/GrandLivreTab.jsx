@@ -1003,7 +1003,7 @@ function ControlVarianceTab({ lang }) {
   const [rows, setRows] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  async function generate() {
+  const generate = React.useCallback(async () => {
     setLoading(true);
     try {
       const glData = await window.api.ledger.trialBalance(asOfDate) || [];
@@ -1102,7 +1102,11 @@ function ControlVarianceTab({ lang }) {
       setRows(result);
     } catch (_) {}
     setLoading(false);
-  }
+  }, [asOfDate]);
+
+  // Load on open and whenever the date changes, so the panel never shows a
+  // variance from before a repair with nothing to say it is stale.
+  React.useEffect(() => { generate(); }, [generate]);
 
   function fmtC(cents) {
     if (cents === null) return '—';

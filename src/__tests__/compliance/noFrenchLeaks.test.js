@@ -106,3 +106,21 @@ describe('THEME-001 BanqueTab follows the app theme', () => {
     expect(bankSrc).toMatch(/const selectStyle\s*=\s*\{[^}]*color: C\.text/);
   });
 });
+
+describe('THEME-002 Chart of Accounts follows the app theme', () => {
+  const coaSrc = read('src/components/ChartOfAccountsTab.jsx');
+
+  it('accepts lang and theme from the app', () => {
+    expect(coaSrc).toMatch(/function ChartOfAccountsTab\(\{[^)]*lang[^)]*t:\s*theme/);
+  });
+
+  it('keeps no local language state that ignores the app', () => {
+    expect(coaSrc).not.toMatch(/const \[lang, setLang\] = useState/);
+  });
+
+  it('the tab body takes its background from the theme', () => {
+    // A fixed dark panel under themed near-black text is invisible in light mode.
+    expect(coaSrc).not.toContain("background:'#0c0e14', borderRadius:12, color:C.text");
+    expect(coaSrc).toContain('background:C.card, borderRadius:12, color:C.text');
+  });
+});

@@ -274,7 +274,7 @@ export default function ChartOfAccountsTab({ lang = 'fr', t: theme }) {
   }
 
   return (
-    <div style={{ padding:'16px 20px 40px', fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif", background:'#0c0e14', borderRadius:12, color:C.text, minHeight:400 }}>
+    <div style={{ padding:'16px 20px 40px', fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif", background:C.card, borderRadius:12, color:C.text, minHeight:400 }}>
       {/* Header toolbar */}
       <div style={{ display:'flex',alignItems:'center',gap:12,marginBottom:20,flexWrap:'wrap' }}>
         <input
@@ -395,7 +395,7 @@ const btnSecStyle = {
   color:'#94a3b8', padding:'7px 12px', fontSize:13, cursor:'pointer',
 };
 const thStyle = {
-  textAlign:'left', padding:'5px 10px', fontSize:11, color:'#475569',
+  textAlign:'left', padding:'5px 10px', fontSize:11, color:'#8b93a1',
   fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em',
 };
 const tdStyle = { padding:'8px 10px', verticalAlign:'middle' };
