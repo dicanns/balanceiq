@@ -112,7 +112,9 @@ const UI = {
     etransferDirOut:  'Envoyé',
     etransferNoAccount: (n) => `Compte ${n} introuvable dans le plan comptable.`,
     taxCaptureTitle:  'Taxes payées (CTI/RTI)',
-    taxCaptureHint:   'Optionnel. Saisir la TPS et la TVQ pour les réclamer comme crédit de taxe sur intrants; la dépense est alors comptabilisée hors taxes.',
+    taxCaptureHint:   'Optionnel. Saisir la TPS et la TVQ réellement payées, telles qu\'inscrites sur la facture. La dépense est alors comptabilisée hors taxes.',
+    taxInflowNote:    'Aucune taxe à saisir sur un encaissement : la TPS/TVQ sur les ventes est déjà comptabilisée à la facturation.',
+    taxAutoFillHint:  'Calculer suppose que la totalité du montant est taxable aux taux du Québec. Sinon, saisir les montants exacts de la facture.',
     taxAutoFill:      'Calculer',
     taxTps:           'TPS payée ($)',
     taxTvq:           'TVQ payée ($)',
@@ -235,7 +237,9 @@ const UI = {
     etransferDirOut:  'Sent',
     etransferNoAccount: (n) => `Account ${n} not found in the chart of accounts.`,
     taxCaptureTitle:  'Tax paid (ITC/ITR)',
-    taxCaptureHint:   'Optional. Enter the GST and QST to claim them as input tax credits; the expense is then recorded net of tax.',
+    taxCaptureHint:   'Optional. Enter the GST and QST actually paid, as shown on the invoice. The expense is then recorded net of tax.',
+    taxInflowNote:    'No tax to capture on a receipt: sales GST/QST was already recorded when the invoice was raised.',
+    taxAutoFillHint:  'Calculate assumes the entire amount is taxable at Quebec rates. Otherwise enter the exact amounts from the invoice.',
     taxAutoFill:      'Calculate',
     taxTps:           'GST paid ($)',
     taxTvq:           'QST paid ($)',
@@ -278,6 +282,11 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   const th       = { textAlign: 'left', padding: '8px 10px', fontWeight: 600, fontSize: 12, color: C.sub };
   const kpiLabel = { fontSize: 11, color: C.muted, marginBottom: 2 };
   const kpiVal   = { fontSize: 16, fontWeight: 700, color: C.text };
+  // Modals follow the theme too - a fixed dark panel under themed near-black
+  // text is unreadable in light mode.
+  const inputStyle = { background: C.inputBg, color: C.text, border: `1px solid ${C.border}`, borderRadius: 6, padding: '5px 10px', fontSize: 12 };
+  const inputFull  = { ...inputStyle, width: '100%', boxSizing: 'border-box', padding: '6px 10px' };
+  const pickerStyles = { inputFull, labelMuted: C.muted, panel: C.card, border: C.border, hi: 'rgba(167,139,250,0.18)' };
   const td          = { padding: '7px 10px', verticalAlign: 'middle', color: C.text };
   const selectStyle = { background: C.card, color: C.text, border: `1px solid ${C.border}`, borderRadius: 6, padding: '5px 10px', fontSize: 12 };
 
@@ -288,7 +297,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
     if (v.startsWith('MATCH_PARTIAL')) return T.matchPartial;
     return v;
   };
-  const pickerStyles = { inputFull, labelMuted: C.muted, panel: '#0f1724', border: '#334155', hi: 'rgba(167,139,250,0.18)' };
+
   const T = UI[lang] || UI.fr;
 
   // Main-process errors cross IPC as strings, so they are thrown as stable codes
@@ -910,7 +919,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
 
       {/* ── ACCOUNT MODAL ─────────────────────────────────────────────────────── */}
       {showAccountModal && (
-        <ModalOverlay onClose={() => setShowAccountModal(false)}>
+        <ModalOverlay surface={C.card} edge={C.border} onClose={() => setShowAccountModal(false)}>
           <h3 style={{ margin: '0 0 16px', color: C.text }}>{editingAccount ? T.editAccount : T.addAccount}</h3>
           <label style={labelStyle}>{T.accountName}</label>
           <input style={inputFull} value={accountForm.name} onChange={e => setAccountForm(f => ({ ...f, name: e.target.value }))} />
@@ -942,7 +951,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
 
       {/* ── IMPORT MODAL ─────────────────────────────────────────────────────── */}
       {showImportModal && (
-        <ModalOverlay onClose={() => setShowImportModal(false)}>
+        <ModalOverlay surface={C.card} edge={C.border} onClose={() => setShowImportModal(false)}>
           <h3 style={{ margin: '0 0 16px', color: C.text }}>{T.importTitle}</h3>
           <label style={labelStyle}>{T.fileLabel}</label>
           <input ref={fileInputRef} type='file' accept='.csv,.ofx,.qfx,.qbo' onChange={e => setImportFile(e.target.files?.[0] || null)}
@@ -973,7 +982,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
 
       {/* ── CATEGORIZE MODAL ─────────────────────────────────────────────────── */}
       {categorizingTx && (
-        <ModalOverlay onClose={() => setCategorizingTx(null)}>
+        <ModalOverlay surface={C.card} edge={C.border} onClose={() => setCategorizingTx(null)}>
           <h3 style={{ margin: '0 0 10px', color: C.text }}>{T.categorize}</h3>
           <div style={{ fontSize: 13, color: C.sub, marginBottom: 14 }}>
             <strong style={{ color: C.text }}>{categorizingTx.description}</strong><br />
@@ -994,8 +1003,10 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
           <label style={labelStyle}>{T.notes}</label>
           <input style={inputFull} value={categorizeNotes} onChange={e => setCategorizeNotes(e.target.value)} />
 
-          {/* Capturing the tax here is what makes it claimable as an input tax
-              credit; the expense is then recorded net of it. */}
+          {/* Input tax credits are tax PAID, so this only applies to money going
+              out. On a receipt the sales tax was already recorded when the
+              invoice was raised, and capturing it again would double-count. */}
+          {Number(categorizingTx.amount) < 0 ? (
           <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
               <label style={{ ...labelStyle, marginBottom: 0 }}>{T.taxCaptureTitle}</label>
@@ -1010,7 +1021,8 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
                 style={{ ...btnSmall, fontSize: 11 }}
               >{T.taxAutoFill}</button>
             </div>
-            <div style={{ fontSize: 10.5, color: C.muted, margin: '4px 0 8px' }}>{T.taxCaptureHint}</div>
+            <div style={{ fontSize: 10.5, color: C.muted, margin: '4px 0 2px' }}>{T.taxCaptureHint}</div>
+            <div style={{ fontSize: 10, color: C.muted, fontStyle: 'italic', margin: '0 0 8px' }}>{T.taxAutoFillHint}</div>
             <div style={{ display: 'flex', gap: 10 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 10, color: C.muted, marginBottom: 3 }}>{T.taxTps}</div>
@@ -1024,6 +1036,11 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
               </div>
             </div>
           </div>
+          ) : (
+            <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}`, fontSize: 11, color: C.muted }}>
+              {T.taxInflowNote}
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
             <button onClick={saveCategorize} disabled={!categorizeCoaId} style={btnStyle('#f97316')}>{T.saveCategorize}</button>
             <button onClick={() => setCategorizingTx(null)} style={btnStyle('#374151')}>{T.cancel}</button>
@@ -1033,7 +1050,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
 
       {/* ── E-TRANSFER MATCH MODAL ──────────────────────────────────────────── */}
       {etransferTx && (
-        <ModalOverlay onClose={() => setEtransferTx(null)}>
+        <ModalOverlay surface={C.card} edge={C.border} onClose={() => setEtransferTx(null)}>
           <h3 style={{ margin: '0 0 10px', color: '#a78bfa' }}>{T.etransferBadge}</h3>
           <div style={{ fontSize: 13, color: C.sub, marginBottom: 14 }}>
             <strong style={{ color: C.text }}>{etransferTx.description}</strong><br />
@@ -1077,7 +1094,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
 
       {/* ── REOPEN MODAL ─────────────────────────────────────────────────────── */}
       {showReopenModal && (
-        <ModalOverlay onClose={() => setShowReopenModal(null)}>
+        <ModalOverlay surface={C.card} edge={C.border} onClose={() => setShowReopenModal(null)}>
           <h3 style={{ margin: '0 0 14px', color: C.text }}>{T.reopenRec}</h3>
           <label style={labelStyle}>{T.reopenReason}</label>
           <input style={inputFull} value={reopenReason} onChange={e => setReopenReason(e.target.value)} />
@@ -1183,11 +1200,11 @@ function CoaPicker({ accounts, value, onChange, placeholder, nameOf, styles }) {
 }
 
 // ── ModalOverlay ──────────────────────────────────────────────────────────────
-function ModalOverlay({ children, onClose }) {
+function ModalOverlay({ children, onClose, surface = '#0f1724', edge = '#1e293b' }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background: '#0f1724', border: '1px solid #1e293b', borderRadius: 10, padding: '24px 28px', minWidth: 360, maxWidth: 520, width: '90vw', maxHeight: '85vh', overflowY: 'auto' }}>
+      <div style={{ background: surface, border: `1px solid ${edge}`, borderRadius: 10, padding: '24px 28px', minWidth: 360, maxWidth: 520, width: '90vw', maxHeight: '85vh', overflowY: 'auto' }}>
         {children}
       </div>
     </div>
@@ -1201,7 +1218,5 @@ const btnStyle = (bg, fontSize = 13) => ({
 });
 const btnSmallDanger= { background: '#450a0a', color: '#fca5a5', border: 'none', borderRadius: 5, padding: '4px 10px', cursor: 'pointer', fontSize: 12 };
 
-const inputStyle    = { background: '#0f1724', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 6, padding: '5px 10px', fontSize: 12 };
-const inputFull     = { width: '100%', boxSizing: 'border-box', background: '#0f1724', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 6, padding: '7px 10px', fontSize: 13, marginBottom: 10 };
 const labelStyle    = { display: 'block', fontSize: 12, color: '#64748b', marginBottom: 4 };
 

@@ -98,3 +98,44 @@ describe('TAXCAP-004 the Calculate helper', () => {
     expect(autoFill(-1149.75)).toEqual({ tps: 50, tvq: 99.75 });
   });
 });
+
+describe('TAXCAP-005 receipts carry no input tax credit', () => {
+  // Mirrors the inflow guard in _postBankTransactionEntry(). Input tax credits
+  // are tax PAID; sales tax on money received was recorded when the invoice was
+  // raised, so capturing it here would count it twice.
+  function splitWithDirection({ amount, tpsPaid = 0, tvqPaid = 0 }) {
+    const cents = Math.round(Math.abs(amount) * 100);
+    const inflow = amount > 0;
+    let tps = Math.round(tpsPaid * 100);
+    let tvq = Math.round(tvqPaid * 100);
+    if (inflow) { tps = 0; tvq = 0; }
+    if (tps + tvq >= cents) { tps = 0; tvq = 0; }
+    return { cents, tps, tvq, net: cents - tps - tvq };
+  }
+
+  it('a $2,000 customer deposit claims no tax even if values were captured', () => {
+    const r = splitWithDirection({ amount: 2000, tpsPaid: 86.96, tvqPaid: 173.46 });
+    expect(r.tps).toBe(0);
+    expect(r.tvq).toBe(0);
+    expect(r.net).toBe(200000);
+  });
+
+  it('a later partial receipt on the same invoice also claims nothing', () => {
+    const r = splitWithDirection({ amount: 574.88, tpsPaid: 25, tvqPaid: 49.88 });
+    expect(r.tps + r.tvq).toBe(0);
+  });
+
+  it('an outgoing payment still splits normally', () => {
+    const r = splitWithDirection({ amount: -1149.75, tpsPaid: 50, tvqPaid: 99.75 });
+    expect(r.tps).toBe(5000);
+    expect(r.tvq).toBe(9975);
+    expect(r.net).toBe(100000);
+  });
+
+  it('a credit card payment carries no tax - it settles a liability', () => {
+    // Categorized to 2210; the expenses were taxed on the card statement lines.
+    const r = splitWithDirection({ amount: -1118.32 });
+    expect(r.tps + r.tvq).toBe(0);
+    expect(r.net).toBe(111832);
+  });
+});
