@@ -2805,6 +2805,29 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
  saveFactures(updated);
  setStripeStatus(null);
  };
+ // A payment recorded with the wrong date or amount had no way back: there was
+ // no edit or delete for one anywhere in the app. Voiding reverses its ledger
+ // entry FIRST, so the books can never be left holding a payment the invoice no
+ // longer shows. Deliberately not gated on `locked`: that lock protects the
+ // invoice lines, and a paid invoice is exactly when a bad payment needs fixing.
+ const voidPaiement=async(p)=>{
+  const label=`${p.date||""} ${fmt(p.montant||0)}`.trim();
+  if(!window.confirm(T===EN
+   ?`Void this payment (${label})? Its ledger entry is reversed; the original stays in the record.`
+   :`Annuler ce paiement (${label})? Son écriture est contrepassée; l'originale reste au registre.`))return;
+  try{
+   if(window.api?.ledger?.paymentReverse){
+    const r=await window.api.ledger.paymentReverse({paymentId:p.id,reason:T===EN?"Payment voided":"Paiement annulé"});
+    if(r&&r.ok===false){alert(T===EN?"Could not reverse the ledger entry. Nothing was changed.":"Impossible de contrepasser l'écriture. Rien n'a été modifié.");return;}
+   }
+   const rest=(form.paiements||[]).filter(x=>x.id!==p.id);
+   const paid=rest.reduce((a,x)=>a+(x.montant||0),0);
+   const newStatut=paid<=0.005?"Envoyée":(totals.total-totalAcomptes-paid)<=0.005?"Payée":"Payée partiellement";
+   upd({paiements:rest,statut:newStatut});
+   if(savedId)saveFactures(factures.map(f=>f.id===savedId?{...f,paiements:rest,statut:newStatut}:f));
+   logUpdate('invoice','paiement',p.id,'voided',JSON.stringify(p),null);
+  }catch(e){alert(String(e?.message||e));}
+ };
  const doPrint=async()=>{
  const numero=savedNumero||fmtDocNum(docNums.prefix,"F",docNums.facture);
  let paymentUrl=stripeSession?.url||null;
@@ -2917,7 +2940,7 @@ function FactureEditor({facture,clients,produits,companyInfo,docNums,saveDocNums
  {(form.paiements||[]).length>0&&(<div style={{marginTop:8,borderTop:`1px solid ${t.divider}`,paddingTop:8}}><div style={{fontSize:10,fontWeight:700,color:t.textMuted,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:4}}>{T.facPayHist}</div><div style={{display:"grid",gridTemplateColumns:"80px 1fr 80px 80px 90px",gap:3,fontSize:10,color:t.textMuted,fontWeight:700,marginBottom:3}}><span>Date</span><span>Mode</span><span>{T.colRef}</span><span>{T.colAmount}</span><span style={{textAlign:"right"}}>{T.colBalance}</span></div>{(form.paiements||[]).map((p,i)=>{
  const cumPaid=(form.paiements||[]).slice(0,i+1).reduce((s,x)=>s+(x.montant||0),0);
  const soldeApres=Math.max(0,totals.total-totalAcomptes-cumPaid);
- return(<div key={p.id||i} style={{display:"grid",gridTemplateColumns:"80px 1fr 80px 80px 90px",gap:3,fontSize:11,color:t.text,padding:"2px 0",borderBottom:`1px solid ${t.divider}`}}><span>{p.date||"—"}</span><span style={{color:t.textSub}}>{p.mode||"—"}</span><span style={{color:t.textDim,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{p.reference||"—"}</span><span style={{color:"#22c55e",fontWeight:700,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{fmt(p.montant||0)}</span><span style={{textAlign:"right",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:soldeApres===0?"#22c55e":"#f97316",fontWeight:700}}>{fmt(soldeApres)}</span></div>);
+ return(<div key={p.id||i} style={{display:"grid",gridTemplateColumns:"80px 1fr 80px 80px 90px",gap:3,fontSize:11,color:t.text,padding:"2px 0",borderBottom:`1px solid ${t.divider}`}}><span>{p.date||"—"}<button type="button" onClick={()=>voidPaiement(p)} title={T===EN?"Void this payment":"Annuler ce paiement"} style={{marginLeft:5,background:"none",border:"none",padding:0,cursor:"pointer",color:"#ef4444",fontSize:11,lineHeight:1}}>×</button></span><span style={{color:t.textSub}}>{p.mode||"—"}</span><span style={{color:t.textDim,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{p.reference||"—"}</span><span style={{color:"#22c55e",fontWeight:700,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{fmt(p.montant||0)}</span><span style={{textAlign:"right",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:soldeApres===0?"#22c55e":"#f97316",fontWeight:700}}>{fmt(soldeApres)}</span></div>);
  })}</div>)}
  {!locked&&(showDepotForm
  ?<div style={{borderTop:`1px solid ${t.dividerMid}`,paddingTop:8,marginTop:4,display:"flex",flexDirection:"column",gap:5}}><div style={{fontSize:11,fontWeight:700,color:t.text}}>{T.facEnregistrerDepot}</div><input type="date"value={depotForm.date} onChange={e=>setDepotForm(p=>({...p,date:e.target.value}))} style={{...inputS,fontSize:11}}/><input type="number"value={depotForm.montant} onChange={e=>setDepotForm(p=>({...p,montant:e.target.value}))} placeholder="Montant"style={{...inputS,fontSize:11}}/><select value={depotForm.mode} onChange={e=>setDepotForm(p=>({...p,mode:e.target.value}))} style={{...inputS,fontSize:11}}>
