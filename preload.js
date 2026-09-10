@@ -270,6 +270,7 @@ contextBridge.exposeInMainWorld('api', {
       archive: (id)           => ipcRenderer.invoke('bank:accounts:archive', id),
       postOpening: (id)       => ipcRenderer.invoke('bank:accounts:postOpening', id),
       postMissing: (id)       => ipcRenderer.invoke('bank:postMissingEntries', id),
+      subledger:   (asOf)     => ipcRenderer.invoke('bank:subledgerBalances', asOf),
     },
     statement: {
       import: (opts)          => ipcRenderer.invoke('bank:statement:import', opts),

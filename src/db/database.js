@@ -3702,6 +3702,33 @@ function bankPostMissingEntries(bankAccountId, _db) {
   return { ok: true, posted, skipped, orphansReversed, redated, examined: rows.length };
 }
 
+
+// Bank subledger balances for the control-account check: what each bank account
+// says it holds, independent of the ledger. Comparing this against the GL
+// balance for the same account is what catches a missing opening balance, a
+// duplicated entry, or a reversal filed in the wrong period - all of which
+// leave the ledger internally balanced while disagreeing with the bank.
+function bankSubledgerBalances(asOfDate, _db) {
+  const db = _db || getDb();
+  const cutoff = asOfDate || new Date().toISOString().slice(0, 10);
+  return db.prepare(
+    `SELECT ba.id, ba.name, ba.coa_account_id, ca.account_number,
+            ba.opening_balance
+              + COALESCE((SELECT SUM(bt.amount) FROM bank_transactions bt
+                          WHERE bt.bank_account_id = ba.id AND bt.transaction_date <= ?), 0)
+              AS balance
+     FROM bank_accounts ba
+     JOIN chart_of_accounts ca ON ca.id = ba.coa_account_id
+     WHERE COALESCE(ba.is_archived, 0) = 0`
+  ).all(cutoff).map(r => ({
+    bankAccountId: r.id,
+    name: r.name,
+    accountNumber: r.account_number,
+    coaAccountId: r.coa_account_id,
+    cents: Math.round((Number(r.balance) || 0) * 100),
+  }));
+}
+
 function bankStatementsList(bankAccountId) {
   return getDb().prepare(
     `SELECT * FROM bank_statements WHERE bank_account_id=? ORDER BY period_end DESC`
@@ -5893,7 +5920,7 @@ module.exports = {
   glAuditLogList,
   bankAccountsList, bankAccountCreate, bankAccountUpdate, bankAccountArchive,
   bankStatementImport, bankStatementsList, bankStatementDelete,
-  bankAccountPostOpeningBalance, bankPostMissingEntries, bankFindOrphanEntries,
+  bankAccountPostOpeningBalance, bankPostMissingEntries, bankFindOrphanEntries, bankSubledgerBalances,
   bankTransactionsList, bankTransactionMatch, bankTransactionUnmatch, bankTransactionCategorize,
   bankReconcilePreview, bankReconcileClose, bankReconcileReopen,
   bankLearnedRulesList, bankLearnedRuleDelete,

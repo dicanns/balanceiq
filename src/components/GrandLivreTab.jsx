@@ -1036,6 +1036,17 @@ function ControlVarianceTab({ lang }) {
         }
       } catch (_) {}
 
+      // Bank subledger: what each bank account itself says it holds. This is the
+      // check that catches a missing opening balance, a duplicated entry, or a
+      // reversal filed in the wrong period - the ledger stays internally
+      // balanced in all three cases but stops agreeing with the bank.
+      const bankByAccount = {};
+      try {
+        for (const b of (await window.api.bank.accounts.subledger(asOfDate)) || []) {
+          bankByAccount[b.accountNumber] = (bankByAccount[b.accountNumber] || 0) + b.cents;
+        }
+      } catch (_) {}
+
       // AP subledger: sum unpaid bills
       let apCents = null;
       try {
@@ -1048,11 +1059,30 @@ function ControlVarianceTab({ lang }) {
       const ACCOUNTS = [
         { num: '1100', fr: 'Comptes clients (AR)',         en: 'Accounts Receivable (AR)',    sub: arCents,  type: 'asset',     expectZero: false },
         { num: '2010', fr: 'Comptes fournisseurs (AP)',     en: 'Accounts Payable (AP)',        sub: apCents,  type: 'liability', expectZero: false },
-        { num: '1010', fr: 'Encaisse (banque opération)',   en: 'Cash (operating bank)',        sub: null,     type: 'asset',     expectZero: false },
-        { num: '1050', fr: 'Effacement Stripe',             en: 'Stripe Clearing',             sub: null,     type: 'asset',     expectZero: true  },
+        { num: '1010', fr: 'Encaisse (banque opération)',   en: 'Cash (operating bank)',        sub: bankByAccount['1010'] ?? null,     type: 'asset',     expectZero: false },
+        { num: '1050', fr: 'Encaisse - depots en transit',   en: 'Undeposited funds',           sub: null,     type: 'asset',     expectZero: false },
         { num: '1090', fr: 'Suspense caisse',               en: 'Cash Expense Suspense',       sub: null,     type: 'asset',     expectZero: true  },
         { num: '2300', fr: 'Acomptes clients',              en: 'Customer Deposits',           sub: null,     type: 'liability', expectZero: false },
       ];
+
+      // Every other bank-linked account (savings, credit cards) gets the same
+      // check, so adding an account never silently drops out of the review.
+      const bankMeta = {};
+      try {
+        for (const b of (await window.api.bank.accounts.subledger(asOfDate)) || []) {
+          bankMeta[b.accountNumber] = b.name;
+        }
+      } catch (_) {}
+      for (const [num, name] of Object.entries(bankMeta)) {
+        if (ACCOUNTS.some(a => a.num === num)) continue;
+        const isLiability = num.startsWith('2');
+        ACCOUNTS.push({
+          num, fr: name, en: name,
+          sub: bankByAccount[num] ?? null,
+          type: isLiability ? 'liability' : 'asset',
+          expectZero: false,
+        });
+      }
 
       const result = ACCOUNTS.map(a => {
         const gl = a.num in glMap ? glMap[a.num] : null;
