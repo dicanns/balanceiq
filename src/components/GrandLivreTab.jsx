@@ -772,10 +772,9 @@ function TrialBalanceTab({ lang }) {
     if (m > 12) { m = 1; y++; }
     if (m < 1)  { m = 12; y--; }
     setSelMonth(m); setSelYear(y);
-    setGenerated(false);
   }
 
-  async function generate() {
+  const generate = React.useCallback(async () => {
     setLoading(true);
     try {
       const data = await window.api.ledger.trialBalance(asOf);
@@ -783,7 +782,12 @@ function TrialBalanceTab({ lang }) {
       setGenerated(true);
     } catch (_) {}
     setLoading(false);
-  }
+  }, [asOf]);
+
+  // Load on open and whenever the period changes. Requiring a click meant the
+  // panel could sit showing figures from before a repair or a new entry, with
+  // nothing to indicate they were stale.
+  React.useEffect(() => { generate(); }, [generate]);
 
   const totalDebit  = rows.reduce((s, r) => s + (r.total_debit_cents || 0), 0);
   const totalCredit = rows.reduce((s, r) => s + (r.total_credit_cents || 0), 0);
