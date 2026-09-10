@@ -1439,6 +1439,38 @@ const MIGRATIONS = [
       database.prepare(`UPDATE chart_of_accounts SET itc_pct = 50 WHERE account_number = '6810'`).run();
     },
   },
+  {
+    version: 41,
+    description: 'Flag purchases that belong on the balance sheet rather than the income statement. '
+      + 'A laptop categorized to IT expenses deducts in full this year instead of over its life '
+      + 'through CCA, and nothing in the app said a word about it. Adds computer equipment (class '
+      + '50 has no home in the standard chart) and marks the expense accounts a capital purchase '
+      + 'usually hides in.',
+    up: (database) => {
+      const hasTable = !!database.prepare(
+        `SELECT 1 FROM sqlite_master WHERE type='table' AND name='chart_of_accounts'`
+      ).get();
+      if (!hasTable) return;
+      const cols = database.prepare(`PRAGMA table_info(chart_of_accounts)`).all().map(c => c.name);
+      if (!cols.includes('capex_watch')) {
+        database.prepare(`ALTER TABLE chart_of_accounts ADD COLUMN capex_watch INTEGER DEFAULT 0`).run();
+      }
+
+      const ins = database.prepare(`INSERT OR IGNORE INTO chart_of_accounts
+        (account_number, name_fr, name_en, type, is_contra, is_simplified, is_system, tax_hint)
+        VALUES (?, ?, ?, 'asset', ?, 0, 1, NULL)`);
+      // Computer equipment is CCA class 50 and had nowhere to sit: the chart went
+      // kitchen, leasehold, furniture, vehicles, and stopped.
+      ins.run('1580', 'Matériel informatique', 'Computer equipment', 0);
+      ins.run('1590', 'Amortissement cumulé - informatique', 'Accumulated depreciation - computer equipment', 1);
+
+      // Only the accounts a capital purchase actually hides in. Flagging every
+      // large expense would fire on rent and payroll every month and be ignored.
+      const watch = ['6200', '6210', '6530', '6600', '6610'];
+      const upd = database.prepare(`UPDATE chart_of_accounts SET capex_watch = 1 WHERE account_number = ?`);
+      database.transaction(() => { for (const n of watch) upd.run(n); })();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.

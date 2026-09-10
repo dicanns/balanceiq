@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { looksLikeCapitalPurchase } from '../utils/calculations.js';
 
 // ── i18n ─────────────────────────────────────────────────────────────────────
 const UI = {
@@ -120,6 +121,10 @@ const UI = {
     taxAutoFill:      'Calculer',
     taxRestricted:    (pct, tps, tvq) => `Ce compte est limité à ${pct} % : ${tps} de TPS et ${tvq} de TVQ seront réclamés. Le reste fait partie de la dépense.`,
     taxRestrictedWhy: 'Saisissez les montants complets de la facture. La limite est appliquée automatiquement.',
+    capexTitle:       'Est-ce un achat en immobilisation ?',
+    capexBody:        (amt) => `${amt} sur ce compte passe en dépense complète cette année. Un bien durable (ordinateur, équipement, mobilier) va plutôt au bilan et se déduit sur plusieurs années par l'amortissement fiscal (DPA).`,
+    capexHow:         'Si c\'est le cas : choisissez plutôt un compte d\'actif (1500-1580), puis inscrivez le bien dans Immobilisations avec sa catégorie DPA. La TPS/TVQ reste réclamable en entier cette année.',
+    capexDismiss:     'Non, c\'est une dépense',
     taxTps:           'TPS payée ($)',
     taxTvq:           'TVQ payée ($)',
     matchExact:       (n) => `Description exacte (${n}× utilisé)`,
@@ -256,6 +261,10 @@ const UI = {
     taxAutoFill:      'Calculate',
     taxRestricted:    (pct, tps, tvq) => `This account is limited to ${pct}%: ${tps} GST and ${tvq} QST will be claimed. The rest is part of the expense.`,
     taxRestrictedWhy: 'Enter the full amounts from the invoice. The limit is applied for you.',
+    capexTitle:       'Is this a capital purchase?',
+    capexBody:        (amt) => `${amt} on this account is deducted in full this year. Something lasting - a computer, equipment, furniture - belongs on the balance sheet instead and is deducted over several years through capital cost allowance (CCA).`,
+    capexHow:         'If it is: pick an asset account (1500-1580) instead, then record the item under Fixed Assets with its CCA class. The GST/QST stays fully claimable this year either way.',
+    capexDismiss:     'No, this is an expense',
     taxTps:           'GST paid ($)',
     taxTvq:           'QST paid ($)',
     matchExact:       (n) => `Exact description (used ${n}×)`,
@@ -369,6 +378,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   const [categorizingTx, setCategorizingTx]       = useState(null);
   const [categorizeCoaId, setCategorizeCoaId]     = useState('');
   const [categorizeNotes, setCategorizeNotes]     = useState('');
+  const [capexDismissed, setCapexDismissed]       = useState(false);
   const [catTps, setCatTps]                       = useState('');
   const [catTvq, setCatTvq]                       = useState('');
 
@@ -671,6 +681,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   // which would otherwise overwrite a correct answer with AR/AP.
 
   React.useEffect(() => {
+    setCapexDismissed(false);
     if (!categorizingTx) { setCatTps(''); setCatTvq(''); return; }
     setCatTps(categorizingTx.tps_paid ? String(categorizingTx.tps_paid) : '');
     setCatTvq(categorizingTx.tvq_paid ? String(categorizingTx.tvq_paid) : '');
@@ -1045,6 +1056,28 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
           />
           <label style={labelStyle}>{T.notes}</label>
           <input style={inputFull} value={categorizeNotes} onChange={e => setCategorizeNotes(e.target.value)} />
+
+          {(() => {
+            // A laptop categorized to IT expenses is written off in full this
+            // year instead of being capitalized and deducted through CCA, and
+            // nothing used to say a word about it. Only the accounts a capital
+            // purchase actually hides in are watched: flagging every large
+            // expense would fire on rent and payroll and be ignored within a week.
+            const chosen = coaList.find(a => String(a.id) === String(categorizeCoaId));
+            if (capexDismissed || !looksLikeCapitalPurchase(categorizingTx.amount, chosen)) return null;
+            const amt = Math.abs(Number(categorizingTx.amount) || 0).toLocaleString(
+              lang === 'en' ? 'en-CA' : 'fr-CA', { style: 'currency', currency: 'CAD' });
+            return (
+              <div style={{ marginTop: 14, background: 'rgba(96,165,250,0.07)', border: '1px solid rgba(96,165,250,0.3)',
+                borderRadius: 6, padding: '10px 12px', fontSize: 11.5, color: '#93c5fd', lineHeight: 1.5 }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>{T.capexTitle}</div>
+                <div style={{ color: C.muted }}>{T.capexBody(amt)}</div>
+                <div style={{ color: C.muted, marginTop: 5 }}>{T.capexHow}</div>
+                <button type="button" onClick={() => setCapexDismissed(true)}
+                  style={{ ...btnSmall, fontSize: 11, marginTop: 7 }}>{T.capexDismiss}</button>
+              </div>
+            );
+          })()}
 
           {/* Input tax credits are tax PAID, so this only applies to money going
               out. On a receipt the sales tax was already recorded when the

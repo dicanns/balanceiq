@@ -411,6 +411,20 @@ export function getQCHoliday(date) {
   return QC_HOL[key] || null;
 }
 
+// ── CAPITAL PURCHASES ─────────────────────────────────────────────────────────
+// Above this, a purchase on a watched expense account is worth a second look: a
+// laptop or a piece of equipment belongs on the balance sheet and is deducted
+// over its life through CCA, not written off in full this year. The figure is a
+// prompt to think, not a rule - the real threshold is a policy the operator sets
+// with their accountant, and plenty of businesses use a different one. One
+// constant so the modal and any later report cannot disagree (CLAUDE.md rule 5).
+export const CAPEX_REVIEW_THRESHOLD = 500;
+
+export function looksLikeCapitalPurchase(amount, account) {
+  if (!account || !account.capex_watch) return false;
+  return Math.abs(Number(amount) || 0) >= CAPEX_REVIEW_THRESHOLD;
+}
+
 // ── INVOICE TOTALS (shared) ───────────────────────────────────────────────────
 // The single definition of what an invoice is worth. Duplicating this logic is
 // how the AR control-account check silently broke: its copy read l.qte instead
