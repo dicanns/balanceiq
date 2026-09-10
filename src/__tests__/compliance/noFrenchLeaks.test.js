@@ -124,3 +124,25 @@ describe('THEME-002 Chart of Accounts follows the app theme', () => {
     expect(coaSrc).toContain('background:C.card, borderRadius:12, color:C.text');
   });
 });
+
+describe('NO-FR-LEAK-006 the payment editor ships English strings', () => {
+  // The encaissement editor had hardcoded French labels, so an English user
+  // recording a payment saw a French form.
+  it.each([
+    'Payment date', 'Payment method', 'Reference number',
+    'Amount received', 'Record payment',
+  ])('%s is present', (phrase) => {
+    expect(appSrc).toContain(phrase);
+  });
+
+  it('the amount field prompts for input rather than showing a greyed balance', () => {
+    // A placeholder showing the outstanding balance reads as a filled,
+    // disabled field, so it was not obvious you had to type in it.
+    expect(appSrc).toContain('Type an amount');
+    expect(appSrc).not.toContain('placeholder={(Number(isBulk?totalSoldeSelected:solde)||0).toFixed(2)}');
+  });
+
+  it('the outstanding balance is a control, not static text', () => {
+    expect(appSrc).toMatch(/onClick=\{\(\)=>updF\(\{montant:solde\.toFixed\(2\)\}\)\}/);
+  });
+});
