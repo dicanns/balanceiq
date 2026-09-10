@@ -1,3 +1,4 @@
+import { calcInvoiceOutstanding } from '../utils/calculations.js';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -1016,21 +1017,23 @@ function ControlVarianceTab({ lang }) {
         const raw = await window.api.storage.get('dicann-fac-factures');
         if (raw?.value) {
           const factures = JSON.parse(raw.value);
+          // Tax-exempt clients change what an invoice is worth, and the ledger
+          // already honours that at posting time, so the subledger must too.
+          let clientsById = {};
+          try {
+            const cRaw = await window.api.storage.get('dicann-fac-clients');
+            for (const c of (cRaw?.value ? JSON.parse(cRaw.value) : [])) clientsById[c.id] = c;
+          } catch (_) {}
+
           let sum = 0;
           for (const f of factures) {
             if (['Payée','Créditée','Annulée','Brouillon'].includes(f.statut)) continue;
             if (f.documentType === 'proforma') continue;
-            let lineSub = 0;
-            for (const l of (f.lignes || [])) {
-              const u = parseFloat(l.prixUnitaire) || 0;
-              const q = parseFloat(l.qte) || 0;
-              const base = u * q;
-              const tps = l.tps !== false ? base * 0.05 : 0;
-              const tvq = l.tvq !== false ? base * 0.09975 : 0;
-              lineSub += base + tps + tvq;
-            }
-            const paid = (f.paiements || []).reduce((s, p) => s + (parseFloat(p.montant) || 0), 0);
-            sum += Math.max(0, lineSub - paid);
+            const cl = clientsById[f.clientId];
+            const exempt = cl?.taxExempt
+              ? { exemptFromTps: true, exemptFromTvq: true }
+              : { exemptFromTps: cl?.exemptFromTps, exemptFromTvq: cl?.exemptFromTvq };
+            sum += calcInvoiceOutstanding(f, exempt);
           }
           arCents = Math.round(sum * 100);
         }

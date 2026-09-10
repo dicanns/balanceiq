@@ -30,7 +30,7 @@ const CohortBenchmarkLazy         = lazy(() => import('./components/franchise/Co
 const OnboardingPacketBuilderLazy = lazy(() => import('./components/franchise/OnboardingPacketBuilder.jsx'));
 import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./config/features.js";
-import { calcRoyaltyFull } from "./utils/calculations.js";
+import { calcRoyaltyFull, computeInvoiceTotals } from "./utils/calculations.js";
 import { buildFlashReportHTML } from "./services/flashReport.js";
 import * as XLSX from "xlsx";
 import { logCreate, logUpdate, logVoid, logCorrection, isFinancialField, promptCorrectionReason } from "./services/auditLogger.js";
@@ -2060,17 +2060,9 @@ const STATUTS_SOUMISSION=["Brouillon","Envoyée","Acceptée","Refusée","Expiré
 const STATUT_SOUM_C={"Brouillon":"#6b7280","Envoyée":"#3b82f6","Acceptée":"#22c55e","Refusée":"#ef4444","Expirée":"#9ca3af"};
 function newLigne(){return{id:Date.now().toString(36)+Math.random().toString(36).slice(2),produitId:"",description:"",quantite:1,prixUnitaire:0,remise:0,tps:true,tvq:true};}
 function computeSoumTotals(lignes,taxExemptOpts){
- let st=0,tp=0,tv=0;
- const skipTps=taxExemptOpts?.exemptFromTps;
- const skipTvq=taxExemptOpts?.exemptFromTvq;
- (lignes||[]).forEach(l=>{
-  if(l.type==='section')return;
-  const lt=(l.quantite||0)*(l.prixUnitaire||0)*(1-(l.remise||0)/100);
-  st+=lt;
-  if(l.tps&&!skipTps)tp+=lt*0.05;
-  if(l.tvq&&!skipTvq)tv+=lt*0.09975;
- });
- return{sousTotal:st,tpsTotal:tp,tvqTotal:tv,total:st+tp+tv};
+ // Delegates to the shared definition so the ledger, the control-account check
+ // and this screen can never disagree about what an invoice is worth.
+ return computeInvoiceTotals(lignes,taxExemptOpts);
 }
 function computeSectionSubtotals(lignes){
  const groups=[];let pending=[];

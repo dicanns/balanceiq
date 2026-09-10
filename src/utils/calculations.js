@@ -410,3 +410,30 @@ export function getQCHoliday(date) {
   const key = `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   return QC_HOL[key] || null;
 }
+
+// ── INVOICE TOTALS (shared) ───────────────────────────────────────────────────
+// The single definition of what an invoice is worth. Duplicating this logic is
+// how the AR control-account check silently broke: its copy read l.qte instead
+// of l.quantite, ignored line discounts, and treated an undefined tax flag as
+// taxable, so the subledger never matched the ledger.
+// taxExemptOpts: { exemptFromTps, exemptFromTvq }
+export function computeInvoiceTotals(lignes, taxExemptOpts) {
+  let st = 0, tp = 0, tv = 0;
+  const skipTps = taxExemptOpts?.exemptFromTps;
+  const skipTvq = taxExemptOpts?.exemptFromTvq;
+  (lignes || []).forEach((l) => {
+    if (l.type === 'section') return;
+    const lt = (l.quantite || 0) * (l.prixUnitaire || 0) * (1 - (l.remise || 0) / 100);
+    st += lt;
+    if (l.tps && !skipTps) tp += lt * 0.05;
+    if (l.tvq && !skipTvq) tv += lt * 0.09975;
+  });
+  return { sousTotal: st, tpsTotal: tp, tvqTotal: tv, total: st + tp + tv };
+}
+
+// Outstanding balance on one invoice: total less what has been recorded against it.
+export function calcInvoiceOutstanding(facture, taxExemptOpts) {
+  const total = computeInvoiceTotals(facture?.lignes, taxExemptOpts).total;
+  const paid = (facture?.paiements || []).reduce((s, p) => s + (parseFloat(p.montant) || 0), 0);
+  return Math.max(0, total - paid);
+}
