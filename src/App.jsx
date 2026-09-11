@@ -6198,6 +6198,13 @@ function AppInner(){
   const [restoreMsg,setRestoreMsg]=useState('');
   const [backupInfo,setBackupInfo]=useState(null);
   const [configSubTab,setConfigSubTab]=useState("entreprise");
+  // One sub-tab per phase-2 section, remembered independently so moving between
+  // Bank and Books does not reset where you were in either.
+  const [sectionTab,setSectionTab]=useState({bank:"comptes",books:"grandlivre",taxes:"taxperiod"});
+  const goSection=useCallback((section,tab)=>{
+    setActiveTab(section);
+    if(tab)setSectionTab(p=>({...p,[section]:tab}));
+  },[]);
   const [cfgExpanded,setCfgExpanded]=useState({});
   const toggleCfg=useCallback(id=>setCfgExpanded(prev=>{const next={...prev,[id]:!prev[id]};window.api.storage.set("balanceiq-cfg-expanded",JSON.stringify(next)).catch(()=>{});return next;}),[]);
   const [resendTestStatus,setResendTestStatus]=useState(null);
@@ -7467,14 +7474,57 @@ function AppInner(){
     {id:"monthly",label:T.tabPL},
     {id:"encaisse",label:T.tabCash},
     {id:"intelligence",label:T.tabIntelligence},
+    {id:"bank",label:SECTIONS.bank.label},
+    {id:"books",label:SECTIONS.books.label},
+    {id:"taxes",label:SECTIONS.taxes.label},
     ...(previsionsEnabled?[{id:"previsions",label:T.tabPrevisions}]:[]),
     ...(canUse('ocrScanning')?[{id:"recettes",label:T.tabRecettes||"Coûts"}]:[]),
     {id:"waste",label:T.tabWaste||"Gaspillage"},
     ...(appMode==="franchiseur"?[{id:"eco",label:"Écocontrib."}]:[]),
     ...(closePolicy?[{id:"compliance",label:lang==='fr'?'Conformité':'Compliance'}]:[]),
-    {id:"taxconformite",label:lang==='fr'?'Conformité fiscale':'Tax Compliance'},
     {id:"settings",label:T.tabConfig}
   ];
+
+  // ── PHASE 2: the accounting work leaves Settings ─────────────────────────
+  // Bank, Books and Taxes are daily work and were filed under a gear icon because
+  // that is where there was room when they were built. Each becomes a destination
+  // with its own sub-tabs; the screens themselves are untouched.
+  const SECTIONS={
+    bank:{
+      label: lang==="fr"?"Banque":"Bank",
+      tabs:[
+        {id:"comptes",   label: lang==="fr"?"Comptes et transactions":"Accounts & transactions"},
+        {id:"fournisseurs", label: lang==="fr"?"Factures fournisseurs":"Supplier bills"},
+      ],
+    },
+    books:{
+      label: lang==="fr"?"Livres":"Books",
+      tabs:[
+        {id:"grandlivre",   label: lang==="fr"?"Grand livre":"General ledger"},
+        {id:"comptabilite", label: lang==="fr"?"Plan comptable":"Chart of accounts"},
+        {id:"bilan",        label: lang==="fr"?"Bilan":"Balance sheet"},
+      ],
+    },
+    taxes:{
+      label: lang==="fr"?"Taxes":"Taxes",
+      tabs:[
+        {id:"taxperiod",       label: lang==="fr"?"TPS/TVQ":"GST/QST"},
+        {id:"immobilisations", label: lang==="fr"?"Immobilisations (DPA)":"Fixed assets (CCA)"},
+        {id:"conformite",      label: lang==="fr"?"Conformité fiscale":"Tax compliance"},
+      ],
+    },
+  };
+  // Where each old Settings sub-tab went. Used both to redirect anyone who lands
+  // on the old address and to tell them where it is now.
+  const MOVED={
+    banque:         ["bank","comptes"],
+    facturesfourn:  ["bank","fournisseurs"],
+    grandlivre:     ["books","grandlivre"],
+    comptabilite:   ["books","comptabilite"],
+    bilan:          ["books","bilan"],
+    taxperiod:      ["taxes","taxperiod"],
+    immobilisations:["taxes","immobilisations"],
+  };
 
   const CFG_LABELS={
     entreprise:T.cfgBusiness, "personnel-paie":T.cfgPersonnelPayroll, "pl-fournisseurs":T.cfgPLSuppliers,
@@ -7493,8 +7543,25 @@ function AppInner(){
     apropos:(lang==="fr"?"Conformité":"About"),
     succursales:T.cfgLocations, redevances:T.cfgRoyalties,
   };
+  const [movedNotice,setMovedNotice]=useState(null);
+  useEffect(()=>{
+    if(activeTab!=="settings")return;
+    const dest=MOVED[configSubTab];
+    if(!dest)return;
+    const [section,tab]=dest;
+    setMovedNotice({from:configSubTab,section,tab});
+    setConfigSubTab("entreprise");
+    goSection(section,tab);
+  // MOVED and goSection are stable for a given language; configSubTab is the trigger.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[activeTab,configSubTab]);
+
   const _cfgLabel=activeTab==="settings"?(CFG_LABELS[configSubTab]||configSubTab):null;
-  useBreadcrumb(1,_cfgLabel?[{label:_cfgLabel}]:[],[_cfgLabel]);
+  const _secCrumbs=["bank","books","taxes"].includes(activeTab)
+    ? (()=>{const sec=SECTIONS[activeTab];const cur=sectionTab[activeTab];
+        const st=sec.tabs.find(x=>x.id===cur);return st?[{label:st.label}]:[];})()
+    : null;
+  useBreadcrumb(1,_secCrumbs||(_cfgLabel?[{label:_cfgLabel}]:[]),[_cfgLabel,activeTab,sectionTab[activeTab]]);
 
   const _tabLabel=(tabs.find(x=>x.id===activeTab)||{}).label
     || (activeTab==="facturation"?T.tabInvoicing
@@ -7850,9 +7917,50 @@ function AppInner(){
 
           {activeTab==="compliance"&&closePolicy&&(<Suspense fallback={<div style={{padding:16,fontSize:12,opacity:0.5}}>{T===EN?"Loading...":"Chargement..."}</div>}><CloseComplianceTabLazy t={t} lang={lang} canUse={canUse} activePlan={activePlan}/></Suspense>)}
 
-          {activeTab==="taxconformite"&&(<Suspense fallback={<div style={{padding:16,fontSize:12,opacity:0.5}}>{T===EN?"Loading...":"Chargement..."}</div>}><ComplianceTabLazy t={t} lang={lang} canUse={canUse}/></Suspense>)}
 
           {/* SETTINGS TAB */}
+
+          {movedNotice&&["bank","books","taxes"].includes(activeTab)&&(
+            <div style={{margin:"0 20px 4px",padding:"9px 13px",borderRadius:7,
+              background:"rgba(96,165,250,0.08)",border:"1px solid rgba(96,165,250,0.28)",
+              display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",fontSize:12.5,color:"#93c5fd"}}>
+              <span>{lang==="fr"
+                ? `« ${CFG_LABELS[movedNotice.from]||movedNotice.from} » a déménagé ici, hors des réglages.`
+                : `"${CFG_LABELS[movedNotice.from]||movedNotice.from}" moved here, out of Settings.`}</span>
+              <button onClick={()=>setMovedNotice(null)} style={{marginLeft:"auto",background:"none",
+                border:"1px solid rgba(96,165,250,0.35)",borderRadius:5,color:"#93c5fd",
+                fontSize:11,fontWeight:600,padding:"3px 10px",cursor:"pointer"}}>
+                {lang==="fr"?"Compris":"Got it"}</button>
+            </div>
+          )}
+
+          {/* ── PHASE 2: BANK · BOOKS · TAXES ─────────────────────────────── */}
+          {["bank","books","taxes"].includes(activeTab)&&(()=>{
+            const sec=SECTIONS[activeTab];
+            const cur=sectionTab[activeTab];
+            return(<div style={{padding:"4px 20px 24px"}}>
+              <div style={{display:"flex",gap:4,marginBottom:18,borderBottom:`1px solid ${t.dividerMid}`,flexWrap:"wrap"}}>
+                {sec.tabs.map(st=>(
+                  <button key={st.id} onClick={()=>setSectionTab(p=>({...p,[activeTab]:st.id}))}
+                    style={{background:"none",border:"none",cursor:"pointer",padding:"8px 14px",fontSize:13,
+                      fontWeight:cur===st.id?700:400,color:cur===st.id?"#f97316":t.textMuted,
+                      borderBottom:cur===st.id?"2px solid #f97316":"2px solid transparent",marginBottom:-1}}>
+                    {st.label}
+                  </button>
+                ))}
+              </div>
+              <Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}>
+                {activeTab==="bank"&&cur==="comptes"&&<BanqueTabLazy lang={lang} t={t}/>}
+                {activeTab==="bank"&&cur==="fournisseurs"&&<BillsTabLazy lang={lang}/>}
+                {activeTab==="books"&&cur==="grandlivre"&&<GrandLivreTabLazy lang={lang}/>}
+                {activeTab==="books"&&cur==="comptabilite"&&<ChartOfAccountsTabLazy lang={lang} t={t}/>}
+                {activeTab==="books"&&cur==="bilan"&&<BilanTabLazy lang={lang} canUsePro={canUse("excelExport")} onUpgrade={()=>showUpgradePrompt("excelExport")}/>}
+                {activeTab==="taxes"&&cur==="taxperiod"&&<TaxPeriodTabLazy lang={lang}/>}
+                {activeTab==="taxes"&&cur==="immobilisations"&&<ImmobilisationsTabLazy lang={lang} canUsePro={canUse("excelExport")} onUpgrade={()=>showUpgradePrompt("excelExport")}/>}
+                {activeTab==="taxes"&&cur==="conformite"&&<ComplianceTabLazy t={t} lang={lang} canUse={canUse}/>}
+              </Suspense>
+            </div>);
+          })()}
           {activeTab==="settings"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>{/* Config sub-tab bar */}
             {(()=>{
               const CTABS=[
@@ -7862,13 +7970,6 @@ function AppInner(){
                 {id:"operations",       label:T.cfgOperations||"Opérations"},
                 {id:"fermeture",        label:T.cfgClosePolicy||(lang==="fr"?"Politique de fermeture":"Close Policy")},
                 {id:"integrations",     label:T.cfgIntegrations},
-                {id:"comptabilite",     label:lang==="fr"?"Plan comptable":"Chart of Accounts"},
-                {id:"grandlivre",       label:lang==="fr"?"Grand livre":"General Ledger"},
-                {id:"banque",           label:lang==="fr"?"Banque":"Bank"},
-                {id:"facturesfourn",    label:lang==="fr"?"Fournisseurs":"Supplier Bills"},
-                {id:"taxperiod",        label:lang==="fr"?"TPS/TVQ":"GST/QST"},
-                {id:"bilan",            label:lang==="fr"?"Bilan":"Balance Sheet"},
-                {id:"immobilisations",  label:lang==="fr"?"DPA":"CCA"},
                 {id:"coffre",           label:lang==="fr"?"Coffre-fort":"Vault"},
                 {id:"recurrences",      label:lang==="fr"?`Récurrences${recurringPendingCount>0?` (${recurringPendingCount})`:""}`:(`Recurring${recurringPendingCount>0?` (${recurringPendingCount})`:""}`)}  ,
                 {id:"donnees",          label:T.cfgData},

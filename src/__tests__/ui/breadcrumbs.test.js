@@ -98,8 +98,11 @@ describe('CRUMB-003 the levels do not collide', () => {
   it('settings and invoicing publish at different depths', () => {
     // Sharing a depth is the bug: a child effect runs before its parent, so the
     // parent's clear would wipe the child's trail on every render.
-    expect(APP).toContain('useBreadcrumb(1,_cfgLabel');
-    expect(APP).toContain('useBreadcrumb(2,[');
+    const depths = [...APP.matchAll(/useBreadcrumb\((\d+)/g)].map(m => m[1]);
+    expect(depths).toContain('0');   // App: the top-level destination
+    expect(depths).toContain('1');   // App: the section or Settings sub-tab
+    expect(depths).toContain('2');   // FacturationTab: the deep path
+    expect(new Set(depths).size).toBe(depths.length);  // no two publish at one depth
   });
 
   it('sharing a depth would have lost the deeper trail', () => {
