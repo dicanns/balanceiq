@@ -25,6 +25,14 @@ const APP = readFileSync(join(SRC, 'App.jsx'), 'utf8');
 // The Settings sub-tab list, as declared.
 const settingsTabIds = [...APP.matchAll(/\{id:"([a-z-]+)",\s*label:/g)].map(m => m[1]);
 
+// Sub-tab ids declared inside SECTIONS, which is a different list from the
+// top-level `tabs` array even though both use {id, label}.
+const sectionsBlock = APP.slice(APP.indexOf('const SECTIONS={'), APP.indexOf('const SECTION_IDS='));
+const sectionSubTabIds = [...sectionsBlock.matchAll(/\{id:"([a-z]+)",\s*label:/g)].map(m => m[1]);
+
+// The forwarding table for the old Settings addresses, on its own.
+const movedBlock = APP.slice(APP.indexOf('const MOVED={'), APP.indexOf('};', APP.indexOf('const MOVED={')));
+
 const MOVED_OUT = [
   'banque', 'facturesfourn', 'grandlivre', 'comptabilite', 'bilan', 'taxperiod', 'immobilisations',
 ];
@@ -38,7 +46,7 @@ describe('NAV2-001 the accounting work is out of Settings', () => {
 
   it('Bank, Books and Taxes are top-level destinations', () => {
     for (const id of ['bank', 'books', 'taxes']) {
-      expect(APP).toContain(`{id:"${id}",label:SECTIONS.${id}.label}`);
+      expect(APP).toMatch(new RegExp(`\\{id:"${id}",\\s*label:SECTIONS\\.${id}\\.label\\}`));
     }
   });
 
@@ -74,15 +82,22 @@ describe('NAV2-002 every screen that moved still renders', () => {
   });
 
   it('every declared sub-tab has a render branch, so none is a dead button', () => {
-    const declared = [...APP.matchAll(/\{id:"([a-z]+)",\s+label: lang==="fr"/g)].map(m => m[1]);
-    for (const id of declared) {
-      expect(APP).toContain(`cur==="${id}"&&<`);
+    // Phase 3 added sections whose screens render through at(section,tab) rather
+    // than the shared Suspense block, so a sub-tab is satisfied by either.
+    for (const id of sectionSubTabIds) {
+      const rendered = APP.includes(`cur==="${id}"&&<`) || APP.includes(`","${id}")`);
+      expect(rendered, `sub-tab '${id}' renders nothing`).toBe(true);
     }
   });
 
   it('each section remembers its own sub-tab independently', () => {
     expect(APP).toContain('sectionTab,setSectionTab');
-    expect(APP).toMatch(/\{bank:"comptes",books:"grandlivre",taxes:"taxperiod"\}/);
+    // Every section needs a default, or it opens on a tab that does not exist.
+    const i = APP.indexOf('useState({bank:');
+    const defaults = APP.slice(i, APP.indexOf('}', i));
+    for (const id of ['bank', 'books', 'taxes', 'today', 'operations']) {
+      expect(defaults).toContain(`${id}:"`);
+    }
   });
 });
 
@@ -94,8 +109,8 @@ describe('NAV2-003 the old addresses redirect', () => {
   });
 
   it('each forwards to a section that exists', () => {
-    const pairs = [...APP.matchAll(/^\s{4}([a-z]+):\s*\["(bank|books|taxes)","([a-z]+)"\],$/gm)];
-    expect(pairs.length).toBe(MOVED_OUT.length);
+    const pairs = [...movedBlock.matchAll(/([a-z]+):\s*\["(bank|books|taxes)","([a-z]+)"\]/g)];
+    expect(pairs.map(p => p[1]).sort()).toEqual([...MOVED_OUT].sort());
     for (const [, , section, tab] of pairs) {
       expect(APP).toContain(`activeTab==="${section}"&&cur==="${tab}"&&<`);
     }

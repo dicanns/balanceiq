@@ -29,16 +29,25 @@ const navIds = [...SIDEBAR.matchAll(/<NavItem\s+id="([a-z]+)"/g)].map(m => m[1])
 
 // What App.jsx will actually render. A destination is reachable either through
 // its own branch or through the phase-2 section block.
-const SECTION_IDS = ['bank', 'books', 'taxes'];
+// Every destination that holds sub-tabs. A section renders through the shared
+// section block plus per-tab branches, not through a top-level activeTab check.
+const SECTION_IDS = [...APP.matchAll(/const SECTION_IDS=\[([^\]]+)\]/g)]
+  .flatMap(m => [...m[1].matchAll(/"([a-z]+)"/g)].map(x => x[1]));
+
 const hasBranch = (id) =>
   APP.includes(`activeTab==="${id}"`) ||
-  (SECTION_IDS.includes(id) && APP.includes('["bank","books","taxes"].includes(activeTab)'));
+  (SECTION_IDS.includes(id) && APP.includes('SECTION_IDS.includes(activeTab)'));
 
 describe('NAVWIRE-001 every nav item leads somewhere', () => {
   it('finds the sidebar destinations', () => {
-    expect(navIds.length).toBeGreaterThan(8);
-    expect(navIds).toContain('daily');
+    expect(navIds.length).toBeGreaterThan(5);
+    expect(navIds).toContain('today');
     expect(navIds).toContain('settings');
+  });
+
+  it('is down to seven destinations plus the conditional franchise ones', () => {
+    const core = navIds.filter(id => !['reseau', 'mylocations'].includes(id));
+    expect(core).toEqual(['today', 'facturation', 'bank', 'books', 'taxes', 'operations', 'settings']);
   });
 
   it('every button in the sidebar has something to render', () => {
@@ -46,8 +55,14 @@ describe('NAVWIRE-001 every nav item leads somewhere', () => {
     expect(dead).toEqual([]);
   });
 
-  it('the accounting sections have buttons, which is what v1.60.0 missed', () => {
+  it('every section has a button, which is what v1.60.0 missed', () => {
     for (const id of SECTION_IDS) expect(navIds).toContain(id);
+  });
+
+  it('the screens folded into sections no longer have their own buttons', () => {
+    for (const id of ['daily', 'monthly', 'encaisse', 'intelligence', 'waste', 'recettes']) {
+      expect(navIds).not.toContain(id);
+    }
   });
 
   it('Tax Compliance has no orphaned button, which is what went blank', () => {
@@ -63,13 +78,38 @@ describe('NAVWIRE-002 every destination can be reached', () => {
   )].filter(id => !SECTION_IDS.includes(id));
 
   it('finds the render branches', () => {
-    expect(branchIds).toContain('daily');
+    expect(branchIds).toContain('facturation');
     expect(branchIds).toContain('settings');
+  });
+
+  it('every screen folded into a section renders through at()', () => {
+    for (const [section, tab] of [
+      ['today', 'encaisse'], ['today', 'intelligence'],
+      ['operations', 'daily'], ['operations', 'monthly'], ['operations', 'waste'],
+    ]) {
+      expect(APP).toContain(`at("${section}","${tab}")`);
+    }
+  });
+
+  it('a legacy id still lands somewhere rather than on a blank screen', () => {
+    for (const id of ['daily', 'monthly', 'encaisse', 'intelligence', 'taxconformite']) {
+      expect(APP).toMatch(new RegExp(`${id}:\\["(today|operations|taxes)","[a-z]+"\\]`));
+    }
   });
 
   it('no branch is unreachable dead code', () => {
     const unreachable = branchIds.filter(id => !navIds.includes(id));
     expect(unreachable).toEqual([]);
+  });
+
+  it('every setActiveTab target is somewhere real', () => {
+    // A stale target is silent: the screen simply renders nothing. "config" sat
+    // in the onboarding checklist for two steps and had never been a destination.
+    const legacy = APP.slice(APP.indexOf('const LEGACY_TAB={'), APP.indexOf('};', APP.indexOf('const LEGACY_TAB={')));
+    const legacyKeys = [...legacy.matchAll(/([a-z]+):\s*\[/g)].map(m => m[1]);
+    const targets = [...new Set([...APP.matchAll(/setActiveTab\("([a-z]+)"\)/g)].map(m => m[1]))];
+    const orphans = targets.filter(t => !navIds.includes(t) && !legacyKeys.includes(t));
+    expect(orphans).toEqual([]);
   });
 
   it('the breadcrumb label list agrees with the sidebar', () => {

@@ -6200,7 +6200,7 @@ function AppInner(){
   const [configSubTab,setConfigSubTab]=useState("entreprise");
   // One sub-tab per phase-2 section, remembered independently so moving between
   // Bank and Books does not reset where you were in either.
-  const [sectionTab,setSectionTab]=useState({bank:"comptes",books:"grandlivre",taxes:"taxperiod"});
+  const [sectionTab,setSectionTab]=useState({bank:"comptes",books:"grandlivre",taxes:"taxperiod",today:"encaisse",operations:"daily"});
   const goSection=useCallback((section,tab)=>{
     setActiveTab(section);
     if(tab)setSectionTab(p=>({...p,[section]:tab}));
@@ -6222,7 +6222,7 @@ function AppInner(){
   const theme=themeName==='light'?LIGHT:DARK;
 
   const [selectedDate,setSelectedDate]=useState(()=>dk(new Date()));
-  const [activeTab,setActiveTab]=useState("daily");
+  const [activeTab,setActiveTab]=useState("today");
   const [loading,setLoading]=useState(true);
   const [saving,setSaving]=useState(false);
   const [collapseMap,setCollapseMap]=useState({});
@@ -7495,6 +7495,45 @@ function AppInner(){
         {id:"conformite",      label: lang==="fr"?"Conformité fiscale":"Tax compliance"},
       ],
     },
+    // Phase 3. Today is where you look to see where you stand; Operations is the
+    // register-based work, which a wholesale business never opens at all.
+    today:{
+      label: lang==="fr"?"Aujourd'hui":"Today",
+      tabs:[
+        {id:"encaisse",     label: lang==="fr"?"Encaisse":"Cash position"},
+        {id:"intelligence", label: lang==="fr"?"Perspectives":"Outlook"},
+        ...(previsionsEnabled?[{id:"previsions",label: lang==="fr"?"Prévisions":"Forecast"}]:[]),
+      ],
+    },
+    operations:{
+      label: lang==="fr"?"Opérations":"Operations",
+      tabs:[
+        {id:"daily",   label: lang==="fr"?"Fermeture quotidienne":"Daily close"},
+        {id:"monthly", label: T.tabPL},
+        ...(canUse('ocrScanning')?[{id:"recettes",label:(T.tabRecettes||"Coûts")}]:[]),
+        {id:"waste",   label: (T.tabWaste||"Gaspillage")},
+        ...(appMode==="franchiseur"?[{id:"eco",label:"Écocontrib."}]:[]),
+        ...(closePolicy?[{id:"compliance",label: lang==="fr"?"Conformité":"Compliance"}]:[]),
+      ],
+    },
+  };
+  const SECTION_IDS=["bank","books","taxes","today","operations"];
+  // True when this section is open and this is its current tab. Replaces the
+  // top-level activeTab check on every screen that moved inside a section.
+  const at=(section,tab)=>activeTab===section&&sectionTab[section]===tab;
+  // Anything that still says "go to daily" - the onboarding checklist, saved
+  // state, a habit - lands in the right place instead of a blank screen.
+  const LEGACY_TAB={
+    daily:["operations","daily"], monthly:["operations","monthly"],
+    recettes:["operations","recettes"], waste:["operations","waste"],
+    eco:["operations","eco"], compliance:["operations","compliance"],
+    encaisse:["today","encaisse"], intelligence:["today","intelligence"],
+    previsions:["today","previsions"],
+    taxconformite:["taxes","conformite"],
+    // Pre-existing: the onboarding checklist sends people to "config", which has
+    // never been a destination - the branch is activeTab==="settings". Two of its
+    // six steps landed on a blank screen. goSection ignores a missing sub-tab.
+    config:["settings"],
   };
   // Where each old Settings sub-tab went. Used both to redirect anyone who lands
   // on the old address and to tell them where it is now.
@@ -7511,19 +7550,15 @@ function AppInner(){
   const tabs=[
     ...(appMode==="franchiseur"?[{id:"reseau",label:T.tabNetwork}]:[]),
     ...(appMode!=="franchiseur"&&myLinkedLocations.length>1?[{id:"mylocations",label:T.tabMyLocations||"Mes succursales"}]:[]),
-    {id:"daily",label:T.tabDaily},
-    {id:"monthly",label:T.tabPL},
-    {id:"encaisse",label:T.tabCash},
-    {id:"intelligence",label:T.tabIntelligence},
-    {id:"bank",label:SECTIONS.bank.label},
-    {id:"books",label:SECTIONS.books.label},
-    {id:"taxes",label:SECTIONS.taxes.label},
-    ...(previsionsEnabled?[{id:"previsions",label:T.tabPrevisions}]:[]),
-    ...(canUse('ocrScanning')?[{id:"recettes",label:T.tabRecettes||"Coûts"}]:[]),
-    {id:"waste",label:T.tabWaste||"Gaspillage"},
-    ...(appMode==="franchiseur"?[{id:"eco",label:"Écocontrib."}]:[]),
-    ...(closePolicy?[{id:"compliance",label:lang==='fr'?'Conformité':'Compliance'}]:[]),
-    {id:"settings",label:T.tabConfig}
+    // The seven, in sidebar order. Labels come from SECTIONS wherever a section
+    // owns one, so the crumb and the sub-tab bar cannot disagree about a name.
+    {id:"today",      label:SECTIONS.today.label},
+    {id:"facturation",label:lang==="fr"?"Ventes":"Sales"},
+    {id:"bank",       label:SECTIONS.bank.label},
+    {id:"books",      label:SECTIONS.books.label},
+    {id:"taxes",      label:SECTIONS.taxes.label},
+    {id:"operations", label:SECTIONS.operations.label},
+    {id:"settings",   label:T.tabConfig},
   ];
 
   const CFG_LABELS={
@@ -7543,6 +7578,14 @@ function AppInner(){
     apropos:(lang==="fr"?"Conformité":"About"),
     succursales:T.cfgLocations, redevances:T.cfgRoyalties,
   };
+  useEffect(()=>{
+    const dest=LEGACY_TAB[activeTab];
+    if(!dest)return;
+    goSection(dest[0],dest[1]);
+  // LEGACY_TAB is rebuilt per render but keyed on constants; activeTab is the trigger.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[activeTab]);
+
   const [movedNotice,setMovedNotice]=useState(null);
   useEffect(()=>{
     if(activeTab!=="settings")return;
@@ -7557,7 +7600,7 @@ function AppInner(){
   },[activeTab,configSubTab]);
 
   const _cfgLabel=activeTab==="settings"?(CFG_LABELS[configSubTab]||configSubTab):null;
-  const _secCrumbs=["bank","books","taxes"].includes(activeTab)
+  const _secCrumbs=SECTION_IDS.includes(activeTab)
     ? (()=>{const sec=SECTIONS[activeTab];const cur=sectionTab[activeTab];
         const st=sec.tabs.find(x=>x.id===cur);return st?[{label:st.label}]:[];})()
     : null;
@@ -7646,14 +7689,41 @@ function AppInner(){
  {updateAvailable&&<div style={{background:"linear-gradient(90deg,rgba(249,115,22,0.15),rgba(234,88,12,0.1))",borderBottom:"1px solid rgba(249,115,22,0.3)",padding:"7px 15px",display:"flex",alignItems:"center",justifyContent:"center",gap:12}}><span style={{fontSize:12,color:"#f97316",fontWeight:600}}>{lang==="en"?"New version available":"Nouvelle version disponible"}</span><button onClick={()=>{if(updateDownloadUrl)window.api.shell.openExternal(updateDownloadUrl);}} style={{padding:"3px 12px",borderRadius:5,border:"1px solid rgba(249,115,22,0.5)",background:"rgba(249,115,22,0.2)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11}}>
  {lang==="en"?"Download":"Télécharger"}</button></div>}
 
- {/* ── SCROLLABLE CONTENT ── */}<div style={{flex:1,overflowY:"auto"}}><div style={{padding:"0 20px"}}><BreadcrumbBar lang={lang} theme={t}/></div>{/* ── DATE NAV ── */}<div style={{padding:"8px 20px 0"}}>{/* Tab banners — first visit only */}
- {activeTab==="daily"&&<TabBanner title={T.bannerDailyTitle} desc={T.bannerDailyDesc} settingsHint={T.bannerDailySettings} dismissed={dismissedBanners.has("daily")} onDismiss={()=>dismissBanner("daily")}/>}
- {activeTab==="monthly"&&<TabBanner title={T.bannerMonthlyTitle} desc={T.bannerMonthlyDesc} settingsHint={T.bannerMonthlySettings} dismissed={dismissedBanners.has("monthly")} onDismiss={()=>dismissBanner("monthly")}/>}
- {activeTab==="encaisse"&&<TabBanner title={T.bannerEncaisseTitle} desc={T.bannerEncaisseDesc} settingsHint={T.bannerEncaisseSettings} dismissed={dismissedBanners.has("encaisse")} onDismiss={()=>dismissBanner("encaisse")}/>}
- {activeTab==="intelligence"&&<TabBanner title={T.bannerIntelTitle} desc={T.bannerIntelDesc} settingsHint={T.bannerIntelSettings} dismissed={dismissedBanners.has("intelligence")} onDismiss={()=>dismissBanner("intelligence")}/>}
+ {/* ── SCROLLABLE CONTENT ── */}<div style={{flex:1,overflowY:"auto"}}><div style={{padding:"0 20px"}}><BreadcrumbBar lang={lang} theme={t}/></div>
+          {movedNotice&&SECTION_IDS.includes(activeTab)&&(
+            <div style={{margin:"0 20px 8px",padding:"9px 13px",borderRadius:7,
+              background:"rgba(96,165,250,0.08)",border:"1px solid rgba(96,165,250,0.28)",
+              display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",fontSize:12.5,color:"#93c5fd"}}>
+              <span>{lang==="fr"
+                ? `« ${CFG_LABELS[movedNotice.from]||movedNotice.from} » a déménagé ici, hors des réglages.`
+                : `"${CFG_LABELS[movedNotice.from]||movedNotice.from}" moved here, out of Settings.`}</span>
+              <button onClick={()=>setMovedNotice(null)} style={{marginLeft:"auto",background:"none",
+                border:"1px solid rgba(96,165,250,0.35)",borderRadius:5,color:"#93c5fd",
+                fontSize:11,fontWeight:600,padding:"3px 10px",cursor:"pointer"}}>
+                {lang==="fr"?"Compris":"Got it"}</button>
+            </div>
+          )}
+          {/* ── SECTION SUB-TAB BAR: above every screen the section holds ─── */}
+          {SECTION_IDS.includes(activeTab)&&(()=>{
+            const sec=SECTIONS[activeTab];const cur=sectionTab[activeTab];
+            return(<div style={{display:"flex",gap:4,margin:"0 20px 16px",borderBottom:`1px solid ${t.dividerMid}`,flexWrap:"wrap"}}>
+              {sec.tabs.map(st=>(
+                <button key={st.id} onClick={()=>setSectionTab(p=>({...p,[activeTab]:st.id}))}
+                  style={{background:"none",border:"none",cursor:"pointer",padding:"8px 14px",fontSize:13,
+                    fontWeight:cur===st.id?700:400,color:cur===st.id?"#f97316":t.textMuted,
+                    borderBottom:cur===st.id?"2px solid #f97316":"2px solid transparent",marginBottom:-1}}>
+                  {st.label}
+                </button>
+              ))}
+            </div>);
+          })()}{/* ── DATE NAV ── */}<div style={{padding:"8px 20px 0"}}>{/* Tab banners — first visit only */}
+ {at("operations","daily")&&<TabBanner title={T.bannerDailyTitle} desc={T.bannerDailyDesc} settingsHint={T.bannerDailySettings} dismissed={dismissedBanners.has("daily")} onDismiss={()=>dismissBanner("daily")}/>}
+ {at("operations","monthly")&&<TabBanner title={T.bannerMonthlyTitle} desc={T.bannerMonthlyDesc} settingsHint={T.bannerMonthlySettings} dismissed={dismissedBanners.has("monthly")} onDismiss={()=>dismissBanner("monthly")}/>}
+ {at("today","encaisse")&&<TabBanner title={T.bannerEncaisseTitle} desc={T.bannerEncaisseDesc} settingsHint={T.bannerEncaisseSettings} dismissed={dismissedBanners.has("encaisse")} onDismiss={()=>dismissBanner("encaisse")}/>}
+ {at("today","intelligence")&&<TabBanner title={T.bannerIntelTitle} desc={T.bannerIntelDesc} settingsHint={T.bannerIntelSettings} dismissed={dismissedBanners.has("intelligence")} onDismiss={()=>dismissBanner("intelligence")}/>}
  {activeTab==="facturation"&&<TabBanner title={T.bannerFacTitle} desc={T.bannerFacDesc} settingsHint={T.bannerFacSettings} dismissed={dismissedBanners.has("facturation")} onDismiss={()=>dismissBanner("facturation")}/>}
- {activeTab==="previsions"&&previsionsEnabled&&<TabBanner title={T.bannerPrevTitle} desc={T.bannerPrevDesc} settingsHint={T.bannerPrevSettings} dismissed={dismissedBanners.has("previsions")} onDismiss={()=>dismissBanner("previsions")}/>}
- {activeTab==="daily"&&(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}><div style={{display:"flex",alignItems:"center",gap:6}}><button onClick={()=>{const n=new Date(d);n.setDate(n.getDate()-1);setSelectedDate(dk(n))}} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.text,padding:"3px 8px",cursor:"pointer",fontSize:13}}>←</button><div><div style={{fontSize:15,fontWeight:700,textTransform:"capitalize",color:t.text,display:"flex",alignItems:"center",gap:6}}>{fmtD(d,T)}{isDayComplete&&<span style={{fontSize:9.5,fontWeight:700,color:"#16a34a",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:10,padding:"1px 7px",lineHeight:1.6}}>{T.statusDayComplete}</span>}{(()=>{if(closeStatus==='closed_clean')return<span style={{fontSize:9.5,fontWeight:700,color:"#16a34a",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:10,padding:"1px 7px",lineHeight:1.6}}>{T.closeStatusClean}</span>;if(closeStatus==='closed_with_warnings')return<span style={{fontSize:9.5,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",border:"1px solid rgba(249,115,22,0.25)",borderRadius:10,padding:"1px 7px",lineHeight:1.6}}>{T.closeStatusWarnings}</span>;if(closeStatus==='in_progress')return<span style={{fontSize:9.5,fontWeight:600,color:t.textMuted,background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:10,padding:"1px 7px",lineHeight:1.6}}>{T.closeStatusInProgress}</span>;return null;})()}{editedAfterClose&&<span style={{fontSize:9,fontWeight:700,color:"#f59e0b",background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.25)",borderRadius:10,padding:"1px 6px",lineHeight:1.6}}>{T.closeStatusEditedAfter}</span>}</div><div style={{display:"flex",gap:3,marginTop:1,flexWrap:"wrap"}}>{holiday&&<span style={{fontSize:9,background:t.warnBg,color:t.warnText,padding:"1px 5px",borderRadius:8,fontWeight:600}}>{holiday}</span>}
+ {at("today","previsions")&&previsionsEnabled&&<TabBanner title={T.bannerPrevTitle} desc={T.bannerPrevDesc} settingsHint={T.bannerPrevSettings} dismissed={dismissedBanners.has("previsions")} onDismiss={()=>dismissBanner("previsions")}/>}
+ {at("operations","daily")&&(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}><div style={{display:"flex",alignItems:"center",gap:6}}><button onClick={()=>{const n=new Date(d);n.setDate(n.getDate()-1);setSelectedDate(dk(n))}} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.text,padding:"3px 8px",cursor:"pointer",fontSize:13}}>←</button><div><div style={{fontSize:15,fontWeight:700,textTransform:"capitalize",color:t.text,display:"flex",alignItems:"center",gap:6}}>{fmtD(d,T)}{isDayComplete&&<span style={{fontSize:9.5,fontWeight:700,color:"#16a34a",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:10,padding:"1px 7px",lineHeight:1.6}}>{T.statusDayComplete}</span>}{(()=>{if(closeStatus==='closed_clean')return<span style={{fontSize:9.5,fontWeight:700,color:"#16a34a",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:10,padding:"1px 7px",lineHeight:1.6}}>{T.closeStatusClean}</span>;if(closeStatus==='closed_with_warnings')return<span style={{fontSize:9.5,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",border:"1px solid rgba(249,115,22,0.25)",borderRadius:10,padding:"1px 7px",lineHeight:1.6}}>{T.closeStatusWarnings}</span>;if(closeStatus==='in_progress')return<span style={{fontSize:9.5,fontWeight:600,color:t.textMuted,background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:10,padding:"1px 7px",lineHeight:1.6}}>{T.closeStatusInProgress}</span>;return null;})()}{editedAfterClose&&<span style={{fontSize:9,fontWeight:700,color:"#f59e0b",background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.25)",borderRadius:10,padding:"1px 6px",lineHeight:1.6}}>{T.closeStatusEditedAfter}</span>}</div><div style={{display:"flex",gap:3,marginTop:1,flexWrap:"wrap"}}>{holiday&&<span style={{fontSize:9,background:t.warnBg,color:t.warnText,padding:"1px 5px",borderRadius:8,fontWeight:600}}>{holiday}</span>}
  {today.weather&&<span style={{fontSize:9,background:"rgba(56,189,248,0.07)",color:"#38bdf8",padding:"1px 5px",borderRadius:8}}>{xlateWeather(today.weather,T)}{today.tempC!=null?` ${today.tempC}°C`:""}</span>}
  {displayGas!=null&&<span style={{fontSize:9,background:lastGas?t.warnBg:t.section,color:lastGas?t.warnText:t.textSub,padding:"1px 5px",borderRadius:8}}>{Number(displayGas).toFixed(3)}$/L{lastGas?"(auto)":""}</span>}</div></div><button onClick={()=>{const n=new Date(d);n.setDate(n.getDate()+1);setSelectedDate(dk(n))}} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.text,padding:"3px 8px",cursor:"pointer",fontSize:13}}>→</button></div><input type="date" value={selectedDate} onChange={e=>e.target.value&&setSelectedDate(e.target.value)} style={{...inputStyle,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontSize:11}}/></div>)}</div>{/* ── CONTENT ── */}<div style={{padding:"10px 20px 30px"}}>{/* MES SUCCURSALES TAB (Multi-Unit Franchisee) */}
           {activeTab==="mylocations"&&<MesSuccursalesTab myLinkedLocations={myLinkedLocations} activeMUOLocationId={activeMUOLocationId} setActiveMUOLocationId={setActiveMUOLocationId}/>}
@@ -7662,7 +7732,7 @@ function AppInner(){
           {activeTab==="reseau"&&<ReseauTab locations={locations} facFactures={facFactures} facCreditNotes={facCreditNotes} facClients={facClients} royaltyConfig={royaltyConfig} facCategories={facCategories} facProduits={facProduits} saveFacFactures={saveFacFactures} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} apiConfig={apiConfig} perfTargets={perfTargets} payrollConfig={payrollConfig} cloudUser={cloudUser} alertConfig={alertConfig} orgId={getCloudOrgId()} onUnreadDocsChange={setUnreadDocsCount}/>}
 
           {/* DAILY TAB */}
-          {activeTab==="daily"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>{unclosedThisWeek.length>0&&(<div style={{background:"rgba(239,68,68,0.07)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:7,padding:"7px 12px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}><span style={{fontSize:12,color:"#ef4444",fontWeight:700}}>⚠ {T.unclosedDaysWarn(unclosedThisWeek.length)}</span><span style={{display:"flex",gap:4,flexWrap:"wrap"}}>{unclosedThisWeek.map(d=>(<button key={d.key} onClick={()=>setSelectedDate(d.key)} style={{fontSize:10,padding:"1px 7px",borderRadius:10,border:"1px solid rgba(239,68,68,0.35)",background:"rgba(239,68,68,0.1)",color:"#ef4444",cursor:"pointer",fontWeight:600}}>{d.dayLetter}</button>))}</span></div>)}
+          {at("operations","daily")&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>{unclosedThisWeek.length>0&&(<div style={{background:"rgba(239,68,68,0.07)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:7,padding:"7px 12px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}><span style={{fontSize:12,color:"#ef4444",fontWeight:700}}>⚠ {T.unclosedDaysWarn(unclosedThisWeek.length)}</span><span style={{display:"flex",gap:4,flexWrap:"wrap"}}>{unclosedThisWeek.map(d=>(<button key={d.key} onClick={()=>setSelectedDate(d.key)} style={{fontSize:10,padding:"1px 7px",borderRadius:10,border:"1px solid rgba(239,68,68,0.35)",background:"rgba(239,68,68,0.1)",color:"#ef4444",cursor:"pointer",fontWeight:600}}>{d.dayLetter}</button>))}</span></div>)}
             {/* ── 7-day close status dots ── */}
             {(()=>{
               const dots=[];const base=new Date(selectedDate+"T12:00:00");const todayKey=dk(new Date());
@@ -7903,52 +7973,27 @@ function AppInner(){
 
  {/* Print */}<div style={{display:"flex",justifyContent:"flex-end"}}><button onClick={()=>openPDF(buildDailyHTML())} style={{padding:"8px 16px",borderRadius:7,border:`1px solid rgba(${t.posRgb},0.2)`,background:`rgba(${t.posRgb},0.07)`,color:t.posColor,cursor:"pointer",fontWeight:600,fontSize:12}}> {T.printReport}</button></div></div>)}
 
- {activeTab==="monthly"&&<MonthlyPL computeDay={computeDay} suppliers={suppliers} liveData={liveData} platforms={platforms} expenseItems={expenseItems} glAccounts={glAccounts} apiConfig={apiConfig} ocrMappings={ocrMappings} setOcrMappings={setOcrMappings} payrollConfig={payrollConfig} lang={lang} showSectionTooltips={showSectionTooltips} setActiveTab={setActiveTab}/>}
- {activeTab==="encaisse"&&<EncaisseTab liveData={liveData} encaisseData={encaisseData} persistEncaisse={persistEncaisse} encaisseConfig={encaisseConfig} saveEncaisseConfig={saveEncaisseConfig}/>}
+ {at("operations","monthly")&&<MonthlyPL computeDay={computeDay} suppliers={suppliers} liveData={liveData} platforms={platforms} expenseItems={expenseItems} glAccounts={glAccounts} apiConfig={apiConfig} ocrMappings={ocrMappings} setOcrMappings={setOcrMappings} payrollConfig={payrollConfig} lang={lang} showSectionTooltips={showSectionTooltips} setActiveTab={setActiveTab}/>}
+ {at("today","encaisse")&&<EncaisseTab liveData={liveData} encaisseData={encaisseData} persistEncaisse={persistEncaisse} encaisseConfig={encaisseConfig} saveEncaisseConfig={saveEncaisseConfig}/>}
  {activeTab==="facturation"&&<FacturationTab categories={facCategories} saveCategories={saveFacCategories} produits={facProduits} saveProduits={saveFacProduits} clients={facClients} saveClients={saveFacClients} soumissions={facSoumissions} saveSoumissions={saveFacSoumissions} commandes={facCommandes} saveCommandes={saveFacCommandes} factures={facFactures} saveFactures={saveFacFactures} creditNotes={facCreditNotes} saveCreditNotes={saveFacCreditNotes} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData} persistEncaisse={persistEncaisse} showUpgradePrompt={showUpgradePrompt} apiConfig={apiConfig} recurrents={facRecurrents} saveRecurrents={saveFacRecurrents} invoiceTemplate={effectiveTemplate} rawInvoiceTemplate={invoiceTemplate} saveInvoiceTemplate={saveInvoiceTemplate} canUse={canUse} glAccounts={glAccounts} saveGlAccounts={saveGlAccounts} deepLink={facDeepLink} onDeepLinkDone={()=>setFacDeepLink(null)}/>}
- {activeTab==="intelligence"&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR} platforms={platforms} encaisseData={encaisseData} encaisseConfig={encaisseConfig} apiConfig={apiConfig} checklistCompliance={checklistComplianceStats} priceAlerts={priceAlerts} suppliers={suppliers} closePatterns={closePatterns}/>}
- {activeTab==="previsions"&&previsionsEnabled&&(<Suspense fallback={<div style={{padding:16,fontSize:12,opacity:0.5}}>{T===EN?"Loading...":"Chargement..."}</div>}><PrevisionsTabLazy apiConfig={apiConfig} showUpgradePrompt={showUpgradePrompt} canUse={canUse} T={T} t={t} lang={lang} onInsightCountChange={setPrevInsightCount}/></Suspense>)}
+ {at("today","intelligence")&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR} platforms={platforms} encaisseData={encaisseData} encaisseConfig={encaisseConfig} apiConfig={apiConfig} checklistCompliance={checklistComplianceStats} priceAlerts={priceAlerts} suppliers={suppliers} closePatterns={closePatterns}/>}
+ {at("today","previsions")&&previsionsEnabled&&(<Suspense fallback={<div style={{padding:16,fontSize:12,opacity:0.5}}>{T===EN?"Loading...":"Chargement..."}</div>}><PrevisionsTabLazy apiConfig={apiConfig} showUpgradePrompt={showUpgradePrompt} canUse={canUse} T={T} t={t} lang={lang} onInsightCountChange={setPrevInsightCount}/></Suspense>)}
 
- {activeTab==="recettes"&&canUse('ocrScanning')&&(<Suspense fallback={<div style={{padding:16,fontSize:12,opacity:0.5}}>{T===EN?"Loading...":"Chargement..."}</div>}><RecettesTabLazy t={t} T={T} lang={lang} activePlan={activePlan} canUse={canUse}/></Suspense>)}
+ {at("operations","recettes")&&canUse('ocrScanning')&&(<Suspense fallback={<div style={{padding:16,fontSize:12,opacity:0.5}}>{T===EN?"Loading...":"Chargement..."}</div>}><RecettesTabLazy t={t} T={T} lang={lang} activePlan={activePlan} canUse={canUse}/></Suspense>)}
 
-          {activeTab==="waste"&&(<Suspense fallback={<div style={{padding:16,fontSize:12,opacity:0.5}}>{T===EN?"Loading...":"Chargement..."}</div>}><WasteTabLazy t={t} T={T} lang={lang} canUse={canUse}/></Suspense>)}
+          {at("operations","waste")&&(<Suspense fallback={<div style={{padding:16,fontSize:12,opacity:0.5}}>{T===EN?"Loading...":"Chargement..."}</div>}><WasteTabLazy t={t} T={T} lang={lang} canUse={canUse}/></Suspense>)}
 
-          {activeTab==="eco"&&(<Suspense fallback={<div style={{padding:16,fontSize:12,opacity:0.5}}>{T===EN?"Loading...":"Chargement..."}</div>}><EcocontributionTabLazy t={t} T={T} lang={lang}/></Suspense>)}
+          {at("operations","eco")&&(<Suspense fallback={<div style={{padding:16,fontSize:12,opacity:0.5}}>{T===EN?"Loading...":"Chargement..."}</div>}><EcocontributionTabLazy t={t} T={T} lang={lang}/></Suspense>)}
 
-          {activeTab==="compliance"&&closePolicy&&(<Suspense fallback={<div style={{padding:16,fontSize:12,opacity:0.5}}>{T===EN?"Loading...":"Chargement..."}</div>}><CloseComplianceTabLazy t={t} lang={lang} canUse={canUse} activePlan={activePlan}/></Suspense>)}
+          {at("operations","compliance")&&closePolicy&&(<Suspense fallback={<div style={{padding:16,fontSize:12,opacity:0.5}}>{T===EN?"Loading...":"Chargement..."}</div>}><CloseComplianceTabLazy t={t} lang={lang} canUse={canUse} activePlan={activePlan}/></Suspense>)}
 
 
           {/* SETTINGS TAB */}
 
-          {movedNotice&&["bank","books","taxes"].includes(activeTab)&&(
-            <div style={{margin:"0 20px 4px",padding:"9px 13px",borderRadius:7,
-              background:"rgba(96,165,250,0.08)",border:"1px solid rgba(96,165,250,0.28)",
-              display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",fontSize:12.5,color:"#93c5fd"}}>
-              <span>{lang==="fr"
-                ? `« ${CFG_LABELS[movedNotice.from]||movedNotice.from} » a déménagé ici, hors des réglages.`
-                : `"${CFG_LABELS[movedNotice.from]||movedNotice.from}" moved here, out of Settings.`}</span>
-              <button onClick={()=>setMovedNotice(null)} style={{marginLeft:"auto",background:"none",
-                border:"1px solid rgba(96,165,250,0.35)",borderRadius:5,color:"#93c5fd",
-                fontSize:11,fontWeight:600,padding:"3px 10px",cursor:"pointer"}}>
-                {lang==="fr"?"Compris":"Got it"}</button>
-            </div>
-          )}
-
-          {/* ── PHASE 2: BANK · BOOKS · TAXES ─────────────────────────────── */}
-          {["bank","books","taxes"].includes(activeTab)&&(()=>{
-            const sec=SECTIONS[activeTab];
+          {/* ── SECTION CONTENT (bank · books · taxes) ──────────────────── */}
+          {SECTION_IDS.includes(activeTab)&&(()=>{
             const cur=sectionTab[activeTab];
-            return(<div style={{padding:"4px 20px 24px"}}>
-              <div style={{display:"flex",gap:4,marginBottom:18,borderBottom:`1px solid ${t.dividerMid}`,flexWrap:"wrap"}}>
-                {sec.tabs.map(st=>(
-                  <button key={st.id} onClick={()=>setSectionTab(p=>({...p,[activeTab]:st.id}))}
-                    style={{background:"none",border:"none",cursor:"pointer",padding:"8px 14px",fontSize:13,
-                      fontWeight:cur===st.id?700:400,color:cur===st.id?"#f97316":t.textMuted,
-                      borderBottom:cur===st.id?"2px solid #f97316":"2px solid transparent",marginBottom:-1}}>
-                    {st.label}
-                  </button>
-                ))}
-              </div>
+            return(<div style={{padding:"0 20px 24px"}}>
               <Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>Chargement…</div>}>
                 {activeTab==="bank"&&cur==="comptes"&&<BanqueTabLazy lang={lang} t={t}/>}
                 {activeTab==="bank"&&cur==="fournisseurs"&&<BillsTabLazy lang={lang}/>}

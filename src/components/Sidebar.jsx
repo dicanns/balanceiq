@@ -189,41 +189,25 @@ export default function Sidebar({
           <NavItem id="mylocations" label={T.tabMyLocations || 'Mes succursales'} active={isActive('mylocations')} onClick={setActiveTab} t={t}/>
         )}
 
-        {/* QUOTIDIEN */}
-        <SectionLabel label={lang === 'en' ? 'Daily' : 'Quotidien'} t={t}/>
-        <NavItem id="daily" label={T.tabDaily} active={isActive('daily')} onClick={setActiveTab} t={t}/>
-        <NavItem id="encaisse" label={T.tabCash} active={isActive('encaisse')} onClick={setActiveTab} t={t}/>
-        <NavItem id="facturation" label={T.tabInvoicing} active={isActive('facturation')} onClick={setActiveTab} t={t}/>
-
-        {/* MENSUEL */}
-        <SectionLabel label={lang === 'en' ? 'Monthly' : 'Mensuel'} t={t}/>
-        <NavItem id="monthly" label={T.tabPL} active={isActive('monthly')} onClick={setActiveTab} t={t}/>
+        {/* Phase 3: seven destinations. Each is a place, named for the job it
+            does rather than the module that built it. Operations disappears
+            entirely for a business with no register to close. */}
+        <NavItem id="today"       label={lang === 'en' ? 'Today' : "Aujourd'hui"} active={isActive('today')} onClick={setActiveTab} t={t}/>
+        <NavItem id="facturation" label={lang === 'en' ? 'Sales' : 'Ventes'}      active={isActive('facturation')} onClick={setActiveTab} t={t}/>
 
         {/* COMPTABILITE - phase 2: out of Settings, where it never belonged */}
         <SectionLabel label={lang === 'en' ? 'Accounting' : 'Comptabilité'} t={t}/>
-        <NavItem id="bank"  label={lang === 'en' ? 'Bank' : 'Banque'}   active={isActive('bank')}  onClick={setActiveTab} t={t}/>
-        <NavItem id="books" label={lang === 'en' ? 'Books' : 'Livres'}  active={isActive('books')} onClick={setActiveTab} t={t}/>
-        <NavItem id="taxes" label={lang === 'en' ? 'Taxes' : 'Taxes'}   active={isActive('taxes')} onClick={setActiveTab} t={t}/>
+        <NavItem id="bank"  label={lang === 'en' ? 'Bank' : 'Banque'}  active={isActive('bank')}  onClick={setActiveTab} t={t}/>
+        <NavItem id="books" label={lang === 'en' ? 'Books' : 'Livres'} active={isActive('books')} onClick={setActiveTab} t={t}/>
+        <NavItem id="taxes" label={lang === 'en' ? 'Taxes' : 'Taxes'}  active={isActive('taxes')} onClick={setActiveTab} t={t}/>
 
-        {/* OPERATIONS */}
+        {/* The spec has Operations hidden for a business with no register to
+            close. That needs a business-type setting the app does not have yet -
+            appMode is restaurant or franchiseur, neither of which means wholesale -
+            so it shows for everyone rather than hiding behind a condition that is
+            always true. */}
         <SectionLabel label={lang === 'en' ? 'Operations' : 'Opérations'} t={t}/>
-        {previsionsEnabled && (
-          <NavItem id="previsions" label={T.tabPrevisions} active={isActive('previsions')} onClick={setActiveTab} badge={prevInsightCount} t={t}/>
-        )}
-        {canUse && canUse('ocrScanning') && (
-          <NavItem id="recettes" label={T.tabRecettes || 'Coûts'} active={isActive('recettes')} onClick={setActiveTab} t={t}/>
-        )}
-        <NavItem id="waste" label={T.tabWaste || 'Gaspillage'} active={isActive('waste')} onClick={setActiveTab} t={t}/>
-        {appMode === 'franchiseur' && (
-          <NavItem id="eco" label="Écocontrib." active={isActive('eco')} onClick={setActiveTab} t={t}/>
-        )}
-        {hasClosePolicy && (
-          <NavItem id="compliance" label={lang === 'en' ? 'Compliance' : 'Conformité'} active={isActive('compliance')} onClick={setActiveTab} t={t}/>
-        )}
-
-        {/* ANALYSE */}
-        <SectionLabel label={lang === 'en' ? 'Analysis' : 'Analyse'} t={t}/>
-        <NavItem id="intelligence" label={T.tabIntelligence} active={isActive('intelligence')} onClick={setActiveTab} t={t}/>
+        <NavItem id="operations" label={lang === 'en' ? 'Daily operations' : 'Opérations'} active={isActive('operations')} onClick={setActiveTab} t={t}/>
 
         {/* Divider before settings */}
         <div style={{ height: 1, background: t.divider, margin: '12px 2px 8px' }}/>
