@@ -7467,24 +7467,6 @@ function AppInner(){
     return required.filter(t=>!entries.find(e=>e.template_id===t.id&&e.completed)).length;
   },[checklistTemplates,checklistEntries,selectedDate]);
 
-  const tabs=[
-    ...(appMode==="franchiseur"?[{id:"reseau",label:T.tabNetwork}]:[]),
-    ...(appMode!=="franchiseur"&&myLinkedLocations.length>1?[{id:"mylocations",label:T.tabMyLocations||"Mes succursales"}]:[]),
-    {id:"daily",label:T.tabDaily},
-    {id:"monthly",label:T.tabPL},
-    {id:"encaisse",label:T.tabCash},
-    {id:"intelligence",label:T.tabIntelligence},
-    {id:"bank",label:SECTIONS.bank.label},
-    {id:"books",label:SECTIONS.books.label},
-    {id:"taxes",label:SECTIONS.taxes.label},
-    ...(previsionsEnabled?[{id:"previsions",label:T.tabPrevisions}]:[]),
-    ...(canUse('ocrScanning')?[{id:"recettes",label:T.tabRecettes||"Coûts"}]:[]),
-    {id:"waste",label:T.tabWaste||"Gaspillage"},
-    ...(appMode==="franchiseur"?[{id:"eco",label:"Écocontrib."}]:[]),
-    ...(closePolicy?[{id:"compliance",label:lang==='fr'?'Conformité':'Compliance'}]:[]),
-    {id:"settings",label:T.tabConfig}
-  ];
-
   // ── PHASE 2: the accounting work leaves Settings ─────────────────────────
   // Bank, Books and Taxes are daily work and were filed under a gear icon because
   // that is where there was room when they were built. Each becomes a destination
@@ -7525,6 +7507,24 @@ function AppInner(){
     taxperiod:      ["taxes","taxperiod"],
     immobilisations:["taxes","immobilisations"],
   };
+
+  const tabs=[
+    ...(appMode==="franchiseur"?[{id:"reseau",label:T.tabNetwork}]:[]),
+    ...(appMode!=="franchiseur"&&myLinkedLocations.length>1?[{id:"mylocations",label:T.tabMyLocations||"Mes succursales"}]:[]),
+    {id:"daily",label:T.tabDaily},
+    {id:"monthly",label:T.tabPL},
+    {id:"encaisse",label:T.tabCash},
+    {id:"intelligence",label:T.tabIntelligence},
+    {id:"bank",label:SECTIONS.bank.label},
+    {id:"books",label:SECTIONS.books.label},
+    {id:"taxes",label:SECTIONS.taxes.label},
+    ...(previsionsEnabled?[{id:"previsions",label:T.tabPrevisions}]:[]),
+    ...(canUse('ocrScanning')?[{id:"recettes",label:T.tabRecettes||"Coûts"}]:[]),
+    {id:"waste",label:T.tabWaste||"Gaspillage"},
+    ...(appMode==="franchiseur"?[{id:"eco",label:"Écocontrib."}]:[]),
+    ...(closePolicy?[{id:"compliance",label:lang==='fr'?'Conformité':'Compliance'}]:[]),
+    {id:"settings",label:T.tabConfig}
+  ];
 
   const CFG_LABELS={
     entreprise:T.cfgBusiness, "personnel-paie":T.cfgPersonnelPayroll, "pl-fournisseurs":T.cfgPLSuppliers,

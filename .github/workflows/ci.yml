@@ -35,5 +35,8 @@ jobs:
       - name: Undefined-variable check
         run: npm run lint:undef
 
+      - name: Temporal dead zone check
+        run: npm run check:tdz
+
       - name: npm audit (production, high+)
         run: npm run audit

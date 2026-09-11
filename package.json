@@ -1,6 +1,6 @@
 {
   "name": "balanceiq",
-  "version": "1.60.0",
+  "version": "1.60.1",
   "description": "L'intelligence derrière vos chiffres.",
   "main": "main.js",
   "scripts": {
@@ -24,6 +24,7 @@
     "check:edge-auth": "bash scripts/check-edge-function-auth.sh",
     "audit": "npm audit --production --audit-level=critical",
     "scan:semgrep": "semgrep --config .semgrep.yml src/",
+    "check:tdz": "node scripts/check-tdz.js",
     "lint:undef": "eslint --config eslint.undef.config.mjs \"src/App.jsx\" \"src/components/**/*.jsx\" \"src/services/**/*.js\" \"src/utils/**/*.js\" \"src/db/**/*.js\""
   },
   "dependencies": {
