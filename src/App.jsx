@@ -18,6 +18,7 @@ const BilanTabLazy            = lazy(() => import('./components/BilanTab.jsx'));
 const ImmobilisationsTabLazy  = lazy(() => import('./components/ImmobilisationsTab.jsx'));
 const TaxPeriodTabLazy        = lazy(() => import('./components/TaxPeriodTab.jsx'));
 const BillsTabLazy            = lazy(() => import('./components/BillsTab.jsx'));
+import { BreadcrumbProvider, BreadcrumbBar, useBreadcrumb } from './components/Breadcrumbs.jsx';
 const VaultTabLazy            = lazy(() => import('./components/VaultTab.jsx'));
 const RecurringRulesTabLazy   = lazy(() => import('./components/RecurringRulesTab.jsx'));
 const CloseComplianceTabLazy     = lazy(() => import('./components/CloseComplianceTab.jsx'));
@@ -1975,6 +1976,27 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
  const saveEdit=()=>{if(!editForm.nom.trim())return;saveCategories(categories.map(c=>c.id===editingId?{...c,...editForm,nom:editForm.nom.trim()}:c));setEditingId(null)};
  const toggleActif=cat=>saveCategories(categories.map(c=>c.id===cat.id?{...c,actif:!c.actif}:c));
  const addCat=()=>{if(!newForm.nom.trim())return;saveCategories([...categories,{id:Date.now().toString(),nom:newForm.nom.trim(),compteRevenu:newForm.compteRevenu.trim(),compteEscompte:newForm.compteEscompte.trim(),description:newForm.description.trim(),actif:true}]);setNewForm({nom:"",compteRevenu:"",compteEscompte:"",description:""});setAddOpen(false)};
+
+ const _docLabel=(()=>{
+  if(!activeDoc)return null;
+  const d=activeDoc.doc;
+  const kind={soumission:T.filterQuotes,commande:T.filterOrders,facture:T.filterInvoices,
+              creditnote:T.filterCreditNotes}[activeDoc.type]||activeDoc.type;
+  return d?.numero?`${d.numero}`:`${kind}`;
+ })();
+ const _crumbClient=clients.find(c=>c.id===(selectedClientId||activeDoc?.clientId));
+ // Depth 2, not 1: Settings publishes at depth 1 from the parent, and a child's
+ // effect runs before its parent's, so sharing a depth would let the parent's
+ // clear wipe this trail on every render.
+ useBreadcrumb(2,[
+  ...(subTab?[{label:(({documents:T.factDocs,clients:T.factClients,categories:T.factCategories,
+                produits:T.factProducts,vieillissement:T.factAging,
+                rappels:(T.factRappels||"Rappels"),parametres:(T.factSettings||"")})[subTab]||subTab),
+              onClick:()=>{setActiveDoc(null);setSelectedClientId(null);}}]:[]),
+  ...(_crumbClient?[{label:_crumbClient.entreprise||_crumbClient.nom||"",
+                     onClick:()=>{setActiveDoc(null);setSelectedClientId(_crumbClient.id);}}]:[]),
+  ...(_docLabel?[{label:_docLabel}]:[]),
+ ],[subTab,_crumbClient?.id,_crumbClient?.entreprise,_crumbClient?.nom,_docLabel,T]);
 
  const subTabs=[{id:"documents",label:T.factDocs},{id:"clients",label:T.factClients},{id:"categories",label:T.factCategories},{id:"produits",label:T.factProducts},{id:"vieillissement",label:T.factAging},{id:"rappels",label:T.factRappels||"Rappels"},{id:"parametres",label:T.factSettings||""}];
 
@@ -6159,6 +6181,10 @@ function CfgCard({id,title,cfgExpanded,onToggle,children}){
 
 // ── MAIN ──
 export default function App(){
+  return <BreadcrumbProvider><AppInner/></BreadcrumbProvider>;
+}
+
+function AppInner(){
   const [demoData]=useState(()=>genDemo());
   const [liveData,setLiveData]=useState({});
   const [roster,setRoster]=useState([]);
@@ -7450,6 +7476,32 @@ export default function App(){
     {id:"settings",label:T.tabConfig}
   ];
 
+  const CFG_LABELS={
+    entreprise:T.cfgBusiness, "personnel-paie":T.cfgPersonnelPayroll, "pl-fournisseurs":T.cfgPLSuppliers,
+    operations:(T.cfgOperations||"Opérations"), fermeture:(T.cfgClosePolicy||(lang==="fr"?"Politique de fermeture":"Close Policy")),
+    integrations:T.cfgIntegrations,
+    comptabilite:(lang==="fr"?"Plan comptable":"Chart of Accounts"),
+    grandlivre:(lang==="fr"?"Grand livre":"General Ledger"),
+    banque:(lang==="fr"?"Banque":"Bank"),
+    facturesfourn:(lang==="fr"?"Fournisseurs":"Supplier Bills"),
+    taxperiod:(lang==="fr"?"TPS/TVQ":"GST/QST"),
+    bilan:(lang==="fr"?"Bilan":"Balance Sheet"),
+    immobilisations:(lang==="fr"?"DPA":"CCA"),
+    coffre:(lang==="fr"?"Coffre-fort":"Vault"),
+    recurrences:(lang==="fr"?"Récurrences":"Recurring"),
+    donnees:T.cfgData, application:T.cfgApplication,
+    apropos:(lang==="fr"?"Conformité":"About"),
+    succursales:T.cfgLocations, redevances:T.cfgRoyalties,
+  };
+  const _cfgLabel=activeTab==="settings"?(CFG_LABELS[configSubTab]||configSubTab):null;
+  useBreadcrumb(1,_cfgLabel?[{label:_cfgLabel}]:[],[_cfgLabel]);
+
+  const _tabLabel=(tabs.find(x=>x.id===activeTab)||{}).label
+    || (activeTab==="facturation"?T.tabInvoicing
+      : activeTab==="settings"?T.tabConfig
+      : activeTab);
+  useBreadcrumb(0,[{label:_tabLabel}],[_tabLabel]);
+
   const inputStyle={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.text,fontSize:12,padding:"5px 8px",outline:"none"};
 
   if(loading)return(<div style={{minHeight:"100vh",background:LIGHT.bg,display:"flex",alignItems:"center",justifyContent:"center",color:"#AEAEB2",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T.loading}</div>);
@@ -7527,7 +7579,7 @@ export default function App(){
  {updateAvailable&&<div style={{background:"linear-gradient(90deg,rgba(249,115,22,0.15),rgba(234,88,12,0.1))",borderBottom:"1px solid rgba(249,115,22,0.3)",padding:"7px 15px",display:"flex",alignItems:"center",justifyContent:"center",gap:12}}><span style={{fontSize:12,color:"#f97316",fontWeight:600}}>{lang==="en"?"New version available":"Nouvelle version disponible"}</span><button onClick={()=>{if(updateDownloadUrl)window.api.shell.openExternal(updateDownloadUrl);}} style={{padding:"3px 12px",borderRadius:5,border:"1px solid rgba(249,115,22,0.5)",background:"rgba(249,115,22,0.2)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11}}>
  {lang==="en"?"Download":"Télécharger"}</button></div>}
 
- {/* ── SCROLLABLE CONTENT ── */}<div style={{flex:1,overflowY:"auto"}}>{/* ── DATE NAV ── */}<div style={{padding:"8px 20px 0"}}>{/* Tab banners — first visit only */}
+ {/* ── SCROLLABLE CONTENT ── */}<div style={{flex:1,overflowY:"auto"}}><div style={{padding:"0 20px"}}><BreadcrumbBar lang={lang} theme={t}/></div>{/* ── DATE NAV ── */}<div style={{padding:"8px 20px 0"}}>{/* Tab banners — first visit only */}
  {activeTab==="daily"&&<TabBanner title={T.bannerDailyTitle} desc={T.bannerDailyDesc} settingsHint={T.bannerDailySettings} dismissed={dismissedBanners.has("daily")} onDismiss={()=>dismissBanner("daily")}/>}
  {activeTab==="monthly"&&<TabBanner title={T.bannerMonthlyTitle} desc={T.bannerMonthlyDesc} settingsHint={T.bannerMonthlySettings} dismissed={dismissedBanners.has("monthly")} onDismiss={()=>dismissBanner("monthly")}/>}
  {activeTab==="encaisse"&&<TabBanner title={T.bannerEncaisseTitle} desc={T.bannerEncaisseDesc} settingsHint={T.bannerEncaisseSettings} dismissed={dismissedBanners.has("encaisse")} onDismiss={()=>dismissBanner("encaisse")}/>}
