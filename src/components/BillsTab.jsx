@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { parseBillText } from '../utils/billParser.js';
 
 // What you owe, before you pay it. Until now the app only knew about money that
 // had already left the bank, which meant a bill sitting on the desk was invisible
@@ -40,6 +41,19 @@ const UI = {
     required: 'Fournisseur, montant et compte de dépense sont requis.',
     confirmUnpaid: 'Annuler le paiement de cette facture ? L\'écriture de paiement sera contrepassée.',
     taxHint: 'Saisissez les montants inscrits sur la facture. Toute limite de CTI rattachée au compte est appliquée automatiquement.',
+    upload: 'Lire une facture',
+    reading: 'Lecture…',
+    readOk: (n) => `${n} champ(s) lus. Vérifiez chacun avant d'enregistrer.`,
+    readNothing: 'Rien n\'a pu être lu de ce fichier. Saisissez la facture à la main.',
+    detected: 'lu du document',
+    dropHere: 'Déposez un PDF ou une photo ici',
+    errPdfNoText: 'Ce PDF est une image sans texte. Enregistrez-le en PNG ou JPG et réessayez : la reconnaissance de texte prendra le relais.',
+    errUnsupported: 'Type de fichier non pris en charge. Utilisez un PDF, PNG ou JPG.',
+    errRead: 'Le fichier n\'a pas pu être lu.',
+    warnTotal: (e, f) => `Le total lu (${f}) ne correspond pas au sous-total plus les taxes (${e}). Vérifiez les montants.`,
+    warnRatio: 'Le rapport TPS/TVQ ne suit pas les taux du Québec. Vérifiez les deux montants.',
+    warnNoTotal: 'Aucun total n\'a été trouvé. Saisissez-le à la main.',
+    warnTaxOver: 'La taxe lue dépasse le total. Vérifiez les montants.',
   },
   en: {
     title: 'Supplier bills',
@@ -70,6 +84,19 @@ const UI = {
     required: 'Supplier, amount and expense account are required.',
     confirmUnpaid: 'Undo the payment on this bill? The payment entry will be reversed.',
     taxHint: 'Enter the amounts shown on the bill. Any ITC limit on the account is applied for you.',
+    upload: 'Read a bill',
+    reading: 'Reading…',
+    readOk: (n) => `${n} field(s) read. Check each one before saving.`,
+    readNothing: 'Nothing could be read from that file. Enter the bill by hand.',
+    detected: 'read from the document',
+    dropHere: 'Drop a PDF or a photo here',
+    errPdfNoText: 'That PDF is an image with no text layer. Save it as PNG or JPG and try again - text recognition will take over.',
+    errUnsupported: 'Unsupported file type. Use a PDF, PNG or JPG.',
+    errRead: 'The file could not be read.',
+    warnTotal: (e, f) => `The total read (${f}) does not match subtotal plus taxes (${e}). Check the amounts.`,
+    warnRatio: 'The GST to QST ratio does not follow Quebec rates. Check both amounts.',
+    warnNoTotal: 'No total was found. Enter it by hand.',
+    warnTaxOver: 'The tax read is larger than the total. Check the amounts.',
   },
 };
 
@@ -83,6 +110,10 @@ export default function BillsTab({ lang = 'fr' }) {
   const [editing, setEditing]   = useState(null);
   const [error, setError]       = useState('');
   const [busy, setBusy]         = useState(false);
+  // What the reader proposed, so each field can show where its value came from
+  // and the operator can see at a glance what to check.
+  const [read, setRead]         = useState(null);
+  const [dragOver, setDragOver] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -111,6 +142,71 @@ export default function BillsTab({ lang = 'fr' }) {
     supplier_name: '', invoice_number: '', bill_date: today(), due_date: '',
     coa_account_id: '', amount: '', tps_paid: '', tvq_paid: '', note: '',
   });
+
+  // The reader proposes; the operator disposes. Every value lands in an ordinary
+  // editable field, marked with where it came from, and nothing is saved until
+  // they press Save - including the expense account, which the document cannot
+  // tell us and which stays empty on purpose.
+  function applyParsed(parsed, fileName) {
+    const f = parsed.fields;
+    const val = (x) => (x && x.value != null ? String(x.value) : '');
+    const next = {
+      ...blank(),
+      supplier_name:  val(f.supplier),
+      invoice_number: val(f.invoiceNumber),
+      bill_date:      val(f.billDate) || today(),
+      amount:         val(f.amount),
+      tps_paid:       val(f.tps),
+      tvq_paid:       val(f.tvq),
+      note:           fileName ? `${fileName}` : '',
+    };
+    const filled = ['supplier', 'invoiceNumber', 'billDate', 'amount', 'tps', 'tvq']
+      .filter(k => f[k] && f[k].value != null);
+    setRead({ fields: f, warnings: parsed.warnings, count: filled.length, fileName });
+    setEditing(next);
+    setError('');
+    return filled.length;
+  }
+
+  async function readFrom(promise) {
+    setBusy(true); setError('');
+    try {
+      const r = await promise;
+      if (r?.cancelled) return;
+      if (!r?.ok) {
+        setError(r?.error === 'pdf_has_no_text' ? T.errPdfNoText
+               : r?.error === 'unsupported_type' ? T.errUnsupported
+               : T.errRead);
+        return;
+      }
+      const parsed = parseBillText(r.text);
+      if (applyParsed(parsed, r.fileName) === 0) setError(T.readNothing);
+    } catch (e) { setError(String(e?.message ?? e)); }
+    finally { setBusy(false); }
+  }
+
+  const onDrop = (e) => {
+    e.preventDefault(); setDragOver(false);
+    const file = e.dataTransfer?.files?.[0];
+    const filePath = file?.path;
+    if (filePath) readFrom(window.api.supplierBills.readDocumentAt(filePath));
+  };
+
+  // A quiet badge on the fields the reader filled, so the ones to check are
+  // obvious and the ones typed by hand are not decorated for no reason.
+  const mark = (key) => read?.fields?.[key]?.value == null ? null : (
+    <span title={T.detected} style={{
+      marginLeft: 6, fontSize: 9, fontWeight: 600, letterSpacing: '.04em',
+      color: '#93c5fd', background: 'rgba(96,165,250,0.13)',
+      borderRadius: 3, padding: '1px 5px', textTransform: 'none',
+    }}>{lang === 'en' ? 'read' : 'lu'}</span>
+  );
+
+  const warnText = (w) =>
+    w.code === 'total_mismatch' ? T.warnTotal(money(w.expected), money(w.found))
+    : w.code === 'tax_ratio_odd' ? T.warnRatio
+    : w.code === 'tax_exceeds_total' ? T.warnTaxOver
+    : w.code === 'no_total' ? T.warnNoTotal : null;
 
   async function save() {
     const f = editing;
@@ -190,17 +286,58 @@ export default function BillsTab({ lang = 'fr' }) {
           }}>{label}</button>
         ))}
         <span style={{ flex: 1 }} />
-        {!editing && <button onClick={() => { setError(''); setEditing(blank()); }} style={btn('linear-gradient(135deg,#f97316,#ea580c)')}>{T.add}</button>}
+        {!editing && (
+          <>
+            <button onClick={() => readFrom(window.api.supplierBills.readDocument())} disabled={busy}
+              style={btn('#1e2131', '#e2e8f0')}>{busy ? T.reading : T.upload}</button>
+            <button onClick={() => { setError(''); setRead(null); setEditing(blank()); }}
+              style={btn('linear-gradient(135deg,#f97316,#ea580c)')}>{T.add}</button>
+          </>
+        )}
       </div>
+
+      {!editing && (
+        <div
+          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={onDrop}
+          style={{
+            border: `1.5px dashed ${dragOver ? '#f97316' : C.border}`,
+            background: dragOver ? 'rgba(249,115,22,0.06)' : 'transparent',
+            borderRadius: 8, padding: '14px 16px', marginBottom: 14,
+            fontSize: 12.5, color: dragOver ? '#f97316' : C.muted, textAlign: 'center',
+          }}>
+          {T.dropHere}
+        </div>
+      )}
 
       {editing && (
         <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: 16, marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {read && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: 12, color: '#93c5fd', background: 'rgba(96,165,250,0.08)',
+                border: '1px solid rgba(96,165,250,0.25)', borderRadius: 6, padding: '8px 11px', lineHeight: 1.45 }}>
+                {T.readOk(read.count)}
+                {read.fileName && <span style={{ color: C.muted, marginLeft: 6 }}>{read.fileName}</span>}
+              </div>
+              {read.warnings.map((w, i) => {
+                const txt = warnText(w);
+                return txt ? (
+                  <div key={i} style={{ fontSize: 11.5, color: '#a1791f', background: 'rgba(251,191,36,0.08)',
+                    border: '1px solid rgba(251,191,36,0.22)', borderRadius: 6, padding: '7px 11px', lineHeight: 1.45 }}>
+                    {txt}
+                  </div>
+                ) : null;
+              })}
+            </div>
+          )}
+
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
-            <div><span style={lbl}>{T.supplier} *</span>
+            <div><span style={lbl}>{T.supplier} *{mark('supplier')}</span>
               <input style={input} value={editing.supplier_name} onChange={e => setEditing({ ...editing, supplier_name: e.target.value })} /></div>
-            <div><span style={lbl}>{T.invoiceNo}</span>
+            <div><span style={lbl}>{T.invoiceNo}{mark('invoiceNumber')}</span>
               <input style={input} value={editing.invoice_number} onChange={e => setEditing({ ...editing, invoice_number: e.target.value })} /></div>
-            <div><span style={lbl}>{T.billDate}</span>
+            <div><span style={lbl}>{T.billDate}{mark('billDate')}</span>
               <input type="date" style={input} value={editing.bill_date} onChange={e => setEditing({ ...editing, bill_date: e.target.value })} /></div>
             <div><span style={lbl}>{T.dueDate}</span>
               <input type="date" style={input} value={editing.due_date || ''} onChange={e => setEditing({ ...editing, due_date: e.target.value })} /></div>
@@ -214,9 +351,9 @@ export default function BillsTab({ lang = 'fr' }) {
               </select></div>
             <div><span style={lbl}>{T.amount} *</span>
               <input type="number" step="0.01" min="0" style={{ ...input, textAlign: 'right' }} value={editing.amount} onChange={e => setEditing({ ...editing, amount: e.target.value })} /></div>
-            <div><span style={lbl}>{T.tps}</span>
+            <div><span style={lbl}>{T.tps}{mark('tps')}</span>
               <input type="number" step="0.01" min="0" style={{ ...input, textAlign: 'right' }} value={editing.tps_paid} onChange={e => setEditing({ ...editing, tps_paid: e.target.value })} /></div>
-            <div><span style={lbl}>{T.tvq}</span>
+            <div><span style={lbl}>{T.tvq}{mark('tvq')}</span>
               <input type="number" step="0.01" min="0" style={{ ...input, textAlign: 'right' }} value={editing.tvq_paid} onChange={e => setEditing({ ...editing, tvq_paid: e.target.value })} /></div>
           </div>
 

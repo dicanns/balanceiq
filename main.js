@@ -1807,6 +1807,75 @@ ipcMain.handle('ledger:income_statement', (_e, start, end, opts) => incomeStatem
 ipcMain.handle('coa:setItcPct', (_e, id, pct) => coaSetItcPct(id, pct));
 ipcMain.handle('coa:rename',    (_e, id, names) => coaRename(id, names || {}));
 ipcMain.handle('supplier:bill:subledger', (_e, asOf) => supplierBillSubledger(asOf));
+
+// Read a supplier invoice and hand its text back for parsing. A PDF with a text
+// layer - which is what anything emailed by a supplier's accounting system is -
+// reads directly and exactly. A scan or a photo has no text layer, so it goes to
+// the OCR worker that already serves the POS scanner. Nothing leaves the machine
+// either way: the document is a financial record and there is no reason to ship
+// it anywhere to read six fields off it.
+ipcMain.handle('bill:readDocument', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    title: 'Facture fournisseur',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Factures', extensions: ['pdf', 'png', 'jpg', 'jpeg', 'webp'] },
+      { name: 'PDF', extensions: ['pdf'] },
+      { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] },
+    ],
+  });
+  if (canceled || !filePaths?.length) return { ok: false, cancelled: true };
+  return readBillDocument(filePaths[0]);
+});
+
+// Split out so a dropped file can take the same path as a chosen one.
+ipcMain.handle('bill:readDocumentAt', async (_e, filePath) => readBillDocument(filePath));
+
+async function readBillDocument(filePath) {
+  try {
+    const ext = String(path.extname(filePath || '')).toLowerCase();
+    const buffer = fs.readFileSync(filePath);
+    const name = path.basename(filePath);
+
+    if (ext === '.pdf') {
+      const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
+      pdfjsLib.GlobalWorkerOptions.workerSrc = false;
+      const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+      let text = '';
+      for (let i = 1; i <= Math.min(pdf.numPages, 5); i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        // Joining by line keeps the letterhead on its own lines, which is what
+        // the supplier-name heuristic reads.
+        let lastY = null, line = '';
+        for (const item of content.items) {
+          const y = item.transform?.[5];
+          if (lastY !== null && Math.abs(y - lastY) > 2) { text += line.trim() + '\n'; line = ''; }
+          line += item.str + ' ';
+          lastY = y;
+        }
+        text += line.trim() + '\n';
+      }
+      const trimmed = text.trim();
+      if (trimmed.length >= 20) return { ok: true, text: trimmed, source: 'pdf', fileName: name, filePath };
+      // A PDF that is only a scanned image has no text layer worth reading.
+      return { ok: false, error: 'pdf_has_no_text', fileName: name, filePath };
+    }
+
+    if (['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) {
+      const { createWorker } = require('tesseract.js');
+      if (!_ocrWorker) _ocrWorker = await createWorker(['fra', 'eng']);
+      const { data: { text } } = await _ocrWorker.recognize(buffer);
+      const trimmed = String(text || '').trim();
+      if (!trimmed) return { ok: false, error: 'ocr_empty', fileName: name, filePath };
+      return { ok: true, text: trimmed, source: 'ocr', fileName: name, filePath };
+    }
+
+    return { ok: false, error: 'unsupported_type', fileName: name };
+  } catch (err) {
+    return { ok: false, error: 'read_failed', detail: String(err?.message ?? err) };
+  }
+}
 ipcMain.handle('ledger:audit:list',    (_e, opts)              => glAuditLogList(opts));
 ipcMain.handle('period:list',          (_e, opts)              => periodList(opts));
 ipcMain.handle('period:open',          (_e, data)              => periodOpen(data));
