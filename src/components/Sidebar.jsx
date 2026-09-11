@@ -199,6 +199,12 @@ export default function Sidebar({
         <SectionLabel label={lang === 'en' ? 'Monthly' : 'Mensuel'} t={t}/>
         <NavItem id="monthly" label={T.tabPL} active={isActive('monthly')} onClick={setActiveTab} t={t}/>
 
+        {/* COMPTABILITE - phase 2: out of Settings, where it never belonged */}
+        <SectionLabel label={lang === 'en' ? 'Accounting' : 'Comptabilité'} t={t}/>
+        <NavItem id="bank"  label={lang === 'en' ? 'Bank' : 'Banque'}   active={isActive('bank')}  onClick={setActiveTab} t={t}/>
+        <NavItem id="books" label={lang === 'en' ? 'Books' : 'Livres'}  active={isActive('books')} onClick={setActiveTab} t={t}/>
+        <NavItem id="taxes" label={lang === 'en' ? 'Taxes' : 'Taxes'}   active={isActive('taxes')} onClick={setActiveTab} t={t}/>
+
         {/* OPERATIONS */}
         <SectionLabel label={lang === 'en' ? 'Operations' : 'Opérations'} t={t}/>
         {previsionsEnabled && (
@@ -218,7 +224,6 @@ export default function Sidebar({
         {/* ANALYSE */}
         <SectionLabel label={lang === 'en' ? 'Analysis' : 'Analyse'} t={t}/>
         <NavItem id="intelligence" label={T.tabIntelligence} active={isActive('intelligence')} onClick={setActiveTab} t={t}/>
-        <NavItem id="taxconformite" label={lang === 'en' ? 'Tax Compliance' : 'Conformité fiscale'} active={isActive('taxconformite')} onClick={setActiveTab} t={t}/>
 
         {/* Divider before settings */}
         <div style={{ height: 1, background: t.divider, margin: '12px 2px 8px' }}/>
