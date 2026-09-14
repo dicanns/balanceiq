@@ -73,7 +73,7 @@ function SectionLabel({ label, t }) {
   );
 }
 
-function NavItem({ id, label, active, onClick, badge, t }) {
+function NavItem({ id, label, active, onClick, badge, tone = 'count', t }) {
   return (
     <button
       onClick={() => onClick(id)}
@@ -101,8 +101,8 @@ function NavItem({ id, label, active, onClick, badge, t }) {
       <span style={{ flex: 1 }}>{label}</span>
       {badge > 0 && (
         <span style={{
-          background: '#ef4444',
-          color: '#fff',
+          background: active ? '#fff' : (tone === 'alert' ? '#ef4444' : 'rgba(249,115,22,0.16)'),
+          color: active ? (tone === 'alert' ? '#dc2626' : '#ea580c') : (tone === 'alert' ? '#fff' : '#f97316'),
           borderRadius: 10,
           fontSize: 9,
           fontWeight: 700,
@@ -123,6 +123,7 @@ export default function Sidebar({
   canUse,
   myLinkedLocations,
   prevInsightCount,
+  counts = {},
   hasClosePolicy,
   themeName,
   toggleTheme,
@@ -190,12 +191,12 @@ export default function Sidebar({
         {/* Phase 3: seven destinations. Each is a place, named for the job it
             does rather than the module that built it. Operations disappears
             entirely for a business with no register to close. */}
-        <NavItem id="facturation" label={lang === 'en' ? 'Sales' : 'Ventes'}      active={isActive('facturation')} onClick={setActiveTab} t={t}/>
-        <NavItem id="today"       label={lang === 'en' ? 'Today' : "Aujourd'hui"} active={isActive('today')} onClick={setActiveTab} t={t}/>
+        <NavItem id="facturation" label={lang === 'en' ? 'Sales' : 'Ventes'}      active={isActive('facturation')} onClick={setActiveTab} badge={counts.sales} tone="alert" t={t}/>
+        <NavItem id="today"       label={lang === 'en' ? 'Today' : "Aujourd'hui"} active={isActive('today')} onClick={setActiveTab} badge={counts.today} t={t}/>
 
         {/* COMPTABILITE - phase 2: out of Settings, where it never belonged */}
         <SectionLabel label={lang === 'en' ? 'Accounting' : 'Comptabilité'} t={t}/>
-        <NavItem id="bank"  label={lang === 'en' ? 'Bank' : 'Banque'}  active={isActive('bank')}  onClick={setActiveTab} t={t}/>
+        <NavItem id="bank"  label={lang === 'en' ? 'Bank' : 'Banque'}  active={isActive('bank')}  onClick={setActiveTab} badge={counts.bank} t={t}/>
         <NavItem id="books" label={lang === 'en' ? 'Books' : 'Livres'} active={isActive('books')} onClick={setActiveTab} t={t}/>
         <NavItem id="taxes" label={lang === 'en' ? 'Taxes' : 'Taxes'}  active={isActive('taxes')} onClick={setActiveTab} t={t}/>
 

@@ -16,6 +16,7 @@ const {
   storageGet, storageSet, storageGetAll,
   stripApiConfigSecrets, mergeApiConfigSecrets, incomeStatement, coaSetItcPct, coaRename,
   supplierBillPost, supplierBillUnpost, supplierBillPostPayment, supplierBillSubledger,
+  bankNeedsCategorizingCount,
   getAllTablesForBackup, restoreAllTablesFromBackup,
   syncQueuePush, syncQueuePeek, syncQueueDelete, syncQueueIncrementAttempts, syncQueueLength,
   auditInsert, auditQuery, getDeviceId,
@@ -1807,6 +1808,7 @@ ipcMain.handle('ledger:income_statement', (_e, start, end, opts) => incomeStatem
 ipcMain.handle('coa:setItcPct', (_e, id, pct) => coaSetItcPct(id, pct));
 ipcMain.handle('coa:rename',    (_e, id, names) => coaRename(id, names || {}));
 ipcMain.handle('supplier:bill:subledger', (_e, asOf) => supplierBillSubledger(asOf));
+ipcMain.handle('bank:needsCategorizing', () => bankNeedsCategorizingCount());
 
 // Read a supplier invoice and hand its text back for parsing. A PDF with a text
 // layer - which is what anything emailed by a supplier's accounting system is -

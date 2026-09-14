@@ -4021,6 +4021,23 @@ function bankPostMissingEntries(bankAccountId, _db) {
 // balance for the same account is what catches a missing opening balance, a
 // duplicated entry, or a reversal filed in the wrong period - all of which
 // leave the ledger internally balanced while disagreeing with the bank.
+// Lines that still need someone to decide what they were. A line matched to an
+// invoice or a payment is handled even with no account on it, and a transfer is
+// handled by definition, so neither counts. Archived accounts are out of view.
+function bankNeedsCategorizingCount(_db) {
+  const db = _db || getDb();
+  const row = db.prepare(
+    `SELECT COUNT(*) AS n
+     FROM bank_transactions bt
+     JOIN bank_accounts ba ON ba.id = bt.bank_account_id
+     WHERE bt.coa_account_id IS NULL
+       AND COALESCE(bt.match_status, 'unmatched') <> 'matched'
+       AND COALESCE(bt.is_transfer, 0) = 0
+       AND COALESCE(ba.is_archived, 0) = 0`
+  ).get();
+  return row?.n || 0;
+}
+
 function bankSubledgerBalances(asOfDate, _db) {
   const db = _db || getDb();
   const cutoff = asOfDate || new Date().toISOString().slice(0, 10);
@@ -5052,7 +5069,7 @@ function getBalanceSheetBlockers(asOfDate, _db) {
   }
 
   // 2. No opening balance entry posted
-  const ob = db.prepare(`SELECT id FROM journal_entries WHERE source_type='opening_balance' AND status='posted'`).get();
+  const ob = db.prepare(`SELECT id FROM journal_entries WHERE source_type IN ('opening_balance','bank_opening') AND status='posted'`).get();
   if (!ob) {
     blockers.push({ type: 'no_opening_balance', label_fr: 'Solde d\'ouverture non comptabilise', label_en: 'Opening balance not posted' });
   }
@@ -6404,7 +6421,7 @@ function mergeApiConfigSecrets(incoming, current) {
 }
 
 module.exports = {
-  incomeStatement, coaSetItcPct, coaRename,
+  incomeStatement, coaSetItcPct, coaRename, bankNeedsCategorizingCount,
   supplierBillPost, supplierBillUnpost, supplierBillPostPayment, supplierBillSubledger,
   SECRET_CONFIG_FIELDS, stripApiConfigSecrets, mergeApiConfigSecrets,
   storageGet, storageSet, storageGetAll, storageGetByPrefix,

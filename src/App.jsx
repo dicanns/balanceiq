@@ -34,6 +34,8 @@ const OnboardingPacketBuilderLazy = lazy(() => import('./components/franchise/On
 import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./config/features.js";
 import { calcRoyaltyFull, computeInvoiceTotals, isTaxOverride } from "./utils/calculations.js";
+import { overdueInvoices, nextFilingDeadline, cashVarianceCents, buildWorklist, worklistCounts } from "./services/todayWorklist.js";
+import TodayWorklist from "./components/TodayWorklist.jsx";
 import { buildFlashReportHTML } from "./services/flashReport.js";
 import * as XLSX from "xlsx";
 import { logCreate, logUpdate, logVoid, logCorrection, isFinancialField, promptCorrectionReason } from "./services/auditLogger.js";
@@ -6254,7 +6256,7 @@ function AppInner(){
   const [configSubTab,setConfigSubTab]=useState("entreprise");
   // One sub-tab per phase-2 section, remembered independently so moving between
   // Bank and Books does not reset where you were in either.
-  const [sectionTab,setSectionTab]=useState({bank:"comptes",books:"grandlivre",taxes:"taxperiod",today:"encaisse",operations:"daily"});
+  const [sectionTab,setSectionTab]=useState({bank:"comptes",books:"grandlivre",taxes:"taxperiod",today:"worklist",operations:"daily"});
   const goSection=useCallback((section,tab)=>{
     setActiveTab(section);
     if(tab)setSectionTab(p=>({...p,[section]:tab}));
@@ -7554,6 +7556,7 @@ function AppInner(){
     today:{
       label: lang==="fr"?"Aujourd'hui":"Today",
       tabs:[
+        {id:"worklist",     label: lang==="fr"?"À faire":"To do"},
         {id:"encaisse",     label: lang==="fr"?"Encaisse":"Cash position"},
         {id:"intelligence", label: lang==="fr"?"Perspectives":"Outlook"},
         ...(previsionsEnabled?[{id:"previsions",label: lang==="fr"?"Prévisions":"Forecast"}]:[]),
@@ -7644,6 +7647,42 @@ function AppInner(){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[activeTab]);
 
+  // ── PHASE 5: what needs you ──────────────────────────────────────────────
+  // The app already knew what was unfinished and said nothing until you went
+  // looking. Re-checked on every screen change and once a minute, which is cheap:
+  // six small queries, and the rules themselves live in todayWorklist.js.
+  const [worklist,setWorklist]=useState({items:[],counts:{},loading:true});
+  useEffect(()=>{
+    let alive=true;
+    const run=async()=>{
+      const today=dk(new Date());
+      const safe=async(fn,fallback)=>{try{const v=await fn();return v??fallback;}catch(_){return fallback;}};
+      const [needsCategorizing,blockers,registration,taxPeriods,trialRows,subledgerRows]=await Promise.all([
+        safe(()=>window.api?.bank?.accounts?.needsCategorizing?.(),0),
+        safe(()=>window.api?.bilan?.blockers?.(today),[]),
+        safe(()=>window.api?.tax?.registration?.get?.(null),null),
+        safe(()=>window.api?.tax?.period?.list?.(),[]),
+        safe(()=>window.api?.ledger?.trialBalance?.(today),[]),
+        safe(()=>window.api?.bank?.accounts?.subledger?.(today),[]),
+      ]);
+      const overdue=overdueInvoices(facFactures,facClients,today);
+      const deadline=nextFilingDeadline(registration,taxPeriods,today);
+      const variance=(subledgerRows||[]).length?cashVarianceCents(trialRows,subledgerRows):null;
+      const items=buildWorklist({needsCategorizing,overdue,blockers:Array.isArray(blockers)?blockers:[],registration,deadline,variance,lang});
+      if(alive)setWorklist({items,counts:worklistCounts({needsCategorizing,overdue,items}),loading:false});
+    };
+    run();
+    const id=setInterval(run,60000);
+    return()=>{alive=false;clearInterval(id);};
+  },[activeTab,sectionTab,facFactures,facClients,lang]);
+
+  const openWorkItem=useCallback(target=>{
+    if(!target)return;
+    if(target.kind==="invoice")handleSearchNavigate("facturation",{invoiceId:target.invoiceId});
+    else if(target.kind==="section")goSection(target.section,target.tab);
+    else if(target.kind==="tab")setActiveTab(target.tab);
+  },[handleSearchNavigate,goSection]);
+
   const [movedNotice,setMovedNotice]=useState(null);
   useEffect(()=>{
     if(activeTab!=="settings")return;
@@ -7710,6 +7749,7 @@ function AppInner(){
           canUse={canUse}
           myLinkedLocations={myLinkedLocations}
           prevInsightCount={prevInsightCount}
+          counts={worklist.counts}
           hasClosePolicy={!!closePolicy}
           themeName={themeName}
           toggleTheme={toggleTheme}
@@ -8032,6 +8072,7 @@ function AppInner(){
  {/* Print */}<div style={{display:"flex",justifyContent:"flex-end"}}><button onClick={()=>openPDF(buildDailyHTML())} style={{padding:"8px 16px",borderRadius:7,border:`1px solid rgba(${t.posRgb},0.2)`,background:`rgba(${t.posRgb},0.07)`,color:t.posColor,cursor:"pointer",fontWeight:600,fontSize:12}}> {T.printReport}</button></div></div>)}
 
  {at("operations","monthly")&&<MonthlyPL computeDay={computeDay} suppliers={suppliers} liveData={liveData} platforms={platforms} expenseItems={expenseItems} glAccounts={glAccounts} apiConfig={apiConfig} ocrMappings={ocrMappings} setOcrMappings={setOcrMappings} payrollConfig={payrollConfig} lang={lang} showSectionTooltips={showSectionTooltips} setActiveTab={setActiveTab}/>}
+ {at("today","worklist")&&<TodayWorklist items={worklist.items} loading={worklist.loading} onOpen={openWorkItem} t={t} lang={lang}/>}
  {at("today","encaisse")&&<EncaisseTab liveData={liveData} encaisseData={encaisseData} persistEncaisse={persistEncaisse} encaisseConfig={encaisseConfig} saveEncaisseConfig={saveEncaisseConfig}/>}
  {activeTab==="facturation"&&<FacturationTab categories={facCategories} saveCategories={saveFacCategories} produits={facProduits} saveProduits={saveFacProduits} clients={facClients} saveClients={saveFacClients} soumissions={facSoumissions} saveSoumissions={saveFacSoumissions} commandes={facCommandes} saveCommandes={saveFacCommandes} factures={facFactures} saveFactures={saveFacFactures} creditNotes={facCreditNotes} saveCreditNotes={saveFacCreditNotes} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} encaisseData={encaisseData} persistEncaisse={persistEncaisse} showUpgradePrompt={showUpgradePrompt} apiConfig={apiConfig} recurrents={facRecurrents} saveRecurrents={saveFacRecurrents} invoiceTemplate={effectiveTemplate} rawInvoiceTemplate={invoiceTemplate} saveInvoiceTemplate={saveInvoiceTemplate} canUse={canUse} glAccounts={glAccounts} saveGlAccounts={saveGlAccounts} deepLink={facDeepLink} onDeepLinkDone={()=>setFacDeepLink(null)}/>}
  {at("today","intelligence")&&<IntelligenceTab liveData={liveData} computeDay={computeDay} demoData={demoData} selectedDate={selectedDate} velocityProfiles={velocityProfiles} getLR={getLR} platforms={platforms} encaisseData={encaisseData} encaisseConfig={encaisseConfig} apiConfig={apiConfig} checklistCompliance={checklistComplianceStats} priceAlerts={priceAlerts} suppliers={suppliers} closePatterns={closePatterns}/>}
