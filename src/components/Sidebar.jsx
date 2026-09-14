@@ -124,6 +124,7 @@ export default function Sidebar({
   myLinkedLocations,
   prevInsightCount,
   counts = {},
+  businessTypes = ['invoicing', 'register'],
   hasClosePolicy,
   themeName,
   toggleTheme,
@@ -191,7 +192,10 @@ export default function Sidebar({
         {/* Phase 3: seven destinations. Each is a place, named for the job it
             does rather than the module that built it. Operations disappears
             entirely for a business with no register to close. */}
+        {/* Sales needs invoiced sales, or franchise mode, where royalties are invoiced. */}
+        {(businessTypes.includes('invoicing') || appMode === 'franchiseur') && (
         <NavItem id="facturation" label={lang === 'en' ? 'Sales' : 'Ventes'}      active={isActive('facturation')} onClick={setActiveTab} badge={counts.sales} tone="alert" t={t}/>
+        )}
         <NavItem id="today"       label={lang === 'en' ? 'Today' : "Aujourd'hui"} active={isActive('today')} onClick={setActiveTab} badge={counts.today} t={t}/>
 
         {/* COMPTABILITE - phase 2: out of Settings, where it never belonged */}
@@ -200,13 +204,14 @@ export default function Sidebar({
         <NavItem id="books" label={lang === 'en' ? 'Books' : 'Livres'} active={isActive('books')} onClick={setActiveTab} t={t}/>
         <NavItem id="taxes" label={lang === 'en' ? 'Taxes' : 'Taxes'}  active={isActive('taxes')} onClick={setActiveTab} t={t}/>
 
-        {/* The spec has Operations hidden for a business with no register to
-            close. That needs a business-type setting the app does not have yet -
-            appMode is restaurant or franchiseur, neither of which means wholesale -
-            so it shows for everyone rather than hiding behind a condition that is
-            always true. */}
-        <SectionLabel label={lang === 'en' ? 'Operations' : 'Opérations'} t={t}/>
-        <NavItem id="operations" label={lang === 'en' ? 'Daily operations' : 'Opérations'} active={isActive('operations')} onClick={setActiveTab} t={t}/>
+        {/* Operations is the register work - daily close, costs, waste - and only a
+            business that makes counter sales has any of it. */}
+        {businessTypes.includes('register') && (
+          <>
+            <SectionLabel label={lang === 'en' ? 'Operations' : 'Opérations'} t={t}/>
+            <NavItem id="operations" label={lang === 'en' ? 'Daily operations' : 'Opérations'} active={isActive('operations')} onClick={setActiveTab} t={t}/>
+          </>
+        )}
 
         {/* Divider before settings */}
         <div style={{ height: 1, background: t.divider, margin: '12px 2px 8px' }}/>

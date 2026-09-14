@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { BUSINESS_TYPE_INFO, normalizeBusinessTypes } from '../services/businessProfile.js';
 
 const STYLES = {
   overlay: {
@@ -155,6 +156,46 @@ const RESTAURANT_TYPES = [
   { key: 'retail',   icon: '', labelFr: 'Commerce (Détail)',    labelEn: 'Retail' },
   { key: 'other',    icon: '', labelFr: 'Autre',                labelEn: 'Other' },
 ];
+
+// Step 0 - what kind of sales. Asked first because it decides which of the
+// remaining questions are worth asking: a wholesale business has no restaurant
+// type, no cash registers, and no use for the restaurant demo data.
+function StepBusiness({ lang, companyInfo, saveCompanyInfo, onNext }) {
+  const [picked, setPicked] = useState(Array.isArray(companyInfo.businessTypes) ? companyInfo.businessTypes : []);
+  const toggle = (key) => setPicked((p) => (p.includes(key) ? p.filter((k) => k !== key) : [...p, key]));
+  const fr = lang === 'fr';
+  return (<div><div style={STYLES.stepTitle}>{fr ? 'Quel type de ventes faites-vous ?' : 'What kind of sales do you make?'}</div><div style={STYLES.stepDesc}>{fr
+          ? 'Cochez les deux si vous faites les deux. Vous pourrez changer ce choix dans Réglages.'
+          : 'Tick both if you do both. You can change this later in Settings.'}</div><div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px', marginBottom: '20px' }}>{BUSINESS_TYPE_INFO.map((bt) => {
+          const on = picked.includes(bt.key);
+          return (<button
+              key={bt.key}
+              type="button"
+              aria-pressed={on}
+              onClick={() => toggle(bt.key)}
+              style={{
+                background: on
+                  ? 'linear-gradient(135deg, rgba(249,115,22,0.18), rgba(234,88,12,0.12))'
+                  : 'rgba(255,255,255,0.03)',
+                border: on ? '1px solid rgba(249,115,22,0.5)' : '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '10px',
+                padding: '14px 14px',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gap: '4px',
+                transition: 'all 0.15s ease',
+                fontFamily: "'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif",
+              }}
+            ><span style={{ fontSize: '14px', fontWeight: '600', color: on ? '#F97316' : '#E8E8EC' }}>{fr ? bt.labelFr : bt.labelEn}</span><span style={{ fontSize: '12px', color: '#8B8FA3', textAlign: 'left', lineHeight: '1.4' }}>{fr ? bt.descFr : bt.descEn}</span></button>);
+        })}</div><button
+        type="button"
+        disabled={picked.length === 0}
+        onClick={() => { saveCompanyInfo({ ...companyInfo, businessTypes: picked }); onNext(); }}
+        style={{ ...STYLES.btnPrimary, opacity: picked.length === 0 ? 0.5 : 1, cursor: picked.length === 0 ? 'default' : 'pointer' }}
+      >{fr ? 'Continuer' : 'Continue'}</button></div>);
+}
 
 // Step 1
 function StepType({ lang, companyInfo, saveCompanyInfo, onNext }) {
@@ -334,35 +375,38 @@ function StepDemo({ lang, onNext, onBack }) {
 }
 
 // Step 5
-function StepReady({ lang, onBack, onComplete }) {
+function StepReady({ lang, onBack, onComplete, businessTypes = ['invoicing', 'register'] }) {
+  // Next steps under the names the app uses now. The old list sent everyone to
+  // "Config -> Cashiers" and a "Daily tab", which a wholesale business never had
+  // and which no longer exist under those names for anybody.
   const steps = [
     {
       icon: '',
-      textFr: 'Ajouter vos caissiers',
-      textEn: 'Add your cashiers',
-      whereFr: 'Config → Caissiers',
-      whereEn: 'Config → Cashiers',
+      textFr: 'Ajouter votre compte bancaire et importer un relevé',
+      textEn: 'Add your bank account and import a statement',
+      whereFr: 'Banque',
+      whereEn: 'Bank',
     },
+    ...(businessTypes.includes('invoicing') ? [{
+      icon: '',
+      textFr: 'Envoyer votre première facture',
+      textEn: 'Send your first invoice',
+      whereFr: 'Ventes',
+      whereEn: 'Sales',
+    }] : []),
+    ...(businessTypes.includes('register') ? [{
+      icon: '',
+      textFr: 'Faire votre première fermeture de journée',
+      textEn: 'Do your first daily close',
+      whereFr: 'Opérations, Fermeture quotidienne',
+      whereEn: 'Operations, Daily close',
+    }] : []),
     {
       icon: '',
-      textFr: 'Configurer vos catégories de dépenses',
-      textEn: 'Set up expense categories',
-      whereFr: 'Config → P&L',
-      whereEn: 'Config → P&L',
-    },
-    {
-      icon: '',
-      textFr: 'Entrer votre première facture fournisseur',
-      textEn: 'Enter your first supplier invoice',
-      whereFr: 'Onglet P&L',
-      whereEn: 'P&L tab',
-    },
-    {
-      icon: '',
-      textFr: 'Essayer une fermeture de journée',
-      textEn: 'Try a daily close-out',
-      whereFr: 'Onglet Journalier',
-      whereEn: 'Daily tab',
+      textFr: 'Configurer votre inscription TPS/TVQ',
+      textEn: 'Set up your GST/QST registration',
+      whereFr: 'Taxes, TPS/TVQ, Enregistrement',
+      whereEn: 'Taxes, GST/QST, Registration',
     },
   ];
 
@@ -408,9 +452,15 @@ export default function OnboardingWizard({
 }) {
   const [step, setStep] = useState(0); // 0-indexed
 
-  const totalSteps = 5;
+  // The questions depend on the answer to the first. Restaurant type, cash
+  // registers and the restaurant demo only mean something to a business that
+  // closes a register, so an invoicing-only business skips straight past them.
+  const types = normalizeBusinessTypes(companyInfo.businessTypes);
+  const steps = ['business', 'info', ...(types.includes('register') ? ['type', 'registers', 'demo'] : []), 'ready'];
+  const totalSteps = steps.length;
+  const current = steps[Math.min(step, totalSteps - 1)];
 
-  const next = useCallback(() => setStep((s) => Math.min(s + 1, totalSteps - 1)), []);
+  const next = useCallback(() => setStep((s) => Math.min(s + 1, totalSteps - 1)), [totalSteps]);
   const back = useCallback(() => setStep((s) => Math.max(s - 1, 0)), []);
 
   const handleComplete = useCallback(async () => {
@@ -421,35 +471,11 @@ export default function OnboardingWizard({
             const state = i< step ? 'done' : i === step ? 'current' : 'future';
             return <div key={i} style={STYLES.dot(state)} />;
           })}<span style={STYLES.progressLabel}>{lang === 'fr' ? `Étape ${step + 1} / ${totalSteps}` : `Step ${step + 1} of ${totalSteps}`}</span></div>{/* Steps */}
-        {step === 0 && (<StepType
-            lang={lang}
-            companyInfo={companyInfo}
-            saveCompanyInfo={saveCompanyInfo}
-            onNext={next}
-          />)}
-        {step === 1 && (<StepInfo
-            lang={lang}
-            companyInfo={companyInfo}
-            saveCompanyInfo={saveCompanyInfo}
-            onNext={next}
-            onBack={back}
-          />)}
-        {step === 2 && (<StepRegisters
-            lang={lang}
-            roster={roster}
-            saveRoster={saveRoster}
-            onNext={next}
-            onBack={back}
-          />)}
-        {step === 3 && (<StepDemo
-            lang={lang}
-            onNext={next}
-            onBack={back}
-          />)}
-        {step === 4 && (<StepReady
-            lang={lang}
-            onBack={back}
-            onComplete={handleComplete}
-          />)}</div></div>
+        {current === 'business' && (<StepBusiness lang={lang} companyInfo={companyInfo} saveCompanyInfo={saveCompanyInfo} onNext={next} />)}
+        {current === 'info' && (<StepInfo lang={lang} companyInfo={companyInfo} saveCompanyInfo={saveCompanyInfo} onNext={next} onBack={back} />)}
+        {current === 'type' && (<StepType lang={lang} companyInfo={companyInfo} saveCompanyInfo={saveCompanyInfo} onNext={next} />)}
+        {current === 'registers' && (<StepRegisters lang={lang} roster={roster} saveRoster={saveRoster} onNext={next} onBack={back} />)}
+        {current === 'demo' && (<StepDemo lang={lang} onNext={next} onBack={back} />)}
+        {current === 'ready' && (<StepReady lang={lang} businessTypes={types} onBack={back} onComplete={handleComplete} />)}</div></div>
   );
 }

@@ -197,6 +197,7 @@ contextBridge.exposeInMainWorld('api', {
     getAll:   ()    => ipcRenderer.invoke('onboarding:getAll'),
     markDone: (key) => ipcRenderer.invoke('onboarding:markDone', key),
     reset:    ()    => ipcRenderer.invoke('onboarding:reset'),
+    facts:    ()    => ipcRenderer.invoke('onboarding:facts'),
   },
   plPriceIntel: {
     record:    (r)              => ipcRenderer.invoke('plPriceIntel:record', r),

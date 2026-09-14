@@ -4024,6 +4024,22 @@ function bankPostMissingEntries(bankAccountId, _db) {
 // Lines that still need someone to decide what they were. A line matched to an
 // invoice or a payment is handled even with no account on it, and a transfer is
 // handled by definition, so neither counts. Archived accounts are out of view.
+// What the getting-started checklist needs to tick itself off: has this business
+// added a bank account, brought in a statement, categorized anything, posted
+// anything, registered for GST/QST. Each count is guarded on its own, so an older
+// database missing one table still answers the rest.
+function firstRunFacts(_db) {
+  const db = _db || getDb();
+  const count = (sql) => { try { return db.prepare(sql).get()?.n || 0; } catch (_) { return 0; } };
+  return {
+    bankAccounts:    count(`SELECT COUNT(*) AS n FROM bank_accounts WHERE COALESCE(is_archived, 0) = 0`),
+    statements:      count(`SELECT COUNT(*) AS n FROM bank_statements`),
+    categorized:     count(`SELECT COUNT(*) AS n FROM bank_transactions WHERE coa_account_id IS NOT NULL`),
+    postedEntries:   count(`SELECT COUNT(*) AS n FROM journal_entries WHERE status = 'posted'`),
+    taxRegistration: count(`SELECT COUNT(*) AS n FROM tax_registration`) > 0,
+  };
+}
+
 function bankNeedsCategorizingCount(_db) {
   const db = _db || getDb();
   const row = db.prepare(
@@ -6421,7 +6437,7 @@ function mergeApiConfigSecrets(incoming, current) {
 }
 
 module.exports = {
-  incomeStatement, coaSetItcPct, coaRename, bankNeedsCategorizingCount,
+  incomeStatement, coaSetItcPct, coaRename, bankNeedsCategorizingCount, firstRunFacts,
   supplierBillPost, supplierBillUnpost, supplierBillPostPayment, supplierBillSubledger,
   SECRET_CONFIG_FIELDS, stripApiConfigSecrets, mergeApiConfigSecrets,
   storageGet, storageSet, storageGetAll, storageGetByPrefix,
