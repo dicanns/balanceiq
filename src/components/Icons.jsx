@@ -194,6 +194,62 @@ export function IconShield({ size = defaultSize, stroke, strokeWidth } = {}) {
   );
 }
 
+// Phase 3 destinations. Same 24-unit grid and stroke as every icon above.
+export function IconGrid({ size = defaultSize, stroke, strokeWidth } = {}) {
+  return (
+    <svg {...svgProps(size, stroke, strokeWidth)}>
+      <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+      <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+      <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+      <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+    </svg>
+  );
+}
+
+export function IconBank({ size = defaultSize, stroke, strokeWidth } = {}) {
+  return (
+    <svg {...svgProps(size, stroke, strokeWidth)}>
+      <path d="M3 9.5 12 4l9 5.5"/>
+      <line x1="4" y1="20" x2="20" y2="20"/>
+      <line x1="6" y1="10.5" x2="6" y2="17"/>
+      <line x1="10" y1="10.5" x2="10" y2="17"/>
+      <line x1="14" y1="10.5" x2="14" y2="17"/>
+      <line x1="18" y1="10.5" x2="18" y2="17"/>
+    </svg>
+  );
+}
+
+export function IconBook({ size = defaultSize, stroke, strokeWidth } = {}) {
+  return (
+    <svg {...svgProps(size, stroke, strokeWidth)}>
+      <path d="M12 6.5C10 5 7 4.5 3.5 5v13c3.5-.5 6.5 0 8.5 1.5"/>
+      <path d="M12 6.5c2-1.5 5-2 8.5-1.5v13c-3.5-.5-6.5 0-8.5 1.5"/>
+      <line x1="12" y1="6.5" x2="12" y2="19.5"/>
+    </svg>
+  );
+}
+
+export function IconPercent({ size = defaultSize, stroke, strokeWidth } = {}) {
+  return (
+    <svg {...svgProps(size, stroke, strokeWidth)}>
+      <line x1="19" y1="5" x2="5" y2="19"/>
+      <circle cx="7" cy="7" r="2.5"/>
+      <circle cx="17" cy="17" r="2.5"/>
+    </svg>
+  );
+}
+
+export function IconClipboard({ size = defaultSize, stroke, strokeWidth } = {}) {
+  return (
+    <svg {...svgProps(size, stroke, strokeWidth)}>
+      <rect x="5" y="4" width="14" height="17" rx="2"/>
+      <rect x="9" y="2.5" width="6" height="3.5" rx="1"/>
+      <line x1="8.5" y1="11" x2="15.5" y2="11"/>
+      <line x1="8.5" y1="15" x2="13" y2="15"/>
+    </svg>
+  );
+}
+
 export function NavIcon({ color, bg, children, size = 28 }) {
   return (
     <div style={{

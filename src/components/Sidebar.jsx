@@ -16,21 +16,24 @@ import {
   IconSun,
   IconMoon,
   IconShield,
+  IconGrid,
+  IconBank,
+  IconBook,
+  IconPercent,
+  IconClipboard,
 } from './Icons.jsx';
 
 // Color palette per tab ID
+// One colour and one icon per destination in the sidebar, and nothing else. The
+// old map carried every screen that has since moved inside a section, and every
+// new destination fell through to the settings gear because nobody added it.
 const TAB_COLORS = {
-  daily:        { stroke: '#F5923E', bg: 'rgba(245,146,62,0.12)' },
-  encaisse:     { stroke: '#5AC8D8', bg: 'rgba(90,200,216,0.12)' },
   facturation:  { stroke: '#4A90D9', bg: 'rgba(74,144,217,0.12)' },
-  monthly:      { stroke: '#9B6FD1', bg: 'rgba(155,111,209,0.12)' },
-  intelligence: { stroke: '#9B6FD1', bg: 'rgba(155,111,209,0.12)' },
-  previsions:   { stroke: '#E87CA0', bg: 'rgba(232,124,160,0.12)' },
-  recettes:     { stroke: '#F7CE46', bg: 'rgba(247,206,70,0.12)' },
-  waste:        { stroke: '#E25B5B', bg: 'rgba(226,91,91,0.12)' },
-  eco:          { stroke: '#63B76C', bg: 'rgba(99,183,108,0.12)' },
-  compliance:      { stroke: '#38BDF8', bg: 'rgba(56,189,248,0.12)' },
-  taxconformite:   { stroke: '#22c55e', bg: 'rgba(34,197,94,0.12)' },
+  today:        { stroke: '#F5923E', bg: 'rgba(245,146,62,0.12)' },
+  bank:         { stroke: '#5AC8D8', bg: 'rgba(90,200,216,0.12)' },
+  books:        { stroke: '#9B6FD1', bg: 'rgba(155,111,209,0.12)' },
+  taxes:        { stroke: '#22c55e', bg: 'rgba(34,197,94,0.12)' },
+  operations:   { stroke: '#F7CE46', bg: 'rgba(247,206,70,0.12)' },
   reseau:       { stroke: '#A78BFA', bg: 'rgba(167,139,250,0.12)' },
   mylocations:  { stroke: '#4A90D9', bg: 'rgba(74,144,217,0.12)' },
   settings:     { stroke: '#8E8FA3', bg: 'rgba(142,143,163,0.10)' },
@@ -42,17 +45,12 @@ function TabIcon({ id, active }) {
   const bg = active ? 'rgba(255,255,255,0.18)' : c.bg;
   const sz = 16;
   const icons = {
-    daily:        <IconCalendar size={sz} stroke={stroke}/>,
-    encaisse:     <IconDollar size={sz} stroke={stroke}/>,
     facturation:  <IconReceipt size={sz} stroke={stroke}/>,
-    monthly:      <IconBarChart size={sz} stroke={stroke}/>,
-    intelligence: <IconLightbulb size={sz} stroke={stroke}/>,
-    previsions:   <IconActivity size={sz} stroke={stroke}/>,
-    recettes:     <IconCalculator size={sz} stroke={stroke}/>,
-    waste:        <IconTrendingDown size={sz} stroke={stroke}/>,
-    eco:          <IconLeaf size={sz} stroke={stroke}/>,
-    compliance:      <IconActivity size={sz} stroke={stroke}/>,
-    taxconformite:   <IconShield size={sz} stroke={stroke}/>,
+    today:        <IconGrid size={sz} stroke={stroke}/>,
+    bank:         <IconBank size={sz} stroke={stroke}/>,
+    books:        <IconBook size={sz} stroke={stroke}/>,
+    taxes:        <IconPercent size={sz} stroke={stroke}/>,
+    operations:   <IconClipboard size={sz} stroke={stroke}/>,
     reseau:       <IconBuilding size={sz} stroke={stroke}/>,
     mylocations:  <IconMapPin size={sz} stroke={stroke}/>,
     settings:     <IconSettings size={sz} stroke={stroke}/>,
@@ -192,8 +190,8 @@ export default function Sidebar({
         {/* Phase 3: seven destinations. Each is a place, named for the job it
             does rather than the module that built it. Operations disappears
             entirely for a business with no register to close. */}
-        <NavItem id="today"       label={lang === 'en' ? 'Today' : "Aujourd'hui"} active={isActive('today')} onClick={setActiveTab} t={t}/>
         <NavItem id="facturation" label={lang === 'en' ? 'Sales' : 'Ventes'}      active={isActive('facturation')} onClick={setActiveTab} t={t}/>
+        <NavItem id="today"       label={lang === 'en' ? 'Today' : "Aujourd'hui"} active={isActive('today')} onClick={setActiveTab} t={t}/>
 
         {/* COMPTABILITE - phase 2: out of Settings, where it never belonged */}
         <SectionLabel label={lang === 'en' ? 'Accounting' : 'Comptabilité'} t={t}/>

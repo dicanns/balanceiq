@@ -47,7 +47,31 @@ describe('NAVWIRE-001 every nav item leads somewhere', () => {
 
   it('is down to seven destinations plus the conditional franchise ones', () => {
     const core = navIds.filter(id => !['reseau', 'mylocations'].includes(id));
-    expect(core).toEqual(['today', 'facturation', 'bank', 'books', 'taxes', 'operations', 'settings']);
+    expect(core).toEqual(['facturation', 'today', 'bank', 'books', 'taxes', 'operations', 'settings']);
+  });
+
+  it('the app opens on Sales, which sits at the top of the bar', () => {
+    expect(APP).toContain('const [activeTab,setActiveTab]=useState("facturation");');
+    expect(navIds.filter(id => !['reseau', 'mylocations'].includes(id))[0]).toBe('facturation');
+  });
+
+  it('every destination has its own icon and colour, not the settings gear', () => {
+    // TabIcon falls back to the gear for an unknown id, so a destination added to
+    // the bar without an entry here renders as Settings and nothing complains.
+    const colours = SIDEBAR.slice(SIDEBAR.indexOf('const TAB_COLORS = {'), SIDEBAR.indexOf('};', SIDEBAR.indexOf('const TAB_COLORS = {')));
+    const icons = SIDEBAR.slice(SIDEBAR.indexOf('const icons = {'), SIDEBAR.indexOf('};', SIDEBAR.indexOf('const icons = {')));
+    for (const id of navIds) {
+      expect(colours, `no colour for ${id}`).toMatch(new RegExp(`\\b${id}:\\s*\\{`));
+      expect(icons, `no icon for ${id}`).toMatch(new RegExp(`\\b${id}:\\s*<Icon`));
+    }
+    const gears = [...icons.matchAll(/(\w+):\s*<IconSettings/g)].map(m => m[1]);
+    expect(gears).toEqual(['settings']);
+  });
+
+  it('the icon map carries nothing the bar no longer shows', () => {
+    const icons = SIDEBAR.slice(SIDEBAR.indexOf('const icons = {'), SIDEBAR.indexOf('};', SIDEBAR.indexOf('const icons = {')));
+    const keys = [...icons.matchAll(/^\s+(\w+):\s*</gm)].map(m => m[1]);
+    for (const k of keys) expect(navIds, `stale icon entry ${k}`).toContain(k);
   });
 
   it('every button in the sidebar has something to render', () => {
@@ -92,7 +116,7 @@ describe('NAVWIRE-002 every destination can be reached', () => {
   });
 
   it('a legacy id still lands somewhere rather than on a blank screen', () => {
-    for (const id of ['daily', 'monthly', 'encaisse', 'intelligence', 'taxconformite']) {
+    for (const id of ['daily', 'monthly', 'encaisse', 'intelligence', 'taxconformite', 'pl', 'livraisons']) {
       expect(APP).toMatch(new RegExp(`${id}:\\["(today|operations|taxes)","[a-z]+"\\]`));
     }
   });
