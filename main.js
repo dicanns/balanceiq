@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, net, dialog, shell, nativeImage, Tray, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, net, dialog, shell, nativeImage, Tray, Menu, utilityProcess } = require('electron');
 const QRCode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
@@ -789,17 +789,40 @@ function fetchBuffer(url) {
   });
 }
 
-// Extract all text from a PDF buffer using pdfjs-dist (Node.js / Electron main process).
+// ── PDF parsing, isolated ─────────────────────────────────────────────────
+// Every PDF the app opens - supplier bills, the Régie gas price bulletin - is
+// untrusted input, so it is parsed in pdf-worker.js: an Electron utility process
+// with no database, no windows and no IPC to the screens. Oversized files are
+// refused before it starts, and it is killed when it answers or times out.
+const PDF_MAX_BYTES = 25 * 1024 * 1024;
+const PDF_TIMEOUT_MS = 20000;
+
+function readPdfIsolated(buffer, { maxPages = 5, timeoutMs = PDF_TIMEOUT_MS } = {}) {
+  return new Promise((resolve, reject) => {
+    if (!buffer || !buffer.length) return reject(new Error('empty_pdf'));
+    if (buffer.length > PDF_MAX_BYTES) return reject(new Error('pdf_too_large'));
+    let settled = false;
+    const child = utilityProcess.fork(path.join(__dirname, 'pdf-worker.js'), [], {
+      serviceName: 'BalanceIQ PDF reader',
+      execArgv: ['--max-old-space-size=512'],
+      stdio: 'ignore',
+    });
+    const finish = (err, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { child.kill(); } catch (_) {}
+      if (err) reject(err); else resolve(value);
+    };
+    const timer = setTimeout(() => finish(new Error('pdf_timeout')), timeoutMs);
+    child.on('message', (msg) => (msg && msg.ok ? finish(null, msg) : finish(new Error((msg && msg.error) || 'pdf_failed'))));
+    child.on('exit', (code) => finish(new Error(`pdf_reader_exited_${code}`)));
+    child.once('spawn', () => child.postMessage({ bytes: new Uint8Array(buffer), maxPages }));
+  });
+}
+
 async function extractRegiePDFText(buffer) {
-  const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
-  pdfjsLib.GlobalWorkerOptions.workerSrc = false;
-  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
-  let text = '';
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    text += content.items.map(s => s.str).join(' ') + '\n';
-  }
+  const { text } = await readPdfIsolated(buffer, { maxPages: 20 });
   return text;
 }
 
@@ -1472,7 +1495,7 @@ app.on('open-url', (event, url) => {
 });
 
 // Windows: deep link arrives as second argv when app is already running
-if (process.env.NODE_ENV !== 'test' && !app.requestSingleInstanceLock()) {
+if (process.env.NODE_ENV !== 'test' && !process.env.BIQ_PDF_SELFTEST && !app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', (_event, argv) => {
@@ -1486,6 +1509,15 @@ if (process.env.NODE_ENV !== 'test' && !app.requestSingleInstanceLock()) {
 }
 
 app.whenReady().then(() => {
+  // Packaging check: BIQ_PDF_SELFTEST=/path/to.pdf reads the file through the PDF
+  // utility process, prints what it found and quits, without opening a window.
+  if (process.env.BIQ_PDF_SELFTEST) {
+    readPdfIsolated(fs.readFileSync(process.env.BIQ_PDF_SELFTEST), { maxPages: 2 })
+      .then(r => console.log('PDF_SELFTEST_OK ' + JSON.stringify({ pages: r.pages.length, items: r.items.length, first: r.items[0] && r.items[0].str })))
+      .catch(e => console.log('PDF_SELFTEST_FAIL ' + e.message))
+      .finally(() => app.exit(0));
+    return;
+  }
   createWindow();
 
   app.on('activate', () => {
@@ -1714,6 +1746,91 @@ ipcMain.handle('ledger:creditnote:reverse', async (_e, { creditNoteId, reason })
   }
 });
 
+// ── Customer deposits -> ledger ─────────────────────────────────────────────
+// A deposit taken before an invoice is sent is money held for the customer - not
+// revenue, and not a payment against a receivable that does not exist yet - so it
+// is posted to 2500 Customer deposits when received. When the invoice is sent the
+// deposit is applied (2500 against accounts receivable) and becomes a payment on
+// the invoice. Both entries are idempotent on the deposit id; voiding reverses both.
+function postDepositReceipt({ depositId, invoiceNumber, depositDate, amountCents, mode }) {
+  const existing = glFindEntryBySource('deposit', depositId);
+  if (existing) return { ok: true, entryId: existing.id, alreadyPosted: true };
+  const accounts = coaList();
+  const find = (num) => accounts.find(a => a.account_number === num);
+  const deposits = find('2500');
+  const cashNum = PAYMENT_MODE_ACCOUNT[mode] || '1010';
+  const cash = find(cashNum) || find('1010');
+  if (!deposits || !cash) return { ok: false, error: 'missing_coa_accounts', detail: `2500 / ${cashNum}` };
+  const label = `Acompte ${invoiceNumber || ''}`.trim();
+  const { entryId } = glDraftEntry({
+    entry_date: depositDate,
+    description: label,
+    source_type: 'deposit',
+    source_id: String(depositId),
+    lines: [
+      { account_id: cash.id, debit_cents: amountCents, credit_cents: 0, memo: label },
+      { account_id: deposits.id, debit_cents: 0, credit_cents: amountCents, memo: 'Dépôts de clients' },
+    ],
+  });
+  glPostEntry(entryId);
+  return { ok: true, entryId, account: cashNum };
+}
+
+ipcMain.handle('ledger:deposit:post', async (_e, { depositId, invoiceNumber, depositDate, amountCents, mode } = {}) => {
+  try {
+    if (!depositId || !amountCents || amountCents <= 0 || !depositDate) return { ok: false, error: 'invalid_deposit' };
+    return postDepositReceipt({ depositId, invoiceNumber, depositDate, amountCents, mode });
+  } catch (err) {
+    return { ok: false, error: 'post_failed', detail: String(err?.message ?? err) };
+  }
+});
+
+ipcMain.handle('ledger:deposit:apply', async (_e, { depositId, invoiceNumber, depositDate, applyDate, amountCents, mode } = {}) => {
+  try {
+    if (!depositId || !amountCents || amountCents <= 0 || !applyDate) return { ok: false, error: 'invalid_deposit' };
+    // A deposit recorded before this version never had its receipt posted.
+    const receipt = postDepositReceipt({ depositId, invoiceNumber, depositDate: depositDate || applyDate, amountCents, mode });
+    if (!receipt.ok) return receipt;
+    const existing = glFindEntryBySource('deposit_apply', depositId);
+    if (existing) return { ok: true, entryId: existing.id, receiptEntryId: receipt.entryId, alreadyPosted: true };
+    const accounts = coaList();
+    const find = (num) => accounts.find(a => a.account_number === num);
+    const deposits = find('2500');
+    const ar = find('1100');
+    if (!deposits || !ar) return { ok: false, error: 'missing_coa_accounts', detail: '2500 / 1100' };
+    const label = `Acompte appliqué ${invoiceNumber || ''}`.trim();
+    const { entryId } = glDraftEntry({
+      entry_date: applyDate,
+      description: label,
+      source_type: 'deposit_apply',
+      source_id: String(depositId),
+      lines: [
+        { account_id: deposits.id, debit_cents: amountCents, credit_cents: 0, memo: label },
+        { account_id: ar.id, debit_cents: 0, credit_cents: amountCents, memo: 'Comptes clients' },
+      ],
+    });
+    glPostEntry(entryId);
+    return { ok: true, entryId, receiptEntryId: receipt.entryId };
+  } catch (err) {
+    return { ok: false, error: 'post_failed', detail: String(err?.message ?? err) };
+  }
+});
+
+ipcMain.handle('ledger:deposit:reverse', async (_e, { depositId, reason } = {}) => {
+  try {
+    const out = {};
+    for (const type of ['deposit_apply', 'deposit']) {
+      const entry = glFindEntryBySource(type, depositId);
+      if (!entry) continue;
+      if (entry.status === 'draft') { glDeleteDraft(entry.id); out[type] = 'deleted_draft'; }
+      else { glReverseEntry(entry.id, reason || 'Acompte annulé'); out[type] = 'reversed'; }
+    }
+    return { ok: true, ...out };
+  } catch (err) {
+    return { ok: false, error: 'reverse_failed', detail: String(err?.message ?? err) };
+  }
+});
+
 ipcMain.handle('ledger:invoice:post', async (_e, {
   invoiceId, invoiceDate, subtotalCents, tpsCents, tvqCents, totalCents, taxExempt,
 }) => {
@@ -1840,27 +1957,14 @@ async function readBillDocument(filePath) {
     const buffer = fs.readFileSync(filePath);
     const name = path.basename(filePath);
 
+    // Every word goes back with where it sits on the page (top-left origin), so
+    // the reader can rebuild lines by layout - a PDF stores text in whatever
+    // order its generator wrote it - and the bill screen can show the page for
+    // the operator to point at the right value.
     if (ext === '.pdf') {
-      const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
-      pdfjsLib.GlobalWorkerOptions.workerSrc = false;
-      const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
-      let text = '';
-      for (let i = 1; i <= Math.min(pdf.numPages, 5); i++) {
-        const page = await pdf.getPage(i);
-        const content = await page.getTextContent();
-        // Joining by line keeps the letterhead on its own lines, which is what
-        // the supplier-name heuristic reads.
-        let lastY = null, line = '';
-        for (const item of content.items) {
-          const y = item.transform?.[5];
-          if (lastY !== null && Math.abs(y - lastY) > 2) { text += line.trim() + '\n'; line = ''; }
-          line += item.str + ' ';
-          lastY = y;
-        }
-        text += line.trim() + '\n';
-      }
-      const trimmed = text.trim();
-      if (trimmed.length >= 20) return { ok: true, text: trimmed, source: 'pdf', fileName: name, filePath };
+      const { items, pages, text } = await readPdfIsolated(buffer, { maxPages: 5 });
+      const trimmed = String(text || '').trim();
+      if (trimmed.length >= 20) return { ok: true, text: trimmed, items, pages, source: 'pdf', fileName: name, filePath };
       // A PDF that is only a scanned image has no text layer worth reading.
       return { ok: false, error: 'pdf_has_no_text', fileName: name, filePath };
     }
@@ -1868,10 +1972,21 @@ async function readBillDocument(filePath) {
     if (['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) {
       const { createWorker } = require('tesseract.js');
       if (!_ocrWorker) _ocrWorker = await createWorker(['fra', 'eng']);
-      const { data: { text } } = await _ocrWorker.recognize(buffer);
-      const trimmed = String(text || '').trim();
+      const { data } = await _ocrWorker.recognize(buffer);
+      const trimmed = String(data?.text || '').trim();
       if (!trimmed) return { ok: false, error: 'ocr_empty', fileName: name, filePath };
-      return { ok: true, text: trimmed, source: 'ocr', fileName: name, filePath };
+      const words = Array.isArray(data?.words) && data.words.length
+        ? data.words
+        : (data?.blocks || []).flatMap(bl => (bl.paragraphs || []).flatMap(p => (p.lines || []).flatMap(l => l.words || [])));
+      const items = words
+        .filter(w => w?.text && w.text.trim() && w.bbox)
+        .map(w => ({ str: w.text, x: w.bbox.x0, y: w.bbox.y0, w: w.bbox.x1 - w.bbox.x0, h: w.bbox.y1 - w.bbox.y0, page: 1 }));
+      let size = { width: 0, height: 0 };
+      try { size = nativeImage.createFromBuffer(buffer).getSize(); } catch (_) {}
+      if (!size.width) {
+        size = { width: Math.max(0, ...items.map(i => i.x + i.w)), height: Math.max(0, ...items.map(i => i.y + i.h)) };
+      }
+      return { ok: true, text: trimmed, items, pages: [{ page: 1, ...size }], source: 'ocr', fileName: name, filePath };
     }
 
     return { ok: false, error: 'unsupported_type', fileName: name };
@@ -2719,7 +2834,12 @@ ipcMain.handle('pad:chargeMandate', async (_e, { accessToken, org_id, mandate_id
       headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${accessToken}` },
       body: JSON.stringify({ org_id, mandate_id, amount_cents, invoice_id, description }),
     });
-    if (!res.ok) { const t = await res.text(); return { error: 'request_failed', message: t }; }
+    if (!res.ok) {
+      const t = await res.text();
+      // Refusals (forbidden_role, already_charged, amount_over_limit) carry a code the screen can explain.
+      try { const parsed = JSON.parse(t); if (parsed?.error) return parsed; } catch (_) {}
+      return { error: 'request_failed', message: t };
+    }
     return await res.json();
   } catch (e) {
     return { error: 'network_error', message: String(e?.message || e) };

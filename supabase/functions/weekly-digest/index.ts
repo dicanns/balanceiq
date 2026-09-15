@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { requireCronSecret } from '../_shared/cron.ts';
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -8,16 +9,11 @@ const supabase = createClient(
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')!;
 const TO_EMAIL = 'info@dicanns.ca';
-const CRON_SECRET = Deno.env.get('CRON_SECRET') || '';
 
 serve(async (req: Request) => {
-  const secret = req.headers.get('x-cron-secret') || '';
-  if (!CRON_SECRET || secret !== CRON_SECRET) {
-    return new Response(JSON.stringify({ error: 'unauthorized' }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
+  // Only the scheduler knows the secret, kept in Vault and checked by the database.
+  const denied = await requireCronSecret(req, supabase);
+  if (denied) return denied;
 
   try {
     const now = new Date();
@@ -28,11 +24,12 @@ serve(async (req: Request) => {
       .from('installs')
       .select('*', { count: 'exact', head: true });
 
-    // New this week
+    // New this week: first seen in the last 7 days. last_seen_at is every
+    // launch, which made this the same number as active.
     const { count: newThisWeek } = await supabase
       .from('installs')
       .select('*', { count: 'exact', head: true })
-      .gte('last_seen_at', weekAgo);
+      .gte('first_seen_at', weekAgo);
 
     // Active this week (seen in last 7 days)
     const { count: activeThisWeek } = await supabase
@@ -110,7 +107,7 @@ serve(async (req: Request) => {
               <div style="font-size:11px;color:#6b7280;margin-top:2px">Total Installs</div>
             </div>
             <div style="background:white;padding:16px;border-radius:6px;border:1px solid #e5e7eb;text-align:center">
-              <div style="font-size:28px;font-weight:700;color:#10b981">${newThisWeek || 0}</div>
+              <div style="font-size:28px;font-weight:700;color:#10b981">${activeThisWeek || 0}</div>
               <div style="font-size:11px;color:#6b7280;margin-top:2px">Active This Week</div>
             </div>
             <div style="background:white;padding:16px;border-radius:6px;border:1px solid #e5e7eb;text-align:center">
@@ -134,6 +131,8 @@ serve(async (req: Request) => {
             </div>
           </div>
 
+          <p style="margin:16px 0 0;font-size:13px;color:#374151">New installs this week: <strong>${newThisWeek || 0}</strong></p>
+
           <p style="margin:20px 0 0;font-size:11px;color:#9ca3af;text-align:center">
             BalanceIQ · Automated weekly digest · Every Monday 9am ET
           </p>
@@ -141,7 +140,7 @@ serve(async (req: Request) => {
       </div>
     `;
 
-    await fetch('https://api.resend.com/emails', {
+    const sent = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -154,6 +153,14 @@ serve(async (req: Request) => {
         html,
       }),
     });
+    // Resend refusing the email is a failure, not a quiet success.
+    if (!sent.ok) {
+      console.error('weekly-digest email failed:', sent.status, await sent.text());
+      return new Response(JSON.stringify({ error: 'email_failed', status: sent.status }), {
+        status: 502,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
 
     return new Response(JSON.stringify({ ok: true }), { headers: { 'Content-Type': 'application/json' } });
   } catch (err) {

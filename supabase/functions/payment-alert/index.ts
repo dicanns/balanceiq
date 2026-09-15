@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { requireCronSecret } from '../_shared/cron.ts';
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -8,16 +9,11 @@ const supabase = createClient(
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')!;
 const TO_EMAIL = 'info@dicanns.ca';
-const CRON_SECRET = Deno.env.get('CRON_SECRET') || '';
 
 serve(async (req: Request) => {
-  const secret = req.headers.get('x-cron-secret') || '';
-  if (!CRON_SECRET || secret !== CRON_SECRET) {
-    return new Response(JSON.stringify({ error: 'unauthorized' }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
+  // Only the scheduler knows the secret, kept in Vault and checked by the database.
+  const denied = await requireCronSecret(req, supabase);
+  if (denied) return denied;
 
   try {
     const { data: failedOrgs, error } = await supabase
@@ -72,7 +68,7 @@ serve(async (req: Request) => {
       </div>
     `;
 
-    await fetch('https://api.resend.com/emails', {
+    const sent = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -85,6 +81,14 @@ serve(async (req: Request) => {
         html,
       }),
     });
+    // Resend refusing the email is a failure, not a quiet success.
+    if (!sent.ok) {
+      console.error('payment-alert email failed:', sent.status, await sent.text());
+      return new Response(JSON.stringify({ error: 'email_failed', status: sent.status }), {
+        status: 502,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
 
     return new Response(JSON.stringify({ ok: true, alerted: failedOrgs.length }), {
       headers: { 'Content-Type': 'application/json' },

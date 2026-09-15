@@ -45,6 +45,22 @@ function extractOrgId(body: string): string {
   }
 }
 
+// Keep the pad_charges record in step with Stripe. Matched by the charge id in
+// the payment intent metadata, or by payment intent id for charges created
+// before metadata carried it.
+async function markCharge(
+  supabase: ReturnType<typeof createClient>,
+  pi: Stripe.PaymentIntent,
+  fields: Record<string, unknown>,
+) {
+  const update = { ...fields, stripe_payment_intent_id: pi.id, updated_at: new Date().toISOString() };
+  const query = supabase.from('pad_charges').update(update);
+  const { error } = pi.metadata?.charge_id
+    ? await query.eq('id', pi.metadata.charge_id)
+    : await query.eq('stripe_payment_intent_id', pi.id);
+  if (error) console.error('pad_charges update failed:', pi.id, error);
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
 
@@ -138,6 +154,8 @@ Deno.serve(async (req: Request) => {
         const pi = event.data.object as Stripe.PaymentIntent;
         const mandateId = pi.metadata?.mandate_id;
 
+        await markCharge(supabase, pi, { status: 'succeeded' });
+
         if (mandateId) {
           await supabase
             .from('pad_mandates')
@@ -154,9 +172,12 @@ Deno.serve(async (req: Request) => {
         const pi = event.data.object as Stripe.PaymentIntent;
         const mandateId = pi.metadata?.mandate_id;
         const invoiceId = pi.metadata?.invoice_id || null;
+        const reason = pi.last_payment_error?.message || pi.last_payment_error?.code || 'payment_failed';
+
+        // A failed charge releases the invoice so it can be charged again.
+        await markCharge(supabase, pi, { status: 'failed', failure_reason: reason });
 
         if (mandateId) {
-          const reason = pi.last_payment_error?.message || pi.last_payment_error?.code || 'payment_failed';
           await supabase
             .from('pad_mandates')
             .update({

@@ -64,11 +64,13 @@ ALTER TABLE locations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE synced_data ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_log_cloud ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "users_own_org" ON users
-  FOR ALL USING (id = auth.uid());
+-- Read only: org_id and role decide membership, so clients must not write them.
+-- See supabase/migrations/20260914000001_lock_users_and_org_writes.sql.
+CREATE POLICY "users_select_own" ON users
+  FOR SELECT TO authenticated USING (id = auth.uid());
 
-CREATE POLICY "org_members" ON organizations
-  FOR ALL USING (id IN (SELECT org_id FROM users WHERE id = auth.uid()));
+CREATE POLICY "org_members_select" ON organizations
+  FOR SELECT TO authenticated USING (id IN (SELECT org_id FROM users WHERE id = auth.uid()));
 
 CREATE POLICY "org_locations" ON locations
   FOR ALL USING (org_id IN (SELECT org_id FROM users WHERE id = auth.uid()));

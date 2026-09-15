@@ -1506,6 +1506,18 @@ const MIGRATIONS = [
       }
     },
   },
+  {
+    version: 44,
+    description: 'Quantity and unit cost on supplier bills. Goods bought to resell arrive as a '
+      + 'number of cases at a price, not just a total, and the unit cost is what a selling margin '
+      + 'is worked out from. Both are optional; a bill for a service leaves them empty.',
+    up: (database) => {
+      const cols = database.prepare(`PRAGMA table_info(supplier_bills)`).all().map(c => c.name);
+      if (!cols.length) return;
+      if (!cols.includes('quantity')) database.prepare(`ALTER TABLE supplier_bills ADD COLUMN quantity REAL`).run();
+      if (!cols.includes('unit_cost')) database.prepare(`ALTER TABLE supplier_bills ADD COLUMN unit_cost REAL`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.

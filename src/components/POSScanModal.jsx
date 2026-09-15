@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import pdfjsWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.js?url';
+import pdfjsWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
 // ── Image preprocessing for Tesseract (grayscale + contrast binarization) ───
 function preprocessCanvasForOCR(srcCanvas) {
@@ -34,14 +34,14 @@ function preprocessCanvasForOCR(srcCanvas) {
 
 // ── Render PDF first page to canvas ─────────────────────────────────────────
 async function renderPDFToCanvas(base64Data) {
-  const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.js');
+  const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
   pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
 
   const binaryStr = atob(base64Data);
   const bytes = new Uint8Array(binaryStr.length);
   for (let i = 0; i< binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
 
-  const pdf = await pdfjsLib.getDocument({ data: bytes, disableWorker: true }).promise;
+  const pdf = await pdfjsLib.getDocument({ data: bytes, isEvalSupported: false }).promise;
   const page = await pdf.getPage(1);
   const viewport = page.getViewport({ scale: 2.0 }); // 2x for better OCR accuracy
 
