@@ -5862,7 +5862,7 @@ function AuditSection(){
 // ── CLOUD ACCOUNT SECTION ──
 function CloudAccountSection({cloudUser,syncStatus,onSignIn,onSignUp,onSignOut,onResetPassword,onRefreshPlan,t,T}){
  const [mode,setMode]=useState("idle"); // idle | signin | signup | forgot
- const [form,setForm]=useState({email:"",password:"",fullName:"",orgName:""});
+ const [form,setForm]=useState({email:"",password:"",password2:"",fullName:"",orgName:""});
  const [loading,setLoading]=useState(false);
  const [msg,setMsg]=useState(null); // {ok:bool, text:str}
  const [refreshingPlan,setRefreshingPlan]=useState(false);
@@ -5882,6 +5882,7 @@ function CloudAccountSection({cloudUser,syncStatus,onSignIn,onSignUp,onSignOut,o
  finally{setLoading(false);}
  };
  const doSignUp=async()=>{
+ if(form.password!==form.password2){setMsg({ok:false,text:T.cfgCloudPasswordMismatch});return;}
  setLoading(true);setMsg(null);
  try{
  await onSignUp({email:form.email,password:form.password,fullName:form.fullName,orgName:form.orgName});
@@ -5917,8 +5918,8 @@ function CloudAccountSection({cloudUser,syncStatus,onSignIn,onSignUp,onSignOut,o
  :mode==="forgot"
  ?(<div><div style={{fontSize:11.5,fontWeight:700,color:"#f97316",marginBottom:8}}>{T.cfgCloudForgotPassword}</div><div style={{fontSize:10.5,color:t.textMuted,marginBottom:8}}>{T.cfgCloudForgotHint}</div><input style={inp} placeholder={T.cfgCloudEmail} type="email" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} autoFocus onKeyDown={e=>e.key==="Enter"&&doForgotPassword()}/>
  {msg&&<div style={{fontSize:10.5,color:msg.ok?"#22c55e":"#ef4444",marginBottom:6}}>{msg.text}</div>}<div style={{display:"flex",gap:6,marginTop:4}}><button onClick={doForgotPassword} disabled={loading||!form.email||!!msg?.ok} style={{padding:"5px 14px",borderRadius:6,border:"none",background:loading||!form.email||!!msg?.ok?"rgba(255,255,255,0.05)":"linear-gradient(135deg,#f97316,#ea580c)",color:loading||!form.email||!!msg?.ok?t.textDim:"#fff",cursor:loading||!!msg?.ok?"default":"pointer",fontWeight:700,fontSize:11}}>{loading?T.cfgCloudResetSending:T.cfgCloudSendReset}</button><button onClick={()=>{setMode("signin");setMsg(null);}} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>{T.cfgCloudBackToSignIn}</button></div></div>)
- :(<div><div style={{fontSize:11.5,fontWeight:700,color:"#f97316",marginBottom:8}}>{T.cfgCloudSignUp}</div><input style={inp} placeholder={T.cfgCloudFullName} value={form.fullName} onChange={e=>setForm(f=>({...f,fullName:e.target.value}))} autoFocus/><input style={inp} placeholder={T.cfgCloudOrgName} value={form.orgName} onChange={e=>setForm(f=>({...f,orgName:e.target.value}))}/><input style={inp} placeholder={T.cfgCloudEmail} type="email" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))}/><input style={inp} placeholder={T.cfgCloudPassword} type="password" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&doSignUp()}/>
- {msg&&<div style={{fontSize:10.5,color:msg.ok?"#22c55e":"#ef4444",marginBottom:6}}>{msg.text}</div>}<div style={{display:"flex",gap:6,marginTop:4}}><button onClick={doSignUp} disabled={loading||!form.email||!form.password||!form.fullName} style={{padding:"5px 14px",borderRadius:6,border:"none",background:loading||!form.email||!form.password||!form.fullName?"rgba(255,255,255,0.05)":"linear-gradient(135deg,#f97316,#ea580c)",color:loading||!form.email||!form.password||!form.fullName?t.textDim:"#fff",cursor:loading?"default":"pointer",fontWeight:700,fontSize:11}}>{loading?T.cfgCloudLoading:T.cfgCloudSignUp}</button><button onClick={()=>setMode("idle")} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>{T.cancel}</button></div></div>)}</div>);
+ :(<div><div style={{fontSize:11.5,fontWeight:700,color:"#f97316",marginBottom:8}}>{T.cfgCloudSignUp}</div><input style={inp} placeholder={T.cfgCloudFullName} value={form.fullName} onChange={e=>setForm(f=>({...f,fullName:e.target.value}))} autoFocus/><input style={inp} placeholder={T.cfgCloudOrgName} value={form.orgName} onChange={e=>setForm(f=>({...f,orgName:e.target.value}))}/><input style={inp} placeholder={T.cfgCloudEmail} type="email" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))}/><input style={inp} placeholder={T.cfgCloudPassword} type="password" autoComplete="new-password" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))}/><input style={inp} placeholder={T.cfgCloudPasswordConfirm} type="password" autoComplete="new-password" value={form.password2} onChange={e=>setForm(f=>({...f,password2:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&form.password&&form.password===form.password2&&doSignUp()}/>{form.password2&&form.password!==form.password2&&<div style={{fontSize:10.5,color:"#ef4444",marginBottom:6}}>{T.cfgCloudPasswordMismatch}</div>}
+ {msg&&<div style={{fontSize:10.5,color:msg.ok?"#22c55e":"#ef4444",marginBottom:6}}>{msg.text}</div>}<div style={{display:"flex",gap:6,marginTop:4}}><button onClick={doSignUp} disabled={loading||!form.email||!form.password||form.password!==form.password2||!form.fullName} style={{padding:"5px 14px",borderRadius:6,border:"none",background:loading||!form.email||!form.password||form.password!==form.password2||!form.fullName?"rgba(255,255,255,0.05)":"linear-gradient(135deg,#f97316,#ea580c)",color:loading||!form.email||!form.password||form.password!==form.password2||!form.fullName?t.textDim:"#fff",cursor:loading?"default":"pointer",fontWeight:700,fontSize:11}}>{loading?T.cfgCloudLoading:T.cfgCloudSignUp}</button><button onClick={()=>setMode("idle")} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>{T.cancel}</button></div></div>)}</div>);
 }
 
 // ── POS INTEGRATION SECTION ──
@@ -6452,12 +6453,14 @@ function AppInner(){
     try{
       // The language chosen last on this Mac wins, so a new or switched-to company
       // opens in it; this company's own setting is the fallback, and seeds it once.
+      // With neither saved yet, follow the Mac's own language.
       const rLang=await window.api.storage.get("balanceiq-lang");
       const ownLang=rLang?.value==="en"||rLang?.value==="fr"?rLang.value:null;
       const cur=await window.api?.companies?.current?.().catch(()=>null);
       const machineLang=cur?.uiLang==="en"||cur?.uiLang==="fr"?cur.uiLang:null;
       if(machineLang)setLang(machineLang);
       else if(ownLang){setLang(ownLang);window.api?.companies?.setUiLang?.({lang:ownLang}).catch(()=>{});}
+      else if(cur?.osLang==="en"||cur?.osLang==="fr")setLang(cur.osLang);
     }catch(e){}
     try{const rTour=await window.api.storage.get("balanceiq-tour-complete");if(!rTour?.value)setTourActive(true);}catch(e){setTourActive(true);}
     // Onboarding: only show on fresh install (no existing data key)
@@ -7836,11 +7839,11 @@ function AppInner(){
   if(appLocked)return(<PinLockScreen lockConfig={lockConfig} onUnlock={()=>setAppLocked(false)} saveLockConfig={saveLockConfig}/>);
   // An additional company without its own paid plan opens on the plan gate.
   const companyGate=currentCompany&&!currentCompany.primary?companyAccess({isPrimary:false,cloudChecked,signedIn:!!cloudUser,plan:activePlan,verifiedPaidAt:companyPlanVerifiedAt,now:Date.now()}):null;
-  if(companyGate&&(companyGate.state==='needs_plan'||companyOrgConflict!==null))return(<CompanyPlanGate lang={lang} t={t} company={currentCompany} conflictName={companyOrgConflict}><CloudAccountSection cloudUser={cloudUser} syncStatus={syncStatus} onSignIn={handleCloudSignIn} onSignUp={handleCloudSignUp} onSignOut={handleCloudSignOut} onResetPassword={handleCloudResetPassword} onRefreshPlan={handleRefreshPlan} t={t} T={T}/>{cloudUser&&<SubscriptionSection cloudUser={cloudUser} activePlan={activePlan} orgId={getCloudOrgId()} onPlanRefreshed={p=>{setPlan(p);setActivePlan(p);}} t={t} T={T}/>}</CompanyPlanGate>);
+  if(companyGate&&(companyGate.state==='needs_plan'||companyOrgConflict!==null))return(<CompanyPlanGate lang={lang} onLangChange={setLangTo} t={t} company={currentCompany} conflictName={companyOrgConflict}><CloudAccountSection cloudUser={cloudUser} syncStatus={syncStatus} onSignIn={handleCloudSignIn} onSignUp={handleCloudSignUp} onSignOut={handleCloudSignOut} onResetPassword={handleCloudResetPassword} onRefreshPlan={handleRefreshPlan} t={t} T={T}/>{cloudUser&&<SubscriptionSection cloudUser={cloudUser} activePlan={activePlan} orgId={getCloudOrgId()} onPlanRefreshed={p=>{setPlan(p);setActivePlan(p);}} t={t} T={T}/>}</CompanyPlanGate>);
   if(companyGate&&companyGate.state==='checking')return(<div style={{minHeight:"100vh",background:t.bg}}/>);
   if(!onboardingDone){
     const OnboardingWizard=React.lazy(()=>import('./components/OnboardingWizard.jsx'));
-    return(<React.Suspense fallback={<div style={{minHeight:"100vh",background:LIGHT.bg}}/>}><OnboardingWizard lang={lang} roster={roster} saveRoster={saveRoster} companyInfo={companyInfo} saveCompanyInfo={info=>{setCompanyInfo(info);window.api.storage.set("dicann-company-info",JSON.stringify(info)).catch(()=>{});}} expenseItems={expenseItems} saveExpItems={items=>{setExpenseItems(items);window.api.storage.set("dicann-pl-expense-items",JSON.stringify(items)).catch(()=>{});}} onComplete={async()=>{const v=JSON.stringify({completedAt:new Date().toISOString()});await window.api.storage.set("balanceiq-onboarding",v).catch(()=>{});await window.api.storage.set("balanceiq-tour-complete","1").catch(()=>{});setTourActive(false);setOnboardingDone(true);}}/></React.Suspense>);
+    return(<React.Suspense fallback={<div style={{minHeight:"100vh",background:LIGHT.bg}}/>}><OnboardingWizard lang={lang} onLangChange={setLangTo} roster={roster} saveRoster={saveRoster} companyInfo={companyInfo} saveCompanyInfo={info=>{setCompanyInfo(info);window.api.storage.set("dicann-company-info",JSON.stringify(info)).catch(()=>{});}} expenseItems={expenseItems} saveExpItems={items=>{setExpenseItems(items);window.api.storage.set("dicann-pl-expense-items",JSON.stringify(items)).catch(()=>{});}} onComplete={async()=>{const v=JSON.stringify({completedAt:new Date().toISOString()});await window.api.storage.set("balanceiq-onboarding",v).catch(()=>{});await window.api.storage.set("balanceiq-tour-complete","1").catch(()=>{});setTourActive(false);setOnboardingDone(true);}}/></React.Suspense>);
   }
   if(!appMode)return(<WelcomeScreen onSelect={saveAppMode} T={T}/>);
 

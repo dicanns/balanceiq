@@ -157,6 +157,19 @@ const RESTAURANT_TYPES = [
   { key: 'other',    icon: '', labelFr: 'Autre',                labelEn: 'Other' },
 ];
 
+// FR / EN switch shown on every step, so a new company's first screen can be
+// read before anything is answered. The choice applies to the whole app.
+function LangSwitch({ lang, onChange }) {
+  const btn = (code, label) => (
+    <button key={code} type="button" aria-pressed={lang === code} onClick={() => onChange(code)}
+      style={{ padding: '4px 10px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 600,
+        background: lang === code ? 'rgba(249,115,22,0.18)' : 'transparent', color: lang === code ? '#F97316' : '#8B8FA3',
+        fontFamily: "'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif" }}
+    >{label}</button>
+  );
+  return (<div role="group" aria-label={lang === 'fr' ? 'Langue' : 'Language'} style={{ display: 'flex', gap: '2px', padding: '2px', marginLeft: 'auto', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px' }}>{btn('fr', 'FR')}{btn('en', 'EN')}</div>);
+}
+
 // Step 0 - what kind of sales. Asked first because it decides which of the
 // remaining questions are worth asking: a wholesale business has no restaurant
 // type, no cash registers, and no use for the restaurant demo data.
@@ -236,7 +249,7 @@ function StepType({ lang, companyInfo, saveCompanyInfo, onNext }) {
 }
 
 // Step 2
-function StepInfo({ lang, companyInfo, saveCompanyInfo, onNext, onBack }) {
+function StepInfo({ lang, companyInfo, saveCompanyInfo, onNext, onBack, onLangChange }) {
   const [nom, setNom] = useState(companyInfo.nom || '');
   const [ville, setVille] = useState(companyInfo.ville || '');
 
@@ -259,17 +272,27 @@ function StepInfo({ lang, companyInfo, saveCompanyInfo, onNext, onBack }) {
           value={ville}
           onChange={(e) =>setVille(e.target.value)}
           placeholder={lang === 'fr' ? 'Ex: Montréal, QC' : 'e.g. Montreal, QC'}
-        /></div><div style={STYLES.fieldGroup}><label style={STYLES.label}>{lang === 'fr' ? 'Langue de l\'interface' : 'Interface language'}</label><div style={{
-          background: 'rgba(255,255,255,0.03)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: '8px',
-          padding: '10px 12px',
-          fontSize: '14px',
-          color: '#6B7080',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-        }}><span style={{ fontSize: '16px' }}>{lang === 'fr' ? '' : ''}</span><span>{lang === 'fr' ? 'Français' : 'English'}</span><span style={{ marginLeft: 'auto', fontSize: '11px', color: '#444', fontFamily: "'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif" }}>{lang === 'fr' ? 'Modifiable dans Config' : 'Change in Config'}</span></div></div><div style={STYLES.footer}><button style={STYLES.btnSecondary} onClick={onBack}>← {lang === 'fr' ? 'Retour' : 'Back'}</button><button
+        /></div><div style={STYLES.fieldGroup}><label style={STYLES.label}>{lang === 'fr' ? 'Langue de l\'interface' : 'Interface language'}</label><div role="group" style={{ display: 'flex', gap: '8px' }}>{[['fr', 'Français'], ['en', 'English']].map(([code, label]) => {
+          const on = lang === code;
+          return (<button
+              key={code}
+              type="button"
+              aria-pressed={on}
+              onClick={() => onLangChange && onLangChange(code)}
+              style={{
+                flex: 1,
+                background: on ? 'linear-gradient(135deg, rgba(249,115,22,0.18), rgba(234,88,12,0.12))' : 'rgba(255,255,255,0.03)',
+                border: on ? '1px solid rgba(249,115,22,0.5)' : '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '8px',
+                padding: '10px 12px',
+                fontSize: '14px',
+                fontWeight: on ? 600 : 500,
+                color: on ? '#F97316' : '#E8E8EC',
+                cursor: 'pointer',
+                fontFamily: "'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif",
+              }}
+            >{label}</button>);
+        })}</div><div style={{ fontSize: '11px', color: '#6B7080', marginTop: '6px' }}>{lang === 'fr' ? 'Modifiable en tout temps dans Réglages.' : 'You can change this any time in Settings.'}</div></div><div style={STYLES.footer}><button style={STYLES.btnSecondary} onClick={onBack}>← {lang === 'fr' ? 'Retour' : 'Back'}</button><button
           style={{ ...STYLES.btnPrimary, width: 'auto', flex: 1 }}
           onClick={handleContinue}
           disabled={!nom.trim()}
@@ -449,6 +472,7 @@ export default function OnboardingWizard({
   expenseItems = [],
   saveExpItems,
   onComplete,
+  onLangChange,
 }) {
   const [step, setStep] = useState(0); // 0-indexed
 
@@ -467,12 +491,12 @@ export default function OnboardingWizard({
     if (onComplete) await onComplete();
   }, [onComplete]);
 
-  return (<div style={STYLES.overlay}><div style={STYLES.card}>{/* Logo */}<div style={STYLES.logo}><div style={STYLES.logoBadge}>BIQ</div><span style={STYLES.logoText}>BalanceIQ</span></div>{/* Progress */}<div style={STYLES.progressRow}>{Array.from({ length: totalSteps }, (_, i) => {
+  return (<div style={STYLES.overlay}><div style={STYLES.card}>{/* Logo */}<div style={STYLES.logo}><div style={STYLES.logoBadge}>BIQ</div><span style={STYLES.logoText}>BalanceIQ</span>{onLangChange && <LangSwitch lang={lang} onChange={onLangChange} />}</div>{/* Progress */}<div style={STYLES.progressRow}>{Array.from({ length: totalSteps }, (_, i) => {
             const state = i< step ? 'done' : i === step ? 'current' : 'future';
             return <div key={i} style={STYLES.dot(state)} />;
           })}<span style={STYLES.progressLabel}>{lang === 'fr' ? `Étape ${step + 1} / ${totalSteps}` : `Step ${step + 1} of ${totalSteps}`}</span></div>{/* Steps */}
         {current === 'business' && (<StepBusiness lang={lang} companyInfo={companyInfo} saveCompanyInfo={saveCompanyInfo} onNext={next} />)}
-        {current === 'info' && (<StepInfo lang={lang} companyInfo={companyInfo} saveCompanyInfo={saveCompanyInfo} onNext={next} onBack={back} />)}
+        {current === 'info' && (<StepInfo lang={lang} companyInfo={companyInfo} saveCompanyInfo={saveCompanyInfo} onNext={next} onBack={back} onLangChange={onLangChange} />)}
         {current === 'type' && (<StepType lang={lang} companyInfo={companyInfo} saveCompanyInfo={saveCompanyInfo} onNext={next} />)}
         {current === 'registers' && (<StepRegisters lang={lang} roster={roster} saveRoster={saveRoster} onNext={next} onBack={back} />)}
         {current === 'demo' && (<StepDemo lang={lang} onNext={next} onBack={back} />)}

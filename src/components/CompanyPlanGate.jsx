@@ -23,7 +23,7 @@ const UI = {
   },
 };
 
-export default function CompanyPlanGate({ lang = 'fr', t = {}, company = null, conflictName = null, children }) {
+export default function CompanyPlanGate({ lang = 'fr', t = {}, company = null, conflictName = null, onLangChange = null, children }) {
   const L = UI[lang] || UI.fr;
   const [others, setOthers] = useState([]);
   useEffect(() => {
@@ -36,7 +36,20 @@ export default function CompanyPlanGate({ lang = 'fr', t = {}, company = null, c
     <div style={{ minHeight: '100vh', background: t.bg, color: t.text, display: 'flex', justifyContent: 'center', padding: '48px 16px' }}>
       <div style={{ width: 'min(620px, 100%)', display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ background: t.card, border: `1px solid ${t.cardBorder}`, borderRadius: 12, padding: '18px 20px' }}>
-          <div style={{ fontSize: 17, fontWeight: 700 }}>{L.title(company?.name || '')}</div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+            <div style={{ fontSize: 17, fontWeight: 700, flex: 1 }}>{L.title(company?.name || '')}</div>
+            {onLangChange && (
+              <div role="group" aria-label={lang === 'fr' ? 'Langue' : 'Language'} style={{ display: 'flex', gap: 2, padding: 2, border: `1px solid ${t.cardBorder}`, borderRadius: 7, flexShrink: 0 }}>
+                {['fr', 'en'].map(code => (
+                  <button key={code} type="button" aria-pressed={lang === code} onClick={() => onLangChange(code)}
+                    style={{ padding: '3px 9px', border: 'none', borderRadius: 5, cursor: 'pointer', fontSize: 11.5, fontWeight: 700,
+                      background: lang === code ? 'rgba(249,115,22,0.15)' : 'transparent', color: lang === code ? '#f97316' : t.textMuted }}>
+                    {code.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <div style={{ fontSize: 13, color: t.textSub, marginTop: 8, lineHeight: 1.55 }}>{L.body}</div>
           <div style={{ fontSize: 12, color: t.textMuted, marginTop: 6 }}>{L.note}</div>
           {conflictName != null && (
