@@ -157,3 +157,36 @@ export function emailWorklistItems(factures, { now = Date.now(), lang = 'fr' } =
   }
   return items;
 }
+
+// SQLite stores reminder times as "YYYY-MM-DD HH:MM:SS" in UTC.
+const sqliteUtc = (v) => (v && !/[TZ]/.test(v) ? `${String(v).replace(' ', 'T')}Z` : v || null);
+
+/**
+ * Everything emailed about one invoice, newest first: the invoice itself (with
+ * delivery and view status) and its payment reminders.
+ * reminders: rows from reminder_log (status, sent_at, sent_to, days_after_due).
+ */
+export function invoiceEmailHistory({ emailLog = [], reminders = [] } = {}) {
+  const rows = [
+    ...(emailLog || []).map(e => ({
+      kind: 'invoice', to: e.to, at: e.sentAt, status: e.status, statusAt: e.statusAt,
+      viewTracked: !!e.viewToken, viewedAt: e.viewedAt || null, viewCount: e.viewCount || 0,
+    })),
+    ...(reminders || []).map(r => ({
+      kind: 'reminder', to: r.sent_to || '', at: sqliteUtc(r.sent_at), status: r.status, reminderDays: r.days_after_due ?? null,
+    })),
+  ];
+  return rows.sort((a, b) => (Date.parse(b.at || '') || 0) - (Date.parse(a.at || '') || 0));
+}
+
+/**
+ * The small email mark in the invoice list: null when nothing was emailed,
+ * otherwise { count, problem } - problem when an invoice email bounced, failed or
+ * was marked as spam, or a reminder failed to send.
+ */
+export function emailBadge(invoice, reminderCount = 0, reminderFailed = false) {
+  const log = invoice?.emailLog || [];
+  const count = log.length + (reminderCount || 0);
+  if (!count) return null;
+  return { count, problem: !!reminderFailed || log.some(e => PROBLEM_STATUSES.includes(e.status)) };
+}
