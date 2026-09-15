@@ -363,6 +363,7 @@ contextBridge.exposeInMainWorld('api', {
     rename:  (opts) => ipcRenderer.invoke('companies:rename', opts),
     switch:  (opts) => ipcRenderer.invoke('companies:switch', opts),
     bindOrg: (opts) => ipcRenderer.invoke('companies:bindOrg', opts),
+    setUiLang: (opts) => ipcRenderer.invoke('companies:setUiLang', opts),
   },
   invoiceView: {
     create: (opts) => ipcRenderer.invoke('invoiceView:create', opts),

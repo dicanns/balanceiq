@@ -6449,7 +6449,16 @@ function AppInner(){
     try{const rPC=await window.api.storage.get("balanceiq-payroll-config");if(rPC?.value)setPayrollConfig(prev=>({...prev,...JSON.parse(rPC.value)}))}catch(e){}
     try{const rWL=await window.api.storage.get("balanceiq-whitelabel");if(rWL?.value)setWhiteLabelConfig(prev=>({...prev,...JSON.parse(rWL.value)}))}catch(e){}
     try{const rLock=await window.api.storage.get("balanceiq-lock");if(rLock?.value){const lc=JSON.parse(rLock.value);setLockConfig(lc);if(lc.enabled&&lc.pin)setAppLocked(true);}}catch(e){}
-    try{const rLang=await window.api.storage.get("balanceiq-lang");if(rLang?.value==="en"||rLang?.value==="fr")setLang(rLang.value);}catch(e){}
+    try{
+      // The language chosen last on this Mac wins, so a new or switched-to company
+      // opens in it; this company's own setting is the fallback, and seeds it once.
+      const rLang=await window.api.storage.get("balanceiq-lang");
+      const ownLang=rLang?.value==="en"||rLang?.value==="fr"?rLang.value:null;
+      const cur=await window.api?.companies?.current?.().catch(()=>null);
+      const machineLang=cur?.uiLang==="en"||cur?.uiLang==="fr"?cur.uiLang:null;
+      if(machineLang)setLang(machineLang);
+      else if(ownLang){setLang(ownLang);window.api?.companies?.setUiLang?.({lang:ownLang}).catch(()=>{});}
+    }catch(e){}
     try{const rTour=await window.api.storage.get("balanceiq-tour-complete");if(!rTour?.value)setTourActive(true);}catch(e){setTourActive(true);}
     // Onboarding: only show on fresh install (no existing data key)
     try{const rOB=await window.api.storage.get("balanceiq-onboarding");if(!rOB?.value){const rData=await window.api.storage.get("dicann-v7");if(!rData?.value)setOnboardingDone(false);}}catch(e){}
@@ -6866,6 +6875,7 @@ function AppInner(){
   const setLangTo=useCallback(l=>{
     setLang(l);
     window.api.storage.set("balanceiq-lang",l).catch(()=>{});
+    window.api?.companies?.setUiLang?.({lang:l}).catch(()=>{});
   },[]);
 
   // T = active translation object — use T.keyName throughout UI

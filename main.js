@@ -693,7 +693,8 @@ ipcMain.handle('companies:list', () => {
   const reg = companies.load(USER_DATA_DIR);
   return { companies: reg.companies.map(companies.publicView), activeId: ACTIVE_COMPANY.id };
 });
-ipcMain.handle('companies:current', () => companies.publicView(ACTIVE_COMPANY));
+ipcMain.handle('companies:current', () => ({ ...companies.publicView(ACTIVE_COMPANY), uiLang: companies.getUiLang(USER_DATA_DIR) }));
+ipcMain.handle('companies:setUiLang', (_e, { lang } = {}) => ({ ok: companies.setUiLang(USER_DATA_DIR, lang) }));
 ipcMain.handle('companies:create', (_e, { name } = {}) => {
   try { return { ok: true, company: companies.publicView(companies.createCompany(USER_DATA_DIR, name)) }; }
   catch (err) { return { ok: false, error: String(err?.message || err) }; }

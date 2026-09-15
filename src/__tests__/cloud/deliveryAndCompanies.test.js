@@ -137,6 +137,25 @@ describe('COMPANY registry', () => {
   });
 });
 
+describe('COMPANY interface language', () => {
+  it('COMPANY-011 the language chosen last applies to every company, including a new one', () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'biq-companies-lang-'));
+    expect(companies.getUiLang(base)).toBeNull();
+    expect(companies.setUiLang(base, 'en')).toBe(true);
+    companies.createCompany(base, 'Second Test Co');
+    expect(companies.getUiLang(base)).toBe('en');
+    expect(companies.setUiLang(base, 'de')).toBe(false);
+    expect(companies.getUiLang(base)).toBe('en');
+    fs.rmSync(base, { recursive: true, force: true });
+  });
+
+  it('COMPANY-012 the app reads and saves the language through the registry', () => {
+    const app = fs.readFileSync(path.resolve(__dirname, '../../App.jsx'), 'utf8');
+    expect(app).toMatch(/const machineLang=cur\?\.uiLang==="en"/);
+    expect(app).toMatch(/window\.api\?\.companies\?\.setUiLang\?\.\(\{lang:l\}\)/);
+  });
+});
+
 describe('COMPANY access', () => {
   it('COMPANY-007 the primary company is always open', () => {
     expect(companyAccess({ isPrimary: true, plan: 'free' }).state).toBe('open');
