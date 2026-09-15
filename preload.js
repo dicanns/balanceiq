@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('api', {
   },
   email: {
     sendResend: (opts) => ipcRenderer.invoke('email:sendResend', opts),
+    status:     (opts) => ipcRenderer.invoke('email:status', opts),
   },
   updater: {
     onAvailable: (cb) => ipcRenderer.on('update:available', (_e, payload) => cb(payload)),
@@ -354,6 +355,18 @@ contextBridge.exposeInMainWorld('api', {
       list: ()      => ipcRenderer.invoke('bilan:snapshot:list'),
       get:  (id)    => ipcRenderer.invoke('bilan:snapshot:get', id),
     },
+  },
+  companies: {
+    list:    ()     => ipcRenderer.invoke('companies:list'),
+    current: ()     => ipcRenderer.invoke('companies:current'),
+    create:  (opts) => ipcRenderer.invoke('companies:create', opts),
+    rename:  (opts) => ipcRenderer.invoke('companies:rename', opts),
+    switch:  (opts) => ipcRenderer.invoke('companies:switch', opts),
+    bindOrg: (opts) => ipcRenderer.invoke('companies:bindOrg', opts),
+  },
+  invoiceView: {
+    create: (opts) => ipcRenderer.invoke('invoiceView:create', opts),
+    status: (opts) => ipcRenderer.invoke('invoiceView:status', opts),
   },
   supplierBills: {
     list:      (opts)          => ipcRenderer.invoke('supplier:bill:list', opts),

@@ -123,7 +123,7 @@ const TONE_RANK = { alert: 0, warn: 1, info: 2 };
 
 export function buildWorklist({
   needsCategorizing = 0, overdue = [], blockers = [], registration = null,
-  deadline = null, variance = null, lang = 'fr',
+  deadline = null, variance = null, lang = 'fr', emailItems = [],
 } = {}) {
   const en = lang === 'en';
   const items = [];
@@ -222,6 +222,9 @@ export function buildWorklist({
       target: { kind: 'section', section: 'taxes', tab: 'taxperiod' },
     });
   }
+
+  // Invoice emails that bounced, or links nobody has opened (emailTracking.js).
+  for (const it of emailItems || []) items.push(it);
 
   return items
     .map((it, i) => ({ ...it, _i: i }))

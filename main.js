@@ -112,11 +112,23 @@ const {
   localUserCreate,
   localUserDeactivate,
   localUserSetPin,
+  setDataDir,
 } = require('./src/db/database.js');
+
+// ── Active company ───────────────────────────────────────────────────────────
+// Each company keeps its own database, backups, Vault folder and window storage.
+// The primary company - everything created before companies existed - stays in the
+// app's data folder exactly as before. See companies.js.
+const companies = require('./companies.js');
+const USER_DATA_DIR = app.getPath('userData');
+const ACTIVE_COMPANY = companies.activeCompany(USER_DATA_DIR);
+const COMPANY_DATA_DIR = companies.dataDirFor(USER_DATA_DIR, ACTIVE_COMPANY);
+try { fs.mkdirSync(COMPANY_DATA_DIR, { recursive: true }); } catch (_) {}
+setDataDir(COMPANY_DATA_DIR);
 
 const { hashPin, verifyPin, enforceRole } = require('./src/services/identityCore.js');
 
-const BACKUP_DIR = () => path.join(app.getPath('userData'), 'Backups');
+const BACKUP_DIR = () => path.join(COMPANY_DATA_DIR, 'Backups');
 const BACKUP_KEEP_DAYS = 30;
 
 // ── URL SAFETY ────────────────────────────────────────────────────────────────
@@ -676,6 +688,43 @@ ipcMain.handle('pdf:print', async (event, html) => {
 });
 
 // IPC handler — send email via Resend API
+// ── Companies ────────────────────────────────────────────────────────────────
+ipcMain.handle('companies:list', () => {
+  const reg = companies.load(USER_DATA_DIR);
+  return { companies: reg.companies.map(companies.publicView), activeId: ACTIVE_COMPANY.id };
+});
+ipcMain.handle('companies:current', () => companies.publicView(ACTIVE_COMPANY));
+ipcMain.handle('companies:create', (_e, { name } = {}) => {
+  try { return { ok: true, company: companies.publicView(companies.createCompany(USER_DATA_DIR, name)) }; }
+  catch (err) { return { ok: false, error: String(err?.message || err) }; }
+});
+ipcMain.handle('companies:rename', (_e, { id, name } = {}) => {
+  try { return { ok: true, company: companies.publicView(companies.renameCompany(USER_DATA_DIR, id, name)) }; }
+  catch (err) { return { ok: false, error: String(err?.message || err) }; }
+});
+// Switching restarts the app in the other company, so nothing of one company's
+// session - database handle, sign-in, screens - can carry into the other.
+ipcMain.handle('companies:switch', (_e, { id } = {}) => {
+  try {
+    companies.setActive(USER_DATA_DIR, id);
+    setTimeout(() => { app.relaunch(); app.quit(); }, 150);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err) };
+  }
+});
+ipcMain.handle('companies:bindOrg', (_e, { orgId } = {}) => companies.bindOrg(USER_DATA_DIR, ACTIVE_COMPANY.id, orgId || null));
+
+// ── Invoice delivery status (Resend) ─────────────────────────────────────────
+// Where an emailed invoice stands: delivered, bounced, delayed, marked as spam.
+// Uses the operator's own Resend key, which never leaves this computer.
+ipcMain.handle('email:status', async (_e, { apiKey, id } = {}) => {
+  if (!apiKey || !id || !/^[A-Za-z0-9-]{8,64}$/.test(String(id))) return { ok: false, error: 'invalid' };
+  const res = await netRequest({ method: 'GET', url: `https://api.resend.com/emails/${encodeURIComponent(id)}`, headers: { Authorization: `Bearer ${apiKey}` } });
+  if (res.status >= 200 && res.status < 300) return { ok: true, lastEvent: res.body?.last_event || null };
+  return { ok: false, error: res.status === 404 ? 'not_found' : `http_${res.status}` };
+});
+
 ipcMain.handle('email:sendResend', async (event, {apiKey, from, to, subject, html, attachments}) => {
   return new Promise((resolve) => {
     const body = JSON.stringify({from, to, subject, html, attachments});
@@ -978,11 +1027,13 @@ function createWindow() {
     height: 860,
     minWidth: 900,
     minHeight: 600,
-    title: 'BalanceIQ',
+    title: ACTIVE_COMPANY.primary ? 'BalanceIQ' : `BalanceIQ - ${ACTIVE_COMPANY.name}`,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // Its own web storage per additional company: its own sign-in, its own plan.
+      ...(companies.partitionFor(ACTIVE_COMPANY) ? { partition: companies.partitionFor(ACTIVE_COMPANY) } : {}),
     },
   });
 
@@ -2457,7 +2508,7 @@ ipcMain.handle('search:save-history', async (_e, { query, result_type, result_id
 // ── Source Document Vault ─────────────────────────────────────────────────────
 const crypto = require('crypto');
 
-const VAULT_ROOT = () => path.join(os.homedir(), 'Documents', 'BalanceIQ Vault');
+const VAULT_ROOT = () => companies.vaultDirFor(path.join(os.homedir(), 'Documents', 'BalanceIQ Vault'), ACTIVE_COMPANY);
 
 function vaultFilePath(year, month, sha256prefix, fileName) {
   const dir = path.join(VAULT_ROOT(), String(year), String(month).padStart(2, '0'));
@@ -2767,6 +2818,67 @@ ipcMain.handle('soumission:revokeToken', async (_e, { accessToken, token }) => {
     return res.ok ? { ok: true } : { error: 'revoke_failed' };
   } catch (e) {
     return { error: 'network_error', message: String(e?.message || e) };
+  }
+});
+
+// ── View invoice links ───────────────────────────────────────────────────────
+// A link in the invoice email to a page on balanceiq.ca that shows the invoice and
+// records when the client opened it. Links last 180 days.
+const INVOICE_VIEW_FN = `${SUPABASE_URL}/functions/v1/invoice-view`;
+const INVOICE_VIEW_PAGE = 'https://balanceiq.ca/invoice.html';
+
+// A link is only put in an email once the page behind it is actually live, so a
+// client is never sent to a page that does not exist. A yes is remembered for the
+// session; a no is asked again next time.
+let invoiceViewPageLive = false;
+async function checkInvoiceViewPage() {
+  if (invoiceViewPageLive) return true;
+  try {
+    const res = await net.fetch(INVOICE_VIEW_PAGE, { method: 'HEAD' });
+    invoiceViewPageLive = res.ok;
+  } catch (_) {
+    return false;
+  }
+  return invoiceViewPageLive;
+}
+
+ipcMain.handle('invoiceView:create', async (_e, { accessToken, orgId, invoiceId, invoiceNumber, html, companyName, lang } = {}) => {
+  if (!SUPABASE_URL) return { ok: false, error: 'no_supabase' };
+  const anonKey = getSupabaseAnonKey();
+  if (!accessToken || accessToken === anonKey) return { ok: false, error: 'no_session' };
+  if (!orgId || !invoiceId || !html) return { ok: false, error: 'missing_params' };
+  if (!(await checkInvoiceViewPage())) return { ok: false, error: 'view_page_unavailable' };
+  const token = require('crypto').randomBytes(24).toString('hex');
+  const expiresAt = new Date(Date.now() + 180 * 86400000).toISOString();
+  try {
+    const res = await net.fetch(`${INVOICE_VIEW_FN}?action=create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${accessToken}` },
+      body: JSON.stringify({ token, org_id: orgId, invoice_id: invoiceId, invoice_number: invoiceNumber || null, invoice_html: html, company_name: companyName || null, lang: lang === 'en' ? 'en' : 'fr', expires_at: expiresAt }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || !body.ok) return { ok: false, error: body.error || `http_${res.status}` };
+    return { ok: true, token, url: `${INVOICE_VIEW_PAGE}?t=${token}`, expiresAt };
+  } catch (e) {
+    return { ok: false, error: 'network_error' };
+  }
+});
+
+ipcMain.handle('invoiceView:status', async (_e, { accessToken, orgId, tokens } = {}) => {
+  if (!SUPABASE_URL) return { ok: false, error: 'no_supabase' };
+  const anonKey = getSupabaseAnonKey();
+  if (!accessToken || accessToken === anonKey) return { ok: false, error: 'no_session' };
+  try {
+    const res = await net.fetch(`${INVOICE_VIEW_FN}?action=status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${accessToken}` },
+      body: JSON.stringify({ org_id: orgId, tokens: Array.isArray(tokens) ? tokens.slice(0, 200) : [] }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || !body.ok) return { ok: false, error: body.error || `http_${res.status}` };
+    return { ok: true, views: body.views || {} };
+  } catch (e) {
+    return { ok: false, error: 'network_error' };
   }
 });
 

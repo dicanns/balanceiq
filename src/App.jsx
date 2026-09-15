@@ -54,6 +54,11 @@ import ShiftHandoff from "./components/ShiftHandoff.jsx";
 import CloseSummaryPanel from "./components/CloseSummaryPanel.jsx";
 import QuickProductModal from './components/QuickProductModal.jsx';
 import { applyDepositsOnSend, appliedDepositsTotal, depositApplyDate } from './utils/invoiceDeposits.js';
+import InvoiceDeliveryTimeline from './components/InvoiceDeliveryTimeline.jsx';
+import CompaniesPanel from './components/CompaniesPanel.jsx';
+import CompanyPlanGate from './components/CompanyPlanGate.jsx';
+import { newEmailLogEntry, needsStatusCheck, needsViewCheck, applyDeliveryUpdates, emailWorklistItems } from './services/emailTracking.js';
+import { companyAccess, COMPANY_PLAN_VERIFIED_KEY, PAID_PLANS } from './services/companyAccess.js';
 import { shouldRecalcDueDate } from './utils/invoiceDueDate.js';
 import { precedingShiftKey } from "./services/shiftKeys.js";
 import { buildClosePacket } from "./services/closePacketGenerator.js";
@@ -2174,7 +2179,7 @@ function buildSoumissionHTML({numero,date,dateExpiration,statut,client,reference
  return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Soumission ${numero}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}.hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px}.title{font-size:30px;font-weight:900;color:#f97316;letter-spacing:2px}.meta{font-size:11px;color:#555;margin-top:3px}table{width:100%;border-collapse:collapse}th{background:#f97316;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.tot{margin-left:auto;width:260px;margin-top:12px}.tr{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}.tf{font-weight:900;font-size:15px;border-top:2px solid #1a1a1a;margin-top:4px;padding-top:4px}.notes{background:#f9f9f9;border-left:3px solid #f97316;padding:10px 12px;margin-top:16px;font-size:12px}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}th{background:${ac}}th{background:${ac}}.notes{border-left-color:${ac}}.title{color:${ac}}</style></head><body><div class="hdr"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${escapeHtml(companyInfo.nom||"")}</div><div class="meta">${[companyInfo.adresse,companyInfo.ville,companyInfo.province].filter(Boolean).map(escapeHtml).join(", ")}</div>${companyInfo.telephone?`<div class="meta">${escapeHtml(companyInfo.telephone)}</div>`:""}${companyInfo.courriel?`<div class="meta">${escapeHtml(companyInfo.courriel)}</div>`:""}</div><div style="text-align:right"><div class="title">SOUMISSION</div><div style="font-size:18px;font-weight:700;margin-top:4px"># ${escapeHtml(numero)}</div><div class="meta">Date: ${fd(date)}</div><div class="meta">Expiration: ${fd(dateExpiration)}</div><div class="meta">Statut:<strong>${escapeHtml(statut)}</strong></div>${referenceClient?`<div class="meta">Réf.: ${escapeHtml(referenceClient)}</div>`:""}</div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Facturé à</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>Description</th><th style="width:55px;text-align:center">Qté</th><th style="width:100px;text-align:right">Prix unit.</th><th style="width:65px;text-align:center">Remise</th><th style="width:100px;text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table><div class="tot"><div class="tr"><span>Sous-total</span><span>${fc(totals.sousTotal)}</span></div><div class="tr"><span>TPS (5%)</span><span>${fc(totals.tpsTotal)}</span></div><div class="tr"><span>TVQ (9.975%)</span><span>${fc(totals.tvqTotal)}</span></div><div class="tr tf"><span>TOTAL</span><span>${fc(totals.total)}</span></div></div>${notes?`<div class="notes"><strong>Notes / Conditions</strong><br/>${escapeHtml(notes)}</div>`:""}<div class="ftr">${tpl.showTaxNumbers&&companyInfo.numeroTPS?`N° TPS: ${escapeHtml(companyInfo.numeroTPS)}`:""}${tpl.showTaxNumbers&&companyInfo.numeroTVQ?` &nbsp;|&nbsp; N° TVQ: ${escapeHtml(companyInfo.numeroTVQ)}`:""}${tpl.footerText?`<div style="margin-top:3px">${escapeHtml(tpl.footerText)}</div>`:""}${biqCredit}</div></body></html>`;
 }
 // ── EMAIL COMPOSE MODAL ──
-function EmailComposeModal({initTo,fromEmail,initSubject,initBody,attachmentName,pdfHtml,apiConfig,onSuccess,onClose}){
+function EmailComposeModal({initTo,fromEmail,initSubject,initBody,attachmentName,pdfHtml,apiConfig,onSuccess,onClose,prepareSend=null}){
  const t=useT();
  const T=useL();
  const [to,setTo]=useState(initTo||"");
@@ -2220,16 +2225,20 @@ function EmailComposeModal({initTo,fromEmail,initSubject,initBody,attachmentName
  console.warn("PDF generation failed:",pdfResult.error);
  }
  }
- // Step 2: send email
+ // Step 2: a View invoice link, when the document offers one. Sending never waits on it failing.
+ let view=null;
+ if(prepareSend){setSendStep(T===EN?"Creating the view link…":"Création du lien de consultation…");try{view=await prepareSend();}catch(_){view=null;}}
+ // Step 3: send email
  setSendStep("Envoi en cours…");
- const bodyHtml=`<div style="white-space:pre-wrap;font-family:Arial,sans-serif;font-size:13px;line-height:1.6;color:#1a1a1a">${body.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br/>")}</div>`;
+ const viewBlock=view?.viewUrl?`<div style="margin:18px 0 6px"><a href="${escapeHtml(view.viewUrl)}" style="display:inline-block;padding:10px 18px;background:#f97316;color:#ffffff;border-radius:6px;text-decoration:none;font-weight:700;font-family:Arial,sans-serif;font-size:13px">${escapeHtml(view.label||"View invoice")}</a><div style="font-family:Arial,sans-serif;font-size:11px;color:#777777;margin-top:6px;word-break:break-all">${escapeHtml(view.viewUrl)}</div></div>`:"";
+ const bodyHtml=`<div style="white-space:pre-wrap;font-family:Arial,sans-serif;font-size:13px;line-height:1.6;color:#1a1a1a">${body.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br/>")}</div>${viewBlock}`;
  const r=await window.api.email.sendResend({apiKey:apiConfig.resendKey,from:apiConfig.resendFrom||"noreply@balanceiq.ca",to:to.trim(),subject,html:bodyHtml,attachments});
- if(r?.success){onSuccess(to.trim());}
+ if(r?.success){onSuccess(to.trim(),{direct:true,emailId:r.id||null,viewToken:view?.viewUrl?view.token:null});}
  else{setError(r?.error||"Erreur inconnue");setSending(false);setSendStep("");}
  }catch(e){setError(e.message||"Erreur");setSending(false);setSendStep("");}
  }else{
  window.open(`mailto:${to.trim()}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
- onSuccess(to.trim());
+ onSuccess(to.trim(),{direct:false});
  }
  };
  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:12,padding:24,width:560,maxWidth:"95vw",display:"flex",flexDirection:"column",gap:14,maxHeight:"90vh",overflowY:"auto"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{fontSize:15,fontWeight:700,color:t.text}}>Envoyer le document</span><button onClick={onClose} disabled={sending} style={{background:"none",border:"none",color:t.textMuted,fontSize:20,cursor:sending?"default":"pointer",lineHeight:1,opacity:sending?0.4:1}}>×</button></div><div><div style={{fontSize:11,color:t.textMuted,marginBottom:4}}>{T.facFrom}</div><div style={{fontSize:12,color:t.textDim,padding:"6px 9px",background:t.section,borderRadius:5,border:`1px solid ${t.inputBorder}`}}>{canDirect?(apiConfig?.resendFrom||"noreply@balanceiq.ca"):"(via votre client de messagerie)"}</div></div><div><div style={{fontSize:11,color:t.textMuted,marginBottom:4}}>{T.facTo}</div><input value={to} onChange={e=>setTo(e.target.value)} style={inputS} placeholder="courriel@client.com"disabled={sending}/></div><div><div style={{fontSize:11,color:t.textMuted,marginBottom:4}}>{T.facSubject}</div><input value={subject} onChange={e=>setSubject(e.target.value)} style={inputS} disabled={sending}/></div><div><div style={{fontSize:11,color:t.textMuted,marginBottom:4}}>{T.facMessage}</div><textarea value={body} onChange={e=>setBody(e.target.value)} rows={8} style={{...inputS,resize:"vertical",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",lineHeight:1.6}} disabled={sending}/></div>{/* Attachment row */}
@@ -2747,6 +2756,13 @@ function FactureEditor({showBack,facture,clients,produits,companyInfo,docNums,sa
  setForm(p=>p.dateEcheance===ech?p:{...p,dateEcheance:ech});
  }
  },[form.clientId,form.date,client]);
+ // Delivery: keep what Resend and the view link will report on, so the invoice can
+ // show Sent / Delivered / Viewed and Today can flag a bounce.
+ const recordInvoiceEmail=(to,meta)=>{
+  if(!savedId||isProforma)return;
+  const entry=newEmailLogEntry({to,emailId:meta?.emailId||null,viewToken:meta?.viewToken||null,direct:!!meta?.direct});
+  saveFactures(prev=>prev.map(f=>f.id===savedId?{...f,emailLog:[...(f.emailLog||[]),entry]}:f));
+ };
  // Deposits: money taken on a draft is posted to 2500 Customer deposits when the
  // invoice is saved. When the invoice is sent, each deposit becomes a payment on
  // it and 2500 is applied against the receivable. Both postings are idempotent on
@@ -2990,7 +3006,13 @@ function FactureEditor({showBack,facture,clients,produits,companyInfo,docNums,sa
  initSubject:`Facture ${num} — ${companyInfo.nom||""}`,
  initBody:`Bonjour ${client.contact||client.entreprise||""},\n\nVeuillez trouver ci-joint votre facture ${num} d'un montant de ${fmt(totals.total)}${soldeDu<totals.total?` (solde dû : ${fmt(Math.max(0,soldeDu))})`:""}.\n\nN'hésitez pas à nous contacter pour toute question.${payLinkLine}\n\nCordialement,\n${companyInfo.nom||""}`,
  attachmentName:`Facture-${num}.pdf`,
- pdfHtml:html
+ pdfHtml:html,
+ // A View invoice link when this company is signed in to the cloud; the email still goes without it.
+ prepareSend:(savedId&&!isProforma&&window.api?.invoiceView&&getCloudOrgId()&&canUse("directEmailSend"))?async()=>{
+  const en=client?.langue==="English";
+  const r=await window.api.invoiceView.create({accessToken:getCloudAccessToken(),orgId:getCloudOrgId(),invoiceId:savedId,invoiceNumber:num,html,companyName:companyInfo.nom||"",lang:en?"en":"fr"});
+  return r?.ok?{viewUrl:r.url,token:r.token,label:en?"View invoice":"Voir la facture"}:null;
+ }:null
  });
  };
  const SC=STATUT_FAC_C;
@@ -3066,8 +3088,10 @@ function FactureEditor({showBack,facture,clients,produits,companyInfo,docNums,sa
  })}</div>)}
  {locked&&!isProforma&&savedId&&onEnregistrerPaiement&&["Envoyée","Payée partiellement"].includes(form.statut)&&<button type="button" onClick={()=>onEnregistrerPaiement({...form,id:savedId,numero:savedNumero},{deposit:true})} style={{marginTop:6,width:"100%",padding:"5px 0",borderRadius:6,border:`1px dashed ${t.cardBorder}`,background:"none",color:t.textSub,cursor:"pointer",fontSize:11,fontWeight:600}}>{T===EN?"+ Record a deposit":"+ Enregistrer un acompte"}</button>}{!locked&&(showDepotForm
  ?<div style={{borderTop:`1px solid ${t.dividerMid}`,paddingTop:8,marginTop:4,display:"flex",flexDirection:"column",gap:5}}><div style={{fontSize:11,fontWeight:700,color:t.text}}>{T.facEnregistrerDepot}</div><input type="date"value={depotForm.date} onChange={e=>setDepotForm(p=>({...p,date:e.target.value}))} style={{...inputS,fontSize:11}}/><input type="number"value={depotForm.montant} onChange={e=>setDepotForm(p=>({...p,montant:e.target.value}))} placeholder="Montant"style={{...inputS,fontSize:11}}/><select value={depotForm.mode} onChange={e=>setDepotForm(p=>({...p,mode:e.target.value}))} style={{...inputS,fontSize:11}}>
- {MODES_PAIEMENT.map(m=><option key={m} value={m}>{m}</option>)}</select><input value={depotForm.reference} onChange={e=>setDepotForm(p=>({...p,reference:e.target.value}))} placeholder={T.facRefOptional} style={{...inputS,fontSize:11}}/><div style={{display:"flex",gap:6}}><button onClick={addDepot} style={{flex:1,padding:"4px 0",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>Enregistrer</button><button onClick={()=>setShowDepotForm(false)} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>Annuler</button></div></div>:<div style={{marginTop:6,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}><button onClick={()=>setShowDepotForm(true)} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:600,fontSize:11,display:"flex",alignItems:"center",gap:5}}>+ {T.facEnregistrerDepot}</button><span style={{fontSize:10,color:t.textMuted}}>{T===EN?"Records a payment already received from the client.":"Enregistre un paiement déjà reçu du client."}</span></div>)}</div></div>{emailModal&&<EmailComposeModal {...emailModal} fromEmail={apiConfig?.resendFrom||"noreply@balanceiq.ca"} apiConfig={apiConfig} onSuccess={to=>{
+ {MODES_PAIEMENT.map(m=><option key={m} value={m}>{m}</option>)}</select><input value={depotForm.reference} onChange={e=>setDepotForm(p=>({...p,reference:e.target.value}))} placeholder={T.facRefOptional} style={{...inputS,fontSize:11}}/><div style={{display:"flex",gap:6}}><button onClick={addDepot} style={{flex:1,padding:"4px 0",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>Enregistrer</button><button onClick={()=>setShowDepotForm(false)} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>Annuler</button></div></div>:<div style={{marginTop:6,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}><button onClick={()=>setShowDepotForm(true)} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:600,fontSize:11,display:"flex",alignItems:"center",gap:5}}>+ {T.facEnregistrerDepot}</button><span style={{fontSize:10,color:t.textMuted}}>{T===EN?"Records a payment already received from the client.":"Enregistre un paiement déjà reçu du client."}</span></div>)}</div></div>{emailModal&&<EmailComposeModal {...emailModal} fromEmail={apiConfig?.resendFrom||"noreply@balanceiq.ca"} apiConfig={apiConfig} onSuccess={(to,meta)=>{
  setEmailModal(null);
+ // After this handler's own save, so that save cannot overwrite the delivery record.
+ setTimeout(()=>recordInvoiceEmail(to,meta),0);
  if(form.statut==="Brouillon"){
  const newStatut="Envoyée";
  setForm(p=>({...p,statut:newStatut}));
@@ -3079,6 +3103,7 @@ function FactureEditor({showBack,facture,clients,produits,companyInfo,docNums,sa
  }
  }
  }} onClose={()=>setEmailModal(null)}/>}
+ {(()=>{const log=(factures.find(f=>f.id===savedId)||form).emailLog;return log?.length?<InvoiceDeliveryTimeline log={log} en={T===EN} t={t}/>:null;})()}
  {/* Payment Plan */}
  {!isProforma&&canUse("paymentPlans")&&savedId&&(<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12,marginTop:4}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:hasPpPlan||ppOpen?8:0}}><div style={{fontSize:12,fontWeight:700,color:t.text}}>{T.ppToggle||"Plan de paiement"}</div>{!hasPpPlan&&<button onClick={()=>setPpOpen(o=>!o)} style={{fontSize:10,padding:"3px 9px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>{ppOpen?(T.cancel||"Annuler"):`+ ${T.ppConfigure||"Configurer"}`}</button>}{ppPlan&&ppPlan.status==="active"&&<button onClick={async()=>{if(!window.confirm(T.ppCancelConfirm||"Annuler ce plan de paiement?"))return;if(window.api?.paymentPlan)await window.api.paymentPlan.cancel(savedId);setPpPlan(p=>({...p,status:"cancelled"}));}} style={{fontSize:10,padding:"3px 9px",borderRadius:5,border:"1px solid rgba(239,68,68,0.25)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:700}}>{T.ppCancel||"Annuler le plan"}</button>}</div>{hasPpPlan&&(<div style={{background:ppPlan?.status==="cancelled"?"rgba(239,68,68,0.07)":"rgba(34,197,94,0.07)",border:`1px solid ${ppPlan?.status==="cancelled"?"rgba(239,68,68,0.2)":"rgba(34,197,94,0.2)"}`,borderRadius:6,padding:"7px 10px",fontSize:11}}><div style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:6}}><span style={{fontWeight:700,color:ppPlan?.status==="cancelled"?"#ef4444":"#22c55e"}}>{ppPlan?.status==="cancelled"?(T.ppPlanCancelled||"Plan annulé"):(T.ppPlanActive||"Plan actif")}</span><span style={{color:t.textSub}}>{ppPlan?`${ppPlan.total_installments} ${T.ppInstallments||"versements"} · ${ppPlan.cadence==="weekly"?(T.ppCadenceWeekly||"Hebdomadaire"):ppPlan.cadence==="biweekly"?(T.ppCadenceBiweekly||"Aux 2 semaines"):(T.ppCadenceMonthly||"Mensuel")} · ${ppPlan.start_date}`:`${existingChildFacs.length} ${T.ppInstallments||"versements"}`}</span></div><div style={{fontSize:10,color:t.textMuted,marginTop:3}}>{T.ppEarlyPayNote||"Le client peut payer en avance. Chaque versement est une facture indépendante."}</div>{existingChildFacs.length>0&&<div style={{marginTop:7,display:"flex",flexDirection:"column",gap:3}}>{existingChildFacs.map(cf=>{const cfTot=computeSoumTotals(cf.lignes||[],cf).total;return(<div key={cf.id} onClick={()=>onOpenDoc&&onOpenDoc("facture",cf.clientId,cf)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 7px",borderRadius:4,background:"rgba(255,255,255,0.04)",cursor:onOpenDoc?"pointer":"default",gap:8}}><span style={{fontSize:10,fontWeight:700,color:"#f97316",whiteSpace:"nowrap"}}>{T===EN?"Inst.":"Vers."} {cf.ppIndex}/{cf.ppTotal}</span><span style={{fontSize:10,fontWeight:600,color:t.text,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{cf.numero}</span><span style={{fontSize:10,color:t.textMuted,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{cf.dateEcheance||cf.date}</span><span style={{fontSize:10,fontWeight:700,color:t.textSub,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",marginLeft:"auto"}}>{fmt(cfTot)}</span></div>);})}</div>}</div>)}{ppOpen&&!hasPpPlan&&(<div style={{display:"flex",flexDirection:"column",gap:8,marginTop:4}}><div style={{display:"flex",gap:6,flexWrap:"wrap"}}><div style={{flex:"0 0 100px"}}><div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.ppInstallments||"Versements"}</div><input type="number" min="2" max="36" value={ppForm.installments} onChange={e=>setPpForm(p=>({...p,installments:parseInt(e.target.value)||2}))} style={{...inputS,width:"100%",boxSizing:"border-box"}}/></div><div style={{flex:"1 1 130px"}}><div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.ppCadence||"Fréquence"}</div><select value={ppForm.cadence} onChange={e=>setPpForm(p=>({...p,cadence:e.target.value}))} style={{...inputS,width:"100%",boxSizing:"border-box"}}><option value="weekly">{T.ppCadenceWeekly||"Hebdomadaire"}</option><option value="biweekly">{T.ppCadenceBiweekly||"Aux 2 semaines"}</option><option value="monthly">{T.ppCadenceMonthly||"Mensuel"}</option></select></div><div style={{flex:"1 1 130px"}}><div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.ppStartDate||"Date du 1er versement"}</div><input type="date" value={ppForm.startDate} onChange={e=>setPpForm(p=>({...p,startDate:e.target.value}))} style={{...inputS,width:"100%",boxSizing:"border-box"}}/></div></div><div style={{fontSize:11,color:t.textSub}}>≈ {fmt(totals.total/Math.max(1,ppForm.installments))} / {ppForm.cadence==="weekly"?(T.ppCadenceWeekly||"semaine"):ppForm.cadence==="biweekly"?(T.ppCadenceBiweekly||"2 sem"):(T.ppCadenceMonthly||"mois")}</div><button onClick={doGeneratePlan} disabled={ppGenerating} style={{alignSelf:"flex-start",padding:"5px 14px",borderRadius:6,border:"none",background:ppGenerating?"rgba(255,255,255,0.05)":"linear-gradient(135deg,#f97316,#ea580c)",color:ppGenerating?t.textDim:"#fff",cursor:ppGenerating?"default":"pointer",fontWeight:700,fontSize:11}}>{ppGenerating?(T.ppGenerating||"Génération…"):(T.ppGenerate||"Générer le plan")}</button></div>)}</div>)}</div>);
 }
@@ -6435,6 +6460,11 @@ function AppInner(){
   const [facSoumissions,setFacSoumissions]=useState([]);
   const [facCommandes,setFacCommandes]=useState([]);
   const [facFactures,setFacFactures]=useState([]);
+  // Companies: which one is open, whether it may be used, and its cloud account.
+  const [currentCompany,setCurrentCompany]=useState(null);
+  const [cloudChecked,setCloudChecked]=useState(false);
+  const [companyPlanVerifiedAt,setCompanyPlanVerifiedAt]=useState(null);
+  const [companyOrgConflict,setCompanyOrgConflict]=useState(null);
   const [facCreditNotes,setFacCreditNotes]=useState([]);
   const [facRecurrents,setFacRecurrents]=useState([]);
   const [invConfig,setInvConfig]=useState(DEFAULT_INV_CONFIG);
@@ -6601,6 +6631,7 @@ function AppInner(){
           window.api?.auth?.setToken?.(cloud.session.access_token||null);
         }
       }catch(_){}
+      finally{setCloudChecked(true);}
     },1000);
     // Auto-refresh plan 5s after launch in case it changed in DB since last session
     setTimeout(async()=>{
@@ -6906,7 +6937,7 @@ function AppInner(){
   const handleCloudSignIn=useCallback(async(creds)=>{const res=await cloudSignIn(creds);setCloudUser({email:res.session.user.email,plan:res.plan});setMyLinkedLocations(getMyLinkedLocations());setPlan(res.plan);setActivePlan(res.plan);window.api?.auth?.setToken?.(res.session?.access_token||null);},[]);
   const handleCloudSignUp=useCallback(async(creds)=>{await cloudSignUp(creds);/* trigger creates org/user server-side; user must confirm email then sign in */},[]);
   const handleCloudResetPassword=useCallback(async(email)=>{await requestPasswordReset(email);},[]);
-  const handleCloudSignOut=useCallback(async()=>{await cloudSignOut();window.api?.auth?.setToken?.(null);setCloudUser(null);setSyncStatus(null);setMyLinkedLocations([]);setActiveMUOLocationId(null);},[]);
+  const handleCloudSignOut=useCallback(async()=>{await cloudSignOut();window.api?.companies?.bindOrg?.({orgId:null}).catch(()=>{});window.api?.auth?.setToken?.(null);setCloudUser(null);setSyncStatus(null);setMyLinkedLocations([]);setActiveMUOLocationId(null);},[]);
   const handleRefreshPlan=useCallback(async()=>{const p=await refreshPlan();if(p){setPlan(p);setActivePlan(p);setCloudUser(u=>u?{...u,plan:p}:u);}},[])
 
   // ── CMD+K / CTRL+K GLOBAL SEARCH ─────────────────────────────────────────
@@ -7702,6 +7733,66 @@ function AppInner(){
   // looking. Re-checked on every screen change and once a minute, which is cheap:
   // six small queries, and the rules themselves live in todayWorklist.js.
   const [worklist,setWorklist]=useState({items:[],counts:{},loading:true});
+  // ── Companies ──
+  useEffect(()=>{
+    window.api?.companies?.current?.().then(c=>setCurrentCompany(c||null)).catch(()=>{});
+    window.api?.storage?.get(COMPANY_PLAN_VERIFIED_KEY).then(r=>{if(r?.value)setCompanyPlanVerifiedAt(r.value);}).catch(()=>{});
+  },[]);
+  // A confirmed paid plan is remembered with its date, for the offline grace period.
+  useEffect(()=>{
+    if(!cloudUser||!PAID_PLANS.includes(activePlan))return;
+    const stamp=new Date().toISOString();
+    setCompanyPlanVerifiedAt(stamp);
+    window.api?.storage?.set(COMPANY_PLAN_VERIFIED_KEY,stamp).catch(()=>{});
+  },[cloudUser,activePlan]);
+  // One BalanceIQ account per company: two companies signed in to the same account
+  // would mix their books in the cloud, so the second sign-in is refused.
+  useEffect(()=>{
+    if(!currentCompany||!cloudUser||!window.api?.companies?.bindOrg)return;
+    const orgId=getCloudOrgId();
+    if(!orgId)return;
+    window.api.companies.bindOrg({orgId}).then(r=>{
+      if(r&&r.ok===false&&r.error==='org_in_use'){
+        const name=r.conflictPrimary?'':(r.conflict||'');
+        if(currentCompany.primary)window.alert(lang==='en'?`That BalanceIQ account is already used by another company on this Mac${name?` ("${name}")`:''}. Sign in with this company's own account.`:`Ce compte BalanceIQ est déjà utilisé par une autre entreprise sur ce Mac${name?` (« ${name} »)`:''}. Connectez-vous avec le compte de cette entreprise.`);
+        else setCompanyOrgConflict(name);
+        handleCloudSignOut();
+      }else if(r?.ok){setCompanyOrgConflict(null);}
+    }).catch(()=>{});
+  },[cloudUser,currentCompany]);
+
+  // ── Invoice delivery ──
+  // Ask Resend where recent invoice emails stand, and the view-link service which
+  // invoices have been opened. Shortly after launch, then every ten minutes.
+  useEffect(()=>{
+    let alive=true;
+    const tick=async()=>{
+      const list=facFacturesRef.current||[];
+      const now=Date.now();
+      const statusChecks=[];const tokens=[];
+      for(const f of list){for(const e of f.emailLog||[]){if(needsStatusCheck(e,now))statusChecks.push({invoiceId:f.id,id:e.id});if(needsViewCheck(e,now))tokens.push(e.viewToken);}}
+      if(!statusChecks.length&&!tokens.length)return;
+      const statusUpdates=[];
+      if(apiConfig?.resendKey&&window.api?.email?.status){
+        for(const c of statusChecks.slice(0,25)){
+          try{const r=await window.api.email.status({apiKey:apiConfig.resendKey,id:c.id});if(r?.ok&&r.lastEvent)statusUpdates.push({...c,lastEvent:r.lastEvent});}catch(_){}
+        }
+      }
+      let views={};
+      const orgId=getCloudOrgId();
+      if(tokens.length&&orgId&&window.api?.invoiceView?.status){
+        try{const r=await window.api.invoiceView.status({accessToken:getCloudAccessToken(),orgId,tokens:tokens.slice(0,200)});if(r?.ok)views=r.views||{};}catch(_){}
+      }
+      if(!alive)return;
+      const stamp=new Date().toISOString();
+      if(!applyDeliveryUpdates(facFacturesRef.current,{statusUpdates,views,now:stamp}).changed)return;
+      saveFacFactures(prev=>applyDeliveryUpdates(prev,{statusUpdates,views,now:stamp}).list);
+    };
+    const first=setTimeout(tick,20000);
+    const every=setInterval(tick,10*60*1000);
+    return()=>{alive=false;clearTimeout(first);clearInterval(every);};
+  },[apiConfig?.resendKey,cloudUser]);
+
   useEffect(()=>{
     let alive=true;
     const run=async()=>{
@@ -7719,7 +7810,7 @@ function AppInner(){
       const overdue=overdueInvoices(facFactures,facClients,today);
       const deadline=nextFilingDeadline(registration,taxPeriods,today);
       const variance=(subledgerRows||[]).length?cashVarianceCents(trialRows,subledgerRows):null;
-      const items=buildWorklist({needsCategorizing,overdue,blockers:Array.isArray(blockers)?blockers:[],registration,deadline,variance,lang});
+      const items=buildWorklist({needsCategorizing,overdue,blockers:Array.isArray(blockers)?blockers:[],registration,deadline,variance,lang,emailItems:emailWorklistItems(facFactures,{now:Date.now(),lang})});
       if(alive)setFirstRunFacts(facts||{});
       if(alive)setWorklist({items,counts:worklistCounts({needsCategorizing,overdue,items}),loading:false});
     };
@@ -7774,6 +7865,10 @@ function AppInner(){
 
   if(loading)return(<div style={{minHeight:"100vh",background:LIGHT.bg,display:"flex",alignItems:"center",justifyContent:"center",color:"#AEAEB2",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T.loading}</div>);
   if(appLocked)return(<PinLockScreen lockConfig={lockConfig} onUnlock={()=>setAppLocked(false)} saveLockConfig={saveLockConfig}/>);
+  // An additional company without its own paid plan opens on the plan gate.
+  const companyGate=currentCompany&&!currentCompany.primary?companyAccess({isPrimary:false,cloudChecked,signedIn:!!cloudUser,plan:activePlan,verifiedPaidAt:companyPlanVerifiedAt,now:Date.now()}):null;
+  if(companyGate&&(companyGate.state==='needs_plan'||companyOrgConflict!==null))return(<CompanyPlanGate lang={lang} t={t} company={currentCompany} conflictName={companyOrgConflict}><CloudAccountSection cloudUser={cloudUser} syncStatus={syncStatus} onSignIn={handleCloudSignIn} onSignUp={handleCloudSignUp} onSignOut={handleCloudSignOut} onResetPassword={handleCloudResetPassword} onRefreshPlan={handleRefreshPlan} t={t} T={T}/>{cloudUser&&<SubscriptionSection cloudUser={cloudUser} activePlan={activePlan} orgId={getCloudOrgId()} onPlanRefreshed={p=>{setPlan(p);setActivePlan(p);}} t={t} T={T}/>}</CompanyPlanGate>);
+  if(companyGate&&companyGate.state==='checking')return(<div style={{minHeight:"100vh",background:t.bg}}/>);
   if(!onboardingDone){
     const OnboardingWizard=React.lazy(()=>import('./components/OnboardingWizard.jsx'));
     return(<React.Suspense fallback={<div style={{minHeight:"100vh",background:LIGHT.bg}}/>}><OnboardingWizard lang={lang} roster={roster} saveRoster={saveRoster} companyInfo={companyInfo} saveCompanyInfo={info=>{setCompanyInfo(info);window.api.storage.set("dicann-company-info",JSON.stringify(info)).catch(()=>{});}} expenseItems={expenseItems} saveExpItems={items=>{setExpenseItems(items);window.api.storage.set("dicann-pl-expense-items",JSON.stringify(items)).catch(()=>{});}} onComplete={async()=>{const v=JSON.stringify({completedAt:new Date().toISOString()});await window.api.storage.set("balanceiq-onboarding",v).catch(()=>{});await window.api.storage.set("balanceiq-tour-complete","1").catch(()=>{});setTourActive(false);setOnboardingDone(true);}}/></React.Suspense>);
@@ -8171,6 +8266,7 @@ function AppInner(){
             {(()=>{
               const CTABS=[
                 {id:"entreprise",       label:T.cfgBusiness},
+                {id:"companies",        label:lang==="fr"?"Entreprises":"Companies"},
                 {id:"personnel-paie",   label:T.cfgPersonnelPayroll},
                 {id:"pl-fournisseurs",  label:T.cfgPLSuppliers},
                 {id:"operations",       label:T.cfgOperations||"Opérations"},
@@ -8185,7 +8281,7 @@ function AppInner(){
               ];
               const scrollCfgTabs=(dir)=>{const el=document.getElementById('biq-cfg-tabs');if(el)el.scrollBy({left:dir*140,behavior:'smooth'});};
               return(<div style={{display:"flex",alignItems:"stretch",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:4,flexShrink:0}}><button onClick={()=>scrollCfgTabs(-1)} style={{flexShrink:0,background:'none',border:'none',borderRight:`1px solid ${t.cardBorder}`,color:t.textMuted,cursor:'pointer',padding:'0 7px',fontSize:16,lineHeight:1,fontFamily:'inherit'}}>‹</button><div id="biq-cfg-tabs" className="no-scrollbar" style={{display:"flex",gap:2,overflowX:"auto",flex:1,paddingBottom:1,scrollbarWidth:'none',msOverflowStyle:'none'}}>{CTABS.map(({id,label})=>(<button key={id} onClick={()=>setConfigSubTab(id)} style={{background:"none",border:"none",color:configSubTab===id?"#f97316":t.textMuted,fontSize:11,fontWeight:configSubTab===id?700:500,padding:"5px 11px",cursor:"pointer",borderBottom:configSubTab===id?"2px solid #f97316":"2px solid transparent",whiteSpace:"nowrap",flexShrink:0,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{label}</button>))}</div><button onClick={()=>scrollCfgTabs(1)} style={{flexShrink:0,background:'none',border:'none',borderLeft:`1px solid ${t.cardBorder}`,color:t.textMuted,cursor:'pointer',padding:'0 7px',fontSize:16,lineHeight:1,fontFamily:'inherit'}}>›</button></div>);
- })()}<div style={{width:'100%',minWidth:0}}>{/* ENTREPRISE */}
+ })()}<div style={{width:'100%',minWidth:0}}>{/* COMPANIES */}{configSubTab==="companies"&&<CompaniesPanel lang={lang} t={t}/>}{/* ENTREPRISE */}
  {configSubTab==="entreprise"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
               <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:10,padding:"14px 16px"}}>
                 <div style={{fontSize:13,fontWeight:700,color:t.text}}>{lang==="fr"?"Quel type de ventes faites-vous ?":"What kind of sales do you make?"}</div>

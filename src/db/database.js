@@ -4,6 +4,16 @@ const { app } = require('electron');
 const crypto = require('crypto');
 
 let db;
+// The folder holding this company's database. The main process sets it before the
+// first query (see companies.js); it defaults to the app's data folder.
+let dataDir = null;
+function setDataDir(dir) {
+  if (db) throw new Error('setDataDir called after the database was opened');
+  dataDir = dir || null;
+}
+function getDataDir() {
+  return dataDir || app.getPath('userData');
+}
 
 // ── Schema Migration System ──────────────────────────────────────────────────
 // Each entry runs exactly once, in version order.
@@ -1589,7 +1599,7 @@ function runMigrations(database) {
 
 function getDb() {
   if (!db) {
-    const dbPath = path.join(app.getPath('userData'), 'balanceiq.db');
+    const dbPath = path.join(getDataDir(), 'balanceiq.db');
     db = new Database(dbPath);
     db.exec(`
       CREATE TABLE IF NOT EXISTS kv_store (
@@ -6452,6 +6462,7 @@ function mergeApiConfigSecrets(incoming, current) {
 }
 
 module.exports = {
+  setDataDir, getDataDir,
   incomeStatement, coaSetItcPct, coaRename, bankNeedsCategorizingCount, firstRunFacts,
   supplierBillPost, supplierBillUnpost, supplierBillPostPayment, supplierBillSubledger,
   SECRET_CONFIG_FIELDS, stripApiConfigSecrets, mergeApiConfigSecrets,
