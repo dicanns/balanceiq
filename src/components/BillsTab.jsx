@@ -41,6 +41,7 @@ const UI = {
     delete: 'Supprimer',
     confirmDelete: 'Supprimer cette facture ? Toute ecriture au grand livre sera contrepassee. Cette action est definitive.',
     paidOn: 'Payée le',
+    paidVia: (n) => `· par ${n}`,
     outstanding: 'Solde impayé',
     unpaid: 'Impayées',
     paid: 'Payées',
@@ -101,6 +102,7 @@ const UI = {
     delete: 'Delete',
     confirmDelete: 'Delete this bill? Any ledger entry will be reversed. This cannot be undone.',
     paidOn: 'Paid',
+    paidVia: (n) => `· via ${n}`,
     outstanding: 'Outstanding',
     unpaid: 'Unpaid',
     paid: 'Paid',
@@ -694,7 +696,9 @@ export default function BillsTab({ lang = 'fr' }) {
                     <td style={{ ...td, color: C.sub, whiteSpace: 'nowrap' }}>{b.bill_date || '-'}</td>
                     <td style={{ ...td, whiteSpace: 'nowrap' }}>
                       {b.paid
-                        ? <span style={{ fontSize: 11.5, color: '#22c55e' }}>{T.paidOn} {b.payment_date || ''}</span>
+                        ? <span style={{ fontSize: 11.5, color: '#22c55e' }}>{T.paidOn} {b.payment_date || ''}
+                            {b.paid_account_name && <span style={{ color: C.muted, marginLeft: 4 }}>{T.paidVia(b.paid_account_name)}</span>}
+                          </span>
                         : due
                           ? <span style={{ fontSize: 11.5, color: due.tone }}>{due.label}</span>
                           : <span style={{ color: C.muted }}>-</span>}

@@ -75,6 +75,7 @@ const {
   onboardingPacketSave, onboardingPacketList, onboardingPacketGet, onboardingPacketDelete,
   onboardingPacketApply, locationOnboardingGet,
   supplierBillList, supplierBillCreate, supplierBillUpdate, supplierBillMarkPaid, supplierBillMarkUnpaid, supplierBillDelete,
+  supplierBillPayByBankTransaction,
   supplierPaymentsList, supplierPaymentCreate,
   assetList, assetCreate, assetUpdate, assetDelete,
   ccaClassesList, ccaComputeForAsset, ccaScheduleForYear,
@@ -2121,9 +2122,26 @@ ipcMain.handle('bilan:snapshot:get',     (_e, id)              => balanceSheetSn
 
 // ── Supplier Bills (AP) — Sprint 6 ───────────────────────────────────────────
 ipcMain.handle('supplier:bill:list',     (_e, opts)            => supplierBillList(opts || {}));
-ipcMain.handle('supplier:bill:create',   (_e, data)            => supplierBillCreate(data));
-ipcMain.handle('supplier:bill:update',   (_e, id, data)        => supplierBillUpdate(id, data));
-ipcMain.handle('supplier:bill:markPaid', (_e, id, payData)     => supplierBillMarkPaid(id, payData || {}));
+// A document that changes what you owe reaches the ledger the moment it is
+// recorded: Dr expense, Dr recoverable tax, Cr accounts payable (2010).
+ipcMain.handle('supplier:bill:create',   (_e, data)            => {
+  const bill = supplierBillCreate(data);
+  return { ...bill, posted: bill?.id ? supplierBillPost(bill.id) : { ok: false, error: 'not_created' } };
+});
+// A correction has to reach the books too: reverse what the old figures posted,
+// then post the new ones. Reversing first, never the other way round.
+ipcMain.handle('supplier:bill:update',   (_e, id, data)        => {
+  const bill = supplierBillUpdate(id, data);
+  supplierBillUnpost(id, 'Facture fournisseur corrigee');
+  return { ...bill, posted: supplierBillPost(id) };
+});
+// Marking a bill paid by hand, with no statement line behind it: the payment
+// settles the payable against cash. Paying it from a statement line instead goes
+// through supplier:bill:payByBankTx, which posts against that account.
+ipcMain.handle('supplier:bill:markPaid', (_e, id, payData)     => {
+  const bill = supplierBillMarkPaid(id, payData || {});
+  return { ...bill, posted: supplierBillPostPayment(id, { paymentDate: bill?.payment_date }) };
+});
 ipcMain.handle('supplier:bill:markUnpaid',(_e, id)             => {
   const bill = supplierBillMarkUnpaid(id);
   try {
@@ -2135,6 +2153,8 @@ ipcMain.handle('supplier:bill:markUnpaid',(_e, id)             => {
 // Removing a bill that should never have been recorded here. Any ledger entry is
 // reversed first, so the books keep the record of what happened.
 ipcMain.handle('supplier:bill:delete', (_e, id)          => supplierBillDelete(id));
+// Linking a statement line to the bill it paid: proof of payment on both sides.
+ipcMain.handle('supplier:bill:payByBankTx', (_e, txId, billId) => supplierBillPayByBankTransaction(txId, billId));
 ipcMain.handle('supplier:payments:list', (_e, billId)          => supplierPaymentsList(billId));
 ipcMain.handle('supplier:payments:create',(_e, data)           => supplierPaymentCreate(data));
 

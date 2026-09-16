@@ -3656,11 +3656,20 @@ function bankTransactionMatch(txId, entityType, entityId) {
   return true;
 }
 
-function bankTransactionUnmatch(txId) {
-  const db = getDb();
+function bankTransactionUnmatch(txId, _db) {
+  const db = _db || getDb();
   db.transaction(() => {
     // Clearing the classification must also unwind whatever it posted.
     _reverseBankTransactionEntry(db, txId);
+    // A bill this line paid goes back to unpaid: the proof of payment is gone,
+    // so the payable is owing again.
+    const link = db.prepare(`SELECT matched_entity_type, matched_entity_id FROM bank_transactions WHERE id=?`).get(txId);
+    if (link?.matched_entity_type === 'supplier_bill' && link.matched_entity_id) {
+      db.prepare(
+        `UPDATE supplier_bills SET paid=0, payment_date=NULL, payment_method=NULL, bank_transaction_id=NULL
+          WHERE id=? AND bank_transaction_id=?`
+      ).run(link.matched_entity_id, txId);
+    }
     db.prepare(
       `UPDATE bank_transactions SET match_status='unmatched', matched_entity_type=NULL, matched_entity_id=NULL, coa_account_id=NULL WHERE id=?`
     ).run(txId);
@@ -4681,11 +4690,23 @@ function supplierBillList({ monthKey = null, paid = null, supplierName = null } 
   const db = getDb();
   const conds = [];
   const params = [];
-  if (monthKey) { conds.push('month_key=?'); params.push(monthKey); }
-  if (paid !== null) { conds.push('paid=?'); params.push(paid ? 1 : 0); }
-  if (supplierName !== null) { conds.push('supplier_name=?'); params.push(supplierName); }
+  if (monthKey) { conds.push('sb.month_key=?'); params.push(monthKey); }
+  if (paid !== null) { conds.push('sb.paid=?'); params.push(paid ? 1 : 0); }
+  if (supplierName !== null) { conds.push('sb.supplier_name=?'); params.push(supplierName); }
   const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
-  return db.prepare(`SELECT * FROM supplier_bills ${where} ORDER BY bill_date DESC, id DESC`).all(...params);
+  // The statement line that paid it comes back with the bill, so the screen can
+  // say which account it was paid from rather than only that it was paid.
+  return db.prepare(`
+    SELECT sb.*,
+           bt.transaction_date AS paid_tx_date,
+           bt.description      AS paid_tx_description,
+           ba.name             AS paid_account_name,
+           ba.account_type     AS paid_account_type
+    FROM supplier_bills sb
+    LEFT JOIN bank_transactions bt ON bt.id = sb.bank_transaction_id
+    LEFT JOIN bank_accounts     ba ON ba.id = bt.bank_account_id
+    ${where}
+    ORDER BY sb.bill_date DESC, sb.id DESC`).all(...params);
 }
 
 function supplierBillCreate(data) {
@@ -4861,6 +4882,51 @@ function supplierBillPostPayment(billId, { paymentDate, bankCoaNumber = '1010' }
   }, db);
   glPostEntry(entryId, db);
   return { ok: true, entryId };
+}
+
+// ── A BILL AND THE STATEMENT LINE THAT PAID IT ───────────────────────────────
+// Proof that what was recorded was actually paid, and the guard against counting
+// an expense twice. The bill books the expense and raises the payable; the line
+// that pays it only settles that payable: Dr 2010 / Cr the bank or card account.
+// Categorizing the same line to an expense account instead would book the
+// expense a second time, which is the mistake this link exists to prevent.
+//
+// The line keeps posting through the ordinary bank path, so re-categorizing, the
+// orphan sweep and reconciliation all keep working unchanged. The only things
+// added are the two pointers that let each side name the other.
+function supplierBillPayByBankTransaction(txId, billId, _db) {
+  const db = _db || getDb();
+  const tx = db.prepare(`SELECT * FROM bank_transactions WHERE id=?`).get(txId);
+  if (!tx) return { ok: false, error: 'transaction_not_found' };
+  const bill = db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(billId);
+  if (!bill) return { ok: false, error: 'bill_not_found' };
+  if (bill.paid) return { ok: false, error: 'bill_already_paid' };
+  if (Number(tx.amount) >= 0) return { ok: false, error: 'not_money_out' };
+
+  const ap = db.prepare(`SELECT * FROM chart_of_accounts WHERE account_number='2010'`).get();
+  if (!ap) return { ok: false, error: 'missing_coa_accounts' };
+
+  // A bill is paid or it is not: the model carries no partial payments, so a
+  // line for a different amount is not this bill's payment.
+  const billCents = Math.round((Number(bill.amount) || 0) * 100);
+  const txCents = Math.round(Math.abs(Number(tx.amount) || 0) * 100);
+  if (billCents !== txCents) return { ok: false, error: 'amount_mismatch' };
+
+  db.transaction(() => {
+    _reverseBankTransactionEntry(db, txId);
+    // The payment carries no tax of its own: the tax was claimed on the bill.
+    db.prepare(
+      `UPDATE bank_transactions
+          SET match_status='matched', matched_entity_type='supplier_bill', matched_entity_id=?,
+              coa_account_id=?, tps_paid=NULL, tvq_paid=NULL, is_transfer=0
+        WHERE id=?`
+    ).run(billId, ap.id, txId);
+    _postBankTransactionEntry(db, txId);
+    db.prepare(
+      `UPDATE supplier_bills SET paid=1, payment_date=?, payment_method='bank', bank_transaction_id=? WHERE id=?`
+    ).run(tx.transaction_date, txId, billId);
+  })();
+  return { ok: true, billId, txId };
 }
 
 // What the subledger says is owed, for the control-account check on 2010. Built
@@ -6539,6 +6605,7 @@ module.exports = {
   onboardingPacketSave, onboardingPacketList, onboardingPacketGet, onboardingPacketDelete,
   onboardingPacketApply, locationOnboardingGet,
   supplierBillList, supplierBillCreate, supplierBillUpdate, supplierBillMarkPaid, supplierBillMarkUnpaid, supplierBillDelete,
+  supplierBillPayByBankTransaction,
   supplierPaymentsList, supplierPaymentCreate,
   assetList, assetCreate, assetUpdate, assetDelete,
   ccaClassesList, ccaComputeForAsset, ccaScheduleForYear,

@@ -55,6 +55,11 @@ const UI = {
     statusSuggested:  'Suggestions',
     statusManual:     'Manuels',
     categorize:       'Catégoriser',
+    payBill:          'Payer une facture',
+    payBillTitle:     'Cette transaction paie quelle facture fournisseur ?',
+    payBillHint:      'La facture comptabilise la dépense; cette ligne ne règle que ce que vous devez (2010). Ne catégorisez pas la même ligne à un compte de dépense, sinon la dépense compterait deux fois.',
+    payBillNone:      'Aucune facture impayée du même montant.',
+    payBillLink:      'Lier',
     match:            'Apparier',
     unmatch:          'Désapparier',
     selectCoa:        'Sélectionner un compte GL…',
@@ -198,6 +203,11 @@ const UI = {
     statusSuggested:  'Suggested',
     statusManual:     'Manual',
     categorize:       'Categorize',
+    payBill:          'Pay a bill',
+    payBillTitle:     'Which supplier bill does this transaction pay?',
+    payBillHint:      'The bill books the expense; this line only settles what you owe (2010). Do not categorize this line to an expense account as well, or the expense is counted twice.',
+    payBillNone:      'No unpaid bill for the same amount.',
+    payBillLink:      'Link',
     match:            'Match',
     unmatch:          'Unmatch',
     selectCoa:        'Select a GL account…',
@@ -383,6 +393,9 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   const [txDateTo, setTxDateTo]                   = useState('');
 
   const [categorizingTx, setCategorizingTx]       = useState(null);
+  const [payingTx, setPayingTx]                   = useState(null);
+  const [payableBills, setPayableBills]           = useState([]);
+  const [payError, setPayError]                   = useState('');
   const [categorizeCoaId, setCategorizeCoaId]     = useState('');
   const [categorizeNotes, setCategorizeNotes]     = useState('');
   const [catTransfer, setCatTransfer]             = useState(false);
@@ -562,6 +575,28 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   };
 
   // ── Categorize ──────────────────────────────────────────────────────────────
+  // A statement line that pays a supplier bill settles the payable instead of
+  // booking an expense, so the bill stays the only place the expense is recorded.
+  // Only unpaid bills for the same amount are offered: a bill is paid or it is not.
+  const openPayBill = async (tx) => {
+    setPayingTx(tx); setPayableBills([]); setPayError('');
+    try {
+      const bills = await window.api.supplierBills.list({ paid: 0 });
+      const cents = Math.round(Math.abs(Number(tx.amount) || 0) * 100);
+      setPayableBills((bills || []).filter(b => Math.round((Number(b.amount) || 0) * 100) === cents));
+    } catch (_) { setPayableBills([]); }
+  };
+
+  const linkBillToTx = async (billId) => {
+    if (!payingTx) return;
+    try {
+      const r = await window.api.supplierBills.payByBankTx(payingTx.id, billId);
+      if (r?.ok === false) { setPayError(String(r.error || '')); return; }
+      setPayingTx(null);
+      await loadTransactions();
+    } catch (e) { setPayError(String(e?.message ?? e)); }
+  };
+
   const openCategorize = (tx) => {
     const etSender = detectEtransfer(tx.description || '');
     setCategorizingTx({ ...tx, etSender });
@@ -833,6 +868,9 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
                           {tx.match_status !== 'matched' && (
                             <button onClick={() => openCategorize(tx)} style={btnSmall}>{T.categorize}</button>
                           )}
+                          {tx.amount < 0 && tx.match_status !== 'matched' && (
+                            <button onClick={() => openPayBill(tx)} style={btnSmall}>{T.payBill}</button>
+                          )}
                           {(tx.match_status === 'matched' || tx.match_status === 'manual' || tx.match_status === 'suggested') && (
                             <button onClick={() => unmatch(tx.id)} style={btnSmallDanger}>{T.unmatch}</button>
                           )}
@@ -970,6 +1008,30 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
             </table>
           )}
         </div>
+      )}
+
+      {/* ── PAY A SUPPLIER BILL ───────────────────────────────────────────────── */}
+      {payingTx && (
+        <ModalOverlay surface={C.card} edge={C.border} onClose={() => { setPayingTx(null); setPayError(''); }}>
+          <h3 style={{ margin: '0 0 8px', color: C.text }}>{T.payBillTitle}</h3>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 12, lineHeight: 1.5 }}>{T.payBillHint}</div>
+          <div style={{ fontSize: 12, color: C.sub, marginBottom: 10 }}>
+            {fmtDate(payingTx.transaction_date)} · {payingTx.description} · <strong>{fmt(payingTx.amount)}</strong>
+          </div>
+          {payableBills.length === 0 ? (
+            <p style={{ color: C.muted, fontSize: 12 }}>{T.payBillNone}</p>
+          ) : payableBills.map(b => (
+            <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderTop: `1px solid ${C.divider}` }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, color: C.text, fontWeight: 600 }}>{b.supplier_name}</div>
+                <div style={{ fontSize: 11, color: C.muted }}>{b.bill_date || ''} {b.invoice_number || ''}</div>
+              </div>
+              <div style={{ fontSize: 12.5, color: C.text, fontVariantNumeric: 'tabular-nums' }}>{fmt(b.amount)}</div>
+              <button onClick={() => linkBillToTx(b.id)} style={btnSmall}>{T.payBillLink}</button>
+            </div>
+          ))}
+          {payError && <div style={{ marginTop: 8, fontSize: 11.5, color: '#f87171' }}>{payError}</div>}
+        </ModalOverlay>
       )}
 
       {/* ── ACCOUNT MODAL ─────────────────────────────────────────────────────── */}
