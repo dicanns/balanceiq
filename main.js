@@ -74,7 +74,7 @@ const {
   royaltyExceptionSave, royaltyExceptionList, royaltyExceptionAcknowledge, royaltyExceptionResolve,
   onboardingPacketSave, onboardingPacketList, onboardingPacketGet, onboardingPacketDelete,
   onboardingPacketApply, locationOnboardingGet,
-  supplierBillList, supplierBillCreate, supplierBillUpdate, supplierBillMarkPaid, supplierBillMarkUnpaid,
+  supplierBillList, supplierBillCreate, supplierBillUpdate, supplierBillMarkPaid, supplierBillMarkUnpaid, supplierBillDelete,
   supplierPaymentsList, supplierPaymentCreate,
   assetList, assetCreate, assetUpdate, assetDelete,
   ccaClassesList, ccaComputeForAsset, ccaScheduleForYear,
@@ -2132,6 +2132,9 @@ ipcMain.handle('supplier:bill:markUnpaid',(_e, id)             => {
   } catch (_) {}
   return bill;
 });
+// Removing a bill that should never have been recorded here. Any ledger entry is
+// reversed first, so the books keep the record of what happened.
+ipcMain.handle('supplier:bill:delete', (_e, id)          => supplierBillDelete(id));
 ipcMain.handle('supplier:payments:list', (_e, billId)          => supplierPaymentsList(billId));
 ipcMain.handle('supplier:payments:create',(_e, data)           => supplierPaymentCreate(data));
 

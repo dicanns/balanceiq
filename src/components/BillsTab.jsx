@@ -38,6 +38,8 @@ const UI = {
     cancel: 'Annuler',
     markPaid: 'Marquer payée',
     markUnpaid: 'Annuler le paiement',
+    delete: 'Supprimer',
+    confirmDelete: 'Supprimer cette facture ? Toute ecriture au grand livre sera contrepassee. Cette action est definitive.',
     paidOn: 'Payée le',
     outstanding: 'Solde impayé',
     unpaid: 'Impayées',
@@ -96,6 +98,8 @@ const UI = {
     cancel: 'Cancel',
     markPaid: 'Mark paid',
     markUnpaid: 'Undo payment',
+    delete: 'Delete',
+    confirmDelete: 'Delete this bill? Any ledger entry will be reversed. This cannot be undone.',
     paidOn: 'Paid',
     outstanding: 'Outstanding',
     unpaid: 'Unpaid',
@@ -453,6 +457,18 @@ export default function BillsTab({ lang = 'fr' }) {
     } catch (_) {} finally { setBusy(false); }
   }
 
+  async function deleteBill(bill) {
+    if (!window.confirm(T.confirmDelete)) return;
+    setBusy(true); setError('');
+    try {
+      const r = await window.api.supplierBills.delete(bill.id);
+      if (r?.ok === false) setError(T.errRead);
+      if (editing?.id === bill.id) setEditing(null);
+      await load();
+    } catch (e) { setError(String(e?.message ?? e)); }
+    finally { setBusy(false); }
+  }
+
   const dueState = (b) => {
     if (b.paid || !b.due_date) return null;
     const days = Math.round((new Date(b.due_date) - new Date(today())) / 86400000);
@@ -704,6 +720,11 @@ export default function BillsTab({ lang = 'fr' }) {
                         borderRadius: 5, color: b.paid ? C.muted : '#22c55e', cursor: busy ? 'default' : 'pointer',
                         fontSize: 11, fontWeight: 600, padding: '3px 9px',
                       }}>{b.paid ? T.markUnpaid : T.markPaid}</button>
+                      <button onClick={() => deleteBill(b)} disabled={busy} style={{
+                        background: 'none', border: '1px solid rgba(239,68,68,0.35)',
+                        borderRadius: 5, color: '#ef4444', cursor: busy ? 'default' : 'pointer',
+                        fontSize: 11, fontWeight: 600, padding: '3px 9px', marginLeft: 6,
+                      }}>{T.delete}</button>
                     </td>
                   </tr>
                 );

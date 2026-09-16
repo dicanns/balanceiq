@@ -4814,6 +4814,20 @@ function supplierBillUnpost(billId, reason, _db) {
   return { ok: true };
 }
 
+// A bill entered by mistake - wrong company, duplicate, supplier that was never
+// ours - has to be removable. The ledger comes first: a posted bill is reversed,
+// never quietly dropped, so the books still show that it was recorded and undone.
+// Payment rows go with it, because nothing may point at a bill that is gone.
+function supplierBillDelete(id, _db) {
+  const db = _db || getDb();
+  const bill = db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(id);
+  if (!bill) return { ok: false, error: 'bill_not_found' };
+  supplierBillUnpost(id, 'Facture fournisseur supprimee', db);
+  db.prepare(`DELETE FROM supplier_payments WHERE supplier_bill_id=?`).run(id);
+  db.prepare(`DELETE FROM supplier_bills WHERE id=?`).run(id);
+  return { ok: true, deleted: true };
+}
+
 // Paying settles the payable against cash. Kept separate from the bill entry so
 // each carries its own date - a bill raised in August and paid in September
 // belongs in both periods, in the right one each time.
@@ -6524,7 +6538,7 @@ module.exports = {
   royaltyExceptionSave, royaltyExceptionList, royaltyExceptionAcknowledge, royaltyExceptionResolve,
   onboardingPacketSave, onboardingPacketList, onboardingPacketGet, onboardingPacketDelete,
   onboardingPacketApply, locationOnboardingGet,
-  supplierBillList, supplierBillCreate, supplierBillUpdate, supplierBillMarkPaid, supplierBillMarkUnpaid,
+  supplierBillList, supplierBillCreate, supplierBillUpdate, supplierBillMarkPaid, supplierBillMarkUnpaid, supplierBillDelete,
   supplierPaymentsList, supplierPaymentCreate,
   assetList, assetCreate, assetUpdate, assetDelete,
   ccaClassesList, ccaComputeForAsset, ccaScheduleForYear,
