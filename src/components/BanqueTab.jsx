@@ -57,8 +57,9 @@ const UI = {
     categorize:       'Catégoriser',
     payBill:          'Payer une facture',
     payBillTitle:     'Cette transaction paie quelle facture fournisseur ?',
-    payBillHint:      'La facture comptabilise la dépense; cette ligne ne règle que ce que vous devez (2010). Ne catégorisez pas la même ligne à un compte de dépense, sinon la dépense compterait deux fois.',
-    payBillNone:      'Aucune facture impayée du même montant.',
+    payBillHint:      'La facture comptabilise la dépense; cette ligne ne règle que ce que vous devez (2010). Ne catégorisez pas la même ligne à un compte de dépense, sinon la dépense compterait deux fois. Cochez plusieurs factures si un seul paiement les couvre toutes.',
+    payBillNone:      'Aucune facture fournisseur impayée.',
+    payBillSelected:  (sel, total) => `Sélectionné : ${sel} sur ${total}`,
     payBillLink:      'Lier',
     billMatchTitle:   'Une facture fournisseur impayée correspond à ce montant',
     billMatchBody:    (n) => `${n} : cette facture comptabilise déjà la dépense et les taxes. Liez cette ligne à la facture au lieu de la catégoriser, sinon la dépense compterait deux fois.`,
@@ -209,8 +210,9 @@ const UI = {
     categorize:       'Categorize',
     payBill:          'Pay a bill',
     payBillTitle:     'Which supplier bill does this transaction pay?',
-    payBillHint:      'The bill books the expense; this line only settles what you owe (2010). Do not categorize this line to an expense account as well, or the expense is counted twice.',
-    payBillNone:      'No unpaid bill for the same amount.',
+    payBillHint:      'The bill books the expense; this line only settles what you owe (2010). Do not categorize this line to an expense account as well, or the expense is counted twice. Tick several bills if one payment covered them all.',
+    payBillNone:      'No unpaid supplier bills.',
+    payBillSelected:  (sel, total) => `Selected ${sel} of ${total}`,
     payBillLink:      'Link',
     billMatchTitle:   'An unpaid supplier bill matches this amount',
     billMatchBody:    (n) => `${n}: that bill already books the expense and the tax. Link this line to the bill instead of categorizing it, or the expense is counted twice.`,
@@ -403,6 +405,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   const [categorizingTx, setCategorizingTx]       = useState(null);
   const [payingTx, setPayingTx]                   = useState(null);
   const [payableBills, setPayableBills]           = useState([]);
+  const [payPicked, setPayPicked]                 = useState([]);
   const [payError, setPayError]                   = useState('');
   const [billMatches, setBillMatches]             = useState([]);
   const [billMatchDismissed, setBillMatchDismissed] = useState(false);
@@ -587,15 +590,22 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   // ── Categorize ──────────────────────────────────────────────────────────────
   // A statement line that pays a supplier bill settles the payable instead of
   // booking an expense, so the bill stays the only place the expense is recorded.
-  // Only unpaid bills for the same amount are offered: a bill is paid or it is not.
+  // Every unpaid bill is offered, because one payment often covers several of
+  // them; the bill that matches the line on its own is ticked for you.
   const openPayBill = async (tx) => {
-    setPayingTx(tx); setPayableBills([]); setPayError('');
+    setPayingTx(tx); setPayableBills([]); setPayPicked([]); setPayError('');
     try {
       const bills = await window.api.supplierBills.list({ paid: 0 });
+      const list = Array.isArray(bills) ? bills : [];
+      setPayableBills(list);
       const cents = Math.round(Math.abs(Number(tx.amount) || 0) * 100);
-      setPayableBills((bills || []).filter(b => Math.round((Number(b.amount) || 0) * 100) === cents));
+      const exact = list.filter(b => Math.round((Number(b.amount) || 0) * 100) === cents);
+      if (exact.length === 1) setPayPicked([exact[0].id]);
     } catch (_) { setPayableBills([]); }
   };
+
+  const togglePayBill = (id) =>
+    setPayPicked(p => (p.includes(id) ? p.filter(x => x !== id) : [...p, id]));
 
   // The mistake happens in the Categorize dialog, so the warning belongs there -
   // not only in the link dialog, which the careful user already chose. A money-out
@@ -619,15 +629,23 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
     return () => { alive = false; };
   }, [categorizingTx]);
 
-  const linkBillToTx = async (billId) => {
-    if (!payingTx) return;
+  const linkBillsToTx = async () => {
+    if (!payingTx || !payPicked.length) return;
     try {
-      const r = await window.api.supplierBills.payByBankTx(payingTx.id, billId);
+      const r = await window.api.supplierBills.payByBankTx(payingTx.id, payPicked);
       if (r?.ok === false) { setPayError(String(r.error || '')); return; }
-      setPayingTx(null);
+      setPayingTx(null); setPayPicked([]);
       await loadTransactions();
     } catch (e) { setPayError(String(e?.message ?? e)); }
   };
+
+  // The chosen bills have to add up to the line before anything can be linked,
+  // so the running total is the check the operator reads before committing.
+  const paySelectedCents = payableBills
+    .filter(b => payPicked.includes(b.id))
+    .reduce((n, b) => n + Math.round((Number(b.amount) || 0) * 100), 0);
+  const payTxCents = payingTx ? Math.round(Math.abs(Number(payingTx.amount) || 0) * 100) : 0;
+  const payTotalsAgree = !!payingTx && paySelectedCents > 0 && paySelectedCents === payTxCents;
 
   const openCategorize = (tx) => {
     const etSender = detectEtransfer(tx.description || '');
@@ -1052,16 +1070,29 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
           </div>
           {payableBills.length === 0 ? (
             <p style={{ color: C.muted, fontSize: 12 }}>{T.payBillNone}</p>
-          ) : payableBills.map(b => (
-            <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderTop: `1px solid ${C.divider}` }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12.5, color: C.text, fontWeight: 600 }}>{b.supplier_name}</div>
-                <div style={{ fontSize: 11, color: C.muted }}>{b.bill_date || ''} {b.invoice_number || ''}</div>
+          ) : (
+            <>
+              {payableBills.map(b => (
+                <label key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderTop: `1px solid ${C.divider}`, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={payPicked.includes(b.id)} onChange={() => togglePayBill(b.id)}
+                    style={{ accentColor: '#f97316' }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, color: C.text, fontWeight: 600 }}>{b.supplier_name}</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>{b.bill_date || ''} {b.invoice_number || ''}</div>
+                  </div>
+                  <div style={{ fontSize: 12.5, color: C.text, fontVariantNumeric: 'tabular-nums' }}>{fmt(b.amount)}</div>
+                </label>
+              ))}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
+                <span style={{ flex: 1, fontSize: 11.5, color: payTotalsAgree ? '#22c55e' : C.muted, fontVariantNumeric: 'tabular-nums' }}>
+                  {T.payBillSelected(fmt(paySelectedCents / 100), fmt(Math.abs(payingTx.amount)))}
+                </span>
+                <button onClick={linkBillsToTx} disabled={!payTotalsAgree} style={{
+                  ...btnSmall, opacity: payTotalsAgree ? 1 : 0.45, cursor: payTotalsAgree ? 'pointer' : 'default',
+                }}>{T.payBillLink}</button>
               </div>
-              <div style={{ fontSize: 12.5, color: C.text, fontVariantNumeric: 'tabular-nums' }}>{fmt(b.amount)}</div>
-              <button onClick={() => linkBillToTx(b.id)} style={btnSmall}>{T.payBillLink}</button>
-            </div>
-          ))}
+            </>
+          )}
           {payError && <div style={{ marginTop: 8, fontSize: 11.5, color: '#f87171' }}>{payError}</div>}
         </ModalOverlay>
       )}

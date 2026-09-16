@@ -2155,7 +2155,7 @@ ipcMain.handle('supplier:bill:markUnpaid',(_e, id)             => {
 // reversed first, so the books keep the record of what happened.
 ipcMain.handle('supplier:bill:delete', (_e, id)          => supplierBillDelete(id));
 // Linking a statement line to the bill it paid: proof of payment on both sides.
-ipcMain.handle('supplier:bill:payByBankTx', (_e, txId, billId) => supplierBillPayByBankTransaction(txId, billId));
+ipcMain.handle('supplier:bill:payByBankTx', (_e, txId, billIds) => supplierBillPayByBankTransaction(txId, billIds));
 // Statement lines that could be a bill's payment, for the statement-first order.
 ipcMain.handle('supplier:bill:linesForAmount', (_e, amount) => bankLinesForBillAmount(amount));
 ipcMain.handle('supplier:payments:list', (_e, billId)          => supplierPaymentsList(billId));

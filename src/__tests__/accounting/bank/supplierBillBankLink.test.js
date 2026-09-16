@@ -6,6 +6,8 @@
  * APLINK-005  a card pays a bill the same way a bank account does
  * APLINK-006  the statement line that could be a bill's payment is found
  * APLINK-007  the statement came first: attaching moves the expense to the bill
+ * APLINK-008  one payment settles three bills from the same supplier
+ * APLINK-009  a selection that does not add up changes nothing
  *
  * A bill recorded in the Bills screen raises accounts payable. The statement line
  * that pays it must only settle that payable - Dr 2010 / Cr the bank or card
@@ -213,5 +215,71 @@ describe('APLINK-007 the statement came first', () => {
     expect(balanceOf('2210')).toBe(-11498);
     const bill = db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(billId);
     expect(bill).toMatchObject({ paid: 1, bank_transaction_id: txId });
+  });
+});
+
+// Three bills, no tax, so the arithmetic of the group is the point.
+function addPlainBill(amount, date = '2026-08-28') {
+  return db.prepare(
+    `INSERT INTO supplier_bills (month_key, supplier_name, amount, bill_date, tps_paid, tvq_paid, coa_account_id, paid)
+     VALUES ('2026-08','Acme Packaging',?,?,0,0,?,0)`
+  ).run(amount, date, acc('6100').id).lastInsertRowid;
+}
+
+describe('APLINK-008 one payment, three bills', () => {
+  it('settles them all against the one statement line', () => {
+    const ids = [addPlainBill(100), addPlainBill(100), addPlainBill(100)];
+    ids.forEach(id => supplierBillPost(id, db));
+    expect(balanceOf('6100')).toBe(30000);
+    expect(balanceOf('2010')).toBe(-30000);
+
+    const cardId = addAccount({ name: 'Visa', type: 'credit_card', coa: '2210' });
+    const txId = addTx({ accountId: cardId, amount: -300 });
+    expect(supplierBillPayByBankTransaction(txId, ids, db)).toMatchObject({ ok: true, billIds: ids });
+
+    expect(balanceOf('2010')).toBe(0);
+    expect(balanceOf('2210')).toBe(-30000);
+    expect(balanceOf('6100')).toBe(30000);
+    for (const id of ids) {
+      expect(db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(id))
+        .toMatchObject({ paid: 1, bank_transaction_id: txId });
+    }
+  });
+
+  it('unlinking releases every bill it paid', () => {
+    const ids = [addPlainBill(100), addPlainBill(100), addPlainBill(100)];
+    ids.forEach(id => supplierBillPost(id, db));
+    const txId = addTx({ accountId: addAccount(), amount: -300 });
+    supplierBillPayByBankTransaction(txId, ids, db);
+
+    bankTransactionUnmatch(txId, db);
+
+    for (const id of ids) {
+      expect(db.prepare(`SELECT paid, bank_transaction_id FROM supplier_bills WHERE id=?`).get(id))
+        .toMatchObject({ paid: 0, bank_transaction_id: null });
+    }
+    expect(balanceOf('2010')).toBe(-30000);
+    expect(balanceOf('1010')).toBe(0);
+  });
+});
+
+describe('APLINK-009 a selection that does not add up', () => {
+  it('refuses two of the three, and leaves everything as it was', () => {
+    const ids = [addPlainBill(100), addPlainBill(100), addPlainBill(100)];
+    ids.forEach(id => supplierBillPost(id, db));
+    const txId = addTx({ accountId: addAccount(), amount: -300 });
+
+    expect(supplierBillPayByBankTransaction(txId, [ids[0], ids[1]], db))
+      .toMatchObject({ ok: false, error: 'amount_mismatch' });
+    expect(supplierBillPayByBankTransaction(txId, [], db)).toMatchObject({ ok: false, error: 'no_bills' });
+
+    expect(balanceOf('2010')).toBe(-30000);
+    expect(balanceOf('1010')).toBe(0);
+    for (const id of ids) {
+      expect(db.prepare(`SELECT paid FROM supplier_bills WHERE id=?`).get(id).paid).toBe(0);
+    }
+    // The same bill twice is one bill, not two: it cannot be used to pad a total.
+    expect(supplierBillPayByBankTransaction(txId, [ids[0], ids[0], ids[0]], db))
+      .toMatchObject({ ok: false, error: 'amount_mismatch' });
   });
 });

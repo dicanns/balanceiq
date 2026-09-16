@@ -83,3 +83,14 @@ describe('APGUARD-005 the statement-first order is offered', () => {
     expect(MAIN).toMatch(/ipcMain\.handle\('supplier:bill:linesForAmount'/);
   });
 });
+
+describe('APGUARD-006 one payment covering several bills', () => {
+  it('the dialog ticks bills and only links when the total agrees', () => {
+    expect(BANQUE).toMatch(/const \[payPicked, setPayPicked\]/);
+    expect(BANQUE).toMatch(/const togglePayBill = \(id\) =>/);
+    expect(BANQUE).toMatch(/const payTotalsAgree = !!payingTx && paySelectedCents > 0 && paySelectedCents === payTxCents;/);
+    expect(BANQUE).toMatch(/disabled=\{!payTotalsAgree\}/);
+    expect(BANQUE).toMatch(/payByBankTx\(payingTx\.id, payPicked\)/);
+    expect((BANQUE.match(/payBillSelected/g) || []).length).toBeGreaterThanOrEqual(3);
+  });
+});

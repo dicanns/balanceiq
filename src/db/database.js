@@ -3663,13 +3663,11 @@ function bankTransactionUnmatch(txId, _db) {
     _reverseBankTransactionEntry(db, txId);
     // A bill this line paid goes back to unpaid: the proof of payment is gone,
     // so the payable is owing again.
-    const link = db.prepare(`SELECT matched_entity_type, matched_entity_id FROM bank_transactions WHERE id=?`).get(txId);
-    if (link?.matched_entity_type === 'supplier_bill' && link.matched_entity_id) {
-      db.prepare(
-        `UPDATE supplier_bills SET paid=0, payment_date=NULL, payment_method=NULL, bank_transaction_id=NULL
-          WHERE id=? AND bank_transaction_id=?`
-      ).run(link.matched_entity_id, txId);
-    }
+    // Every bill this line paid goes back to unpaid, however many there were.
+    db.prepare(
+      `UPDATE supplier_bills SET paid=0, payment_date=NULL, payment_method=NULL, bank_transaction_id=NULL
+        WHERE bank_transaction_id=?`
+    ).run(txId);
     db.prepare(
       `UPDATE bank_transactions SET match_status='unmatched', matched_entity_type=NULL, matched_entity_id=NULL, coa_account_id=NULL WHERE id=?`
     ).run(txId);
@@ -4894,39 +4892,53 @@ function supplierBillPostPayment(billId, { paymentDate, bankCoaNumber = '1010' }
 // The line keeps posting through the ordinary bank path, so re-categorizing, the
 // orphan sweep and reconciliation all keep working unchanged. The only things
 // added are the two pointers that let each side name the other.
-function supplierBillPayByBankTransaction(txId, billId, _db) {
+function supplierBillPayByBankTransaction(txId, billIds, _db) {
   const db = _db || getDb();
+  const ids = [...new Set((Array.isArray(billIds) ? billIds : [billIds]).map(Number).filter(Boolean))];
+  if (!ids.length) return { ok: false, error: 'no_bills' };
+
   const tx = db.prepare(`SELECT * FROM bank_transactions WHERE id=?`).get(txId);
   if (!tx) return { ok: false, error: 'transaction_not_found' };
-  const bill = db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(billId);
-  if (!bill) return { ok: false, error: 'bill_not_found' };
-  if (bill.paid) return { ok: false, error: 'bill_already_paid' };
   if (Number(tx.amount) >= 0) return { ok: false, error: 'not_money_out' };
+
+  const bills = [];
+  for (const id of ids) {
+    const bill = db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(id);
+    if (!bill) return { ok: false, error: 'bill_not_found' };
+    if (bill.paid) return { ok: false, error: 'bill_already_paid' };
+    bills.push(bill);
+  }
 
   const ap = db.prepare(`SELECT * FROM chart_of_accounts WHERE account_number='2010'`).get();
   if (!ap) return { ok: false, error: 'missing_coa_accounts' };
 
-  // A bill is paid or it is not: the model carries no partial payments, so a
-  // line for a different amount is not this bill's payment.
-  const billCents = Math.round((Number(bill.amount) || 0) * 100);
+  // Each bill is settled in full or not at all: no part of one is paid here. So
+  // the bills chosen have to add up to the line exactly - which is what lets one
+  // payment cover three bills from the same supplier.
+  const billCents = bills.reduce((n, b) => n + Math.round((Number(b.amount) || 0) * 100), 0);
   const txCents = Math.round(Math.abs(Number(tx.amount) || 0) * 100);
   if (billCents !== txCents) return { ok: false, error: 'amount_mismatch' };
 
   db.transaction(() => {
     _reverseBankTransactionEntry(db, txId);
-    // The payment carries no tax of its own: the tax was claimed on the bill.
+    // matched_entity_id names one bill, for the row that shows what this line is.
+    // Which bills it actually settled is recorded on the bills themselves, so a
+    // payment covering several of them loses nothing.
     db.prepare(
       `UPDATE bank_transactions
           SET match_status='matched', matched_entity_type='supplier_bill', matched_entity_id=?,
               coa_account_id=?, tps_paid=NULL, tvq_paid=NULL, is_transfer=0
         WHERE id=?`
-    ).run(billId, ap.id, txId);
+    ).run(ids[0], ap.id, txId);
+    // The payment carries no tax of its own: the tax was claimed on each bill.
     _postBankTransactionEntry(db, txId);
-    db.prepare(
-      `UPDATE supplier_bills SET paid=1, payment_date=?, payment_method='bank', bank_transaction_id=? WHERE id=?`
-    ).run(tx.transaction_date, txId, billId);
+    for (const id of ids) {
+      db.prepare(
+        `UPDATE supplier_bills SET paid=1, payment_date=?, payment_method='bank', bank_transaction_id=? WHERE id=?`
+      ).run(tx.transaction_date, txId, id);
+    }
   })();
-  return { ok: true, billId, txId };
+  return { ok: true, billIds: ids, txId };
 }
 
 // The other order: the card statement was imported and categorized weeks ago,
