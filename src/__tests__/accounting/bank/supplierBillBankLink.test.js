@@ -4,6 +4,8 @@
  * APLINK-003  a line that cannot be the payment is refused
  * APLINK-004  unlinking puts the bill back to unpaid and reverses the payment
  * APLINK-005  a card pays a bill the same way a bank account does
+ * APLINK-006  the statement line that could be a bill's payment is found
+ * APLINK-007  the statement came first: attaching moves the expense to the bill
  *
  * A bill recorded in the Bills screen raises accounts payable. The statement line
  * that pays it must only settle that payable - Dr 2010 / Cr the bank or card
@@ -17,6 +19,7 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const {
   supplierBillPost, supplierBillPayByBankTransaction, bankTransactionUnmatch,
+  bankLinesForBillAmount, glDraftEntry, glPostEntry,
 } = require('../../../db/database.js');
 
 let db;
@@ -158,5 +161,57 @@ describe('APLINK-005 a card pays a bill the same way', () => {
     expect(balanceOf('2010')).toBe(0);
     expect(balanceOf('2210')).toBe(-11498);
     expect(balanceOf('1010')).toBe(0);
+  });
+});
+
+describe('APLINK-006 finding the line that could be the payment', () => {
+  it('offers same-amount money out, and nothing else', () => {
+    const accountId = addAccount();
+    const wanted = addTx({ accountId, amount: -114.98 });
+    addTx({ accountId, amount: 114.98 });           // money in
+    addTx({ accountId, amount: -99.00 });           // another amount
+    const taken = addTx({ accountId, amount: -114.98 });
+    db.prepare(`UPDATE bank_transactions SET matched_entity_type='supplier_bill', matched_entity_id=1 WHERE id=?`).run(taken);
+
+    const found = bankLinesForBillAmount(114.98, db).map(r => r.id);
+    expect(found).toEqual([wanted]);
+    expect(bankLinesForBillAmount(0, db)).toEqual([]);
+  });
+});
+
+describe('APLINK-007 the statement came first', () => {
+  it('attaching a categorized line moves the expense to the bill, counted once', () => {
+    // The card statement was imported and categorized to Food weeks ago.
+    const cardId = addAccount({ name: 'Visa', type: 'credit_card', coa: '2210' });
+    const txId = addTx({ accountId: cardId });
+    const { entryId } = glDraftEntry({
+      entry_date: '2026-09-03',
+      description: 'OSOLE MIO',
+      source_type: 'bank_tx',
+      source_id: String(txId),
+      lines: [
+        { account_id: acc('6100').id, debit_cents: 11498, credit_cents: 0, memo: 'OSOLE MIO' },
+        { account_id: acc('2210').id, debit_cents: 0, credit_cents: 11498, memo: 'OSOLE MIO' },
+      ],
+    }, db);
+    glPostEntry(entryId, db);
+    db.prepare(`UPDATE bank_transactions SET match_status='manual', coa_account_id=?, journal_entry_id=? WHERE id=?`)
+      .run(acc('6100').id, entryId, txId);
+    expect(balanceOf('6100')).toBe(11498);   // the whole amount, tax and all
+
+    // The bill turns up later and is recorded, then the line is attached to it.
+    const billId = addBill();
+    supplierBillPost(billId, db);
+    expect(supplierBillPayByBankTransaction(txId, billId, db)).toMatchObject({ ok: true });
+
+    // The line's expense entry was reversed: the bill is now the only place the
+    // expense lives, net of the tax it claims.
+    expect(balanceOf('6100')).toBe(10000);
+    expect(balanceOf('2100')).toBe(500);
+    expect(balanceOf('2110')).toBe(998);
+    expect(balanceOf('2010')).toBe(0);
+    expect(balanceOf('2210')).toBe(-11498);
+    const bill = db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(billId);
+    expect(bill).toMatchObject({ paid: 1, bank_transaction_id: txId });
   });
 });

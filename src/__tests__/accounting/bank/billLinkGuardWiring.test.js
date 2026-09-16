@@ -63,3 +63,23 @@ describe('APGUARD-004 the ledger wiring stays in place', () => {
     expect(MAIN).toMatch(/ipcMain\.handle\('supplier:bill:payByBankTx'/);
   });
 });
+
+describe('APGUARD-005 the statement-first order is offered', () => {
+  it('after saving a bill, matching statement lines are offered for attaching', () => {
+    expect(BILLS).toMatch(/const lines = await window\.api\.supplierBills\.linesForAmount\(payload\.amount\);/);
+    expect(BILLS).toMatch(/if \(lines\?\.length\) setAttach\(\{ billId, lines \}\);/);
+    expect(BILLS).toMatch(/const r = await window\.api\.supplierBills\.payByBankTx\(txId, attach\.billId\);/);
+    expect(BILLS).toMatch(/\{T\.attachTitle\}/);
+    expect(BILLS).toMatch(/\{T\.attachDismiss\}/);
+  });
+
+  it('carries the attach wording in both languages', () => {
+    for (const key of ['attachTitle', 'attachBody', 'attachBtn', 'attachDismiss']) {
+      expect((BILLS.match(new RegExp(key + ':', 'g')) || []).length, key).toBe(2);
+    }
+  });
+
+  it('the main process exposes the lookup', () => {
+    expect(MAIN).toMatch(/ipcMain\.handle\('supplier:bill:linesForAmount'/);
+  });
+});

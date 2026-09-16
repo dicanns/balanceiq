@@ -63,6 +63,7 @@ const {
   bankStatementImport, bankStatementsList, bankStatementDelete,
   bankAccountPostOpeningBalance, bankPostMissingEntries, bankSubledgerBalances,
   bankTransactionsList, bankTransactionMatch, bankTransactionUnmatch, bankTransactionCategorize,
+  bankLinesForBillAmount,
   bankReconcilePreview, bankReconcileClose, bankReconcileReopen,
   bankLearnedRulesList, bankLearnedRuleDelete,
   taxPeriodCompute, taxPeriodSave, taxPeriodMarkFiled, taxPeriodList,
@@ -2155,6 +2156,8 @@ ipcMain.handle('supplier:bill:markUnpaid',(_e, id)             => {
 ipcMain.handle('supplier:bill:delete', (_e, id)          => supplierBillDelete(id));
 // Linking a statement line to the bill it paid: proof of payment on both sides.
 ipcMain.handle('supplier:bill:payByBankTx', (_e, txId, billId) => supplierBillPayByBankTransaction(txId, billId));
+// Statement lines that could be a bill's payment, for the statement-first order.
+ipcMain.handle('supplier:bill:linesForAmount', (_e, amount) => bankLinesForBillAmount(amount));
 ipcMain.handle('supplier:payments:list', (_e, billId)          => supplierPaymentsList(billId));
 ipcMain.handle('supplier:payments:create',(_e, data)           => supplierPaymentCreate(data));
 

@@ -42,6 +42,12 @@ const UI = {
     confirmDelete: 'Supprimer cette facture ? Toute ecriture au grand livre sera contrepassee. Cette action est definitive.',
     paidOn: 'Payée le',
     paidVia: (n) => `· par ${n}`,
+    attachTitle: 'Cette facture est peut-être déjà sur un relevé',
+    attachBody: 'Une ligne du même montant a été importée. Attachez-la : la dépense reste comptabilisée une seule fois, par la facture, et la ligne devient le paiement.',
+    attachNow: (n) => `actuellement catégorisée à ${n}`,
+    attachUncat: 'pas encore catégorisée',
+    attachBtn: 'Attacher',
+    attachDismiss: 'Pas maintenant',
     outstanding: 'Solde impayé',
     unpaid: 'Impayées',
     paid: 'Payées',
@@ -103,6 +109,12 @@ const UI = {
     confirmDelete: 'Delete this bill? Any ledger entry will be reversed. This cannot be undone.',
     paidOn: 'Paid',
     paidVia: (n) => `· via ${n}`,
+    attachTitle: 'This bill may already be on a statement',
+    attachBody: 'A statement line for the same amount was imported. Attach it: the expense stays booked once, by the bill, and the line becomes the payment.',
+    attachNow: (n) => `currently categorized to ${n}`,
+    attachUncat: 'not categorized yet',
+    attachBtn: 'Attach',
+    attachDismiss: 'Not now',
     outstanding: 'Outstanding',
     unpaid: 'Unpaid',
     paid: 'Paid',
@@ -246,6 +258,7 @@ export default function BillsTab({ lang = 'fr' }) {
   const [templates, setTemplates] = useState({});
   const [ownNames, setOwnNames] = useState([]);
   const [dragOver, setDragOver] = useState(false);
+  const [attach, setAttach]     = useState(null);   // { billId, lines } - statement lines that may be this bill's payment
 
   const load = useCallback(async () => {
     try {
@@ -432,8 +445,8 @@ export default function BillsTab({ lang = 'fr' }) {
       month_key: (f.bill_date || today()).slice(0, 7),
     };
     try {
-      if (f.id) await window.api.supplierBills.update(f.id, payload);
-      else      await window.api.supplierBills.create(payload);
+      const saved = f.id ? await window.api.supplierBills.update(f.id, payload)
+                         : await window.api.supplierBills.create(payload);
       if (read) {
         try {
           const next = rememberBill(templates, { read: read.fields, saved: payload, picks });
@@ -442,6 +455,16 @@ export default function BillsTab({ lang = 'fr' }) {
         } catch (_) { /* remembering a layout must never lose the bill */ }
       }
       setEditing(null); resetReading(); await load();
+      // The statement may already carry this purchase: the card was imported and
+      // categorized before the bill turned up. Offer to attach that line rather
+      // than leave the same expense on the books twice.
+      try {
+        const billId = saved?.id || f.id;
+        if (billId && !saved?.paid) {
+          const lines = await window.api.supplierBills.linesForAmount(payload.amount);
+          if (lines?.length) setAttach({ billId, lines });
+        }
+      } catch (_) { /* a courtesy: never stand between the operator and the bill */ }
     } catch (e) { setError(String(e?.message ?? e)); }
     finally { setBusy(false); }
   }
@@ -457,6 +480,21 @@ export default function BillsTab({ lang = 'fr' }) {
       }
       await load();
     } catch (_) {} finally { setBusy(false); }
+  }
+
+  // Attaching re-points the statement line at accounts payable: whatever it had
+  // posted as an expense is reversed first, so the bill is left as the only place
+  // the expense is recorded and the line becomes its payment.
+  async function attachLine(txId) {
+    if (!attach) return;
+    setBusy(true); setError('');
+    try {
+      const r = await window.api.supplierBills.payByBankTx(txId, attach.billId);
+      if (r?.ok === false) { setError(String(r.error || '')); return; }
+      setAttach(null);
+      await load();
+    } catch (e) { setError(String(e?.message ?? e)); }
+    finally { setBusy(false); }
   }
 
   async function deleteBill(bill) {
@@ -550,6 +588,29 @@ export default function BillsTab({ lang = 'fr' }) {
         <input style={input} value={editing.note} onChange={e => set({ note: e.target.value })} /></div>
 
       {error && <div style={{ fontSize: 12, color: '#ef4444' }}>{error}</div>}
+      {attach && (
+        <div style={{ background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.35)', borderRadius: 8, padding: '10px 12px' }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: '#fdba74' }}>{T.attachTitle}</div>
+          <div style={{ fontSize: 11.5, color: C.muted, marginTop: 3, lineHeight: 1.5 }}>{T.attachBody}</div>
+          {attach.lines.map(l => (
+            <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 7 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, color: C.text }}>{l.transaction_date} · {l.account_name} · {money(Math.abs(l.amount))}</div>
+                <div style={{ fontSize: 10.5, color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {l.description} · {l.current_account_number ? T.attachNow(l.current_account_number) : T.attachUncat}
+                </div>
+              </div>
+              <button onClick={() => attachLine(l.id)} disabled={busy} style={{
+                background: 'none', border: '1px solid rgba(249,115,22,0.45)', borderRadius: 5, color: '#f97316',
+                cursor: busy ? 'default' : 'pointer', fontSize: 11, fontWeight: 600, padding: '3px 10px', whiteSpace: 'nowrap',
+              }}>{T.attachBtn}</button>
+            </div>
+          ))}
+          <button onClick={() => setAttach(null)} style={{
+            background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 11, padding: '6px 0 0',
+          }}>{T.attachDismiss}</button>
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 8 }}>
         <button onClick={save} disabled={busy} style={btn('linear-gradient(135deg,#f97316,#ea580c)')}>{T.save}</button>

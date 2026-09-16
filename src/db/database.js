@@ -4929,6 +4929,32 @@ function supplierBillPayByBankTransaction(txId, billId, _db) {
   return { ok: true, billId, txId };
 }
 
+// The other order: the card statement was imported and categorized weeks ago,
+// and the bill turns up later - or never turns up at all and is entered from
+// memory. These are the lines that could be this bill's payment, so the Bills
+// screen can offer to attach one instead of leaving the expense on the books
+// twice. A line already linked to another bill is not offered, and the amount
+// must match to the cent: a bill is paid in full here or not at all.
+function bankLinesForBillAmount(amount, _db) {
+  const db = _db || getDb();
+  const cents = Math.round((Number(amount) || 0) * 100);
+  if (!cents) return [];
+  return db.prepare(`
+    SELECT bt.id, bt.transaction_date, bt.description, bt.amount, bt.match_status, bt.reconciled,
+           ba.name AS account_name, ba.account_type,
+           ca.account_number AS current_account_number,
+           ca.name_fr        AS current_name_fr,
+           ca.name_en        AS current_name_en
+    FROM bank_transactions bt
+    JOIN bank_accounts ba ON ba.id = bt.bank_account_id
+    LEFT JOIN chart_of_accounts ca ON ca.id = bt.coa_account_id
+    WHERE bt.amount < 0
+      AND CAST(ROUND(ABS(bt.amount) * 100) AS INTEGER) = ?
+      AND (bt.matched_entity_type IS NULL OR bt.matched_entity_type <> 'supplier_bill')
+    ORDER BY bt.transaction_date DESC, bt.id DESC
+    LIMIT 20`).all(cents);
+}
+
 // What the subledger says is owed, for the control-account check on 2010. Built
 // from the bills themselves rather than from the ledger, so it is an independent
 // second opinion - which is the only kind worth comparing against.
@@ -6593,6 +6619,7 @@ module.exports = {
   bankStatementImport, bankStatementsList, bankStatementDelete,
   bankAccountPostOpeningBalance, bankPostMissingEntries, bankFindOrphanEntries, bankSubledgerBalances,
   bankTransactionsList, bankTransactionMatch, bankTransactionUnmatch, bankTransactionCategorize,
+  bankLinesForBillAmount,
   bankReconcilePreview, bankReconcileClose, bankReconcileReopen,
   bankLearnedRulesList, bankLearnedRuleDelete,
   taxPeriodCompute, taxPeriodSave, taxPeriodMarkFiled, taxPeriodList,
