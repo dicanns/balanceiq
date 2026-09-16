@@ -60,6 +60,10 @@ const UI = {
     payBillHint:      'La facture comptabilise la dépense; cette ligne ne règle que ce que vous devez (2010). Ne catégorisez pas la même ligne à un compte de dépense, sinon la dépense compterait deux fois.',
     payBillNone:      'Aucune facture impayée du même montant.',
     payBillLink:      'Lier',
+    billMatchTitle:   'Une facture fournisseur impayée correspond à ce montant',
+    billMatchBody:    (n) => `${n} : cette facture comptabilise déjà la dépense et les taxes. Liez cette ligne à la facture au lieu de la catégoriser, sinon la dépense compterait deux fois.`,
+    billMatchLink:    'Lier à la facture',
+    billMatchIgnore:  'Non, ce n\'est pas cette facture',
     match:            'Apparier',
     unmatch:          'Désapparier',
     selectCoa:        'Sélectionner un compte GL…',
@@ -208,6 +212,10 @@ const UI = {
     payBillHint:      'The bill books the expense; this line only settles what you owe (2010). Do not categorize this line to an expense account as well, or the expense is counted twice.',
     payBillNone:      'No unpaid bill for the same amount.',
     payBillLink:      'Link',
+    billMatchTitle:   'An unpaid supplier bill matches this amount',
+    billMatchBody:    (n) => `${n}: that bill already books the expense and the tax. Link this line to the bill instead of categorizing it, or the expense is counted twice.`,
+    billMatchLink:    'Link to the bill',
+    billMatchIgnore:  'No, not that bill',
     match:            'Match',
     unmatch:          'Unmatch',
     selectCoa:        'Select a GL account…',
@@ -396,6 +404,8 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   const [payingTx, setPayingTx]                   = useState(null);
   const [payableBills, setPayableBills]           = useState([]);
   const [payError, setPayError]                   = useState('');
+  const [billMatches, setBillMatches]             = useState([]);
+  const [billMatchDismissed, setBillMatchDismissed] = useState(false);
   const [categorizeCoaId, setCategorizeCoaId]     = useState('');
   const [categorizeNotes, setCategorizeNotes]     = useState('');
   const [catTransfer, setCatTransfer]             = useState(false);
@@ -586,6 +596,28 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
       setPayableBills((bills || []).filter(b => Math.round((Number(b.amount) || 0) * 100) === cents));
     } catch (_) { setPayableBills([]); }
   };
+
+  // The mistake happens in the Categorize dialog, so the warning belongs there -
+  // not only in the link dialog, which the careful user already chose. A money-out
+  // line with an unpaid bill for the same amount is almost certainly that bill's
+  // payment, and categorizing it to an expense account would book the expense a
+  // second time. A courtesy, never a block: the operator may know better.
+  useEffect(() => {
+    setBillMatchDismissed(false);
+    setBillMatches([]);
+    const tx = categorizingTx;
+    if (!tx || Number(tx.amount) >= 0) return undefined;
+    let alive = true;
+    (async () => {
+      try {
+        const bills = await window.api.supplierBills.list({ paid: 0 });
+        const cents = Math.round(Math.abs(Number(tx.amount) || 0) * 100);
+        const same = (bills || []).filter(b => Math.round((Number(b.amount) || 0) * 100) === cents);
+        if (alive) setBillMatches(same);
+      } catch (_) { /* the warning is a courtesy: never stand in the way */ }
+    })();
+    return () => { alive = false; };
+  }, [categorizingTx]);
 
   const linkBillToTx = async (billId) => {
     if (!payingTx) return;
@@ -1107,6 +1139,19 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
           </div>
           {coaName(categorizingTx, 'coa_') && (
             <div style={{ marginBottom: 10, fontSize: 12, color: '#f59e0b' }}>{T.suggestedCoa(coaName(categorizingTx, 'coa_'))}</div>
+          )}
+          {billMatches.length > 0 && !billMatchDismissed && (
+            <div style={{ marginBottom: 12, background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.35)',
+              borderRadius: 6, padding: '10px 12px', fontSize: 11.5, color: '#fdba74', lineHeight: 1.5 }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>{T.billMatchTitle}</div>
+              <div style={{ color: C.muted }}>{T.billMatchBody(billMatches.map(b => b.supplier_name).join(', '))}</div>
+              <div style={{ display: 'flex', gap: 7, marginTop: 8, flexWrap: 'wrap' }}>
+                <button type="button" onClick={() => { const tx = categorizingTx; setCategorizingTx(null); openPayBill(tx); }}
+                  style={{ ...btnSmall, fontSize: 11 }}>{T.billMatchLink}</button>
+                <button type="button" onClick={() => setBillMatchDismissed(true)}
+                  style={{ ...btnSmall, fontSize: 11 }}>{T.billMatchIgnore}</button>
+              </div>
+            </div>
           )}
           {categorizingTx.etSender && (
             <div style={{ marginBottom: 12, padding: '6px 10px', background: 'rgba(167,139,250,0.07)', border: '1px solid rgba(167,139,250,0.2)', borderRadius: 6 }}>
