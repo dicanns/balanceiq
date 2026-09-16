@@ -16,6 +16,7 @@ const {
   storageGet, storageSet, storageGetAll,
   stripApiConfigSecrets, mergeApiConfigSecrets, incomeStatement, coaSetItcPct, coaRename,
   supplierBillPost, supplierBillUnpost, supplierBillPostPayment, supplierBillSubledger,
+  supplierBillRepairTaxAccounts,
   bankNeedsCategorizingCount, firstRunFacts,
   getAllTablesForBackup, restoreAllTablesFromBackup,
   syncQueuePush, syncQueuePeek, syncQueueDelete, syncQueueIncrementAttempts, syncQueueLength,
@@ -1585,6 +1586,16 @@ app.whenReady().then(() => {
 
   // Auto-backup — runs on every launch, one file per day
   setTimeout(() => { performAutoBackup().catch(() => {}); }, 3000);
+
+  // Bills recorded on v1.69.0 to v1.70.0 put their recoverable tax in 2100 / 2110.
+  // Repaired after the daily backup, so the copy taken today predates the change;
+  // once done there is nothing left to find on later launches.
+  setTimeout(() => {
+    try {
+      const r = supplierBillRepairTaxAccounts();
+      if (r.found) console.log('[bills] tax accounts repaired', JSON.stringify(r));
+    } catch (e) { console.error('[bills] tax account repair failed:', e.message); }
+  }, 8000);
 
   // Auto-updater — GitHub API fetch (works without code signing)
   if (app.isPackaged) {

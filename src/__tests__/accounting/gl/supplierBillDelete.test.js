@@ -29,8 +29,8 @@ beforeEach(() => {
   for (const [num, name, type] of [
     ['1010', 'Cash', 'asset'],
     ['2010', 'AP', 'liability'],
-    ['2100', 'GST paid', 'liability'],
-    ['2110', 'QST paid', 'liability'],
+    ['1400', 'GST receivable', 'asset'],
+    ['1410', 'QST receivable', 'asset'],
     ['6100', 'Rent', 'expense'],
   ]) {
     db.prepare(

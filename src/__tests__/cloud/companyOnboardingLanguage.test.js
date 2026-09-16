@@ -45,3 +45,12 @@ describe('NEWCO creating a BalanceIQ account', () => {
     expect(I18N.match(/cfgCloudPasswordMismatch:/g)).toHaveLength(2);
   });
 });
+
+describe('NEWCO which company is open', () => {
+  it('NEWCO-006 the sidebar shows the open company under BalanceIQ', () => {
+    const SIDEBAR = read('src/components/Sidebar.jsx');
+    expect(SIDEBAR).toMatch(/companyName = '',/);
+    expect(SIDEBAR).toMatch(/\{companyName && \(/);
+    expect(APP).toMatch(/companyName=\{currentCompany\?\.name\|\|companyInfo\?\.nom\|\|""\}/);
+  });
+});

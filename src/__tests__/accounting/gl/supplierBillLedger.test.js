@@ -23,7 +23,7 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const {
   supplierBillPost, supplierBillUnpost, supplierBillPostPayment, supplierBillSubledger,
-  glFindEntryBySource,
+  supplierBillRepairTaxAccounts, glFindEntryBySource, glDraftEntry, glPostEntry,
 } = require('../../../db/database.js');
 
 let db;
@@ -36,8 +36,10 @@ beforeEach(() => {
   for (const [num, name, type, pct] of [
     ['1010', 'Cash',      'asset',     100],
     ['2010', 'AP',        'liability', 100],
-    ['2100', 'GST paid',  'liability', 100],
-    ['2110', 'QST paid',  'liability', 100],
+    ['1400', 'GST receivable', 'asset',     100],
+    ['1410', 'QST receivable', 'asset',     100],
+    ['2100', 'GST payable',    'liability', 100],
+    ['2110', 'QST payable',    'liability', 100],
     ['6100', 'Rent',      'expense',   100],
     ['6810', 'Meals',     'expense',    50],
   ]) {
@@ -70,8 +72,11 @@ describe('APPOST-001 a bill reaches the ledger', () => {
     supplierBillPost(addBill({ amount: 1149.80, tps: 50.00, tvq: 99.80 }), db);
     expect(balanceOf('2010')).toBe(-114980);   // credit: owed
     expect(balanceOf('6100')).toBe(100000);    // net of reclaimable tax
-    expect(balanceOf('2100')).toBe(5000);
-    expect(balanceOf('2110')).toBe(9980);
+    expect(balanceOf('1400')).toBe(5000);
+    expect(balanceOf('1410')).toBe(9980);
+    // The tax collected on sales is not where a purchase's credit belongs.
+    expect(balanceOf('2100')).toBe(0);
+    expect(balanceOf('2110')).toBe(0);
   });
 
   it('this is what was recorded before: nothing at all', () => {
@@ -157,8 +162,8 @@ describe('APPOST-002 paying settles the payable', () => {
 describe('APPOST-003 the claim rate applies here too', () => {
   it('a restaurant bill claims half its tax, whichever route it came in by', () => {
     supplierBillPost(addBill({ amount: 114.98, tps: 5.00, tvq: 9.98, account: '6810' }), db);
-    expect(balanceOf('2100')).toBe(250);
-    expect(balanceOf('2110')).toBe(499);
+    expect(balanceOf('1400')).toBe(250);
+    expect(balanceOf('1410')).toBe(499);
   });
 
   it('and the half it cannot claim stays in the expense', () => {
@@ -168,7 +173,7 @@ describe('APPOST-003 the claim rate applies here too', () => {
 
   it('the entry balances whatever the rate', () => {
     supplierBillPost(addBill({ amount: 114.98, tps: 5.00, tvq: 9.98, account: '6810' }), db);
-    expect(balanceOf('6810') + balanceOf('2100') + balanceOf('2110') + balanceOf('2010')).toBe(0);
+    expect(balanceOf('6810') + balanceOf('1400') + balanceOf('1410') + balanceOf('2010')).toBe(0);
   });
 });
 
@@ -235,5 +240,50 @@ describe('XFER-001 a transfer posts once, not twice', () => {
     const chequingSide = -1118.32;   // Dr 2210 / Cr 1010
     const cardSide     =  1118.32;   // would post Dr 2210 again from the card
     expect(Math.abs(chequingSide) + Math.abs(cardSide)).toBeCloseTo(2236.64, 2);
+  });
+});
+
+describe('APPOST-006 bills posted to the payable tax accounts are repaired', () => {
+  // How v1.69.0 to v1.70.0 posted a bill: the tax went to 2100 / 2110.
+  function postTheOldWay(id, { net, tps, tvq }) {
+    const { entryId } = glDraftEntry({
+      entry_date: '2026-08-04', description: 'Facture fournisseur - Acme Packaging',
+      source_type: 'supplier_bill', source_id: String(id),
+      lines: [
+        { account_id: acc('6100').id, debit_cents: net, credit_cents: 0 },
+        { account_id: acc('2100').id, debit_cents: tps, credit_cents: 0 },
+        { account_id: acc('2110').id, debit_cents: tvq, credit_cents: 0 },
+        { account_id: acc('2010').id, debit_cents: 0, credit_cents: net + tps + tvq },
+      ],
+    }, db);
+    glPostEntry(entryId, db);
+    db.prepare(`UPDATE supplier_bills SET journal_entry_id=? WHERE id=?`).run(entryId, id);
+  }
+
+  it('moves the tax to 1400 / 1410 and leaves the expense and payable as they were', () => {
+    const id = addBill({ amount: 1149.80, tps: 50.00, tvq: 99.80 });
+    postTheOldWay(id, { net: 100000, tps: 5000, tvq: 9980 });
+
+    expect(supplierBillRepairTaxAccounts(db)).toEqual({ found: 1, reposted: 1, failed: 0 });
+
+    expect(balanceOf('1400')).toBe(5000);
+    expect(balanceOf('1410')).toBe(9980);
+    expect(balanceOf('2100')).toBe(0);
+    expect(balanceOf('2110')).toBe(0);
+    expect(balanceOf('6100')).toBe(100000);
+    expect(balanceOf('2010')).toBe(-114980);
+  });
+
+  it('leaves a payment alone, and finds nothing the second time', () => {
+    const id = addBill({ amount: 1149.80, tps: 50.00, tvq: 99.80, paid: 1 });
+    postTheOldWay(id, { net: 100000, tps: 5000, tvq: 9980 });
+    supplierBillPostPayment(id, { paymentDate: '2026-09-02' }, db);
+
+    supplierBillRepairTaxAccounts(db);
+    expect(balanceOf('2010')).toBe(0);
+    expect(balanceOf('1010')).toBe(-114980);
+    expect(glFindEntryBySource('supplier_bill_payment', String(id), db)).toBeTruthy();
+
+    expect(supplierBillRepairTaxAccounts(db)).toEqual({ found: 0, reposted: 0, failed: 0 });
   });
 });

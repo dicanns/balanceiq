@@ -4764,7 +4764,7 @@ function supplierBillMarkUnpaid(id) {
 // applied to the buying side - a document that changes what you owe has to reach
 // the ledger the moment it is recorded.
 //
-//   Recording:  Dr expense (net)  Dr 2100/2110 (claimable tax)  Cr 2010 (total)
+//   Recording:  Dr expense (net)  Dr 1400/1410 (claimable tax)  Cr 2010 (total)
 //   Paying:     Dr 2010 (total)                                 Cr 1010 (total)
 //
 // The claim rate on the expense account applies here exactly as it does on a bank
@@ -4794,8 +4794,12 @@ function supplierBillPost(billId, _db) {
   const scale = (v) => Math.round(((Number(v) || 0) * 100 * claimPct) / 100);
   let tpsCents = scale(bill.tps_paid);
   let tvqCents = scale(bill.tvq_paid);
-  const gst = findNum('2100');
-  const qst = findNum('2110');
+  // Tax paid on a purchase is a credit to claim back: GST/QST receivable (1400 /
+  // 1410), the same accounts a categorized bank line uses. Posting it to 2100 /
+  // 2110 - the tax you collected and owe - shrank the payable instead, so the two
+  // routes into the books disagreed about where recoverable tax lives.
+  const gst = findNum('1400');
+  const qst = findNum('1410');
   if (!gst) tpsCents = 0;
   if (!qst) tvqCents = 0;
   if (tpsCents + tvqCents >= totalCents) { tpsCents = 0; tvqCents = 0; }
@@ -4816,6 +4820,42 @@ function supplierBillPost(billId, _db) {
   glPostEntry(entryId, db);
   db.prepare(`UPDATE supplier_bills SET journal_entry_id=? WHERE id=?`).run(entryId, billId);
   return { ok: true, entryId };
+}
+
+// Bills recorded on v1.69.0 to v1.70.0 posted their recoverable GST/QST to 2100 /
+// 2110, the tax collected and owed, instead of 1400 / 1410. Each such bill entry
+// is reversed and posted again to the right accounts - the correction stays on
+// the record rather than the old lines being rewritten. Only the bill entry is
+// touched: a payment entry carries no tax, so it is left exactly as it was. Once
+// repaired no bill entry uses those accounts, so running it again finds nothing.
+function supplierBillRepairTaxAccounts(_db) {
+  const db = _db || getDb();
+  const affected = db.prepare(`
+    SELECT DISTINCT je.source_id AS bill_id
+    FROM journal_entries je
+    JOIN journal_lines jl ON jl.entry_id = je.id
+    JOIN chart_of_accounts ca ON ca.id = jl.account_id
+    WHERE je.source_type = 'supplier_bill' AND je.status = 'posted'
+      AND ca.account_number IN ('2100','2110')`).all();
+  let reposted = 0, failed = 0;
+  for (const { bill_id } of affected) {
+    try {
+      db.transaction(() => {
+        const entry = glFindEntryBySource('supplier_bill', String(bill_id), db);
+        if (!entry) return;
+        glReverseEntry(entry.id, 'Taxes a recuperer reportees en 1400/1410', db);
+        db.prepare(`UPDATE supplier_bills SET journal_entry_id=NULL WHERE id=?`).run(bill_id);
+        const res = supplierBillPost(bill_id, db);
+        if (!res.ok) throw new Error(res.error);
+      })();
+      reposted++;
+    } catch (_) {
+      // A closed period refuses the reversal; that bill stays as it was and the
+      // rest still get repaired.
+      failed++;
+    }
+  }
+  return { found: affected.length, reposted, failed };
 }
 
 // Reversing before re-posting, never the other way round: clearing the pointer
@@ -6583,6 +6623,7 @@ module.exports = {
   setDataDir, getDataDir,
   incomeStatement, coaSetItcPct, coaRename, bankNeedsCategorizingCount, firstRunFacts,
   supplierBillPost, supplierBillUnpost, supplierBillPostPayment, supplierBillSubledger,
+  supplierBillRepairTaxAccounts,
   SECRET_CONFIG_FIELDS, stripApiConfigSecrets, mergeApiConfigSecrets,
   storageGet, storageSet, storageGetAll, storageGetByPrefix,
   getAllTablesForBackup, restoreAllTablesFromBackup,

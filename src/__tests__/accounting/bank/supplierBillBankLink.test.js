@@ -30,8 +30,8 @@ beforeEach(() => {
   for (const [num, name, type] of [
     ['1010', 'Cash', 'asset'],
     ['2010', 'AP', 'liability'],
-    ['2100', 'GST paid', 'liability'],
-    ['2110', 'QST paid', 'liability'],
+    ['1400', 'GST receivable', 'asset'],
+    ['1410', 'QST receivable', 'asset'],
     ['2210', 'Credit card', 'liability'],
     ['6100', 'Rent', 'expense'],
   ]) {
@@ -89,8 +89,8 @@ describe('APLINK-001 the expense is booked once', () => {
     expect(balanceOf('2010')).toBe(0);
     expect(balanceOf('1010')).toBe(-11498);
     // Tax was claimed on the bill, not on the payment.
-    expect(balanceOf('2100')).toBe(500);
-    expect(balanceOf('2110')).toBe(998);
+    expect(balanceOf('1400')).toBe(500);
+    expect(balanceOf('1410')).toBe(998);
   });
 });
 
@@ -209,8 +209,8 @@ describe('APLINK-007 the statement came first', () => {
     // The line's expense entry was reversed: the bill is now the only place the
     // expense lives, net of the tax it claims.
     expect(balanceOf('6100')).toBe(10000);
-    expect(balanceOf('2100')).toBe(500);
-    expect(balanceOf('2110')).toBe(998);
+    expect(balanceOf('1400')).toBe(500);
+    expect(balanceOf('1410')).toBe(998);
     expect(balanceOf('2010')).toBe(0);
     expect(balanceOf('2210')).toBe(-11498);
     const bill = db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(billId);

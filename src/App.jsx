@@ -7873,6 +7873,7 @@ function AppInner(){
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           appMode={appMode}
+          companyName={currentCompany?.name||companyInfo?.nom||""}
           previsionsEnabled={previsionsEnabled}
           canUse={canUse}
           myLinkedLocations={myLinkedLocations}

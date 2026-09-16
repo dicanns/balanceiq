@@ -119,6 +119,7 @@ export default function Sidebar({
   activeTab,
   setActiveTab,
   appMode,
+  companyName = '',
   previsionsEnabled,
   canUse,
   myLinkedLocations,
@@ -173,6 +174,14 @@ export default function Sidebar({
         }}>BIQ</div>
         <div>
           <div style={{ fontSize: 14, fontWeight: 800, color: t.text, letterSpacing: '-0.3px', lineHeight: 1.1 }}>BalanceIQ</div>
+          {/* Which company's books are open, always in view: with two companies
+              on one Mac, a bill entered in the wrong one is easy to miss. */}
+          {companyName && (
+            <div title={companyName} style={{
+              fontSize: 11, fontWeight: 600, color: t.textMuted, marginTop: 3, lineHeight: 1.2,
+              maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{companyName}</div>
+          )}
         </div>
       </div>
 
