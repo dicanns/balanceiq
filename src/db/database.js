@@ -3517,10 +3517,90 @@ function _normDescription(desc) {
 }
 
 // Parse bank CSV: returns [{date, description, amount, running_balance}]
+// ── BANK CSV ─────────────────────────────────────────────────────────────────
+// Split one CSV line into fields: quoted fields may hold the separator and
+// doubled quotes. The regex this replaces matched an empty string after every
+// field, shifting every column after the first by one: an unquoted file came in
+// with the second column as its description and an empty amount.
+function _splitCsvLine(line, delim) {
+  const out = []; let field = ''; let quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (quoted) {
+      if (c === '"') { if (line[i + 1] === '"') { field += '"'; i++; } else quoted = false; }
+      else field += c;
+    } else if (c === '"') quoted = true;
+    else if (c === delim) { out.push(field.trim()); field = ''; }
+    else field += c;
+  }
+  out.push(field.trim());
+  return out;
+}
+
+const _STATEMENT_MONTHS = {
+  jan: 1, janv: 1, janvier: 1, january: 1,
+  feb: 2, fev: 2, fevr: 2, fevrier: 2, february: 2,
+  mar: 3, mars: 3, march: 3,
+  apr: 4, avr: 4, avril: 4, april: 4,
+  may: 5, mai: 5,
+  jun: 6, juin: 6, june: 6,
+  jul: 7, juil: 7, juillet: 7, july: 7,
+  aug: 8, aou: 8, aout: 8, august: 8,
+  sep: 9, sept: 9, septembre: 9, september: 9,
+  oct: 10, octobre: 10, october: 10,
+  nov: 11, novembre: 11, november: 11,
+  dec: 12, decembre: 12, december: 12,
+};
+const _pad2 = (n) => String(n).padStart(2, '0');
+function _isoIfValid(y, m, d) {
+  const yy = y < 100 ? 2000 + y : y;
+  if (!(m >= 1 && m <= 12 && d >= 1 && d <= 31)) return null;
+  const dt = new Date(Date.UTC(yy, m - 1, d));
+  return dt.getUTCMonth() === m - 1 ? `${yy}-${_pad2(m)}-${_pad2(d)}` : null;
+}
+
+// A statement date in whatever shape the bank wrote it, as YYYY-MM-DD, or null.
+// numericOrder decides 03/04/2026: 'mdy' (the default for North American bank
+// exports) or 'dmy', worked out for the whole file by the caller.
+function normalizeStatementDate(raw, numericOrder = 'mdy') {
+  const v = String(raw || '').trim();
+  if (!v) return null;
+  let m;
+  if ((m = v.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/))) return _isoIfValid(+m[1], +m[2], +m[3]);
+  if ((m = v.match(/^(\d{4})(\d{2})(\d{2})$/))) return _isoIfValid(+m[1], +m[2], +m[3]);
+  const monthOf = (word) => _STATEMENT_MONTHS[word.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\.$/, '')];
+  if ((m = v.match(/^(\d{1,2})[\s\-.\/]+([A-Za-zÀ-ÿ]+\.?)[\s\-.\/,]+(\d{2,4})$/))) {
+    const mo = monthOf(m[2]); return mo ? _isoIfValid(+m[3], mo, +m[1]) : null;
+  }
+  if ((m = v.match(/^([A-Za-zÀ-ÿ]+\.?)[\s\-.\/]+(\d{1,2}),?[\s\-.\/]+(\d{2,4})$/))) {
+    const mo = monthOf(m[1]); return mo ? _isoIfValid(+m[3], mo, +m[2]) : null;
+  }
+  if ((m = v.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/))) {
+    const [a, b2, y] = [+m[1], +m[2], +m[3]];
+    return numericOrder === 'dmy' ? _isoIfValid(y, b2, a) : _isoIfValid(y, a, b2);
+  }
+  return null;
+}
+
+// 1,234.56 / 1 234,56 / $55.00 / (55.00) / -55.00 as a number, or null.
+function _parseStatementAmount(raw) {
+  let v = String(raw || '').trim();
+  if (!v) return null;
+  const negative = /^\(.*\)$/.test(v) || /^-|-$/.test(v.replace(/[\s$€£]/g, ''));
+  v = v.replace(/[()\s$€£  ]/g, '').replace(/^-|-$/g, '');
+  if (/,\d{1,2}$/.test(v) && !/\.\d{1,2}$/.test(v)) v = v.replace(/\./g, '').replace(',', '.');
+  else v = v.replace(/,/g, '');
+  const n = parseFloat(v);
+  if (!Number.isFinite(n)) return null;
+  return negative ? -n : n;
+}
+
 function _parseBankCSV(csvText, columnMap) {
-  const lines = csvText.split(/\r?\n/).filter(l => l.trim());
+  const lines = String(csvText || '').replace(/^﻿/, '').split(/\r?\n/).filter(l => l.trim());
   if (!lines.length) return [];
-  const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim().toLowerCase());
+  const first = lines[0];
+  const delim = ['\t', ';', ','].reduce((best, d) => (first.split(d).length > first.split(best).length ? d : best), ',');
+  const headers = _splitCsvLine(first, delim).map(h => h.toLowerCase());
 
   // Auto-detect or use saved mapping
   const map = columnMap || {};
@@ -3538,26 +3618,39 @@ function _parseBankCSV(csvText, columnMap) {
   const creditIdx = map.credit      !== undefined ? map.credit      : detect(['credit','crédit','deposits','entrée']);
   const balIdx    = map.balance     !== undefined ? map.balance     : detect(['balance','solde','running balance','closing balance']);
 
-  const rows = [];
-  for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].match(/("(?:[^"]|"")*"|[^,]*)/g) || [];
-    const clean = cols.map(c => c.replace(/^"|"$/g, '').replace(/""/g, '"').trim());
-    if (!clean[dateIdx]) continue;
+  const records = lines.slice(1).map(l => _splitCsvLine(l, delim)).filter(c => (c[dateIdx] || '').trim());
+  // 03/04/2026 cannot be read on its own: the file decides. A first part above
+  // 12 anywhere means day first; a second part above 12 means month first.
+  let numericOrder = 'mdy';
+  for (const c of records) {
+    const m = String(c[dateIdx]).trim().match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.]\d{2,4}$/);
+    if (!m) continue;
+    if (+m[1] > 12) { numericOrder = 'dmy'; break; }
+    if (+m[2] > 12) { numericOrder = 'mdy'; break; }
+  }
 
+  const rows = [];
+  for (const clean of records) {
+    const rawDate = clean[dateIdx];
+    const date = normalizeStatementDate(rawDate, numericOrder);
+    if (!date) {
+      const err = new Error(`ERR_CSV_DATE: ${String(rawDate).slice(0, 30)}`);
+      err.code = 'ERR_CSV_DATE';
+      throw err;
+    }
     let amount = 0;
     if (amtIdx >= 0 && clean[amtIdx]) {
-      amount = parseFloat(clean[amtIdx].replace(/[^0-9.\-]/g, '')) || 0;
+      amount = _parseStatementAmount(clean[amtIdx]) || 0;
     } else if (debitIdx >= 0 || creditIdx >= 0) {
-      const debit  = debitIdx  >= 0 ? parseFloat((clean[debitIdx]  || '').replace(/[^0-9.]/g, '')) || 0 : 0;
-      const credit = creditIdx >= 0 ? parseFloat((clean[creditIdx] || '').replace(/[^0-9.]/g, '')) || 0 : 0;
+      const debit  = debitIdx  >= 0 ? Math.abs(_parseStatementAmount(clean[debitIdx])  || 0) : 0;
+      const credit = creditIdx >= 0 ? Math.abs(_parseStatementAmount(clean[creditIdx]) || 0) : 0;
       amount = credit - debit;
     }
-
     rows.push({
-      transaction_date: clean[dateIdx] || '',
-      description: clean[descIdx] || '',
+      transaction_date: date,
+      description: descIdx >= 0 ? (clean[descIdx] || '') : '',
       amount,
-      running_balance: balIdx >= 0 ? (parseFloat((clean[balIdx] || '').replace(/[^0-9.\-]/g, '')) || null) : null,
+      running_balance: balIdx >= 0 ? _parseStatementAmount(clean[balIdx]) : null,
     });
   }
   return rows;
@@ -3639,8 +3732,8 @@ function _runMatchingEngine(db, bankAccountId, txIds) {
   }
 }
 
-function bankStatementImport({ bankAccountId, fileText, fileName, fileType, periodStart, periodEnd, endingBalance }) {
-  const db = getDb();
+function bankStatementImport({ bankAccountId, fileText, fileName, fileType, periodStart, periodEnd, endingBalance }, _db) {
+  const db = _db || getDb();
   const fileHash = _sha256(fileText);
 
   // Duplicate file check
@@ -3660,6 +3753,15 @@ function bankStatementImport({ bankAccountId, fileText, fileName, fileType, peri
     parsedEndingBalance = _parseOFXLedgerBalance(fileText);
   } else {
     rows = _parseBankCSV(fileText, savedMap);
+    // A card's own export writes a purchase as a positive number; in the books a
+    // purchase on the card is money out. OFX carries the sign already, so only a
+    // CSV is turned around, and a saved mapping can say otherwise (amountSign).
+    const sign = savedMap && (savedMap.amountSign === 1 || savedMap.amountSign === -1)
+      ? savedMap.amountSign
+      : (account.account_type === 'credit_card' ? -1 : 1);
+    if (sign === -1) rows = rows.map(r => ({ ...r, amount: r.amount === 0 ? 0 : -r.amount }));
+    // A file whose amounts all read as zero was misread, not a month of nothing.
+    if (rows.length && rows.every(r => !r.amount)) throw new Error('ERR_CSV_NO_AMOUNTS');
   }
 
   if (!rows.length) throw new Error('ERR_NO_TRANSACTIONS');
@@ -4002,7 +4104,7 @@ function bankStatementDelete(statementId, _db) {
     db.prepare(
       `INSERT INTO audit_log (device_id, module, action, record_type, record_id, reason)
        VALUES (?, 'bank', 'delete_statement', 'bank_statement', ?, ?)`
-    ).run(getDeviceId(), String(statementId), `period ${stmt.period_start}..${stmt.period_end}, ${removed} tx`);
+    ).run(_getDeviceUuid(db), String(statementId), `period ${stmt.period_start}..${stmt.period_end}, ${removed} tx`);
     return { ok: true, removedTransactions: removed };
   })();
 }
@@ -4176,9 +4278,11 @@ function bankSubledgerBalances(asOfDate, _db) {
   }));
 }
 
-function bankStatementsList(bankAccountId) {
-  return getDb().prepare(
-    `SELECT * FROM bank_statements WHERE bank_account_id=? ORDER BY period_end DESC`
+function bankStatementsList(bankAccountId, _db) {
+  const db = _db || getDb();
+  return db.prepare(
+    `SELECT s.*, (SELECT COUNT(*) FROM bank_transactions t WHERE t.bank_statement_id = s.id) AS line_count
+     FROM bank_statements s WHERE s.bank_account_id=? ORDER BY s.period_end DESC`
   ).all(bankAccountId);
 }
 
@@ -6939,6 +7043,7 @@ module.exports = {
   glAuditLogList,
   bankAccountsList, bankAccountCreate, bankAccountUpdate, bankAccountArchive,
   bankStatementImport, bankStatementsList, bankStatementDelete,
+  parseBankCSV: _parseBankCSV, normalizeStatementDate,
   bankAccountPostOpeningBalance, bankPostMissingEntries, bankFindOrphanEntries, bankSubledgerBalances,
   bankTransactionsList, bankTransactionUnmatch, bankTransactionCategorize,
   bankLinesForBillAmount,

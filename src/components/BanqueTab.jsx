@@ -35,6 +35,8 @@ const UI = {
       ERR_STATEMENT_DUPLICATE:          'Ce relevé a déjà été importé (fichier identique).',
       ERR_BANK_ACCOUNT_NOT_FOUND:       'Compte bancaire introuvable.',
       ERR_NO_TRANSACTIONS:              'Aucune transaction trouvée dans le fichier.',
+      ERR_CSV_DATE:                     'Une date du fichier est illisible. Vérifiez que c\'est bien le relevé exporté par la banque, sans modification.',
+      ERR_CSV_NO_AMOUNTS:               'Aucun montant n\'a pu être lu dans ce fichier. Rien n\'a été importé.',
       ERR_STATEMENT_NOT_FOUND:          'Relevé introuvable.',
       ERR_STATEMENT_ALREADY_RECONCILED: 'Ce relevé est déjà réconcilié.',
       ERR_RECONCILE_VARIANCE:           (ecart) => `Écart de ${Number(ecart).toFixed(2)} $ - réconciliez toutes les transactions avant de clôturer.`,
@@ -47,6 +49,7 @@ const UI = {
 
     colMapTitle:      'Correspondance des colonnes',
     periodStart:      'Début de période',
+    importedStatements: 'Relevés importés :',
     periodEnd:        'Fin de période',
     endingBalance:    'Solde final ($)',
     allStatuses:      'Tous les statuts',
@@ -188,6 +191,8 @@ const UI = {
       ERR_STATEMENT_DUPLICATE:          'This statement has already been imported (identical file).',
       ERR_BANK_ACCOUNT_NOT_FOUND:       'Bank account not found.',
       ERR_NO_TRANSACTIONS:              'No transactions found in the file.',
+      ERR_CSV_DATE:                     'A date in the file could not be read. Check that it is the statement exactly as the bank exported it.',
+      ERR_CSV_NO_AMOUNTS:               'No amount could be read from this file. Nothing was imported.',
       ERR_STATEMENT_NOT_FOUND:          'Statement not found.',
       ERR_STATEMENT_ALREADY_RECONCILED: 'This statement is already reconciled.',
       ERR_RECONCILE_VARIANCE:           (ecart) => `Variance of $${Number(ecart).toFixed(2)} - reconcile all transactions before closing.`,
@@ -200,6 +205,7 @@ const UI = {
 
     colMapTitle:      'Column Mapping',
     periodStart:      'Period Start',
+    importedStatements: 'Imported statements:',
     periodEnd:        'Period End',
     endingBalance:    'Ending Balance ($)',
     allStatuses:      'All statuses',
@@ -487,7 +493,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   }, [selectedAccount]);
 
   useEffect(() => { loadAccounts(); loadCoa(); loadLearnedRules(); }, []);
-  useEffect(() => { if (subTab === 'transactions') loadTransactions(); }, [subTab, selectedAccount, txFilter, txDateFrom, txDateTo]);
+  useEffect(() => { if (subTab === 'transactions') { loadTransactions(); loadStatements(); } }, [subTab, selectedAccount, txFilter, txDateFrom, txDateTo]);
   useEffect(() => { if (subTab === 'rapprochements') { loadStatements(); loadRecPreview(); } }, [subTab, selectedAccount]);
   useEffect(() => { if (subTab === 'regles') loadLearnedRules(); }, [subTab]);
 
@@ -873,6 +879,22 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
               <input type='date' value={txDateFrom} onChange={e => setTxDateFrom(e.target.value)} style={inputStyle} />
               <input type='date' value={txDateTo}   onChange={e => setTxDateTo(e.target.value)}   style={inputStyle} />
             </div>
+            {/* Each import can be taken back from here, where its lines are seen,
+                not only from Reconciliations. A reconciled statement stays. */}
+            {selectedAccount && statements.length > 0 && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', fontSize: 11.5, color: C.muted }}>
+                <span>{T.importedStatements}</span>
+                {statements.map(st => (
+                  <span key={st.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '2px 8px', border: `1px solid ${C.border}`, borderRadius: 12 }}>
+                    {fmtDate(st.period_start)} → {fmtDate(st.period_end)}{st.line_count != null ? ` · ${st.line_count}` : ''}
+                    {!st.reconciled && (
+                      <button onClick={() => deleteStatement(st)} title={T.deleteStmt}
+                        style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 13, padding: 0, lineHeight: 1 }}>×</button>
+                    )}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           {!selectedAccount ? (
