@@ -4135,8 +4135,8 @@ function _monthsInRange(periodStart, periodEnd) {
   return months;
 }
 
-function taxPeriodCompute(periodStart, periodEnd) {
-  const db = getDb();
+function taxPeriodCompute(periodStart, periodEnd, _db) {
+  const db = _db || getDb();
   const months = _monthsInRange(periodStart, periodEnd);
 
   // Load daily data once
@@ -4262,10 +4262,36 @@ function taxPeriodCompute(periodStart, periodEnd) {
   // Box 101: taxable supplies, before tax, from both channels.
   const supplies = plRevenue + invoicedRevenue;
 
+  // Bills recorded in the Bills screen post their recoverable tax to 1400 / 1410
+  // the moment they are saved, so the ledger is the source for them: posted
+  // debits net of reversals, dated in the period, from supplier_bill entries
+  // only. A reversed bill nets to zero. A statement line linked to a bill carries
+  // no tax of its own (it settles the payable), so the bank total above and this
+  // one never count the same purchase twice.
+  let tpsCtiFromSupplierBills = 0, tvqRtiFromSupplierBills = 0, supplierBillCount = 0;
+  try {
+    const row = db.prepare(
+      `SELECT
+         COALESCE(SUM(CASE WHEN ca.account_number='1400' THEN jl.debit_cents - jl.credit_cents END), 0) / 100.0 AS tps,
+         COALESCE(SUM(CASE WHEN ca.account_number='1410' THEN jl.debit_cents - jl.credit_cents END), 0) / 100.0 AS tvq,
+         COUNT(DISTINCT CASE WHEN je.status='posted' AND je.reverses_entry_id IS NULL THEN je.source_id END) AS n
+       FROM journal_lines jl
+       JOIN journal_entries je ON je.id = jl.entry_id AND je.status IN ('posted','reversed')
+       LEFT JOIN journal_entries orig ON orig.id = je.reverses_entry_id
+       JOIN chart_of_accounts ca ON ca.id = jl.account_id
+       WHERE ca.account_number IN ('1400','1410')
+         AND COALESCE(orig.source_type, je.source_type) = 'supplier_bill'
+         AND je.entry_date >= ? AND je.entry_date <= ?`
+    ).get(periodStart, periodEnd);
+    tpsCtiFromSupplierBills = row?.tps || 0;
+    tvqRtiFromSupplierBills = row?.tvq || 0;
+    supplierBillCount = row?.n || 0;
+  } catch (_) { /* pre-ledger schema */ }
+
   const tpsCtiFromBills = tpsCti;
   const tvqRtiFromBills = tvqRti;
-  tpsCti += tpsCtiFromBank;
-  tvqRti += tvqCtiFromBank;
+  tpsCti += tpsCtiFromBank + tpsCtiFromSupplierBills;
+  tvqRti += tvqCtiFromBank + tvqRtiFromSupplierBills;
 
   const netTpsOwed = tpsCollected - tpsCti;
   const netTvqOwed = tvqCollected - tvqRti;
@@ -4286,8 +4312,8 @@ function taxPeriodCompute(periodStart, periodEnd) {
   db.transaction(() => {
     logStmt.run('tps_collected', JSON.stringify({ months, method: 'revenue_pct' }), tpsCollected, now);
     logStmt.run('tvq_collected', JSON.stringify({ months, method: 'revenue_pct' }), tvqCollected, now);
-    logStmt.run('cti', JSON.stringify({ months, billIds }), tpsCti, now);
-    logStmt.run('rti', JSON.stringify({ months, billIds }), tvqRti, now);
+    logStmt.run('cti', JSON.stringify({ months, billIds, supplierBillCount, bankTxCount }), tpsCti, now);
+    logStmt.run('rti', JSON.stringify({ months, billIds, supplierBillCount, bankTxCount }), tvqRti, now);
   })();
 
   return {
@@ -4299,8 +4325,9 @@ function taxPeriodCompute(periodStart, periodEnd) {
     plRevenue, invoicedRevenue,
     // Broken out so the filing figure is auditable back to its two sources.
     tpsCtiFromBills, tvqRtiFromBills, tpsCtiFromBank, tvqCtiFromBank, bankTxCount,
+    tpsCtiFromSupplierBills, tvqRtiFromSupplierBills, supplierBillCount,
     suspenseCount,
-    billCount: billIds.length,
+    billCount: billIds.length + supplierBillCount,
     months,
     blockers: suspenseCount > 0
       ? [{ type: 'suspense', count: suspenseCount }]

@@ -30,6 +30,7 @@ const UI = {
     tpsCollected: 'TPS collectée',
     tvqCollected: 'TVQ collectée',
     tpsCti: 'CTI (TPS payée)',
+    ctiSources: (bills, bank, pl) => `Provenance TPS : ${bills} factures fournisseurs · ${bank} lignes de relevé · ${pl} factures P&L mensuelles`,
     tvqRti: 'RTI (TVQ payée)',
     netTps: 'Net TPS à remettre',
     netTvq: 'Net TVQ à remettre',
@@ -91,6 +92,7 @@ const UI = {
     tpsCollected: 'GST collected',
     tvqCollected: 'QST collected',
     tpsCti: 'ITC (GST paid)',
+    ctiSources: (bills, bank, pl) => `GST sources: ${bills} supplier bills · ${bank} statement lines · ${pl} monthly P&L bills`,
     tvqRti: 'ITR (QST paid)',
     netTps: 'Net GST owing',
     netTvq: 'Net QST owing',
@@ -603,6 +605,11 @@ export default function TaxPeriodTab({ lang }) {
                 <span style={labelStyle}>{T.tvqRti}</span>
                 <span style={greenValue}>{fmt(computed.tvqRti)}</span>
               </div>
+              {(computed.tpsCti > 0 || computed.tvqRti > 0) && (
+                <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>
+                  {T.ctiSources(fmt(computed.tpsCtiFromSupplierBills || 0), fmt(computed.tpsCtiFromBank || 0), fmt(computed.tpsCtiFromBills || 0))}
+                </div>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
                 <div style={{ padding: '8px 12px', borderRadius: 6, background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)' }}>
                   <div style={{ fontSize: 9, color: '#ef4444', marginBottom: 2 }}>{T.netTps}</div>
