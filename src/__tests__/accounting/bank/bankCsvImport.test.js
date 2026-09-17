@@ -110,7 +110,7 @@ describe('CSVIMP-004/005/006 into the books', () => {
     expect(bankStatementImport({ bankAccountId: id, fileText: AMEX, fileName: 'activity.csv', fileType: 'csv' }, db).rowCount).toBe(3);
 
     const BANQUE = fs.readFileSync(path.join(ROOT, 'src/components/BanqueTab.jsx'), 'utf8');
-    expect(BANQUE).toMatch(/if \(subTab === 'transactions'\) \{ loadTransactions\(\); loadStatements\(\); \}/);
+    expect(BANQUE).toMatch(/if \(subTab === 'transactions'\) \{[^}]*loadTransactions\(\);[^}]*loadStatements\(\);/);
     expect(BANQUE).toMatch(/\{T\.importedStatements\}/);
     expect(BANQUE).toMatch(/onClick=\{\(\) => deleteStatement\(st\)\}/);
   });

@@ -44,14 +44,25 @@ const UI = {
       ERR_MISSING_COA:                  'Compte du plan comptable manquant (3400 ou le compte GL lié).',
       ERR_STATEMENT_RECONCILED_LOCKED:  'Ce relevé est réconcilié. Rouvrez le rapprochement avant de le supprimer.',
       ERR_STATEMENT_HAS_MATCHED_TX:     'Ce relevé contient des transactions déjà appariées ou réconciliées. Désappariez-les avant de supprimer.',
+      ERR_STATEMENT_BALANCE_INVALID:    'Montant invalide.',
       GENERIC:                          "Erreur lors de l'importation.",
     },
 
     colMapTitle:      'Correspondance des colonnes',
     periodStart:      'Début de période',
     importedStatements: 'Relevés importés :',
+    viewingAccount:   'Compte affiché',
+    lineCount:        (n) => `${n} transaction${n === 1 ? '' : 's'}`,
     periodEnd:        'Fin de période',
     endingBalance:    'Solde final ($)',
+    endingBalanceOwed:'Solde dû sur le relevé ($)',
+    balanceNotSet:    'Non défini',
+    setBalance:       'Définir le solde du relevé',
+    balanceNotSetHint:'Ce relevé n\'a pas de solde final: un fichier CSV n\'en contient pas. Saisissez celui inscrit sur le relevé pour pouvoir rapprocher.',
+    stmtBalanceOwed:  'Solde dû (relevé)',
+    biqBalanceOwed:   'Solde dû (BalanceIQ)',
+    openingAfterFirst:(d1, d2) => `Le solde d'ouverture du compte est daté du ${d1}, après la première transaction (${d2}). Corrigez la date et le montant dans Comptes, sinon le rapprochement ne peut pas tomber juste.`,
+    saveBalance:      'Enregistrer',
     allStatuses:      'Tous les statuts',
     statusUnmatched:  'Non appariés',
     statusMatched:    'Appariés',
@@ -200,14 +211,25 @@ const UI = {
       ERR_MISSING_COA:                  'Chart of accounts entry missing (3400, or the account\'s own GL account).',
       ERR_STATEMENT_RECONCILED_LOCKED:  'This statement is reconciled. Reopen the reconciliation before deleting it.',
       ERR_STATEMENT_HAS_MATCHED_TX:     'This statement has transactions that are already matched or reconciled. Unmatch them before deleting.',
+      ERR_STATEMENT_BALANCE_INVALID:    'Invalid amount.',
       GENERIC:                          'Import error.',
     },
 
     colMapTitle:      'Column Mapping',
     periodStart:      'Period Start',
     importedStatements: 'Imported statements:',
+    viewingAccount:   'Showing',
+    lineCount:        (n) => `${n} transaction${n === 1 ? '' : 's'}`,
     periodEnd:        'Period End',
     endingBalance:    'Ending Balance ($)',
+    endingBalanceOwed:'Balance owed on the statement ($)',
+    balanceNotSet:    'Not set',
+    setBalance:       'Set the statement balance',
+    balanceNotSetHint:'This statement has no closing balance: a CSV file does not carry one. Enter the one printed on the statement so it can be reconciled.',
+    stmtBalanceOwed:  'Balance owed (statement)',
+    biqBalanceOwed:   'Balance owed (BalanceIQ)',
+    openingAfterFirst:(d1, d2) => `The account's opening balance is dated ${d1}, after the first transaction (${d2}). Fix the date and amount under Accounts, or the reconciliation cannot come out right.`,
+    saveBalance:      'Save',
     allStatuses:      'All statuses',
     statusUnmatched:  'Unmatched',
     statusMatched:    'Matched',
@@ -413,6 +435,8 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   const [payableBills, setPayableBills]           = useState([]);
   const [payPicked, setPayPicked]                 = useState([]);
   const [payError, setPayError]                   = useState('');
+  const [editingBalanceId, setEditingBalanceId]   = useState(null);
+  const [balanceDraft, setBalanceDraft]           = useState('');
   const [billMatches, setBillMatches]             = useState([]);
   const [billMatchDismissed, setBillMatchDismissed] = useState(false);
   const [categorizeCoaId, setCategorizeCoaId]     = useState('');
@@ -493,7 +517,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   }, [selectedAccount]);
 
   useEffect(() => { loadAccounts(); loadCoa(); loadLearnedRules(); }, []);
-  useEffect(() => { if (subTab === 'transactions') { loadTransactions(); loadStatements(); } }, [subTab, selectedAccount, txFilter, txDateFrom, txDateTo]);
+  useEffect(() => { if (subTab === 'transactions') { loadTransactions(); loadStatements(); loadRecPreview(); } }, [subTab, selectedAccount, txFilter, txDateFrom, txDateTo]);
   useEffect(() => { if (subTab === 'rapprochements') { loadStatements(); loadRecPreview(); } }, [subTab, selectedAccount]);
   useEffect(() => { if (subTab === 'regles') loadLearnedRules(); }, [subTab]);
 
@@ -579,7 +603,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
         fileType: ext,
         periodStart: importPeriodStart || undefined,
         periodEnd:   importPeriodEnd   || undefined,
-        endingBalance: importEndBal ? parseFloat(importEndBal) : undefined,
+        endingBalance: importEndBal ? toStored(parseFloat(importEndBal), accounts.find(a => a.id === importAccountId)) : undefined,
       });
       setImportMsg(T.importResult(result));
       setImportOk(true);
@@ -766,6 +790,27 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
     } catch (e) { alert(tErr(e)); }
   };
 
+  // A card's statement says what is owed as a positive number; the books keep it
+  // negative. One place converts, both ways.
+  const owedAccount = (acc) => !!acc && (acc.account_type === 'credit_card' || acc.account_type === 'line_of_credit');
+  const toStored = (entered, acc) => (owedAccount(acc) ? -Math.abs(Number(entered)) : Number(entered));
+  const toShown = (stored, acc) => (owedAccount(acc) ? -Number(stored || 0) : Number(stored || 0));
+
+  const startEditBalance = (stmt) => {
+    setEditingBalanceId(stmt.id);
+    const shown = toShown(stmt.ending_balance, selectedAccount);
+    setBalanceDraft(stmt.ending_balance_source === 'none' ? '' : String(shown));
+  };
+  const saveBalance = async (stmt) => {
+    const entered = parseFloat(balanceDraft);
+    if (!Number.isFinite(entered)) { alert(T.errors.ERR_STATEMENT_BALANCE_INVALID); return; }
+    try {
+      await window.api.bank.statement.update(stmt.id, { ending_balance: toStored(entered, selectedAccount) });
+      setEditingBalanceId(null); setBalanceDraft('');
+      loadStatements(); loadRecPreview();
+    } catch (e) { alert(tErr(e)); }
+  };
+
   const deleteStatement = async (stmt) => {
     if (!window.confirm(T.confirmDeleteStmt(fmtDate(stmt.period_start), fmtDate(stmt.period_end)))) return;
     try {
@@ -860,6 +905,21 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
       {/* ── TRANSACTIONS ─────────────────────────────────────────────────────── */}
       {subTab === 'transactions' && (
         <div>
+          {/* Which account this list belongs to, said plainly: the tab keeps the
+              last account chosen, and a dropdown alone did not make that clear. */}
+          {selectedAccount && (
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+              <span style={{ fontSize: 10.5, color: C.muted, textTransform: 'uppercase', letterSpacing: '.06em' }}>{T.viewingAccount}</span>
+              <span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{selectedAccount.name}</span>
+              <span style={{ fontSize: 11.5, color: C.muted }}>{typeLabel(selectedAccount.account_type)}</span>
+              {recPreview && (
+                <span style={{ fontSize: 12, color: C.sub }}>
+                  · {recPreview.owedView ? T.biqBalanceOwed : T.biqBalance}: <strong style={{ color: C.text }}>{fmt(toShown(recPreview.biqBalance, selectedAccount))}</strong>
+                </span>
+              )}
+              {transactions.length > 0 && <span style={{ fontSize: 11.5, color: C.muted }}>· {T.lineCount(transactions.length)}</span>}
+            </div>
+          )}
           <div style={{ marginBottom: 14 }}>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
               <select value={selectedAccount?.id || ''} onChange={e => {
@@ -983,8 +1043,10 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
                 <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: '16px 20px', marginBottom: 20 }}>
                   <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: C.text }}>{T.previewTitle(selectedAccount.name)}</div>
                   <div style={{ display: 'flex', gap: 24 }}>
-                    <div><div style={kpiLabel}>{T.stmtBalance}</div><div style={kpiVal}>{fmt(recPreview.statementBalance)}</div></div>
-                    <div><div style={kpiLabel}>{T.biqBalance}</div><div style={kpiVal}>{fmt(recPreview.biqBalance)}</div></div>
+                    <div><div style={kpiLabel}>{recPreview.owedView ? T.stmtBalanceOwed : T.stmtBalance}</div>
+                      <div style={kpiVal}>{recPreview.balanceSource === 'none' ? T.balanceNotSet : fmt(toShown(recPreview.statementBalance, selectedAccount))}</div></div>
+                    <div><div style={kpiLabel}>{recPreview.owedView ? T.biqBalanceOwed : T.biqBalance}</div>
+                      <div style={kpiVal}>{fmt(toShown(recPreview.biqBalance, selectedAccount))}</div></div>
                     <div>
                       <div style={kpiLabel}>{T.ecart}</div>
                       <div style={{ ...kpiVal, color: Math.abs(recPreview.ecart) <= 0.02 ? '#22c55e' : '#f87171' }}>
@@ -997,6 +1059,14 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
                       </div>
                     )}
                   </div>
+                  {recPreview.balanceSource === 'none' && (
+                    <div style={{ marginTop: 10, fontSize: 11.5, color: '#f59e0b', lineHeight: 1.5 }}>{T.balanceNotSetHint}</div>
+                  )}
+                  {recPreview.openingDateAfterFirstLine && (
+                    <div style={{ marginTop: 6, fontSize: 11.5, color: '#f59e0b', lineHeight: 1.5 }}>
+                      {T.openingAfterFirst(fmtDate(recPreview.openingDate), fmtDate(recPreview.firstLineDate))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1017,7 +1087,24 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
                     {statements.map(stmt => (
                       <tr key={stmt.id} style={{ borderBottom: `1px solid ${C.divider}` }}>
                         <td style={td}>{fmtDate(stmt.period_start)} → {fmtDate(stmt.period_end)}</td>
-                        <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{fmt(stmt.ending_balance)}</td>
+                        <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>
+                          {editingBalanceId === stmt.id ? (
+                            <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                              <input autoFocus type='number' step='0.01' value={balanceDraft}
+                                onChange={e => setBalanceDraft(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') saveBalance(stmt); if (e.key === 'Escape') setEditingBalanceId(null); }}
+                                style={{ ...inputStyle, width: 120, textAlign: 'right' }} />
+                              <button onClick={() => saveBalance(stmt)} style={btnStyle('#22c55e', 11)}>{T.saveBalance}</button>
+                            </span>
+                          ) : stmt.reconciled ? (
+                            fmt(toShown(stmt.ending_balance, selectedAccount))
+                          ) : (
+                            <button onClick={() => startEditBalance(stmt)} title={T.setBalance}
+                              style={{ background: 'none', border: 'none', color: stmt.ending_balance_source === 'none' ? '#f59e0b' : C.text, cursor: 'pointer', fontSize: 13, fontWeight: 600, padding: 0 }}>
+                              {stmt.ending_balance_source === 'none' ? T.balanceNotSet : fmt(toShown(stmt.ending_balance, selectedAccount))} &#9998;
+                            </button>
+                          )}
+                        </td>
                         <td style={td}>
                           {stmt.reconciled
                             ? <span style={{ color: '#22c55e', fontWeight: 600 }}>✓ {T.reconciled}</span>
@@ -1162,7 +1249,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
           <input style={inputFull} type='date' value={importPeriodStart} onChange={e => setImportPeriodStart(e.target.value)} />
           <label style={labelStyle}>{T.periodEnd} ({T.optional})</label>
           <input style={inputFull} type='date' value={importPeriodEnd} onChange={e => setImportPeriodEnd(e.target.value)} />
-          <label style={labelStyle}>{T.endingBalance} ({T.optional})</label>
+          <label style={labelStyle}>{owedAccount(accounts.find(a => a.id === importAccountId)) ? T.endingBalanceOwed : T.endingBalance} ({T.optional})</label>
           <input style={inputFull} type='number' step='0.01' placeholder={T.openingBalance2} value={importEndBal} onChange={e => setImportEndBal(e.target.value)} />
           {importMsg && (
             <div style={{ marginTop: 10, padding: '8px 12px', background: importOk === false ? '#450a0a' : '#052e16', borderRadius: 6, fontSize: 13, color: importOk === false ? '#fca5a5' : '#86efac' }}>

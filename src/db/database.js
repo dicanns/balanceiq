@@ -1587,6 +1587,19 @@ const MIGRATIONS = [
       }
     },
   },
+  {
+    version: 46,
+    description: 'Where a statement closing balance came from. A CSV carries no closing balance, '
+      + 'so an import with the optional field left blank stored 0, and a reconciliation could never '
+      + 'clear: a real zero and a missing figure looked the same.',
+    up: (database) => {
+      const cols = database.prepare(`PRAGMA table_info(bank_statements)`).all().map(c => c.name);
+      if (!cols.length) return;
+      if (!cols.includes('ending_balance_source')) {
+        database.prepare(`ALTER TABLE bank_statements ADD COLUMN ending_balance_source TEXT`).run();
+      }
+    },
+  },
 ];
 
 // The newest schema this build knows. Anything on disk below it has migrations
@@ -3709,17 +3722,23 @@ function bankStatementImport({ bankAccountId, fileText, fileName, fileType, peri
 
   const start = periodStart || rows.reduce((mn, r) => r.transaction_date < mn ? r.transaction_date : mn, rows[0].transaction_date);
   const end   = periodEnd   || rows.reduce((mx, r) => r.transaction_date > mx ? r.transaction_date : mx, rows[0].transaction_date);
-  const endBal = endingBalance !== undefined && endingBalance !== null && endingBalance !== ''
+  // Where the closing balance came from matters: a real zero and a figure nobody
+  // supplied are the same number. Without this, a CSV imported with the optional
+  // field blank stored 0 and the reconciliation could never clear.
+  const userGave = endingBalance !== undefined && endingBalance !== null && endingBalance !== '';
+  const fileGave = !userGave && (parsedEndingBalance != null || rows[rows.length - 1].running_balance != null);
+  const endBal = userGave
     ? endingBalance
     : (parsedEndingBalance != null
         ? parsedEndingBalance
         : (rows[rows.length - 1].running_balance ?? 0));
+  const endBalSource = userGave ? 'user' : (fileGave ? 'file' : 'none');
 
   return db.transaction(() => {
     const { lastInsertRowid: stmtId } = db.prepare(
-      `INSERT INTO bank_statements (bank_account_id, period_start, period_end, ending_balance, source_file_hash)
-       VALUES (?, ?, ?, ?, ?)`
-    ).run(bankAccountId, start, end, endBal, fileHash);
+      `INSERT INTO bank_statements (bank_account_id, period_start, period_end, ending_balance, source_file_hash, ending_balance_source)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(bankAccountId, start, end, endBal, fileHash, endBalSource);
 
     let autoMatched = 0, suggested = 0, unmatched = 0, duplicateRows = 0;
     const newTxIds = [];
@@ -3958,7 +3977,9 @@ function bankReconcilePreview(bankAccountId, asOfDate, _db) {
      WHERE bank_account_id=? AND (reconciled=1 OR match_status IN (${reconPlaceholders}))
      AND transaction_date <= ?`
   ).get(bankAccountId, ...RECONCILABLE_STATUSES, asOfDate || new Date().toISOString().slice(0,10));
-  const biqBalance = account.opening_balance + (sumRow ? sumRow.total : 0);
+  // To the cent: adding floats left 179.17999999999995 in the figure the screen
+  // and the variance are judged on.
+  const biqBalance = parseFloat((account.opening_balance + (sumRow ? sumRow.total : 0)).toFixed(2));
 
   // unreconciledCount: anything NOT in RECONCILABLE_STATUSES and not yet reconciled,
   // including 'suggested' (pending auto-match) and 'unmatched'.
@@ -3968,11 +3989,27 @@ function bankReconcilePreview(bankAccountId, asOfDate, _db) {
      WHERE bank_account_id=? AND reconciled=0 AND match_status NOT IN (${notReconPlaceholders})`
   ).get(bankAccountId, ...RECONCILABLE_STATUSES).cnt;
 
+  // A card statement says what you owe, as a positive number, while the books
+  // hold it as a negative balance. The screen and the entry field speak the
+  // statement's language; what is stored stays signed.
+  const owedView = account.account_type === 'credit_card' || account.account_type === 'line_of_credit';
+  const firstLine = db.prepare(
+    `SELECT MIN(transaction_date) AS d FROM bank_transactions WHERE bank_account_id=?`
+  ).get(bankAccountId)?.d || null;
   return {
     statementBalance,
     biqBalance,
-    ecart: parseFloat((statementBalance - biqBalance).toFixed(2)),
+    ecart: parseFloat((statementBalance - biqBalance).toFixed(2)) || 0,
     unreconciledCount,
+    accountType: account.account_type,
+    owedView,
+    balanceSource: lastStmt ? (lastStmt.ending_balance_source || 'unknown') : null,
+    statementId: lastStmt ? lastStmt.id : null,
+    // An opening date after the first imported line means the opening balance
+    // does not cover the period being reconciled.
+    openingDateAfterFirstLine: !!(firstLine && account.opening_date && account.opening_date > firstLine),
+    openingDate: account.opening_date || null,
+    firstLineDate: firstLine,
   };
 }
 
@@ -4036,6 +4073,27 @@ function bankLearnedRuleDelete(id) {
 // Refuses when the statement is reconciled, or when any of its transactions has
 // been reconciled or matched to a real entity - deleting those would silently
 // detach an invoice or bill from its payment.
+// The closing balance a statement is judged against, corrected after the fact.
+// A CSV does not carry one, and re-importing the file was the only way to set
+// it. A reconciled statement is locked: reopen the reconciliation first.
+function bankStatementUpdate(statementId, { ending_balance }, _db) {
+  const db = _db || getDb();
+  const stmt = db.prepare(`SELECT * FROM bank_statements WHERE id=?`).get(statementId);
+  if (!stmt) throw new Error('ERR_STATEMENT_NOT_FOUND');
+  if (stmt.reconciled) throw new Error('ERR_STATEMENT_RECONCILED_LOCKED');
+  const value = Number(ending_balance);
+  if (!Number.isFinite(value)) throw new Error('ERR_STATEMENT_BALANCE_INVALID');
+  return db.transaction(() => {
+    db.prepare(`UPDATE bank_statements SET ending_balance=?, ending_balance_source='user' WHERE id=?`).run(value, statementId);
+    db.prepare(
+      `INSERT INTO audit_log (device_id, module, action, record_type, record_id, old_value, new_value, reason)
+       VALUES (?, 'bank', 'set_statement_balance', 'bank_statement', ?, ?, ?, ?)`
+    ).run(_getDeviceUuid(db), String(statementId), String(stmt.ending_balance), String(value),
+          `period ${stmt.period_start}..${stmt.period_end}`);
+    return db.prepare(`SELECT * FROM bank_statements WHERE id=?`).get(statementId);
+  })();
+}
+
 function bankStatementDelete(statementId, _db) {
   const db = _db || getDb();
   const stmt = db.prepare(`SELECT * FROM bank_statements WHERE id=?`).get(statementId);
@@ -6992,7 +7050,7 @@ module.exports = {
   periodList, periodOpen, periodClose, periodReopen,
   glAuditLogList,
   bankAccountsList, bankAccountCreate, bankAccountUpdate, bankAccountArchive,
-  bankStatementImport, bankStatementsList, bankStatementDelete,
+  bankStatementImport, bankStatementsList, bankStatementDelete, bankStatementUpdate,
   parseBankCSV: _parseBankCSV, normalizeStatementDate, COA_TYPES,
   bankAccountPostOpeningBalance, bankPostMissingEntries, bankFindOrphanEntries, bankSubledgerBalances,
   bankTransactionsList, bankTransactionUnmatch, bankTransactionCategorize,

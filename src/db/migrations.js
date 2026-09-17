@@ -1531,6 +1531,19 @@ const MIGRATIONS = [
       }
     },
   },
+  {
+    version: 46,
+    description: 'Where a statement closing balance came from. A CSV carries no closing balance, '
+      + 'so an import with the optional field left blank stored 0, and a reconciliation could never '
+      + 'clear: a real zero and a missing figure looked the same.',
+    up: (database) => {
+      const cols = database.prepare(`PRAGMA table_info(bank_statements)`).all().map(c => c.name);
+      if (!cols.length) return;
+      if (!cols.includes('ending_balance_source')) {
+        database.prepare(`ALTER TABLE bank_statements ADD COLUMN ending_balance_source TEXT`).run();
+      }
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
