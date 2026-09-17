@@ -1,5 +1,5 @@
 /**
- * Close compliance scorecard — pure computation, no side effects.
+ * Close compliance scorecard - pure computation, no side effects.
  *
  * Weighted formula (per spec Sub-Sprint 6B):
  *   0.25 × on_time_close_rate
@@ -25,7 +25,7 @@ export const SCORECARD_WEIGHTS = {
 /**
  * Derive the six rates from a complianceGetKPIs result object.
  *
- * @param {object} kpis  — return value of complianceGetKPIs
+ * @param {object} kpis  - return value of complianceGetKPIs
  * @returns {{ onTimeClose, varianceCompliance, evidenceCompleteness, checklistCompliance, depositVerification, noReopen }}
  *          Each value is a number 0–1, or null if there is no data.
  */
@@ -71,7 +71,7 @@ export function deriveRates(kpis) {
  * Compute the weighted compliance score from the six rates.
  * Null rates are treated as 1.0 (not penalised when there is no data).
  *
- * @param {object} rates — output of deriveRates()
+ * @param {object} rates - output of deriveRates()
  * @returns {{ score: number, rates: object, band: 'green'|'yellow'|'red', topFactor: string, topDetractor: string }}
  */
 export function computeCloseScore(rates) {

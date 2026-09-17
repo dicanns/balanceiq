@@ -1,4 +1,4 @@
-// SVG icon components — stroke-based, 2px stroke, no fill
+// SVG icon components - stroke-based, 2px stroke, no fill
 // Each exported as a React component that accepts: size, stroke, strokeWidth
 
 const defaultStroke = 'currentColor';

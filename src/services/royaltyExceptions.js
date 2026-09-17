@@ -26,7 +26,7 @@ export function detectRoyaltyExceptions({ overdueInvoices = [], gracePeriod = 15
     .map(inv => {
       const extraDays = inv.daysOverdue - gracePeriod;
       const severity = extraDays > 30 ? EXCEPTION_SEVERITY.CRITICAL : EXCEPTION_SEVERITY.WARNING;
-      const ref = inv.invoiceRef ? ` — ${inv.invoiceRef}` : '';
+      const ref = inv.invoiceRef ? ` - ${inv.invoiceRef}` : '';
       return {
         locationId:    inv.locationId,
         locName:       inv.locName || `Location ${inv.locationId}`,

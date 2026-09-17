@@ -25,7 +25,7 @@ const sale = (dow, weeksAgo, qty, date, stockout = false) => ({
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-describe('Forecast base — weighted DOW average', () => {
+describe('Forecast base - weighted DOW average', () => {
   it('single data point returns it as base', () => {
     const history = [sale(2, 0, 120, '2026-03-18')];
     const { base, confidence, dataPoints } = calcForecastBase(history, 2);
@@ -34,7 +34,7 @@ describe('Forecast base — weighted DOW average', () => {
     expect(confidence).toBe('base');
   });
 
-  it('two data points — low confidence', () => {
+  it('two data points - low confidence', () => {
     const history = [
       sale(2, 0, 120, '2026-03-18'),
       sale(2, 1, 100, '2026-03-11'),
@@ -43,7 +43,7 @@ describe('Forecast base — weighted DOW average', () => {
     expect(confidence).toBe('low');
   });
 
-  it('4-7 data points — medium confidence', () => {
+  it('4-7 data points - medium confidence', () => {
     const history = Array.from({ length: 5 }, (_, i) =>
       sale(2, i, 110, `2026-${String(3 - Math.floor(i / 4)).padStart(2,'0')}-${String(18 - i * 7).padStart(2,'0')}`)
     );
@@ -51,7 +51,7 @@ describe('Forecast base — weighted DOW average', () => {
     expect(confidence).toBe('medium');
   });
 
-  it('8+ data points — high confidence', () => {
+  it('8+ data points - high confidence', () => {
     const history = Array.from({ length: 9 }, (_, i) =>
       sale(2, i, 110, `2024-0${Math.floor(i/4)+1}-${String(1 + i).padStart(2,'0')}`)
     );
@@ -84,7 +84,7 @@ describe('Forecast base — weighted DOW average', () => {
   });
 
   it('stockout days corrected upward by 12%', () => {
-    // Sold 100 but stocked out — real demand was ~112
+    // Sold 100 but stocked out - real demand was ~112
     const withStockout    = [sale(1, 0, 100, '2026-03-23', true)];
     const withoutStockout = [sale(1, 0, 100, '2026-03-23', false)];
 
@@ -98,7 +98,7 @@ describe('Forecast base — weighted DOW average', () => {
   it('ignores data points for other days of the week', () => {
     const history = [
       sale(2, 0, 150, '2026-03-18'), // Wed
-      sale(3, 0, 999, '2026-03-19'), // Thu — should be ignored when predicting Wed
+      sale(3, 0, 999, '2026-03-19'), // Thu - should be ignored when predicting Wed
       sale(2, 1, 130, '2026-03-11'), // Wed
     ];
     const { base, dataPoints } = calcForecastBase(history, 2);

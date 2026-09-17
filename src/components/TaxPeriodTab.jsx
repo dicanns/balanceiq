@@ -128,8 +128,8 @@ const UI = {
   },
 };
 
-const fmt = n => n == null ? '—' : `${n < 0 ? '-' : ''}$${Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
-const fmtPct = n => n == null ? '—' : `${(n * 100).toFixed(3)}%`;
+const fmt = n => n == null ? '-' : `${n < 0 ? '-' : ''}$${Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
+const fmtPct = n => n == null ? '-' : `${(n * 100).toFixed(3)}%`;
 
 function today() {
   const d = new Date();
@@ -450,8 +450,8 @@ export default function TaxPeriodTab({ lang }) {
   if (!taxAvailable) {
     return (
       <div style={{ padding: 24, color: '#ef4444', fontSize: 13 }}>
-        CTI/RTI non disponible — redémarrez l'application pour activer cette fonctionnalité.
-        <br/>ITC/ITR unavailable — restart the application to enable this feature.
+        CTI/RTI non disponible - redémarrez l'application pour activer cette fonctionnalité.
+        <br/>ITC/ITR unavailable - restart the application to enable this feature.
       </div>
     );
   }
@@ -668,7 +668,7 @@ export default function TaxPeriodTab({ lang }) {
               {p.status === 'filed' && p.filed_at && (
                 <div style={{ fontSize: 10, color: '#10b981', marginBottom: 6 }}>
                   ✓ {T.filedAt}: {new Date(p.filed_at).toLocaleDateString(lang === 'en' ? 'en-CA' : 'fr-CA')}
-                  {p.confirmation_number ? ` — ${p.confirmation_number}` : ''}
+                  {p.confirmation_number ? ` - ${p.confirmation_number}` : ''}
                 </div>
               )}
               <div style={{ display: 'flex', gap: 6 }}>

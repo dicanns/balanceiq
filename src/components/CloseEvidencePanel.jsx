@@ -151,7 +151,7 @@ export default function CloseEvidencePanel({ packet, T, t, lang }) {
           </div>
           {safeDrops.map((sd, i) => (
             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#64748b', padding: '3px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-              <span>{sd.register_key} {sd.created_at ? `— ${fmtDate(sd.created_at)}` : ''}</span>
+              <span>{sd.register_key} {sd.created_at ? `- ${fmtDate(sd.created_at)}` : ''}</span>
               <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtCents(sd.amount_cents)}</span>
             </div>
           ))}

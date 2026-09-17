@@ -10,4 +10,4 @@ CREATE TABLE IF NOT EXISTS ocr_usage (
 CREATE INDEX IF NOT EXISTS ocr_usage_org_month ON ocr_usage (org_id, month);
 
 -- Service role handles all writes (edge functions use service role key)
--- No RLS needed — edge function validates org ownership via JWT
+-- No RLS needed - edge function validates org ownership via JWT

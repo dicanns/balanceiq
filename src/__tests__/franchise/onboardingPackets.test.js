@@ -1,6 +1,6 @@
 /**
- * ONBOARDING-001  packetGenerator.js — pure functions
- * ONBOARDING-002  DB round-trips — franchise_onboarding_packets + franchise_location_onboarding
+ * ONBOARDING-001  packetGenerator.js - pure functions
+ * ONBOARDING-002  DB round-trips - franchise_onboarding_packets + franchise_location_onboarding
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';

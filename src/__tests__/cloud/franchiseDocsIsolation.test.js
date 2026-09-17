@@ -25,7 +25,7 @@ async function simulateDeleteDoc({ callerOrgId, callerRole, body, dbDoc }) {
   if (!verifyOwner(callerOrgId, orgId)) return { status: 403, error: 'forbidden' };
   if (!isAdminOrOwner(callerRole)) return { status: 403, error: 'forbidden' };
 
-  // storagePath from DB — client-supplied path intentionally ignored
+  // storagePath from DB - client-supplied path intentionally ignored
   const doc = dbDoc; // simulates svc.from('franchise_documents').select(...).eq('id', docId)
   if (!doc) return { status: 404, error: 'not_found' };
   if (doc.org_id !== orgId) return { status: 403, error: 'forbidden' };

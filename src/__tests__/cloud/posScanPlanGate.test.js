@@ -1,7 +1,7 @@
 /**
  * POS-SCAN-001  missing orgId returns 400 (not silently skipping plan gate)
  * POS-SCAN-002  free-plan org is blocked regardless of orgId presence
- * POS-SCAN-003  plan gate always runs — cannot be bypassed by omitting orgId
+ * POS-SCAN-003  plan gate always runs - cannot be bypassed by omitting orgId
  */
 import { describe, it, expect } from 'vitest';
 
@@ -13,14 +13,14 @@ function simulatePosScanGuard({ image, imageType, orgId, serverOrgId, plan }) {
     return { status: 400, error: 'missing_params' };
   }
 
-  // 2. Auth (always checked — simulated as present)
+  // 2. Auth (always checked - simulated as present)
 
-  // 3. Org ownership check (always runs — not conditional on orgId truthy)
+  // 3. Org ownership check (always runs - not conditional on orgId truthy)
   if (!serverOrgId || serverOrgId !== orgId) {
     return { status: 403, error: 'Forbidden' };
   }
 
-  // 4. Plan check (always runs — not conditional on orgId truthy)
+  // 4. Plan check (always runs - not conditional on orgId truthy)
   const resolvedPlan = plan || 'free';
   if (resolvedPlan !== 'pro' && resolvedPlan !== 'franchise' && resolvedPlan !== 'network') {
     return { status: 200, error: 'upgrade_required' };
@@ -89,7 +89,7 @@ describe('POS-SCAN-002: free plan is blocked', () => {
 // ── POS-SCAN-003 ──────────────────────────────────────────────────────────────
 
 describe('POS-SCAN-003: plan gate cannot be bypassed', () => {
-  it('omitting orgId triggers 400 — plan check never reached', () => {
+  it('omitting orgId triggers 400 - plan check never reached', () => {
     // Before the fix, omitting orgId skipped the plan check entirely.
     // After the fix, missing orgId is a hard 400 at the top.
     const result = simulatePosScanGuard({

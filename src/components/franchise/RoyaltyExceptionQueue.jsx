@@ -3,7 +3,7 @@ import { detectRoyaltyExceptions, exceptionSeverityColor, exceptionSeverityLabel
 
 const UI = {
   fr: {
-    title:       'File d\'exceptions — Redevances',
+    title:       'File d\'exceptions - Redevances',
     subtitle:    'Exceptions de paiement détectées et en attente de traitement.',
     scan:        'Analyser',
     scanning:    'Analyse…',
@@ -18,10 +18,10 @@ const UI = {
     daysOver:    (n) => `${n} j en retard`,
     atRisk:      'À risque',
     type:        { overdue_payment: 'Paiement en retard', missing_data: 'Données manquantes' },
-    summary:     (total, critical, warning) => `${total} exception${total !== 1 ? 's' : ''} — ${critical} critique${critical !== 1 ? 's' : ''}, ${warning} avertissement${warning !== 1 ? 's' : ''}`,
+    summary:     (total, critical, warning) => `${total} exception${total !== 1 ? 's' : ''} - ${critical} critique${critical !== 1 ? 's' : ''}, ${warning} avertissement${warning !== 1 ? 's' : ''}`,
   },
   en: {
-    title:       'Exception Queue — Royalties',
+    title:       'Exception Queue - Royalties',
     subtitle:    'Detected payment exceptions awaiting action.',
     scan:        'Scan',
     scanning:    'Scanning…',
@@ -36,7 +36,7 @@ const UI = {
     daysOver:    (n) => `${n}d overdue`,
     atRisk:      'At risk',
     type:        { overdue_payment: 'Overdue payment', missing_data: 'Missing data' },
-    summary:     (total, critical, warning) => `${total} exception${total !== 1 ? 's' : ''} — ${critical} critical, ${warning} warning${warning !== 1 ? 's' : ''}`,
+    summary:     (total, critical, warning) => `${total} exception${total !== 1 ? 's' : ''} - ${critical} critical, ${warning} warning${warning !== 1 ? 's' : ''}`,
   },
 };
 

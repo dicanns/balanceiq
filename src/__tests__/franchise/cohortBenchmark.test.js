@@ -1,5 +1,5 @@
 /**
- * BENCHMARK-001  cohortBenchmark.js — pure functions
+ * BENCHMARK-001  cohortBenchmark.js - pure functions
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -53,7 +53,7 @@ describe('BENCHMARK-001-A BENCHMARK_METRICS', () => {
 
 // ── BENCHMARK-001-B  computeNetworkAverages ───────────────────────────────────
 
-describe('BENCHMARK-001-B computeNetworkAverages — basic stats', () => {
+describe('BENCHMARK-001-B computeNetworkAverages - basic stats', () => {
   const data = [
     makeLocData({ monthlySales: 60000, avgDz: 8, avgLabourPct: 30 }),
     makeLocData({ monthlySales: 80000, avgDz: 10, avgLabourPct: 25 }),
@@ -115,7 +115,7 @@ describe('BENCHMARK-001-B computeNetworkAverages — basic stats', () => {
 
 // ── BENCHMARK-001-C  benchmarkLocation ───────────────────────────────────────
 
-describe('BENCHMARK-001-C benchmarkLocation — ranking', () => {
+describe('BENCHMARK-001-C benchmarkLocation - ranking', () => {
   const networkData = [
     makeLocData({ monthlySales: 60000, avgDz: 8,  avgLabourPct: 30 }),
     makeLocData({ monthlySales: 80000, avgDz: 10, avgLabourPct: 25 }),

@@ -26,36 +26,36 @@ function ok(body: Record<string, unknown>, corsHeaders: Record<string, string>) 
 
 const EXTRACT_PROMPT = `You are extracting data from a supplier invoice. Follow these steps exactly, then return a single JSON object.
 
-STEP 1 — Grand total (tax-in):
+STEP 1 - Grand total (tax-in):
 Find the final "PAYEZ CE MONTANT", "TOTAL", or "BALANCE DUE" amount. This is "total".
 
-STEP 2 — TPS and TVQ dollar amounts:
-A valid TPS line looks like: "5.00 % T.P.S. sur 300.71    15.04" — it contains a percentage AND "T.P.S." or "GST". The dollar amount at the end of that line (15.04) is "tps".
-A valid TVQ line looks like: "9.975 % T.V.Q. sur 300.71    30.00" — it contains a percentage AND "T.V.Q." or "QST". The dollar amount at the end of that line (30.00) is "tvq".
-CRITICAL: A line that says only "Frais de livraison" or "Shipping" or "Delivery" with a dollar amount is a PRODUCT COST — it has no percentage, no "T.P.S.", no "T.V.Q.". Never use it as tps or tvq.
+STEP 2 - TPS and TVQ dollar amounts:
+A valid TPS line looks like: "5.00 % T.P.S. sur 300.71    15.04" - it contains a percentage AND "T.P.S." or "GST". The dollar amount at the end of that line (15.04) is "tps".
+A valid TVQ line looks like: "9.975 % T.V.Q. sur 300.71    30.00" - it contains a percentage AND "T.V.Q." or "QST". The dollar amount at the end of that line (30.00) is "tvq".
+CRITICAL: A line that says only "Frais de livraison" or "Shipping" or "Delivery" with a dollar amount is a PRODUCT COST - it has no percentage, no "T.P.S.", no "T.V.Q.". Never use it as tps or tvq.
 
-STEP 3 — Total before tax (math, do not sum line items):
+STEP 3 - Total before tax (math, do not sum line items):
 subtotalBeforeTax = total - tps - tvq
 This is always exact. Do not try to add up individual line items.
 
-STEP 4 — Taxable base:
+STEP 4 - Taxable base:
 Look for a pattern like "5% T.P.S. sur 300.71" or "GST @ 5% on 300.71".
 The number after "sur" or "on" is subtotalTaxable. Use it directly.
 If no such pattern exists, calculate: subtotalTaxable = tps / 0.05.
 
-STEP 5 — Non-taxable:
+STEP 5 - Non-taxable:
 subtotalNonTaxable = subtotalBeforeTax - subtotalTaxable
 
-STEP 6 — Line items:
+STEP 6 - Line items:
 Extract every product/ingredient line from the invoice body (skip tax lines, totals, shipping fees, and header rows).
 For each product line, extract: description (exact text from invoice), quantity (number only), unit (kg/lb/case/L/each/etc.), unit_price (price per unit), extended_price (total for that line).
 If a field is unreadable or absent, use null.
 
-STEP 7 — Return ONLY this JSON, no explanation:
+STEP 7 - Return ONLY this JSON, no explanation:
 {
   "supplier": "supplier or vendor name",
   "date": "YYYY-MM-DD or null",
-  "invoiceNumber": "invoice number — look for fields labeled 'Invoice No', 'No. Facture', 'No. de Facture', 'Facture No', 'Invoice #', 'Fact. No' — ignore RIN, NIR, NAS, order numbers, PO numbers, customer numbers",
+  "invoiceNumber": "invoice number - look for fields labeled 'Invoice No', 'No. Facture', 'No. de Facture', 'Facture No', 'Invoice #', 'Fact. No' - ignore RIN, NIR, NAS, order numbers, PO numbers, customer numbers",
   "subtotalTaxable": number from Step 4,
   "subtotalNonTaxable": number from Step 5,
   "subtotalBeforeTax": number from Step 3,
@@ -85,12 +85,12 @@ serve(async (req) => {
       return ok({ error: 'missing_params', message: 'Missing imageBase64 or imageType.' }, corsHeaders);
     }
 
-    // Validate image size (max ~10MB base64 ≈ 7.5MB file — client resizes before sending)
+    // Validate image size (max ~10MB base64 ≈ 7.5MB file - client resizes before sending)
     if (imageBase64.length > 14_000_000) {
       return ok({ error: 'too_large', message: 'Image too large. Max 10 MB.' }, corsHeaders);
     }
 
-    // Always authenticate — ownApiKey only controls which key pays for the Anthropic call,
+    // Always authenticate - ownApiKey only controls which key pays for the Anthropic call,
     // never whether the user is authorized to use this endpoint.
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
@@ -176,7 +176,7 @@ serve(async (req) => {
     if (!claudeRes.ok) {
       const errBody = await claudeRes.text();
       console.error('Claude API error:', claudeRes.status, errBody);
-      // API failed — do NOT increment quota
+      // API failed - do NOT increment quota
       return ok({ error: 'claude_error', message: `Erreur Anthropic (${claudeRes.status}): ${errBody.slice(0, 200)}` }, corsHeaders);
     }
 

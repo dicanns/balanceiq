@@ -1,11 +1,11 @@
 /**
- * MIG-002 — Upgrade Pre-Ledger Database
+ * MIG-002 - Upgrade Pre-Ledger Database
  *
  * Starts from a pre-accounting-suite schema (user_version=7) with representative
  * legacy data (kv_store invoices, P&L entries, audit_log rows). Runs migrations
  * v8-v11 and asserts:
  *   - All legacy tables exist with row counts unchanged
- *   - New ledger tables are created (empty — no auto-posted opening balance)
+ *   - New ledger tables are created (empty - no auto-posted opening balance)
  *   - user_version advanced to 14
  *   - Re-running migration is a no-op
  */
@@ -105,7 +105,7 @@ describe('MIG-002 upgrade pre-ledger database', () => {
     expect(count).toBe(2);
   });
 
-  it('new ledger tables are created empty — no auto-posted opening balance', () => {
+  it('new ledger tables are created empty - no auto-posted opening balance', () => {
     runMigrations(db);
 
     const journalCount = db.prepare(`SELECT COUNT(*) AS n FROM journal_entries`).get().n;

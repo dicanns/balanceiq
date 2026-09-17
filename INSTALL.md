@@ -1,4 +1,4 @@
-# Install Instructions — BalanceIQ
+# Install Instructions - BalanceIQ
 
 ## Mac
 

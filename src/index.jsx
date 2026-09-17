@@ -18,7 +18,7 @@ class ErrorBoundary extends React.Component {
     if (this.state.error) {
       return (
         <div style={{padding:40,fontFamily:'monospace',background:'#0c0e14',color:'#f87171',minHeight:'100vh'}}>
-          <h2 style={{color:'#f97316',marginBottom:16}}>BalanceIQ — Render Error</h2>
+          <h2 style={{color:'#f97316',marginBottom:16}}>BalanceIQ - Render Error</h2>
           <pre style={{whiteSpace:'pre-wrap',fontSize:13,lineHeight:1.6}}>
             {this.state.error?.message}\n\n{this.state.error?.stack}
           </pre>

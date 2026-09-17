@@ -5,7 +5,7 @@ import { buildCompliancePdfHTML } from '../services/compliancePdfBuilder.js';
 const fmt = (cents) =>
   new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' }).format((cents ?? 0) / 100);
 
-const fmtDate = (s) => s ? s.slice(0, 10) : '—';
+const fmtDate = (s) => s ? s.slice(0, 10) : '-';
 
 function dk(d) { return d.toISOString().slice(0, 10); }
 
@@ -25,7 +25,7 @@ function KpiCard({ label, value, sub, color, t }) {
     <div style={{ background: t.card, border: `1px solid ${t.cardBorder}`, borderRadius: 9, padding: '12px 14px', minWidth: 0 }}>
       <div style={{ fontSize: 9.5, color: t.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: 600, marginBottom: 5 }}>{label}</div>
       <div style={{ fontSize: 20, fontWeight: 800, color: color || t.text, fontFamily: "'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif", fontVariantNumeric: 'tabular-nums' }}>
-        {value ?? '—'}
+        {value ?? '-'}
       </div>
       {sub && <div style={{ fontSize: 10, color: t.textMuted, marginTop: 2 }}>{sub}</div>}
     </div>
@@ -68,18 +68,18 @@ function exportCsv(kpis, lists, fr) {
   rows.push('');
   rows.push(fr ? 'Indicateur,Valeur' : 'Metric,Value');
   rows.push(`${fr ? 'Sessions analysées' : 'Sessions analyzed'},${kpis.sessionCount ?? 0}`);
-  rows.push(`${fr ? 'Délai moyen fermeture (min)' : 'Avg close time (min)'},${kpis.avgTimeToCloseMinutes ?? '—'}`);
+  rows.push(`${fr ? 'Délai moyen fermeture (min)' : 'Avg close time (min)'},${kpis.avgTimeToCloseMinutes ?? '-'}`);
   rows.push(`${fr ? 'Fermetures avec dérogation' : 'Closes with overrides'},${kpis.overrideCount}`);
   rows.push(`${fr ? 'Fermetures réouvertes' : 'Reopened closes'},${kpis.reopenCount}`);
-  rows.push(`${fr ? 'Conformité liste (%)' : 'Checklist compliance (%)'},${kpis.checklistCompliancePct ?? '—'}`);
-  rows.push(`${fr ? 'Dossiers complets (%)' : 'Evidence completeness (%)'},${kpis.evidenceCompletenessPct ?? '—'}`);
-  rows.push(`${fr ? 'Délai vérif. dépôts (j)' : 'Deposit verif. lag (d)'},${kpis.depositVerifLagDays ?? '—'}`);
+  rows.push(`${fr ? 'Conformité liste (%)' : 'Checklist compliance (%)'},${kpis.checklistCompliancePct ?? '-'}`);
+  rows.push(`${fr ? 'Dossiers complets (%)' : 'Evidence completeness (%)'},${kpis.evidenceCompletenessPct ?? '-'}`);
+  rows.push(`${fr ? 'Délai vérif. dépôts (j)' : 'Deposit verif. lag (d)'},${kpis.depositVerifLagDays ?? '-'}`);
   rows.push('');
 
   if (lists.unapproved.length > 0) {
     rows.push(fr ? 'Non-approuvées (>1j)' : 'Unapproved (>1 day)');
     rows.push(`${fr ? 'Date' : 'Date'},${fr ? 'Quart' : 'Shift'},${fr ? 'Soumis le' : 'Submitted at'}`);
-    lists.unapproved.forEach(s => rows.push(`${s.date_key},${s.shift_key || '—'},${s.submitted_at?.slice(0, 16) || '—'}`));
+    lists.unapproved.forEach(s => rows.push(`${s.date_key},${s.shift_key || '-'},${s.submitted_at?.slice(0, 16) || '-'}`));
     rows.push('');
   }
 
@@ -270,7 +270,7 @@ export default function CloseComplianceTab({ t, lang, canUse, activePlan }) {
               const color = v == null ? t.textMuted : v >= 0.85 ? '#22c55e' : v >= 0.65 ? '#fbbf24' : '#ef4444';
               return (
                 <div key={e.key} title={fr ? e.labelFr : e.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: t.section, border: `1px solid ${t.cardBorder}`, borderRadius: 7, padding: '4px 8px', minWidth: 50 }}>
-                  <div style={{ fontSize: 13, fontWeight: 800, color, fontVariantNumeric: 'tabular-nums' }}>{pct != null ? `${pct}%` : '—'}</div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color, fontVariantNumeric: 'tabular-nums' }}>{pct != null ? `${pct}%` : '-'}</div>
                   <div style={{ fontSize: 8.5, color: t.textMuted, textAlign: 'center', maxWidth: 52, lineHeight: 1.3 }}>{fr ? e.labelFr : e.label}</div>
                 </div>
               );
@@ -285,7 +285,7 @@ export default function CloseComplianceTab({ t, lang, canUse, activePlan }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
             <KpiCard t={t} label={fr ? 'Sessions analysées' : 'Sessions analyzed'} value={kpis.sessionCount} color={t.text} />
             <KpiCard t={t} label={fr ? 'Délai moyen fermeture' : 'Avg close time'}
-              value={kpis.avgTimeToCloseMinutes != null ? kpis.avgTimeToCloseMinutes : '—'}
+              value={kpis.avgTimeToCloseMinutes != null ? kpis.avgTimeToCloseMinutes : '-'}
               sub={kpis.avgTimeToCloseMinutes != null ? (fr ? 'minutes' : 'minutes') : null}
               color={kpis.avgTimeToCloseMinutes == null ? t.textMuted : kpis.avgTimeToCloseMinutes > 60 ? '#f59e0b' : '#16a34a'} />
             <KpiCard t={t} label={fr ? 'Avec dérogation' : 'With overrides'} value={kpis.overrideCount}
@@ -293,13 +293,13 @@ export default function CloseComplianceTab({ t, lang, canUse, activePlan }) {
             <KpiCard t={t} label={fr ? 'Réouvertures' : 'Reopened closes'} value={kpis.reopenCount}
               color={kpis.reopenCount > 0 ? '#f59e0b' : '#16a34a'} />
             <KpiCard t={t} label={fr ? 'Conformité liste' : 'Checklist compliance'}
-              value={kpis.checklistCompliancePct != null ? `${kpis.checklistCompliancePct}%` : '—'}
+              value={kpis.checklistCompliancePct != null ? `${kpis.checklistCompliancePct}%` : '-'}
               color={varColor(kpis.checklistCompliancePct)} />
             <KpiCard t={t} label={fr ? 'Dossiers complets' : 'Evidence completeness'}
-              value={kpis.evidenceCompletenessPct != null ? `${kpis.evidenceCompletenessPct}%` : '—'}
+              value={kpis.evidenceCompletenessPct != null ? `${kpis.evidenceCompletenessPct}%` : '-'}
               color={varColor(kpis.evidenceCompletenessPct)} />
             <KpiCard t={t} label={fr ? 'Délai vérif. dépôts' : 'Deposit verif. lag'}
-              value={kpis.depositVerifLagDays != null ? kpis.depositVerifLagDays : '—'}
+              value={kpis.depositVerifLagDays != null ? kpis.depositVerifLagDays : '-'}
               sub={kpis.depositVerifLagDays != null ? (fr ? 'jours' : 'days') : null}
               color={kpis.depositVerifLagDays == null ? t.textMuted : kpis.depositVerifLagDays > 3 ? '#ef4444' : '#16a34a'} />
           </div>
@@ -354,26 +354,26 @@ export default function CloseComplianceTab({ t, lang, canUse, activePlan }) {
               </div>
             )} />
           <ListSection t={t}
-            title={fr ? 'Caissiers — écarts fréquents' : 'Top variance cashiers'}
+            title={fr ? 'Caissiers - écarts fréquents' : 'Top variance cashiers'}
             items={lists.topVarianceCashiers}
             emptyMsg={fr ? 'Aucun écart répété.' : 'No repeated variances.'}
             renderRow={r => (
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, color: t.text }}>
                 <span style={{ fontWeight: 600 }}>{r.cashier_name}</span>
                 <span style={{ color: t.textMuted, fontSize: 10.5 }}>
-                  {r.variance_count}/{r.total_closures} {fr ? 'fermetures' : 'closes'} — {fr ? 'moy.' : 'avg'} {fmt(r.avg_abs_variance_cents)}
+                  {r.variance_count}/{r.total_closures} {fr ? 'fermetures' : 'closes'} - {fr ? 'moy.' : 'avg'} {fmt(r.avg_abs_variance_cents)}
                 </span>
               </div>
             )} />
           <ListSection t={t}
-            title={fr ? 'Registres — écarts fréquents' : 'Top variance registers'}
+            title={fr ? 'Registres - écarts fréquents' : 'Top variance registers'}
             items={lists.topVarianceRegisters}
             emptyMsg={fr ? 'Aucun écart répété.' : 'No repeated variances.'}
             renderRow={r => (
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, color: t.text }}>
                 <span style={{ fontWeight: 600 }}>{r.register_key}</span>
                 <span style={{ color: t.textMuted, fontSize: 10.5 }}>
-                  {r.variance_count}/{r.total_closures} — {fr ? 'moy.' : 'avg'} {fmt(r.avg_abs_variance_cents)}
+                  {r.variance_count}/{r.total_closures} - {fr ? 'moy.' : 'avg'} {fmt(r.avg_abs_variance_cents)}
                 </span>
               </div>
             )} />

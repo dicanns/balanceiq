@@ -1,5 +1,5 @@
 /**
- * MIG-001 — Fresh Install: Accounting Suite Migrations on Clean Database
+ * MIG-001 - Fresh Install: Accounting Suite Migrations on Clean Database
  *
  * Simulates a brand-new BalanceIQ user (or a user whose DB is at v7 before
  * the accounting suite shipped). Runs migrations v8-v14 and asserts:
@@ -105,7 +105,7 @@ describe('MIG-001 fresh accounting install', () => {
     runMigrations(db);
     const countAfterFirst = db.prepare(`SELECT COUNT(*) AS n FROM chart_of_accounts`).get().n;
 
-    // Run again — must not throw and must not change data
+    // Run again - must not throw and must not change data
     expect(() => runMigrations(db)).not.toThrow();
 
     const countAfterSecond = db.prepare(`SELECT COUNT(*) AS n FROM chart_of_accounts`).get().n;

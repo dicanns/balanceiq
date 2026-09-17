@@ -5,7 +5,7 @@
  * POST ?token={token}           → record acceptance, notify operator
  *
  * Security: single-use token, expiry enforced, rate-limited (60 req/min per token),
- * service-role DB writes only (no client auth required — public page).
+ * service-role DB writes only (no client auth required - public page).
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -187,7 +187,7 @@ Deno.serve(async (req) => {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   );
 
-  // ── POST ?action=create — operator creates a token from the Electron app ──
+  // ── POST ?action=create - operator creates a token from the Electron app ──
   if (req.method === 'POST' && action === 'create') {
     let body: Record<string, string> = {};
     try { body = await req.json(); } catch (_) {}
@@ -208,7 +208,7 @@ Deno.serve(async (req) => {
     return jsonResp({ ok: true, acceptanceUrl });
   }
 
-  // ── GET ?action=check — operator polls acceptance status ──
+  // ── GET ?action=check - operator polls acceptance status ──
   if (req.method === 'GET' && action === 'check') {
     if (!token) return jsonResp({ error: 'missing_token' }, 400);
     const { data, error } = await admin.from('quote_acceptance_tokens').select('status,accepted_at,accepted_from_ip,accepted_user_agent,accepted_typed_name,accepted_signature_blob,quote_number,client_name,operator_email').eq('token', token).single();
@@ -216,7 +216,7 @@ Deno.serve(async (req) => {
     return jsonResp({ ok: true, ...data });
   }
 
-  // ── POST ?action=decline — client declines the quote ──
+  // ── POST ?action=decline - client declines the quote ──
   if (req.method === 'POST' && action === 'decline') {
     if (!token) return jsonResp({ error: 'missing_token' }, 400);
     const ip = (req.headers.get('cf-connecting-ip') || req.headers.get('x-forwarded-for') || 'unknown').split(',')[0].trim();
@@ -225,13 +225,13 @@ Deno.serve(async (req) => {
     const { data: row } = await admin.from('quote_acceptance_tokens').select('operator_email,quote_number,client_name').eq('token', token).single();
     if (row?.operator_email) {
       try {
-        await fetch('https://api.resend.com/emails', { method: 'POST', headers: { 'Authorization': `Bearer ${Deno.env.get('RESEND_API_KEY')}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: 'BalanceIQ <noreply@balanceiq.ca>', to: row.operator_email, subject: `Soumission ${row.quote_number || ''} refusee — ${row.client_name || ''}`, html: `<p>${row.client_name || 'Le client'} a refuse la soumission ${row.quote_number || ''}.</p>` }) });
+        await fetch('https://api.resend.com/emails', { method: 'POST', headers: { 'Authorization': `Bearer ${Deno.env.get('RESEND_API_KEY')}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: 'BalanceIQ <noreply@balanceiq.ca>', to: row.operator_email, subject: `Soumission ${row.quote_number || ''} refusee - ${row.client_name || ''}`, html: `<p>${row.client_name || 'Le client'} a refuse la soumission ${row.quote_number || ''}.</p>` }) });
       } catch (_) {}
     }
     return jsonResp({ ok: true });
   }
 
-  // ── POST ?action=revoke — operator revokes a token ──
+  // ── POST ?action=revoke - operator revokes a token ──
   if (req.method === 'POST' && action === 'revoke') {
     if (!token) return jsonResp({ error: 'missing_token' }, 400);
     await admin.from('quote_acceptance_tokens').update({ status: 'expired' }).eq('token', token);
@@ -286,8 +286,8 @@ Deno.serve(async (req) => {
       const quoteNum = row.quote_number || '';
       const clientName = row.accepted_typed_name || row.client_name || (lang === 'fr' ? 'votre client' : 'your client');
       const subject = lang === 'fr'
-        ? `✓ Soumission ${quoteNum} acceptée — ${clientName}`
-        : `✓ Quote ${quoteNum} accepted — ${clientName}`;
+        ? `✓ Soumission ${quoteNum} acceptée - ${clientName}`
+        : `✓ Quote ${quoteNum} accepted - ${clientName}`;
       const html = lang === 'fr'
         ? `<p>Bonne nouvelle!</p><p><strong>${escHtml(clientName)}</strong> a accepté votre soumission <strong>${escHtml(quoteNum)}</strong> le ${new Date().toLocaleString('fr-CA')}.</p><p>Connectez-vous à BalanceIQ pour convertir la soumission en commande.</p>`
         : `<p>Good news!</p><p><strong>${escHtml(clientName)}</strong> accepted quote <strong>${escHtml(quoteNum)}</strong> on ${new Date().toLocaleString('en-CA')}.</p><p>Open BalanceIQ to convert the quote to an order.</p>`;

@@ -74,7 +74,7 @@ export function validatePacket(packet) {
  * Given a packet and optional royalty overrides, produce the location-level
  * onboarding record that should be persisted.
  *
- * Pure — callers do the actual DB write.
+ * Pure - callers do the actual DB write.
  */
 export function buildLocationOnboarding(packet, { locationId, royaltyRate = null, adRate = null } = {}) {
   return {

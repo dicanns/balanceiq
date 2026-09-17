@@ -104,7 +104,7 @@ export default function DenominationCounter({ lang = 'fr', t = {}, onChange }) {
                       style={inputStyle}
                     />
                     <span style={{ fontSize: 11, color: lineTotal > 0 ? '#4ade80' : '#6b7280', fontVariantNumeric: 'tabular-nums', minWidth: 60, textAlign: 'right' }}>
-                      {lineTotal > 0 ? fmt(lineTotal / 100) : '—'}
+                      {lineTotal > 0 ? fmt(lineTotal / 100) : '-'}
                     </span>
                   </React.Fragment>
                 );

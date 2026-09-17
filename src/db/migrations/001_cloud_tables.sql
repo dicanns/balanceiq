@@ -1,4 +1,4 @@
--- BalanceIQ Cloud Tables — Migration 001
+-- BalanceIQ Cloud Tables - Migration 001
 -- Run this in the Supabase SQL editor for your project.
 
 CREATE TABLE organizations (

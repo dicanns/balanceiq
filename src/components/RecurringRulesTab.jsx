@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 
 const T = {
   fr: {
+    supplierLabel: 'Fournisseur',
     title: 'Écritures récurrentes',
-    subtitle: 'Loyer, assurances, abonnements — créés automatiquement selon l\'échéancier',
+    subtitle: 'Loyer, assurances, abonnements - créés automatiquement selon l\'échéancier',
     newRule: 'Nouvelle règle',
     noRules: 'Aucune règle récurrente configurée.',
     noRulesHint: 'Créez une règle pour automatiser vos entrées périodiques.',
@@ -19,7 +20,7 @@ const T = {
     edit: 'Modifier',
     cancel: 'Annuler',
     save: 'Enregistrer',
-    free3: 'Gratuit — 3 règles max. Passez à Pro pour un nombre illimité.',
+    free3: 'Gratuit - 3 règles max. Passez à Pro pour un nombre illimité.',
     freeLimitReached: 'Limite de 3 règles atteinte. Passez à Pro.',
     upgradeBtn: 'Passer à Pro',
     ruleName: 'Nom de la règle',
@@ -67,8 +68,9 @@ const T = {
     freeLimit: 3,
   },
   en: {
+    supplierLabel: 'Supplier',
     title: 'Recurring Transactions',
-    subtitle: 'Rent, insurance, subscriptions — created automatically on schedule',
+    subtitle: 'Rent, insurance, subscriptions - created automatically on schedule',
     newRule: 'New rule',
     noRules: 'No recurring rules configured.',
     noRulesHint: 'Create a rule to automate your periodic entries.',
@@ -84,7 +86,7 @@ const T = {
     edit: 'Edit',
     cancel: 'Cancel',
     save: 'Save',
-    free3: 'Free — 3 rules max. Upgrade to Pro for unlimited.',
+    free3: 'Free - 3 rules max. Upgrade to Pro for unlimited.',
     freeLimitReached: '3-rule limit reached. Upgrade to Pro.',
     upgradeBtn: 'Upgrade to Pro',
     ruleName: 'Rule name',
@@ -396,7 +398,7 @@ export default function RecurringRulesTab({ lang = 'fr', canUsePro = false, onUp
                       </div>
                       {gen.template && (
                         <div style={{ fontSize: 11, color: s.textSub, marginTop: 3 }}>
-                          {gen.template.supplier_name && <span>Fournisseur: <strong>{gen.template.supplier_name}</strong> · </span>}
+                          {gen.template.supplier_name && <span>{t.supplierLabel}: <strong>{gen.template.supplier_name}</strong> · </span>}
                           {gen.template.amount && <span style={{ fontVariantNumeric: 'tabular-nums' }}>{parseFloat(gen.template.amount).toFixed(2)} $</span>}
                         </div>
                       )}
@@ -441,7 +443,7 @@ export default function RecurringRulesTab({ lang = 'fr', canUsePro = false, onUp
                             <span style={{ fontSize: 10, fontWeight: 700, color: statusColor(row.status), background: `${statusColor(row.status)}18`, padding: '2px 8px', borderRadius: 10 }}>{statusLabel(row.status)}</span>
                           </td>
                           <td style={{ padding: '7px 12px', color: s.textMuted }}>{row.created_at?.slice(0, 10)}</td>
-                          <td style={{ padding: '7px 12px', color: s.textMuted }}>{row.approved_at?.slice(0, 10) || '—'}</td>
+                          <td style={{ padding: '7px 12px', color: s.textMuted }}>{row.approved_at?.slice(0, 10) || '-'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -555,7 +557,7 @@ export default function RecurringRulesTab({ lang = 'fr', canUsePro = false, onUp
               <label htmlFor="autoApprove" style={{ fontSize: 12, color: s.text, cursor: 'pointer' }}>
                 ⚡ {t.autoApprove}
               </label>
-              <span style={{ fontSize: 10.5, color: s.textMuted }}>— {t.autoApproveHint}</span>
+              <span style={{ fontSize: 10.5, color: s.textMuted }}>- {t.autoApproveHint}</span>
             </div>
 
             <div style={{ display: 'flex', gap: 8 }}>

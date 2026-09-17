@@ -209,7 +209,7 @@ export default function QuebecTaxWizard({ lang, locationId = null }) {
           <label style={labelStyle}>{T.province}</label>
           <select value={form.provinceCode} onChange={e => set('provinceCode', e.target.value)} style={inputStyle}>
             {PROVINCES.map(p => (
-              <option key={p.code} value={p.code}>{p.code} — {fr ? p.fr : p.en}</option>
+              <option key={p.code} value={p.code}>{p.code} - {fr ? p.fr : p.en}</option>
             ))}
           </select>
         </div>
@@ -226,7 +226,7 @@ export default function QuebecTaxWizard({ lang, locationId = null }) {
           />
         </div>
 
-        {/* NEQ — only for QC */}
+        {/* NEQ - only for QC */}
         {form.provinceCode === 'QC' && (
           <div>
             <label style={labelStyle}>{T.neq}</label>

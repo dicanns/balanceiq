@@ -13,7 +13,7 @@ const corsHeaders = {
 };
 
 // Server-side mapping: planKey → Stripe price ID.
-// Clients send planKey; the server resolves the price ID — clients never supply price IDs directly.
+// Clients send planKey; the server resolves the price ID - clients never supply price IDs directly.
 const PLAN_PRICES: Record<string, string> = {
   pro_monthly:                 'price_1TCLnfGcfc7VEkjZIMBbNl4n',
   pro_annual:                  'price_1TCLnmGcfc7VEkjZX2wv763a',

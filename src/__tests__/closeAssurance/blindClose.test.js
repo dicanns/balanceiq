@@ -38,7 +38,7 @@ describe('BLIND-001 variance computation invariant', () => {
     // variance = 200 - 199.75 = 0.25
     expect(variance).toBeCloseTo(0.25, 5);
 
-    // Same cash object — variance must be identical regardless of the mode we pass
+    // Same cash object - variance must be identical regardless of the mode we pass
     // (blind mode only hides the UI; the math must be invariant)
     const variance2 = computeRegisterVariance(cash);
     expect(variance2).toBeCloseTo(variance, 10);
@@ -117,7 +117,7 @@ describe('BLIND-002 reveal action audit', () => {
 // ── BLIND-003 mode transitions ────────────────────────────────────────────────
 
 describe('BLIND-003 mode transitions', () => {
-  it('switching mode preserves count values — policy save does not touch register data', () => {
+  it('switching mode preserves count values - policy save does not touch register data', () => {
     const db = buildAccountingDb();
     const cash = makeCash({ finalCash: 175 });
     const variance = computeRegisterVariance(cash);

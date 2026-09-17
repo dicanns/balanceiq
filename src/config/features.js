@@ -6,7 +6,7 @@ let _activePlan = 'free';
 export function setPlan(plan) { if(PLAN_FEATURES[plan]) _activePlan = plan; }
 export function getActivePlan() { return _activePlan; }
 // Keep CURRENT_PLAN as a getter alias for backward-compat display in JSX
-export const CURRENT_PLAN = 'free'; // static fallback — use getActivePlan() for live value
+export const CURRENT_PLAN = 'free'; // static fallback - use getActivePlan() for live value
 
 export const PLAN_FEATURES = {
   free: {
@@ -98,7 +98,7 @@ export const PLAN_FEATURES = {
     reportingAdvanced: true,
     canadaCompliance: true,
   },
-  // Franchisee in a franchisor network — cloud sync included + all Pro features
+  // Franchisee in a franchisor network - cloud sync included + all Pro features
   // ($5/mo Network Pro, or free sync covered by franchisor at base 'network' level)
   network: {
     clientDatabase: true,

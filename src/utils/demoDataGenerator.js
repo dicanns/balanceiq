@@ -1,4 +1,4 @@
-// demoDataGenerator.js — BalanceIQ demo data generator v2
+// demoDataGenerator.js - BalanceIQ demo data generator v2
 // 3 business presets, all dates anchored to today
 
 // ─── UTILITIES ──────────────────────────────────────────────────────────────
@@ -196,15 +196,15 @@ export const DEMO_PRESETS = {
 
 const NOTES_POOL = [
   'Camion en retard, reçu à 14h',
-  'Inspection santé — tout OK',
+  'Inspection santé - tout OK',
   'Nouveau menu lancé',
-  'Caisse 2 hors service matin — résolue 11h',
+  'Caisse 2 hors service matin - résolue 11h',
   'Party de bureau 35 pers. commande traiteur',
   'Tempête de neige, fermé à 19h',
-  'Fête des mères — rush brunch',
-  'Équipement réparé — four remis en service',
+  'Fête des mères - rush brunch',
+  'Équipement réparé - four remis en service',
   'Formation nouvel employé',
-  'Livraison manquante — complétée lendemain',
+  'Livraison manquante - complétée lendemain',
 ];
 
 function buildDailyEntry(dateStr, preset, carry, options = {}) {
@@ -245,7 +245,7 @@ function buildDailyEntry(dateStr, preset, carry, options = {}) {
     let variance = r2(sr(varSeed + 2, -18, 4));
     if (cashierId === 'demo-cashier-lucas' && dow === 5) variance = r2(sr(varSeed + 99, -12, -8));
     if (isBig45Short && cashierId === c1.id) variance = -45.00;
-    // finalCash = net cash collected (NOT including starting float — float stays in till)
+    // finalCash = net cash collected (NOT including starting float - float stays in till)
     const finalCash = r2(cashExpected + variance);
     return { cashierId, posVentes: r2(sales), posTPS: tps(sales), posTVQ: tvq(sales),
       posLivraisons: 0, float, interac, livraisons: 0, deposits: 0, finalCash };
@@ -406,7 +406,7 @@ function buildEncaisseData(dates, dailyData) {
 
     // Skip deposit occasionally (weekends ~30%, random ~12%)
     const skipDeposit = (dow === 0 && sr(seed + 55) > 0.5) || (dow === 6 && sr(seed + 57) > 0.65) || sr(seed + 56) > 0.88;
-    // Deposit = 70-95% of the cash that came in — keeps balance realistic and positive
+    // Deposit = 70-95% of the cash that came in - keeps balance realistic and positive
     const depositAmt = skipDeposit ? 0 : r2(cashFromCaisses * sr(seed + 77, 0.70, 0.95));
 
     // Cash outs 2-3x per week
@@ -473,45 +473,45 @@ function buildFacturation(preset, today) {
     ];
     const soumissions = [
       { id: 'demo-som-1', numero: 'S-0001', date: d(-6), dateEcheance: d(24), clientId: 'demo-cli-3',
-        statut: 'Envoyée', lignes: [ligne('Plateau burger — Tournoi hockey 85 pers.', 85, 22.00), ligne('Plateau desserts', 4, 45.00)], notes: 'Tournoi régional mars', paiements: [], acomptes: [] },
+        statut: 'Envoyée', lignes: [ligne('Plateau burger - Tournoi hockey 85 pers.', 85, 22.00), ligne('Plateau desserts', 4, 45.00)], notes: 'Tournoi régional mars', paiements: [], acomptes: [] },
       { id: 'demo-som-2', numero: 'S-0002', date: d(-13), dateEcheance: d(17), clientId: 'demo-cli-1',
-        statut: 'Envoyée', lignes: [ligne('Lunch corporatif — Formation Q2 (30 pers.)', 30, 18.75)], notes: 'Formation trimestrielle', paiements: [], acomptes: [] },
+        statut: 'Envoyée', lignes: [ligne('Lunch corporatif - Formation Q2 (30 pers.)', 30, 18.75)], notes: 'Formation trimestrielle', paiements: [], acomptes: [] },
     ];
     const commandes = [
       { id: 'demo-cmd-1', numero: 'C-0001', date: d(-22), dateEcheance: d(8), clientId: 'demo-cli-2', soumissionId: null,
         statut: 'Confirmée', depositAmount: 500, depositDate: d(-20),
-        lignes: [ligne('Menu scolaire — Avril (180 élèves × 20 jours)', 3600, 9.25)], notes: 'Contrat mensuel — avril', paiements: [], acomptes: [] },
+        lignes: [ligne('Menu scolaire - Avril (180 élèves × 20 jours)', 3600, 9.25)], notes: 'Contrat mensuel - avril', paiements: [], acomptes: [] },
     ];
     const factures = [
       { id: 'demo-fac-1', numero: 'F-0001', date: d(-75), dateEcheance: d(-45), clientId: 'demo-cli-4', statut: 'Payée',
-        lignes: [ligne('Plateau burger — Fête personnel (40 pers.)', 40, 22.00), ligne('Combo repas', 5, 16.50)], notes: 'Fête fin d\'année',
+        lignes: [ligne('Plateau burger - Fête personnel (40 pers.)', 40, 22.00), ligne('Combo repas', 5, 16.50)], notes: 'Fête fin d\'année',
         paiements: [paiement(d(-42), 1106.35, 'Chèque', 'CHQ-4421')], acomptes: [] },
       { id: 'demo-fac-2', numero: 'F-0002', date: d(-68), dateEcheance: d(-38), clientId: 'demo-cli-2', statut: 'Payée',
-        lignes: [ligne('Menu scolaire — Janv. (180 élèves × 20j)', 3600, 9.25)], notes: 'Janvier',
+        lignes: [ligne('Menu scolaire - Janv. (180 élèves × 20j)', 3600, 9.25)], notes: 'Janvier',
         paiements: [paiement(d(-35), 38151.00, 'Virement', 'VIR-B1-JAN')], acomptes: [] },
       { id: 'demo-fac-3', numero: 'F-0003', date: d(-55), dateEcheance: d(-25), clientId: 'demo-cli-1', statut: 'Payée',
-        lignes: [ligne('Lunch corporatif — Formation Q1 (25 pers.)', 25, 18.75)], notes: '',
+        lignes: [ligne('Lunch corporatif - Formation Q1 (25 pers.)', 25, 18.75)], notes: '',
         paiements: [paiement(d(-22), 537.50, 'Virement', 'VIR-TRB-01')], acomptes: [] },
       { id: 'demo-fac-4', numero: 'F-0004', date: d(-48), dateEcheance: d(-18), clientId: 'demo-cli-3', statut: 'Envoyée',
-        lignes: [ligne('Plateau burger — Gala sportif 60 pers.', 60, 22.00), ligne('Plateau desserts', 3, 45.00)], notes: 'OVERDUE — relance envoyée',
+        lignes: [ligne('Plateau burger - Gala sportif 60 pers.', 60, 22.00), ligne('Plateau desserts', 3, 45.00)], notes: 'OVERDUE - relance envoyée',
         paiements: [], acomptes: [] },
       { id: 'demo-fac-5', numero: 'F-0005', date: d(-35), dateEcheance: d(-5), clientId: 'demo-cli-6', statut: 'Envoyée',
-        lignes: [ligne('Plateau burger — Réunion annuelle (50 pers.)', 50, 22.00)], notes: '',
+        lignes: [ligne('Plateau burger - Réunion annuelle (50 pers.)', 50, 22.00)], notes: '',
         paiements: [], acomptes: [] },
       { id: 'demo-fac-6', numero: 'F-0006', date: d(-30), dateEcheance: d(0), clientId: 'demo-cli-5', statut: 'Partielle',
-        lignes: [ligne('Menu scolaire — Mars (95 élèves × 20j)', 1900, 9.25)], notes: '',
+        lignes: [ligne('Menu scolaire - Mars (95 élèves × 20j)', 1900, 9.25)], notes: '',
         paiements: [paiement(d(-15), 8000.00, 'Virement', 'VIR-PAG-MAR')], acomptes: [] },
       { id: 'demo-fac-7', numero: 'F-0007', date: d(-20), dateEcheance: d(10), clientId: 'demo-cli-1', statut: 'Envoyée',
-        lignes: [ligne('Lunch corporatif — Séance conseil (35 pers.)', 35, 18.75), ligne('Combo repas VIP', 8, 16.50)], notes: '',
+        lignes: [ligne('Lunch corporatif - Séance conseil (35 pers.)', 35, 18.75), ligne('Combo repas VIP', 8, 16.50)], notes: '',
         paiements: [], acomptes: [] },
       { id: 'demo-fac-8', numero: 'F-0008', date: d(-12), dateEcheance: d(18), clientId: 'demo-cli-4', statut: 'Envoyée',
-        lignes: [ligne('Plateau burger — Journée formation (55 pers.)', 55, 22.00), ligne('Plateau desserts', 2, 45.00)], notes: '',
+        lignes: [ligne('Plateau burger - Journée formation (55 pers.)', 55, 22.00), ligne('Plateau desserts', 2, 45.00)], notes: '',
         paiements: [], acomptes: [] },
       { id: 'demo-fac-9', numero: 'F-0009', date: d(-8), dateEcheance: d(22), clientId: 'demo-cli-3', statut: 'Envoyée',
-        lignes: [ligne('Plateau burger — Tournoi Q2 (70 pers.)', 70, 22.00)], notes: '',
+        lignes: [ligne('Plateau burger - Tournoi Q2 (70 pers.)', 70, 22.00)], notes: '',
         paiements: [], acomptes: [] },
       { id: 'demo-fac-10', numero: 'F-0010', date: d(-5), dateEcheance: d(25), clientId: 'demo-cli-2', statut: 'Envoyée',
-        lignes: [ligne('Menu scolaire — Avril (180 élèves × 20j)', 3600, 9.25)], notes: 'Avril',
+        lignes: [ligne('Menu scolaire - Avril (180 élèves × 20j)', 3600, 9.25)], notes: 'Avril',
         paiements: [], acomptes: [] },
       { id: 'demo-fac-11', numero: 'F-0011', date: d(-3), dateEcheance: d(27), clientId: 'demo-cli-6', statut: 'Envoyée',
         lignes: [ligne('Lunch corporatif (28 pers.)', 28, 18.75)], notes: '',
@@ -519,11 +519,11 @@ function buildFacturation(preset, today) {
     ];
     const creditNotes = [
       { id: 'demo-nc-1', numero: 'NC-0001', date: d(-40), clientId: 'demo-cli-3', factureNumero: 'F-0004', facId: 'demo-fac-4', statut: 'Envoyée',
-        lignes: [ligne('Annulation 5 pers. — événement réduit', 5, 22.00)], notes: 'Ajustement nb participants', paiements: [] },
+        lignes: [ligne('Annulation 5 pers. - événement réduit', 5, 22.00)], notes: 'Ajustement nb participants', paiements: [] },
       { id: 'demo-nc-2', numero: 'NC-0002', date: d(-28), clientId: 'demo-cli-6', factureNumero: 'F-0005', facId: 'demo-fac-5', statut: 'Envoyée',
         lignes: [ligne('Escompte fidélité 5%', 1, -55.00)], notes: 'Rabais client régulier', paiements: [] },
       { id: 'demo-nc-3', numero: 'NC-0003', date: d(-10), clientId: 'demo-cli-5', factureNumero: 'F-0006', facId: 'demo-fac-6', statut: 'Envoyée',
-        lignes: [ligne('Correction facturation — 10 absences', 10, 9.25)], notes: 'Absences confirmées par direction', paiements: [] },
+        lignes: [ligne('Correction facturation - 10 absences', 10, 9.25)], notes: 'Absences confirmées par direction', paiements: [] },
     ];
     const docNums = { soumission: 2, commande: 1, facture: 11, creditNote: 3, encaissement: 6 };
     return { cats, prods, clients, soumissions, commandes, factures, creditNotes, docNums, companyInfo: preset.companyInfo };
@@ -552,14 +552,14 @@ function buildFacturation(preset, today) {
     ];
     const soumissions = [
       { id: 'demo-som-1', numero: 'S-0001', date: d(-4), dateEcheance: d(26), clientId: 'demo-cli-4', statut: 'Envoyée',
-        lignes: [ligne('Plateau viennoiseries événement', 8, 55.00), ligne('Croissants (bte 12)', 5, 18.00)], notes: 'Mariage — 200 personnes', paiements: [], acomptes: [] },
+        lignes: [ligne('Plateau viennoiseries événement', 8, 55.00), ligne('Croissants (bte 12)', 5, 18.00)], notes: 'Mariage - 200 personnes', paiements: [], acomptes: [] },
       { id: 'demo-som-2', numero: 'S-0002', date: d(-11), dateEcheance: d(19), clientId: 'demo-cli-1', statut: 'Envoyée',
         lignes: [ligne('Croissants (bte 12)', 15, 18.00), ligne('Pain au chocolat (bte 12)', 10, 22.00)], notes: 'Contrat service chambre mensuel', paiements: [], acomptes: [] },
     ];
     const commandes = [
       { id: 'demo-cmd-1', numero: 'C-0001', date: d(-18), dateEcheance: d(12), clientId: 'demo-cli-3', soumissionId: null,
         statut: 'Confirmée', depositAmount: 0, depositDate: null,
-        lignes: [ligne('Abonnement hebdomadaire café × 4 semaines', 4, 120.00)], notes: 'Abonnement mensuel — livraison lundi', paiements: [], acomptes: [] },
+        lignes: [ligne('Abonnement hebdomadaire café × 4 semaines', 4, 120.00)], notes: 'Abonnement mensuel - livraison lundi', paiements: [], acomptes: [] },
     ];
     const factures = [
       { id: 'demo-fac-1', numero: 'F-0001', date: d(-72), dateEcheance: d(-42), clientId: 'demo-cli-1', statut: 'Payée',
@@ -589,9 +589,9 @@ function buildFacturation(preset, today) {
     ];
     const creditNotes = [
       { id: 'demo-nc-1', numero: 'NC-0001', date: d(-30), clientId: 'demo-cli-5', factureNumero: 'F-0003', facId: 'demo-fac-3', statut: 'Envoyée',
-        lignes: [ligne('Retour — produits non conformes (2 boîtes)', 2, 18.00)], notes: 'Croissants reçus abîmés', paiements: [] },
+        lignes: [ligne('Retour - produits non conformes (2 boîtes)', 2, 18.00)], notes: 'Croissants reçus abîmés', paiements: [] },
       { id: 'demo-nc-2', numero: 'NC-0002', date: d(-18), clientId: 'demo-cli-2', factureNumero: 'F-0002', facId: 'demo-fac-2', statut: 'Envoyée',
-        lignes: [ligne('Correction quantité — 2 lots baguettes manquants', 2, 14.00)], notes: 'Livraison incomplète confirmée', paiements: [] },
+        lignes: [ligne('Correction quantité - 2 lots baguettes manquants', 2, 14.00)], notes: 'Livraison incomplète confirmée', paiements: [] },
     ];
     const docNums = { soumission: 2, commande: 1, facture: 8, creditNote: 2, encaissement: 5 };
     return { cats, prods, clients, soumissions, commandes, factures, creditNotes, docNums, companyInfo: preset.companyInfo };
@@ -642,7 +642,7 @@ function buildFacturation(preset, today) {
   ];
   const creditNotes = [
     { id: 'demo-nc-1', numero: 'NC-0001', date: d(-35), clientId: 'demo-cli-1', factureNumero: 'F-0003', facId: 'demo-fac-3', statut: 'Envoyée',
-      lignes: [ligne('Produit endommagé — retour', 1, 38.00)], notes: 'Plateau fromages reçu non conforme', paiements: [] },
+      lignes: [ligne('Produit endommagé - retour', 1, 38.00)], notes: 'Plateau fromages reçu non conforme', paiements: [] },
     { id: 'demo-nc-2', numero: 'NC-0002', date: d(-20), clientId: 'demo-cli-2', factureNumero: 'F-0004', facId: 'demo-fac-4', statut: 'Envoyée',
       lignes: [ligne('Escompte fidélité 3%', 1, -22.20)], notes: 'Rabais client institutionnel', paiements: [] },
   ];
@@ -726,7 +726,7 @@ function prevSalesForDate(dateStr, product, preset) {
       if (month <= 2 || month === 12) base *= 0.22;
       else if (month >= 5) base *= 1.30;
     }
-    // Wrap: trending up — 2 week upward trend (simulate last 14 days)
+    // Wrap: trending up - 2 week upward trend (simulate last 14 days)
     if (product.id === 'demo-prev-wrappoulet') {
       const daysAgo = Math.round((new Date() - dt(dateStr)) / 86400000);
       if (daysAgo <= 14) base *= (1 + (14 - daysAgo) * 0.015);
@@ -813,7 +813,7 @@ function getPatternsAndInsights(preset, lang) {
     const insights = [
       { id: 'demo-ins-smash-stockout', type: 'stockout_critical', entity: 'demo-prev-smashburger', message_fr: 'Smash Burger: rupture de stock 3 vendredis sur 4. Revenu perdu estimé: $312/mois. Production suggérée: 125 unités le vendredi.', message_en: 'Smash Burger: stockout 3 of 4 Fridays. Estimated lost revenue: $312/month. Suggested production: 125 units on Fridays.', severity: 'critical', financial_impact: 312 },
       { id: 'demo-ins-frites-waste', type: 'overproduction_waste', entity: 'demo-prev-frites', message_fr: 'Frites: gaspillage moyen de 21% les lundis. Coût: $23/semaine. Réduisez la production de 120 à 92 unités.', message_en: 'Fries: average 21% waste on Mondays. Cost: $23/week. Reduce production from 120 to 92 units.', severity: 'warning', financial_impact: 92 },
-      { id: 'demo-ins-wrap-trend', type: 'trend_up', entity: 'demo-prev-wrappoulet', message_fr: 'Wrap poulet +21% sur les 2 dernières semaines. Tendance soutenue — considérez augmenter l\'approvisionnement.', message_en: 'Chicken wrap +21% over the last 2 weeks. Sustained trend — consider increasing supply.', severity: 'suggestion', financial_impact: null },
+      { id: 'demo-ins-wrap-trend', type: 'trend_up', entity: 'demo-prev-wrappoulet', message_fr: 'Wrap poulet +21% sur les 2 dernières semaines. Tendance soutenue - considérez augmenter l\'approvisionnement.', message_en: 'Chicken wrap +21% over the last 2 weeks. Sustained trend - consider increasing supply.', severity: 'suggestion', financial_impact: null },
       { id: 'demo-ins-milkshake-weather', type: 'weather_correlation', entity: 'demo-prev-milkshake', message_fr: 'Milkshake se vend 35% de plus quand la température dépasse 15°C. Ajustez la production selon la météo prévue.', message_en: 'Milkshakes sell 35% more when temperature exceeds 15°C. Adjust production based on forecast weather.', severity: 'suggestion', financial_impact: null },
       { id: 'demo-ins-lucas-variance', type: 'cashier_variance', entity: 'demo-cashier-lucas', message_fr: 'Lucas Bergeron: variance moyenne les vendredis: -$9.24 (6 vendredis consécutifs). Vérification recommandée.', message_en: 'Lucas Bergeron: average variance on Fridays: -$9.24 (6 consecutive Fridays). Review recommended.', severity: 'warning', financial_impact: 55 },
     ];
@@ -831,7 +831,7 @@ function getPatternsAndInsights(preset, lang) {
     const insights = [
       { id: 'demo-ins-croissant-stockout', type: 'stockout_critical', entity: 'demo-prev-croissant', message_fr: 'Croissants: rupture de stock 3 samedis sur 4. Revenu perdu estimé: $284/mois. Production suggérée: 95 unités le samedi.', message_en: 'Croissants: stockout 3 of 4 Saturdays. Estimated lost revenue: $284/month. Suggested Saturday production: 95 units.', severity: 'critical', financial_impact: 284 },
       { id: 'demo-ins-baguette-waste', type: 'overproduction_waste', entity: 'demo-prev-baguette', message_fr: 'Baguettes: gaspillage moyen de 22% les lundis. Coût: $24/semaine. Réduisez la production de 32 à 24 unités.', message_en: 'Baguettes: average 22% waste on Mondays. Cost: $24/week. Reduce Monday production from 32 to 24 units.', severity: 'warning', financial_impact: 96 },
-      { id: 'demo-ins-baguette-decline', type: 'trend_down', entity: 'demo-prev-baguette', message_fr: 'Baguettes -18% sur les 2 dernières semaines. Tendance à la baisse — réduisez les commandes de farine progressivement.', message_en: 'Baguettes -18% over 2 weeks. Downward trend — gradually reduce flour orders.', severity: 'suggestion', financial_impact: null },
+      { id: 'demo-ins-baguette-decline', type: 'trend_down', entity: 'demo-prev-baguette', message_fr: 'Baguettes -18% sur les 2 dernières semaines. Tendance à la baisse - réduisez les commandes de farine progressivement.', message_en: 'Baguettes -18% over 2 weeks. Downward trend - gradually reduce flour orders.', severity: 'suggestion', financial_impact: null },
       { id: 'demo-ins-cafeglace-weather', type: 'weather_correlation', entity: 'demo-prev-cafeglace', message_fr: 'Café glacé: +55% de ventes quand T > 15°C. Préparez 35 unités les jours de beau temps prévu.', message_en: 'Iced coffee: +55% sales when T > 15°C. Prepare 35 units on sunny forecast days.', severity: 'suggestion', financial_impact: null },
       { id: 'demo-ins-croissant-cross', type: 'cross_product', entity: 'demo-prev-croissant', message_fr: 'Quand le Croissant est en rupture, le Pain au chocolat vend 15% de plus. Augmentez les deux le samedi.', message_en: 'When Croissants stock out, Pain au chocolat sells 15% more. Increase both on Saturdays.', severity: 'suggestion', financial_impact: null },
     ];

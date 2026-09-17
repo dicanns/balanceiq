@@ -12,8 +12,8 @@ Fixtures for the Sprint 5 accounting integrity test suite.
 None yet. All test scenarios use programmatic DB builders:
 
 - `src/__tests__/accounting/helpers/testSchema.js`
-  - `buildAccountingDb()` — full v8-v11 schema, suitable for GL/Bank/Tax unit tests
-  - `buildPreLedgerDb({ withLegacyData })` — pre-accounting schema at user_version=7
+  - `buildAccountingDb()` - full v8-v11 schema, suitable for GL/Bank/Tax unit tests
+  - `buildPreLedgerDb({ withLegacyData })` - pre-accounting schema at user_version=7
 
 - Migration test helpers inline their own `buildLegacyDb()` to avoid shared state between tests.
 

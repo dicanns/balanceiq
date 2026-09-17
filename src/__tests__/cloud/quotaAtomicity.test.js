@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest';
 // and the edge function guard pattern using it.
 
 function simulateRpc(currentCount, limit) {
-  if (currentCount >= limit) return -1; // WHERE clause fails — no update
+  if (currentCount >= limit) return -1; // WHERE clause fails - no update
   return currentCount + 1;
 }
 
@@ -67,22 +67,22 @@ describe('QUOTA-ATOM-003: concurrent calls cannot both exceed limit', () => {
     expect(result1).toBe(50);
     count = result1; // DB state after first call
 
-    // Second concurrent call: count is now 50 which equals limit — returns -1
+    // Second concurrent call: count is now 50 which equals limit - returns -1
     const result2 = simulateRpc(count, limit);
     expect(result2).toBe(-1);
   });
 
-  it('read-then-upsert (old pattern) allows both to proceed — demonstrates the bug', () => {
+  it('read-then-upsert (old pattern) allows both to proceed - demonstrates the bug', () => {
     const limit = 50;
     const count = 49; // Both reads see the same snapshot
 
     // OLD PATTERN: both read count=49, both see 49 < 50, both proceed
     const req1Allowed = count < limit; // true
-    const req2Allowed = count < limit; // also true — race condition!
+    const req2Allowed = count < limit; // also true - race condition!
     expect(req1Allowed).toBe(true);
     expect(req2Allowed).toBe(true); // Bug: both slip through
 
-    // NEW PATTERN: RPC is atomic — only one can increment past limit
+    // NEW PATTERN: RPC is atomic - only one can increment past limit
     let atomicCount = 49;
     const rpc1 = simulateRpc(atomicCount, limit);
     atomicCount = rpc1; // 50

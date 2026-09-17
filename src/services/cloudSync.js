@@ -1,5 +1,5 @@
 // ── CLOUD SYNC SERVICE ─────────────────────────────────────────────────────
-// Pro and Franchise tier only. Free tier is fully offline — no account needed.
+// Pro and Franchise tier only. Free tier is fully offline - no account needed.
 // Architecture: every local SQLite save is mirrored to Supabase synced_data.
 // Conflict resolution: last-write-wins using updated_at timestamp.
 // Offline: changes are queued in memory and flushed when connection returns.
@@ -17,7 +17,7 @@ let _locationId = null;        // location UUID
 let _plan = 'free';            // plan from organizations table
 let _parentOrgId = null;       // set when org belongs to a franchisor network
 let _lastSyncAt = null;        // ISO timestamp of last successful pull
-let _lastSyncedAt = null;      // ISO timestamp of last setStatus('synced') — for UI display
+let _lastSyncedAt = null;      // ISO timestamp of last setStatus('synced') - for UI display
 let _offlineQueue = [];        // [{key, value}] queued while offline
 let _syncDebounceTimer = null;
 let _statusCallback = null;    // (status) => void
@@ -36,7 +36,7 @@ function setStatus(s) {
 export async function initCloudSync() {
   if (!supabase) return null;
 
-  // Attach online flush trigger once — retries queued changes when network returns
+  // Attach online flush trigger once - retries queued changes when network returns
   if (typeof window !== 'undefined' && !window._biqOnlineListenerAttached) {
     window.addEventListener('online', () => {
       if (_session && _offlineQueue.length > 0) {
@@ -91,7 +91,7 @@ async function _loadOrgAndPlan() {
   if (locs?.length) {
     _locationId = locs[0].id;
   } else {
-    // No location yet (trigger didn't create one) — create it now
+    // No location yet (trigger didn't create one) - create it now
     const { data: newLoc } = await supabase
       .from('locations')
       .insert({ org_id: _orgId, name: 'Mon restaurant' })
@@ -124,7 +124,7 @@ export async function signUp({ email, password, fullName, orgName }) {
   _session = authData.session;
   _plan = 'free';
   setStatus(null);
-  // Return without org/location — trigger creates them server-side.
+  // Return without org/location - trigger creates them server-side.
   // User must confirm email then sign in.
   return { session: _session, plan: _plan, orgId: null, locationId: null };
 }

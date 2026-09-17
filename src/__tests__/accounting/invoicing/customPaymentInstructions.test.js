@@ -1,5 +1,5 @@
 /**
- * Custom Payment Instructions — spec 3.5.6 v2
+ * Custom Payment Instructions - spec 3.5.6 v2
  * CPI-001 through CPI-025
  */
 import { describe, it, expect } from 'vitest';
@@ -138,7 +138,7 @@ describe('CPI-009 http URL renders as plain text, not clickable', () => {
 describe('CPI-010 javascript: URL is plain text and flags sanitized', () => {
   it('javascript: URL does not become a link in rendered output', () => {
     const html = renderCPIHtml('javascript:alert(1)');
-    // Must not be wrapped in an anchor tag — rendered as escaped plain text only
+    // Must not be wrapped in an anchor tag - rendered as escaped plain text only
     expect(html).not.toContain('<a href="javascript:');
     expect(html).not.toContain('<a href=');
   });
@@ -186,9 +186,9 @@ describe('CPI-012 first send writes payment_instructions_snapshotted audit event
 describe('CPI-013 editing current after first send does NOT change snapshot', () => {
   it('snapshot remains after draft edit', () => {
     const invoice = { id: '3', customPaymentInstructions: 'Wire to XYZ', customPaymentInstructionsSnapshot: 'Wire to XYZ' };
-    // User edits draft — snapshot must not change automatically
+    // User edits draft - snapshot must not change automatically
     const draftText = 'Wire to NEW ACCOUNT';
-    // Snapshot only changes via explicit reissue — not via applyInitialSnapshot
+    // Snapshot only changes via explicit reissue - not via applyInitialSnapshot
     // The snapshot column is separate from the current field
     expect(invoice.customPaymentInstructionsSnapshot).toBe('Wire to XYZ');
     expect(isSentAndDiffers(invoice, draftText)).toBe(true);
@@ -268,14 +268,14 @@ describe('CPI-017 reissue with unchanged value does not write duplicate audit', 
   });
 });
 
-describe('CPI-018 payment plan child inherits parent snapshot (deferred — payment plans future feature)', () => {
+describe('CPI-018 payment plan child inherits parent snapshot (deferred - payment plans future feature)', () => {
   it.todo('child invoice created from payment plan inherits parent snapshot frozen at creation');
 });
 
 // ── Render matrix ─────────────────────────────────────────────────────────────
 
 describe('CPI-019 credit note does NOT render the field', () => {
-  it('resolveRenderValue is not called in buildCreditNoteHTML — structural test', async () => {
+  it('resolveRenderValue is not called in buildCreditNoteHTML - structural test', async () => {
     // CPI functions are pure and have no side effects.
     // This test verifies the field is not exported from cpiUtils in any way that
     // would auto-inject into other document types.
@@ -283,7 +283,7 @@ describe('CPI-019 credit note does NOT render the field', () => {
     // No "auto-render" or "injectCPI" exports that could leak into credit notes
     expect(Object.keys(mod)).not.toContain('autoCPI');
     expect(Object.keys(mod)).not.toContain('injectCPI');
-    // buildCreditNoteHTML does not accept customPaymentInstructions — verified by absence of the param.
+    // buildCreditNoteHTML does not accept customPaymentInstructions - verified by absence of the param.
     // The field can only appear if explicitly passed, which buildCreditNoteHTML does not do.
   });
 });
@@ -301,13 +301,13 @@ describe('CPI-020 Acomba/Sage export does NOT include the field', () => {
 });
 
 describe('CPI-021 field is invisible to GL, trial balance, balance sheet', () => {
-  it('sanitizeCPI is a pure function — no DB side effects', () => {
+  it('sanitizeCPI is a pure function - no DB side effects', () => {
     const result = sanitizeCPI('<b>IBAN XX00</b>');
     expect(result).toHaveProperty('text');
     expect(result).toHaveProperty('sanitized');
   });
 
-  it('renderCPIHtml is a pure function — no DB side effects', () => {
+  it('renderCPIHtml is a pure function - no DB side effects', () => {
     const result = renderCPIHtml('Wire: IBAN XX00\nhttps://pay.example.com');
     expect(typeof result).toBe('string');
   });
@@ -365,7 +365,7 @@ describe('CPI-024 repeated draft edits before first send do NOT write audit even
     expect(isSentAndDiffers(invoice, 'any draft')).toBe(false);
   });
 
-  it('draft edits produce no audit event — shouldWriteReissueAudit is false before send', () => {
+  it('draft edits produce no audit event - shouldWriteReissueAudit is false before send', () => {
     // Before send: no snapshot exists, so "old" and "new" are both null
     expect(shouldWriteReissueAudit(null, null)).toBe(false);
   });
@@ -390,13 +390,13 @@ describe('CPI-025 repeated reissues each write their own audit event with correc
     expect(ev2.newValue).not.toBe(ev3.newValue);
   });
 
-  it('cpiHash is deterministic — same input always same hash', () => {
+  it('cpiHash is deterministic - same input always same hash', () => {
     const h1 = cpiHash('hello world');
     const h2 = cpiHash('hello world');
     expect(h1).toBe(h2);
   });
 
-  it('cpiHash is sensitive — different input produces different hash', () => {
+  it('cpiHash is sensitive - different input produces different hash', () => {
     expect(cpiHash('text A')).not.toBe(cpiHash('text B'));
   });
 });

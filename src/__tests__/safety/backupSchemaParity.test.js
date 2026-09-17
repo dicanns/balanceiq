@@ -1,5 +1,5 @@
 /**
- * SAFETY-001 — Backup schema parity
+ * SAFETY-001 - Backup schema parity
  *
  * Asserts that every real SQLite table in the app schema is included in the
  * getAllTablesForBackup output. Fails if a future migration adds a table

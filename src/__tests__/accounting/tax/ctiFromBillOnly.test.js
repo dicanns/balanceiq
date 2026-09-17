@@ -1,5 +1,5 @@
 /**
- * TAX-011 + TAX-012 — CTI Sourced from Bill Only, Never Doubled via Bank Transaction
+ * TAX-011 + TAX-012 - CTI Sourced from Bill Only, Never Doubled via Bank Transaction
  *
  * P1 fix from Codex review: the CTI computation reads tax fields from supplier
  * bills stored in kv_store JSON. Bank transactions have a tax_claimable flag
@@ -74,7 +74,7 @@ describe('TAX-012 no CTI double-count when bank transaction matches bill', () =>
        VALUES (?, '2026-03-01', 'PROPRIO INC LOYER', -3765.00, 'manual', ?, 0)`
     ).run(bankAccountId, coaExpense);
 
-    // CTI must come from bill only — bank transaction with tax_claimable=0 is ignored
+    // CTI must come from bill only - bank transaction with tax_claimable=0 is ignored
     const { tpsCti, tvqRti } = computeCtiFromDb(db, '2026-03-01', '2026-03-31');
 
     // Total CTI = bill amount only (not bill + bank transaction)
@@ -115,7 +115,7 @@ describe('TAX-012 no CTI double-count when bank transaction matches bill', () =>
        VALUES (?, '2026-04-05', 'ENERGIR DEBIT', -318.50, 'manual', ?, 1)`
     ).run(bankAccountId, coaExpense);
 
-    // CTI still comes from bill only — tax_claimable on bank_transactions is a suspense flag, not a CTI source
+    // CTI still comes from bill only - tax_claimable on bank_transactions is a suspense flag, not a CTI source
     const { tpsCti, tvqRti } = computeCtiFromDb(db, '2026-04-01', '2026-04-30');
     expect(tpsCti).toBeCloseTo(14.50, 4);
     expect(tvqRti).toBeCloseTo(28.89, 4);

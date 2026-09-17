@@ -1,5 +1,5 @@
 /**
- * TAX-001 — TPS/TVQ Collected on Invoice (Journal Entry Assertions)
+ * TAX-001 - TPS/TVQ Collected on Invoice (Journal Entry Assertions)
  *
  * Scenario: finalize a taxable invoice for $100 subtotal.
  * Assert: journal entry credits 2100 TPS a payer $5.00 (500 cents).

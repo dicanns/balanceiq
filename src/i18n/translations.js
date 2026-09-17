@@ -1,10 +1,10 @@
-// ── BalanceIQ — Translations ──
+// ── BalanceIQ - Translations ──
 // FR = French (default), EN = English
 // Usage: import { FR, EN } from './i18n/translations';
 // In App: const T = lang === 'en' ? EN : FR;
 
 export const FR = {
-  // ── NAVIGATION — Main Tabs ──
+  // ── NAVIGATION - Main Tabs ──
   tabDaily:         "Quotidien",
   tabPL:            "P&L Mensuel",
   tabCash:          "Encaisse",
@@ -24,9 +24,9 @@ export const FR = {
  actVsTheoActual: "Coût réel",
  actVsTheoTheo: "Théorique",
  actVsTheoVariance:"Écart",
- actVsTheoGood: "— Excellent",
- actVsTheoWarn: "— À surveiller",
- actVsTheoBad: "— Attention",
+ actVsTheoGood: "- Excellent",
+ actVsTheoWarn: "- À surveiller",
+ actVsTheoBad: "- Attention",
  actVsTheoNoRecipes: "Associez une recette à vos produits Prévisions pour calculer le coût théorique. (Prévisions → modifier produit → Recette liée)",
  actVsTheoNoSales: "Aucune vente enregistrée ce mois.",
  actVsTheoHint: "Basé sur les recettes liées. Plus vous associez de produits, plus le calcul est précis.",
@@ -65,7 +65,7 @@ export const FR = {
   checklistCatMgmt:       "Gestion",
   checklistCatCustom:     "Autre",
   checklistCompTitle:     "Conformité des checklists",
-  checklistCompDesc:      (pct,d) => `${pct}% de conformité — ${d} derniers jours`,
+  checklistCompDesc:      (pct,d) => `${pct}% de conformité - ${d} derniers jours`,
   checklistCompDays:      (n,t) => `${n}/${t} jours avec toutes tâches requises complétées`,
 
   // ── MULTI-UNIT FRANCHISEE ──
@@ -81,7 +81,7 @@ export const FR = {
   myLocSynced:      "Synchronisé",
   myLocNotSynced:   "Non synchronisé",
 
-  // ── NAVIGATION — Config Sub-Tabs ──
+  // ── NAVIGATION - Config Sub-Tabs ──
   cfgBusiness:           "Entreprise",
   cfgStaff:              "Personnel",
   cfgSuppliers:          "Fournisseurs",
@@ -113,7 +113,7 @@ export const FR = {
   payrollEeDeduct:  "Déductions salariales retenues",
   payrollTotalRemit:"Total remises estimées",
   payrollTotalCost: "Coût total main d'œuvre estimé",
-  payrollDisclaimer:"Estimation seulement — exclut l'impôt sur le revenu. Utilisez votre logiciel de paie pour les montants exacts.",
+  payrollDisclaimer:"Estimation seulement - exclut l'impôt sur le revenu. Utilisez votre logiciel de paie pour les montants exacts.",
   payrollFrequency: "Fréquence de paie",
   payrollWeekly:    "Hebdomadaire",
   payrollBiweekly:  "Aux deux semaines",
@@ -144,7 +144,7 @@ export const FR = {
   aiNoAuth:           "Connexion requise. Connectez-vous dans Config → Application.",
   aiServerError:      (code) => `Erreur serveur (${code}). Vérifiez votre connexion.`,
   aiGenericError:     "Erreur lors de l'analyse. Réessayez.",
-  aiDisclaimer:       "Généré par IA — à titre indicatif seulement. Vérifiez avec votre comptable.",
+  aiDisclaimer:       "Généré par IA - à titre indicatif seulement. Vérifiez avec votre comptable.",
   aiNoData:           "Aucune donnée disponible pour cette analyse.",
 
   // ── RÉSEAU TAB ──
@@ -158,7 +158,7 @@ export const FR = {
   reseauRetardCount:  "Factures en retard",
   reseauRetardLocs:   "Succursales en retard",
   reseauAging:        "Vieillissement des créances",
-  reseauNoRetards:    "Aucun retard — toutes les redevances sont à jour.",
+  reseauNoRetards:    "Aucun retard - toutes les redevances sont à jour.",
   reseauBalance:      "Solde",
   reseauDaysLate:     "Retard",
   reseauLastReminder: "Dernier rappel",
@@ -188,7 +188,7 @@ export const FR = {
   noActiveStores:     "Aucune succursale active. Ajoutez des succursales dans Config → Succursales.",
   noActiveStoresShort:"Aucune succursale active.",
   scorecardsLocked:   "Scorecards disponibles avec le plan Franchise.",
-  scorecardsDesc:     "Scorecards du mois en cours — basées sur les données réelles de chaque succursale",
+  scorecardsDesc:     "Scorecards du mois en cours - basées sur les données réelles de chaque succursale",
   royGenTitle:        "Générer les factures de redevances",
   royCalcBtn:         "Calculer les redevances",
   royCalcBusy:        "Calcul...",
@@ -197,7 +197,7 @@ export const FR = {
   royNoClient:        "Aucun client lié",
   reconLocked:        "Réconciliation multi-succursales disponible avec le plan Franchise.",
   reconPeriod:        "Période :",
-  auditNetTitle:      "Journal d'audit — toutes succursales",
+  auditNetTitle:      "Journal d'audit - toutes succursales",
   auditFilterAll:     "Tous",
   actCreated:         "Créé",
   actUpdated:         "Modifié",
@@ -243,7 +243,7 @@ export const FR = {
  reconPartialStatus: "Partiel",
  reconUnpaidStatus: "Impayé",
 
- // ── RÉSEAU — P&L Analysis ──
+ // ── RÉSEAU - P&L Analysis ──
  reseauPlTitle:      "Analyse P&L mensuelle",
  reseauPlEmpty:      (m) => `Aucune donnée P&L saisie pour ${m}. Demandez aux succursales de compléter leur P&L mensuel.`,
  reseauPlTop:        "Meilleure performance",
@@ -256,7 +256,7 @@ export const FR = {
  reseauPlTarget:     "cible",
  reseauRoyLocked:    "Génération de redevances disponible avec le plan Franchise.",
 
- // ── NAVIGATION — Facturation Sub-Tabs ──
+ // ── NAVIGATION - Facturation Sub-Tabs ──
  factDocs: "Documents",
  factClients: "Clients",
  factCategories: "Catégories",
@@ -265,7 +265,7 @@ export const FR = {
  factSettings: "Paramètres",
  factRappels: "Rappels",
 
- // ── SPRINT 9 — Reminder Ladder ──
+ // ── SPRINT 9 - Reminder Ladder ──
  rappelTitle:         "Rappels automatiques",
  rappelSubLadder:     "Escaliers",
  rappelSubSteps:      "Étapes",
@@ -303,7 +303,7 @@ export const FR = {
    ["{company_name}",   "Nom de votre entreprise"],
  ],
 
- // ── SPRINT 9 — Interest on Overdue ──
+ // ── SPRINT 9 - Interest on Overdue ──
  interestTitle:       "Intérêts sur comptes en souffrance",
  interestRate:        "Taux mensuel (%)",
  interestGrace:       "Délai de grâce (jours)",
@@ -317,7 +317,7 @@ export const FR = {
  interestGenerated:   (n) => `${n} facture(s) d'intérêts générée(s)`,
  interestNoneOverdue: "Aucun compte en souffrance éligible.",
 
- // ── SPRINT 9 — Deposit Schedules ──
+ // ── SPRINT 9 - Deposit Schedules ──
  depositTitle:        "Calendrier d'acomptes",
  depositNew:          "Ajouter un acompte",
  depositLabel:        "Description",
@@ -332,21 +332,21 @@ export const FR = {
  depositGenerated:    "Générée",
  depositPending:      "En attente",
  depositProGate:      "Les calendriers d'acomptes sont disponibles avec BalanceIQ Pro.",
- depositTaxNote:      "La TPS/TVQ est appliquée à chaque acompte (Revenu Québec — obligation au moment de la perception).",
+ depositTaxNote:      "La TPS/TVQ est appliquée à chaque acompte (Revenu Québec - obligation au moment de la perception).",
  depositDesc:         "Générez des factures d'acompte à envoyer au client avant la livraison. Différent du bouton « Enregistrer un dépôt » qui enregistre un paiement déjà reçu. L'acompte payé sera appliqué comme crédit sur la facture finale.",
 
- // ── SPRINT 9 — Per-client settings ──
+ // ── SPRINT 9 - Per-client settings ──
  clientReminderEnabled:  "Rappels automatiques actifs pour ce client",
  clientInterestEnabled:  "Intérêts sur retard actifs pour ce client",
 
- // ── SPRINT 10 — Stripe paiements en ligne ──
+ // ── SPRINT 10 - Stripe paiements en ligne ──
  stripeConfig:           "Paiements en ligne (Stripe)",
  stripeConfigHint:       "Permet à vos clients de payer leurs factures par carte ou Interac en ligne via votre compte Stripe.",
  stripeSecretKey:        "Clé secrète Stripe (sk_live_... ou sk_test_...)",
  stripeTestConn:         "Tester la connexion",
  stripeTesting:          "Test en cours…",
- stripeConnected:        (name) => `Connecté — ${name}`,
- stripeNotConnected:     "Non connecté — entrez votre clé secrète Stripe",
+ stripeConnected:        (name) => `Connecté - ${name}`,
+ stripeNotConnected:     "Non connecté - entrez votre clé secrète Stripe",
  stripeFeesEnabled:      "Appliquer les frais de traitement Stripe aux factures",
  stripeFeeRate:          "Taux de frais (%)",
  stripeGenLink:          "Générer lien de paiement",
@@ -354,14 +354,14 @@ export const FR = {
  stripePaymentLinkBadge: "Lien Stripe actif",
  stripeCheckPayment:     "Vérifier le paiement",
  stripeCheckWorking:     "Vérification…",
- stripeSessionPaid:      "Payé via Stripe — marquer la facture comme payée?",
- stripeSessionOpen:      "En attente — le client n'a pas encore payé",
- stripeSessionExpired:   "Lien expiré — générer un nouveau lien",
+ stripeSessionPaid:      "Payé via Stripe - marquer la facture comme payée?",
+ stripeSessionOpen:      "En attente - le client n'a pas encore payé",
+ stripeSessionExpired:   "Lien expiré - générer un nouveau lien",
  stripePayOnline:        "Payer en ligne",
  stripeFeeDisclosure:    (rate) => `Des frais de traitement de ${rate}% sont appliqués aux paiements par carte conformément aux politiques du commerçant.`,
- stripeProGate:          "Paiements en ligne Stripe — fonctionnalité Pro",
+ stripeProGate:          "Paiements en ligne Stripe - fonctionnalité Pro",
 
- // ── SPRINT 10 — Acomba / export comptable ──
+ // ── SPRINT 10 - Acomba / export comptable ──
  ledgerExport:           "Exporter le journal",
  ledgerExportFormat:     "Format",
  ledgerExportDateFrom:   "Du",
@@ -373,20 +373,20 @@ export const FR = {
  ledgerExportDone:       (n) => `${n} ligne(s) exportée(s)`,
  ledgerExportNone:       "Aucune écriture trouvée pour cette période",
 
- // ── SPRINT 10 — Virement Interac (e-transfer matching) ──
+ // ── SPRINT 10 - Virement Interac (e-transfer matching) ──
  etransferBadge:         "Virement Interac",
  etransferSuggest:       "Suggérer",
  etransferModalTitle:    "Appliquer un virement Interac",
  etransferSender:        "Expéditeur détecté",
  etransferClientMatch:   "Client correspondant",
- etransferNoMatch:       "Aucun client trouvé — sélectionner manuellement",
+ etransferNoMatch:       "Aucun client trouvé - sélectionner manuellement",
  etransferOpenInvoices:  "Factures ouvertes",
  etransferApply:         "Appliquer le paiement",
  etransferApplied:       "Paiement appliqué",
  etransferSelectClient:  "Sélectionner un client",
  etransferSelectInvoice: "Sélectionner une facture",
 
- // ── SPRINT 10 — Custom payment instructions (3.5.6) ──
+ // ── SPRINT 10 - Custom payment instructions (3.5.6) ──
  invPaymentInstructionsHeader:      "Autres instructions de paiement (optionnel)",
  invPaymentInstructionsPlaceholder: "Ex: Lien Square, PayPal, coordonnées bancaires, adresse pour chèque. Texte brut seulement.",
  invPaymentInstructionsHelper:      "Ce texte s'affiche sur la facture. BalanceIQ ne suit ni ne réconcilie les paiements reçus par ces moyens. Utilisez la conciliation bancaire ou l'appariement Interac pour enregistrer les paiements entrants.",
@@ -398,7 +398,7 @@ export const FR = {
  invPaymentInstructionsExternalDisclosure: "Lien de paiement externe fourni par le commerçant. BalanceIQ ne vérifie pas ces liens.",
  invPaymentInstructionsHttpWarning:      "Les liens http non sécurisés ne seront pas cliquables. Utilisez https.",
 
- // ── SPRINT 11 — Quote E-Acceptance (3.9) ──
+ // ── SPRINT 11 - Quote E-Acceptance (3.9) ──
  qaSendForAcceptance:     "Envoyer pour acceptation",
  qaAcceptanceStatus:      "Statut d'acceptation",
  qaStatusPending:         "En attente du client",
@@ -413,12 +413,12 @@ export const FR = {
  qaAcceptedIp:            "Adresse IP",
  qaSignatureLabel:        "Signature",
  qaExpiresLabel:          "Lien expire le",
- qaProGated:              "Fonctionnalité Pro — nécessite un compte cloud",
+ qaProGated:              "Fonctionnalité Pro - nécessite un compte cloud",
  qaSendSuccess:           "Lien d'acceptation envoyé au client",
  qaSendError:             "Impossible d'envoyer le lien d'acceptation",
  qaAlreadyAccepted:       "Cette soumission a déjà été acceptée électroniquement.",
 
- // ── SPRINT 11 — PAD / ACSS Debit (3.11) ──
+ // ── SPRINT 11 - PAD / ACSS Debit (3.11) ──
  padTitle:               "Prélèvement bancaire (PAD)",
  padDesc:                "Envoyez au client un lien sécurisé pour autoriser les prélèvements bancaires automatiques (ACSS Debit). Le client entre ses coordonnées bancaires sur la page Stripe. Vous pouvez ensuite prélever directement sur les factures.",
  padSendLink:            "Envoyer le lien PAD",
@@ -443,11 +443,11 @@ export const FR = {
  padChargeForbidden:     "Seul le propriétaire ou un administrateur peut prélever un client",
  padChargeDuplicate:     "Cette facture a déjà un prélèvement en cours ou complété",
  padChargeOverLimit:     "Montant supérieur à la limite de prélèvement",
- padProGate:             "Prélèvement bancaire PAD — fonctionnalité Pro",
+ padProGate:             "Prélèvement bancaire PAD - fonctionnalité Pro",
  padFollowupEnabled:     "Rappel automatique 48h si le client n'a pas complété",
  padNoMandate:           "Aucun mandat PAD pour ce client",
 
- // ── SPRINT 12 — Custom Numbering ──
+ // ── SPRINT 12 - Custom Numbering ──
  numPatternLabel:        "Modèle de numérotation",
  numPatternHint:         "Variables: {year} {year2} {month} {day} {seq} {seq4} {seq5} {clientCode}",
  numPatternPreview:      "Prochain numéro",
@@ -457,12 +457,12 @@ export const FR = {
  numCustomEnable:        "Activer la numérotation personnalisée",
  numSeparateSeq:         "Séquence séparée par type de document",
  numStartingSeq:         "Numéro de départ",
- // ── SPRINT 12 — Sections ──
+ // ── SPRINT 12 - Sections ──
  sectionAddBtn:          "＋ Ajouter une section",
  sectionPlaceholder:     "Nom de la section…",
  sectionSubtotal:        "Sous-total",
  sectionRemove:          "Retirer la section",
- // ── SPRINT 12 — Payment Plans ──
+ // ── SPRINT 12 - Payment Plans ──
  ppToggle:               "Plan de paiement",
  ppConfigure:            "Configurer",
  ppInstallments:         "Nombre de versements",
@@ -480,9 +480,9 @@ export const FR = {
  ppInstallmentOf:        (n, total) => `Versement ${n} / ${total}`,
  ppPlanActive:           "Plan de paiement actif",
  ppPlanCancelled:        "Plan de paiement annulé",
- ppEarlyPayNote:         "Paiement intégral reçu — versements restants annulés",
- ppProGate:              "Plans de paiement — fonctionnalité Pro",
- // ── SPRINT 12 — Tax-Exempt ──
+ ppEarlyPayNote:         "Paiement intégral reçu - versements restants annulés",
+ ppProGate:              "Plans de paiement - fonctionnalité Pro",
+ // ── SPRINT 12 - Tax-Exempt ──
  taxExemptTitle:         "Exemption fiscale",
  taxExemptToggle:        "Client exempté de taxes",
  taxExemptFromTps:       "Exempté de TPS",
@@ -491,7 +491,7 @@ export const FR = {
  taxExemptNumber:        "Numéro d'exemption / carte de statut",
  taxExemptExpiry:        "Date d'expiration (optionnelle)",
  taxExemptNotes:         "Notes",
- taxExemptNoDoc:         "Avertissement : aucun document justificatif lié dans le Coffre-fort. Recommandé pour la vérification (ARC — Agence du revenu du Canada, 3 ans).",
+ taxExemptNoDoc:         "Avertissement : aucun document justificatif lié dans le Coffre-fort. Recommandé pour la vérification (ARC - Agence du revenu du Canada, 3 ans).",
  taxExemptDisclaimer:    "BalanceIQ n'évalue pas l'admissibilité à l'exemption. Vérifiez auprès de votre client et de votre comptable.",
  taxExemptTypeIndian:    "Loi sur les Indiens (art. 87)",
  taxExemptTypeGovFed:    "Gouvernement fédéral",
@@ -500,19 +500,19 @@ export const FR = {
  taxExemptTypeDiplomatic:"Mission diplomatique",
  taxExemptTypeOther:     "Autre",
  taxExemptStatement:     (type, number) => `Facture exemptée de taxes en vertu de ${type}.${number ? " Numéro d'exemption : " + number + "." : ""}`,
- taxExemptExpired:       "Exemption expirée — vérifiez le statut du client avant d'envoyer",
+ taxExemptExpired:       "Exemption expirée - vérifiez le statut du client avant d'envoyer",
  taxExemptBadge:         "EXEMPTÉ",
- // ── SPRINT 12 — Proforma ──
+ // ── SPRINT 12 - Proforma ──
  proformaTitle:          "Proforma",
  proformaNew:            "Nouvelle proforma",
  proformaLabel:          "PROFORMA",
  proformaConvert:        "Convertir en facture",
  proformaConvertConfirm: "Créer une vraie facture à partir de cette proforma ?",
- proformaProGate:        "Factures proforma — fonctionnalité Pro",
- proformaNote:           "Document proforma — aucun effet comptable (n'apparaît pas dans l'AR ni dans les revenus)",
+ proformaProGate:        "Factures proforma - fonctionnalité Pro",
+ proformaNote:           "Document proforma - aucun effet comptable (n'apparaît pas dans l'AR ni dans les revenus)",
  filterProforma:         "Proformas",
 
- // ── SPRINT 13 — Credit Limits (3.16) ──
+ // ── SPRINT 13 - Credit Limits (3.16) ──
  creditLimitTitle:        "Limite de crédit",
  creditLimitToggleLabel:  "Activer une limite de crédit",
  creditLimitAmount:       "Limite ($)",
@@ -521,8 +521,8 @@ export const FR = {
  creditLimitActionBlock:  "Bloquer (empêcher la sauvegarde)",
  creditLimitActionNone:   "Aucune action",
  creditLimitNotes:        "Notes (interne)",
- creditLimitWarnBanner:   (used, limit) => `⚠ Limite de crédit dépassée — AR ouvert : ${used} / limite : ${limit}. Vous pouvez tout de même enregistrer.`,
- creditLimitBlockBanner:  (used, limit) => `🚫 Limite de crédit dépassée — AR ouvert : ${used} / limite : ${limit}. Sauvegarde bloquée.`,
+ creditLimitWarnBanner:   (used, limit) => `⚠ Limite de crédit dépassée - AR ouvert : ${used} / limite : ${limit}. Vous pouvez tout de même enregistrer.`,
+ creditLimitBlockBanner:  (used, limit) => `🚫 Limite de crédit dépassée - AR ouvert : ${used} / limite : ${limit}. Sauvegarde bloquée.`,
  creditLimitOverride:     "Passer outre (gestionnaire)",
  creditLimitOverridePH:   "Mot de passe gestionnaire",
  creditLimitOverrideOk:   "Accès accordé",
@@ -530,9 +530,9 @@ export const FR = {
  creditLimitSetPwTitle:   "Mot de passe de dérogation",
  creditLimitSetPwHint:    "Requis pour passer outre une limite bloquante.",
  creditLimitNearWidget:   "Clients près de la limite",
- creditLimitProGate:      "Limites de crédit par client — fonctionnalité Pro",
+ creditLimitProGate:      "Limites de crédit par client - fonctionnalité Pro",
 
- // ── SPRINT 13 — Inventory Invoice Bridge (3.12) ──
+ // ── SPRINT 13 - Inventory Invoice Bridge (3.12) ──
  invBridgeTitle:          "Connexion à Prévisions",
  invBridgeToggle:         "Déduire les ventes facturées du stock Prévisions",
  invBridgeOnStockout:     "Si stock insuffisant",
@@ -540,22 +540,22 @@ export const FR = {
  invBridgeBlock:          "Bloquer (empêcher la sauvegarde)",
  invBridgeProduct:        "Produit Prévisions",
  invBridgeProductPH:      "Lier un produit…",
- invBridgeNegWarn:        (name) => `⚠ Stock négatif pour « ${name} » — vérifiez avant d'envoyer.`,
+ invBridgeNegWarn:        (name) => `⚠ Stock négatif pour « ${name} » - vérifiez avant d'envoyer.`,
  invBridgeSaved:          "Déductions de stock enregistrées",
 
- // ── SPRINT 9 — Statement batch ──
+ // ── SPRINT 9 - Statement batch ──
  stmtMonthEnd:        "Envoi mensuel",
  stmtMonthEndHint:    "Envoyer l'état de compte à tous les clients ayant un solde impayé",
  stmtMonthEndDone:    (n) => `${n} état(s) de compte envoyé(s)`,
 
- // ── NAVIGATION — Facturation Filters ──
+ // ── NAVIGATION - Facturation Filters ──
  filterAll: "Tous",
  filterQuotes: "Soumissions",
  filterOrders: "Commandes",
  filterInvoices: "Factures",
  filterCreditNotes:"Notes de crédit",
 
- // ── NAVIGATION — Network (Franchiseur) Sub-Tabs ──
+ // ── NAVIGATION - Network (Franchiseur) Sub-Tabs ──
  netPerformance: "Performance",
  netScorecards: "Scorecards",
  netRoyalties: "Redevances",
@@ -674,9 +674,9 @@ export const FR = {
  dailyPmtGiftCard: "Cartes-cadeaux",
  dailyLivMismatch: (pos,man)=>` Livraisons POS (${pos}) ≠ Livraisons comptées (${man})`,
  dailyPmtMatch: "Le détail correspond au total terminal",
- dailyPmtMismatch: (det,ter,ecart)=>` Le détail (${det}) ne correspond pas au terminal (${ter}) — écart de ${ecart}`,
+ dailyPmtMismatch: (det,ter,ecart)=>` Le détail (${det}) ne correspond pas au terminal (${ter}) - écart de ${ecart}`,
  dailyPosTermMatch: "Paiements POS et terminal balancés",
- dailyPosTermMismatch:(pos,ter,ecart)=>` Total POS (${pos}) ≠ terminal (${ter}) — écart de ${ecart}`,
+ dailyPosTermMismatch:(pos,ter,ecart)=>` Total POS (${pos}) ≠ terminal (${ter}) - écart de ${ecart}`,
  dailyExpectedCash:"Encaisse attendue",
  dailyCashVarianceShort:(amt)=>` Écart caisse: ${amt} (court)`,
  dailyCashVarianceOver: (amt)=>` Écart caisse: ${amt} (excédent)`,
@@ -690,10 +690,10 @@ export const FR = {
  dailySurplus: "Surplus",
  dailyShortage: "Manque",
  dailyOf:      "de",
- dailyReconOK: (amt) => ` BALANCÉ — ${amt}`,
+ dailyReconOK: (amt) => ` BALANCÉ - ${amt}`,
  dailyReconErr: (amt) => ` ÉCART ${amt}`,
  dailyCashier: "Caissier",
- dailyNoCashier: "— Aucun —",
+ dailyNoCashier: "- Aucun -",
  dailyNetSales: "Vente nette",
  dailyGross: "Total brut",
  dailyPerDozen: "$/douzaine",
@@ -709,7 +709,7 @@ export const FR = {
   dailyInventory:   "Inventaire",
   invAdjusted:      "Ajusté",
   invStockLow:      "Stock faible",
-  invWarnEndHigh:   "Fin > Début + Reçu — vérifier",
+  invWarnEndHigh:   "Fin > Début + Reçu - vérifier",
   invProjection:    "Projection fin de journée",
   invBasedOn:       (label) => `Basé sur votre rythme à ${label}`,
   breadPassedNote:  "Passé = Début + Reçu − Restant à l'heure",
@@ -784,7 +784,7 @@ export const FR = {
   livTotalSales:    "Total ventes plateformes",
   livTotalDeposits: "Total dépôts reçus",
   livInfoOnly:      "N'affecte pas la réconciliation des caisses",
-  livNoPlatforms:   "Aucune plateforme configurée — ajouter dans Config",
+  livNoPlatforms:   "Aucune plateforme configurée - ajouter dans Config",
   livPending:       "⏳ En attente du dépôt",
   livSelectPlatform:"Sélectionner une plateforme...",
   livImportN:       (n) => `Importer ${n} dépôt${n>1?'s':''}`,
@@ -795,7 +795,7 @@ export const FR = {
   plRevenueAuto:    "Auto (depuis rapports quotidiens)",
   plMonthlyOverride:"Override mensuel",
   plCOGS:           "Coût marchandises (F&P)",
-  plCOGSHeader:     "Coût des marchandises (Food & Paper — avant taxes)",
+  plCOGSHeader:     "Coût des marchandises (Food & Paper - avant taxes)",
   plPettyCashFP:    "Petite caisse F&P",
   plPettyCashMisc:  "Petite caisse Misc",
   plTotalFP:        "Total F&P",
@@ -824,7 +824,7 @@ export const FR = {
   plLabourAuto:     "Auto (depuis rapports quotidiens)",
   plLabourOverride: "Override mensuel",
   plDeliveries:     "Plateformes de livraison",
-  plDeliveryInfo:   "Informatif — commission payée aux plateformes. Non inclus dans le calcul P&L.",
+  plDeliveryInfo:   "Informatif - commission payée aux plateformes. Non inclus dans le calcul P&L.",
   plTotalPlatSales: "Total ventes plateformes",
   plTotalDeposits:  "Total dépôts reçus",
   plCommission:     "Commission",
@@ -843,12 +843,12 @@ export const FR = {
   plBillAmount:     "Montant HT",
   plBillNote:       "Note / N° facture...",
   plSubtotalFP:     "Sous-total F&P",
-  plSubtractFP:     "− Food & Paper",
+  plSubtractFP:     "− Nourriture et emballage",
   plSubtractLabour: "− Main d'œuvre",
   plSubtractExp:    "− Dépenses",
 
   // ── INTELLIGENCE TAB ──
-  intelProjections: (day, date, month) => `Projections — ${day} ${date} ${month}`,
+  intelProjections: (day, date, month) => `Projections - ${day} ${date} ${month}`,
   intelProjected:   "Projeté",
   intelAverage:     "Moyenne",
   intelSuggestedOrder:"Commande suggérée",
@@ -858,14 +858,14 @@ export const FR = {
   intelDozHot:      "dz Hot",
   intelVelocity:    "Vélocité de consommation",
   intelAnomalies:   "Anomalies détectées",
-  intelCashVariance:"Écarts de caisse — 30 jours",
-  intelEncaisseSorties:"Sorties Encaisse — comparaison mensuelle",
+  intelCashVariance:"Écarts de caisse - 30 jours",
+  intelEncaisseSorties:"Sorties Encaisse - comparaison mensuelle",
   intelColDay:      "Jour",
   intelCVShifts:    "quarts",
   intelCVAvg:       "Écart moy.",
   intelCVCumul:     "Cumulatif",
   intelCVStatus:    "Statut",
-  intelCVNoData:    "Aucune donnée — les écarts apparaîtront après réconciliation complète (Manuel + POS)",
+  intelCVNoData:    "Aucune donnée - les écarts apparaîtront après réconciliation complète (Manuel + POS)",
   intelCVOK:        "Balancé",
   intelCVShort:     "Régulièrement court",
   intelCVOver:      "Régulièrement surplus",
@@ -873,7 +873,7 @@ export const FR = {
   intelCVHistory:   "Historique (30 jours)",
   intelCVColDate:   "Date",
   intelCVColVar:    "Écart",
-  intelCVAlertMsg:  (name, amt) => `${name} est systématiquement en déficit — perte cumulée de ${amt} en 30 jours`,
+  intelCVAlertMsg:  (name, amt) => `${name} est systématiquement en déficit - perte cumulée de ${amt} en 30 jours`,
   intelColData:     "Données",
   intelColAvgSales: "Ventes moy.",
   intelColAvgHam:   "Ham moy.",
@@ -888,7 +888,7 @@ export const FR = {
   encOutflows:      "④ Sorties de cash",
   encPhysical:      "⑤ Comptage physique",
   encReconciliation:"⑥ Réconciliation",
-  encTipOpening:    "Reporté automatiquement depuis le solde de fermeture de la veille. Premier jour ou solde incorrect ? Utilisez Modifier pour le saisir manuellement — il sera fixé pour cette journée seulement.",
+  encTipOpening:    "Reporté automatiquement depuis le solde de fermeture de la veille. Premier jour ou solde incorrect ? Utilisez Modifier pour le saisir manuellement - il sera fixé pour cette journée seulement.",
   encTipInflows:    "Cash des ventes = (cash final − float) de chaque caisse, lu automatiquement depuis l'onglet Quotidien. Ajoutez ici toute autre rentrée de fonds : ventes hors-caisse, remboursements reçus, paiements comptants de facturation, etc.",
   encTipDeposits:   "Les dépôts Interac/carte sont lus automatiquement depuis les caisses. Entrez ici chaque dépôt en espèces effectué à la banque dans la journée. Chaque dépôt réduit le solde de cash en main.",
   encTipOutflows:   "Dépenses réglées en argent comptant avant le dépôt bancaire. Ex. : achat urgent chez un fournisseur, avance à un employé, petite caisse. Choisissez une catégorie pour suivre vos sorties par type chaque mois.",
@@ -897,7 +897,7 @@ export const FR = {
   encSalesCash:     "+ Cash des ventes",
   encOtherInflows:  "+ Autres entrées",
   encCreditDeposit: "Dépôt Interac / Crédit",
-  encAutoFromReg:   "(auto — depuis les caisses)",
+  encAutoFromReg:   "(auto - depuis les caisses)",
   encFillRegisters: "⏳ Remplir les caisses d'abord",
   encCashDeposits:  "Dépôts comptant",
   encSortie:        "Sortie",
@@ -906,9 +906,9 @@ export const FR = {
   encPhysicalCount: "Comptage physique",
   encVariance:      "ÉCART",
   encBalancedOK:    "BALANCÉ",
-  encNoHistory:     "Aucun historique — entrer manuellement pour la première journée",
+  encNoHistory:     "Aucun historique - entrer manuellement pour la première journée",
   encPhysicalNeeded:"Entrer le comptage physique (section ⑤) pour voir l'écart.",
-  encDailySummary:  "Sommaire du jour — informatif",
+  encDailySummary:  "Sommaire du jour - informatif",
   encCarryCalc:     "Solde calculé",
   encCarryPhys:     "Comptage physique",
   encMonthlySummary:"Sommaire mensuel",
@@ -925,7 +925,7 @@ export const FR = {
   encSlipNumber:    "# bordereau",
   encDescPlaceholder:"Description...",
 
-  // ── FACTURATION — COMMON ──
+  // ── FACTURATION - COMMON ──
   facTitle:         "Facturation",
   facNewQuote:      "+ Soumission",
   facNewOrder:      "+ Commande",
@@ -938,7 +938,7 @@ export const FR = {
   catActiveCount:   (n) => `${n} active${n!==1?"s":""}`,
   catShowInactive:  "Afficher inactives",
   catHideInactive:  "Masquer inactives",
-  catEmpty:         "Aucune catégorie — cliquez sur \"+ Nouvelle catégorie\" pour commencer.",
+  catEmpty:         "Aucune catégorie - cliquez sur \"+ Nouvelle catégorie\" pour commencer.",
   catFieldNom:      "Nom",
   catFieldRevenu:   "# Compte revenu",
   catFieldEscompte: "# Compte escompte",
@@ -953,7 +953,7 @@ export const FR = {
   prodNewTitle:     "Nouveau produit / service",
   prodCode:         "Code produit",
   prodCategorie:    "Catégorie",
-  prodChoisirCat:   "— Choisir une catégorie * —",
+  prodChoisirCat:   "- Choisir une catégorie * -",
   prodPrixUnit:     "Prix unitaire ($)",
   prodUniteMes:     "Unité de mesure",
   prodCustomUnit:   "Unité personnalisée",
@@ -965,8 +965,8 @@ export const FR = {
   prodUnitAutre:    "Autre...",
   prodUnites:       {"unité":"unité","douzaine":"douzaine","kg":"kg","litre":"litre","heure":"heure","forfait":"forfait","%":"%","boîte":"boîte","caisse":"caisse"},
   prodForecastLink: "Produit Prévisions associé",
-  prodForecastLinkPH: "— Aucun lien —",
-  prodForecastLinkTip: "Lier ce produit à un article Prévisions. Quand vous sélectionnez ce produit sur une facture, BalanceIQ déduira automatiquement la quantité vendue du stock correspondant — sans configuration manuelle à chaque facture.",
+  prodForecastLinkPH: "- Aucun lien -",
+  prodForecastLinkTip: "Lier ce produit à un article Prévisions. Quand vous sélectionnez ce produit sur une facture, BalanceIQ déduira automatiquement la quantité vendue du stock correspondant - sans configuration manuelle à chaque facture.",
   facNewProduct:    "+ Produit / Service",
   facSearchDoc:     "Rechercher # ou client...",
   facNoDocuments:   "Aucun document trouvé.",
@@ -1003,14 +1003,14 @@ export const FR = {
   facDebitCol:      "Débit",
   facCreditCol:     "Crédit",
   facRunningBalance:"Solde courant",
-  facLockedLines:   "Commande complétée — lignes verrouillées",
+  facLockedLines:   "Commande complétée - lignes verrouillées",
   facOptional:      "Optionnel",
   facAutoGenerated: "auto-généré",
   facRefOptional:   "Référence (optionnel)",
   facReasonPlaceholder:"Décrivez la raison...",
   facCreditDescPlaceholder:"Description du crédit...",
 
-  // ── FACTURATION — CLIENT FORM ──
+  // ── FACTURATION - CLIENT FORM ──
   cliCodeClient:    "Code client",
   cliEntreprise:    "Entreprise",
   cliNomEntreprise: "Nom de l'entreprise",
@@ -1035,26 +1035,26 @@ export const FR = {
   cliSurReception:  "Sur réception",
   cliPersonnalise:  "Personnalisé",
 
-  // ── FACTURATION — CLIENT LIST ──
+  // ── FACTURATION - CLIENT LIST ──
   cliSearch:        "Rechercher...",
   cliActifs:        "Actifs",
   cliInactifs:      "Inactifs",
   cliTous:          "Tous",
   cliNouveauClient: "Nouveau client",
   cliAucunResultat: "Aucun résultat.",
-  cliAucunClientStart: (btn) => `Aucun client — cliquez sur "${btn}" pour commencer.`,
+  cliAucunClientStart: (btn) => `Aucun client - cliquez sur "${btn}" pour commencer.`,
   cliActifsCount:   (n) => `${n} actif${n!==1?"s":""}`,
   cliTelephone:     "Téléphone",
   cliSoldeDu:       "Solde dû",
 
-  // ── FACTURATION — DOCUMENT EDITORS ──
-  facChooseClient:  "— Choisir un client —",
+  // ── FACTURATION - DOCUMENT EDITORS ──
+  facChooseClient:  "- Choisir un client -",
   facDateExpiration:"Date d'expiration",
   facDateLivraison: "Date de livraison (opt.)",
   facStatut:        "Statut",
   facLignes:        "Lignes",
   facProduit:       "Produit",
-  facLibre:         "— Libre —",
+  facLibre:         "- Libre -",
   facRemise:        "Remise %",
   facAjouterLigne:  "+ Ajouter une ligne",
   facAucunPaiement: "Aucun paiement enregistré",
@@ -1076,13 +1076,13 @@ export const FR = {
     "Net 45":"Net 45","Net 60":"Net 60","Personnalisé":"Personnalisé",
   },
 
-  // ── FACTURATION — SUMMARY CARDS ──
+  // ── FACTURATION - SUMMARY CARDS ──
   facInvoicedMonth: "Facturé ce mois",
   facCollectedMonth:"Encaissé ce mois",
   facOutstanding:   "En souffrance",
   facOverdue:       "En retard",
 
-  // ── FACTURATION — AGING ──
+  // ── FACTURATION - AGING ──
   agingTitle:       "Comptes clients",
   agingSummary:     "Sommaire",
   agingDetailed:    "Détaillé",
@@ -1094,7 +1094,7 @@ export const FR = {
   agingAmountDue:   "Montant dû",
   agingBalanceDue:  "Solde dû",
   agingNoUnpaid:    (date) => `Aucune facture impayée au ${date}.`,
-  agingNoBalance:   "Aucun solde impayé — compte en règle.",
+  agingNoBalance:   "Aucun solde impayé - compte en règle.",
   agingBulkSend:    (n) => `Envoyer les états de compte (${n})`,
   agingEndOfMonth:  "Envoi groupé fin de mois",
   agingNoResendKey: "Clé API Resend non configurée. Ajoutez-la dans Paramètres > Courriel.",
@@ -1108,7 +1108,7 @@ export const FR = {
   etatTo:           "au",
   etatPrintPDF:     "Imprimer / PDF",
 
-  // ── FACTURATION — PAYMENT MODES ──
+  // ── FACTURATION - PAYMENT MODES ──
   paymentCash:      "Comptant",
   paymentCheque:    "Chèque",
   paymentInterac:   "Interac",
@@ -1116,28 +1116,28 @@ export const FR = {
   paymentTransfer:  "Virement",
   paymentOther:     "Autre",
 
-  // ── FACTURATION — EMAIL COMPOSE ──
-  emailFreeStep1:   "Étape 1 — Télécharger le PDF",
-  emailFreeStep2:   "Étape 2 — Ouvrir votre client de messagerie",
+  // ── FACTURATION - EMAIL COMPOSE ──
+  emailFreeStep1:   "Étape 1 - Télécharger le PDF",
+  emailFreeStep2:   "Étape 2 - Ouvrir votre client de messagerie",
   emailAttachManually:"puis joignez-le manuellement à votre courriel",
-  emailProFeature:  "Avec BalanceIQ Pro, le PDF est généré et joint automatiquement — aucune manipulation requise.",
+  emailProFeature:  "Avec BalanceIQ Pro, le PDF est généré et joint automatiquement - aucune manipulation requise.",
   emailDownloaded:  "Téléchargé",
 
-  // ── FACTURATION — ACCOUNTING EXPORT ──
+  // ── FACTURATION - ACCOUNTING EXPORT ──
   exportTitle:      "Exporter pour comptabilité",
   exportJournalInv: "Journal de facturation",
   exportJournalPay: "Journal des encaissements",
   exportLedger:     "Grand livre comptes à recevoir",
   exportSummary:    "Sommaire",
-  exportInvDesc:    "Détail par ligne d'article — numéros de compte inclus",
+  exportInvDesc:    "Détail par ligne d'article - numéros de compte inclus",
   exportPayDesc:    "Paiements reçus, mode et référence",
   exportLedgerDesc: "Soldes par client sur la période",
   exportExcel:      "Excel",
   exportCSV:        "CSV",
   exportAcomba:     "Journal Acomba",
-  exportAcombaDesc: "Double entrée — compatible Acomba 15+ (Journal Général GJ, AAAA-MM-JJ, point décimal)",
+  exportAcombaDesc: "Double entrée - compatible Acomba 15+ (Journal Général GJ, AAAA-MM-JJ, point décimal)",
   exportSage50:     "Journal Sage 50",
-  exportSage50Desc: "Double entrée — compatible Sage 50 Canada (Simple Comptable), UTF-8 BOM",
+  exportSage50Desc: "Double entrée - compatible Sage 50 Canada (Simple Comptable), UTF-8 BOM",
   exportNoData:     "Aucune donnée dans cette période.",
   exportPLAcomba:   "⬇ Acomba / Sage 50",
   exportAccounting: "Comptabilité",
@@ -1174,7 +1174,7 @@ export const FR = {
   tourStep3Title:   "Livraisons",
   tourStep3Desc:    "Suivez vos commissions DoorDash, Uber Eats et Skip. Importez vos rapports CSV directement depuis la plateforme.",
   tourStep4Title:   "P&L Mensuel",
-  tourStep4Desc:    "Votre bilan mensuel complet : revenus, achats, dépenses d'exploitation et profit net — toujours avant taxes.",
+  tourStep4Desc:    "Votre bilan mensuel complet : revenus, achats, dépenses d'exploitation et profit net - toujours avant taxes.",
   tourStep5Title:   "Intelligence",
   tourStep5Desc:    "Profils par jour de semaine, détection d'anomalies, suggestions de commande automatiques et prévisions multi-facteurs.",
   tourStep6Title:   "Encaisse",
@@ -1194,14 +1194,14 @@ export const FR = {
   bannerDailyDesc:      "Entrez vos fermetures de caisse, votre inventaire et vos heures de travail chaque jour. Ces données alimentent automatiquement le P&L mensuel, l'Encaisse et l'Intelligence.",
   bannerDailySettings:  "Config → Entreprise pour les informations de votre établissement · Config → Personnel & Paie pour votre équipe",
   bannerMonthlyTitle:   "P&L Mensuel",
-  bannerMonthlyDesc:    "Votre bilan complet : revenus, coût des marchandises, charges d'exploitation et profit net — toujours avant taxes. Commencez par configurer vos fournisseurs pour pouvoir saisir vos factures.",
+  bannerMonthlyDesc:    "Votre bilan complet : revenus, coût des marchandises, charges d'exploitation et profit net - toujours avant taxes. Commencez par configurer vos fournisseurs pour pouvoir saisir vos factures.",
   bannerMonthlySettings:"Config → P&L & Fournisseurs pour ajouter vos fournisseurs · Les revenus et la main-d'œuvre se remplissent automatiquement depuis le Quotidien",
   bannerEncaisseTitle:  "Encaisse",
   bannerEncaisseDesc:   "Suivi de votre position de trésorerie au quotidien. Les données des caisses sont lues automatiquement. Saisissez les autres entrées, dépôts et sorties pour calculer votre solde réel.",
   bannerEncaisseSettings:"Config → Encaisse pour les catégories de sorties et les emplacements de trésorerie",
   bannerIntelTitle:     "Intelligence",
-  bannerIntelDesc:      "Profils par jour de semaine, détection d'anomalies, suggestions de commande et prévisions multi-facteurs — construits automatiquement à partir de vos données quotidiennes.",
-  bannerIntelSettings:  "Aucune configuration requise — l'Intelligence apprend de vos saisies journalières",
+  bannerIntelDesc:      "Profils par jour de semaine, détection d'anomalies, suggestions de commande et prévisions multi-facteurs - construits automatiquement à partir de vos données quotidiennes.",
+  bannerIntelSettings:  "Aucune configuration requise - l'Intelligence apprend de vos saisies journalières",
   bannerFacTitle:       "Facturation",
   bannerFacDesc:        "Créez des soumissions, commandes, factures et notes de crédit. Gérez vos clients, suivez les paiements et envoyez des relevés de compte.",
   bannerFacSettings:    "Config → Entreprise pour vos coordonnées sur les factures · Config → Facturation pour les modèles et options",
@@ -1215,7 +1215,7 @@ export const FR = {
   showTooltipsOn:       "Activées",
   showTooltipsOff:      "Désactivées",
   tipRevenue:           "Revenus bruts générés par vos caisses ce mois-ci. Calculés automatiquement depuis le Quotidien. Vous pouvez forcer une valeur manuelle si nécessaire.",
-  tipCOGS:              "Coût des marchandises et fournitures (avant taxes). Option 1 : saisie manuelle — entrez directement le montant de chaque facture dans le champ. Option 2 (Pro) : utilisez le bouton pour scanner la facture et remplir automatiquement. Configurez vos fournisseurs dans Config → P&L & Fournisseurs.",
+  tipCOGS:              "Coût des marchandises et fournitures (avant taxes). Option 1 : saisie manuelle - entrez directement le montant de chaque facture dans le champ. Option 2 (Pro) : utilisez le bouton pour scanner la facture et remplir automatiquement. Configurez vos fournisseurs dans Config → P&L & Fournisseurs.",
   tipLabour:            "Masse salariale du mois. Calculée automatiquement depuis les heures et taux entrés dans le Quotidien. Vous pouvez entrer un montant global si vous préférez.",
   tipOpExp:             "Charges d'exploitation fixes et variables : loyer, hydro, assurances, etc. La petite caisse Divers couvre les dépenses ponctuelles non facturées.",
   supplierEmptyHint:    "Aucun fournisseur configuré. Ajoutez vos fournisseurs pour pouvoir saisir leurs factures ici.",
@@ -1265,17 +1265,17 @@ export const FR = {
   yearEndGenerating:   "Génération...",
   yearEndLocked:       "Le dossier de fin d'année est disponible avec le plan Pro.",
   taxSummaryTitle:     "Sommaire TPS/TVQ trimestriel",
-  taxSummaryDesc:      "Taxes collectées et crédits intrants par trimestre — format Revenu Québec.",
+  taxSummaryDesc:      "Taxes collectées et crédits intrants par trimestre - format Revenu Québec.",
   taxGenerate:         "Générer le sommaire",
   taxGenerating:       "Calcul...",
   taxDisclaimer:       "Estimation à titre indicatif. Validez avec votre comptable avant de produire vos déclarations.",
-  taxCreditsNote:      "* Crédits intrants non disponibles — saisie manuelle requise dans votre logiciel de comptabilité.",
+  taxCreditsNote:      "* Crédits intrants non disponibles - saisie manuelle requise dans votre logiciel de comptabilité.",
   taxCollected:        "Collectée",
   taxCredits:          "Crédits intrants",
   taxNet:              "Net à remettre",
 
-  // ── CONFIG — GL ACCOUNTS ──
-  cfgGLAccounts:    "Numéros de comptes GL — Acomba / Sage 50",
+  // ── CONFIG - GL ACCOUNTS ──
+  cfgGLAccounts:    "Numéros de comptes GL - Acomba / Sage 50",
   cfgGLAccountsHint:"Associez chaque poste à un numéro de compte de votre plan comptable. Vérifiez avec votre comptable.",
   cfgGLRevenue:     "Revenus d'exploitation",
   cfgGLAR:          "Comptes clients (AR)",
@@ -1283,12 +1283,12 @@ export const FR = {
   cfgGLFP:          "Achats / F&P",
   cfgGLLabour:      "Salaires et avantages",
 
-  // ── FACTURATION — CLIENT PROFILE ──
+  // ── FACTURATION - CLIENT PROFILE ──
   clientAccountStatement:"État de compte",
   clientDocHistory: "Historique des documents",
-  clientNoBalance:  "Aucun solde impayé — compte en règle.",
+  clientNoBalance:  "Aucun solde impayé - compte en règle.",
 
-  // ── FACTURATION — RECURRING ──
+  // ── FACTURATION - RECURRING ──
   recurringTitle:   "Factures récurrentes",
   recurringFreq:    "Fréquence",
   recurringStartDate:"Date début",
@@ -1298,7 +1298,7 @@ export const FR = {
   recurringActive:  "Actif",
   recurringInactive:"Inactif",
 
-  // ── CONFIG — BUSINESS ──
+  // ── CONFIG - BUSINESS ──
   cfgCompanyName:   "Nom de l'entreprise",
   cfgAddress:       "Adresse",
   cfgPhone:         "Téléphone",
@@ -1309,18 +1309,18 @@ export const FR = {
   cfgUploadLogo:    "Téléverser logo",
   cfgRemoveLogo:    "Supprimer",
 
-  // ── CONFIG — STAFF ──
+  // ── CONFIG - STAFF ──
   cfgCashierRoster: "Caissiers",
   cfgEmployeeRoster:"Employés",
   cfgAddCashier:    "+ Caissier",
   cfgAddEmployee:   "+ Employé",
   cfgDefaultWage:   "Taux horaire par défaut",
 
-  // ── CONFIG — SUPPLIERS ──
+  // ── CONFIG - SUPPLIERS ──
   cfgAddSupplier:   "+ Fournisseur",
   cfgSupplierName:  "Nom du fournisseur",
 
-  // ── CONFIG — FINANCES ──
+  // ── CONFIG - FINANCES ──
   cfgExpenseCategories:"Catégories de dépenses",
   cfgInvoiceTemplate:"Modèle de facture",
   cfgAccentColor:   "Couleur accent",
@@ -1330,7 +1330,7 @@ export const FR = {
   cfgShowTaxNumbers:"Afficher numéros de taxe",
   cfgTemplatePreview:"Aperçu du modèle",
 
-  // ── CONFIG — INTEGRATIONS ──
+  // ── CONFIG - INTEGRATIONS ──
   cfgAPIKey:        "Clé API",
   cfgResendKey:     "Clé API Resend",
   cfgSendFrom:      "Courriel d'envoi",
@@ -1339,7 +1339,7 @@ export const FR = {
  cfgTestFail: (err) => ` ${err}`,
  cfgTestInProgress:"Test en cours…",
 
- // ── CONFIG — DATA ──
+ // ── CONFIG - DATA ──
  cfgBackupJSON: "Backup JSON",
  cfgRestoreBackup: "Restaurer depuis backup",
  cfgOpenFolder: "Ouvrir le dossier",
@@ -1349,15 +1349,15 @@ export const FR = {
   cfgExportCSV:     "CSV",
   cfgExportPDF:     "PDF",
 
-  // ── CONFIG — APPEARANCE ──
+  // ── CONFIG - APPEARANCE ──
   cfgTheme:         "Thème",
   cfgThemeDark:     "Foncé",
-  cfgThemeLight:    "Clair — Chaleureux",
+  cfgThemeLight:    "Clair - Chaleureux",
   cfgLanguage:      "Langue",
   cfgLanguageFR:    "Français",
   cfgLanguageEN:    "English",
 
-  // ── CONFIG — APPLICATION ──
+  // ── CONFIG - APPLICATION ──
   cfgAppMode:       "Mode de l'application",
   cfgModeRestaurant:"Restaurant / Franchisé",
   cfgModeFranchisor:"Franchiseur / Siège social",
@@ -1372,7 +1372,7 @@ export const FR = {
   cfgReportEmailHint:"Adresse courriel utilisée pour envoyer les rapports P&L. Laissez vide pour utiliser votre client de messagerie par défaut.",
   plSendEmailBtn:   (email) => email ? `Envoyer à ${email}` : "Envoyer par courriel",
   cfgInvTitle:      "Suivi d'inventaire",
-  cfgInvDisabledNote:"Le suivi d'inventaire est désactivé — aucune section inventaire dans l'onglet Quotidien.",
+  cfgInvDisabledNote:"Le suivi d'inventaire est désactivé - aucune section inventaire dans l'onglet Quotidien.",
   cfgInvWhat:       "Que souhaitez-vous suivre ?",
   cfgInvNom:        "Nom",
   cfgInvUnite:      "Unité",
@@ -1393,6 +1393,25 @@ export const FR = {
   cfgCloudSignOut:  "Se déconnecter",
   cfgCloudEmail:    "Courriel",
   cfgCloudPassword: "Mot de passe",
+  printSavePdf: "Imprimer / Enregistrer PDF",
+  voidDocumentQ: "Annuler ce document?",
+  cancelQuote: "Annuler la soumission",
+  noDepositPlanned: "Aucun acompte planifié.",
+  noRecurringConfigured: "Aucune facture récurrente configurée.",
+  noRecurringPending: "Aucune facture récurrente en attente.",
+  loadingData: "Chargement des données...",
+  noEntries: "Aucune entrée",
+  noCorrections: "Aucune correction enregistrée.",
+  noVoids: "Aucune annulation enregistrée.",
+  stripeWebhookPath: "Développeurs → Webhooks → Ajouter un endpoint",
+  stripeSelectEvents: "Sélectionnez ces 4 événements: ",
+  stripeAddEndpoint: "Ajouter l'endpoint",
+  statsDays: "Jours:",
+  statsCashiers: "Caissiers:",
+  statsEmployees: "Employés:",
+  statsSuppliers: "Fournisseurs:",
+  statsPlatforms: "Plateformes:",
+  posScanNoValue: "Aucune valeur détectée",
   posOauthUnavailable: "La connexion à ce point de vente n'est pas disponible dans cette version de BalanceIQ. Utilisez la saisie manuelle du jeton d'accès pour l'instant.",
   saveFailedBanner: (key, msg) => `Une modification n'a pas pu être enregistrée (${key}) : ${msg}. Refaites-la, ou redémarrez BalanceIQ si cela se répète.`,
   saveFailedDismiss: "Compris",
@@ -1402,7 +1421,7 @@ export const FR = {
   cfgCloudPasswordMismatch: "Les mots de passe ne correspondent pas.",
   cfgCloudFullName: "Nom complet",
   cfgCloudOrgName:  "Nom du restaurant / organisation",
-  cfgCloudConnected:(email,plan)=>`Connecté : ${email} — Plan : ${plan}`,
+  cfgCloudConnected:(email,plan)=>`Connecté : ${email} - Plan : ${plan}`,
   cfgCloudFreeNote: "Les données restent sur votre ordinateur. Créez un compte pour activer la synchronisation cloud (Pro/Franchise).",
   cfgCloudSyncing:  "Synchronisation...",
   cfgCloudSynced:   "Synchronisé",
@@ -1419,23 +1438,23 @@ export const FR = {
   cfgCloudForgotHint:    "Entrez votre courriel et nous vous enverrons un lien pour réinitialiser votre mot de passe.",
   cfgCloudBackToSignIn:  "Retour à la connexion",
 
-  // ── CONFIG — SUBSCRIPTION ──
+  // ── CONFIG - SUBSCRIPTION ──
   subTitle:         "Votre abonnement",
   subCurrentPlan:   "Plan actuel",
   subFree:          "Gratuit",
   subNetwork:       "Réseau",
   subPro:           "Pro",
   subFranchise:     "Franchise",
-  subTrialPro:      "Essayer Pro gratuitement — 30 jours",
-  subTrialFranchise:"Essayer Franchise — 30 jours",
+  subTrialPro:      "Essayer Pro gratuitement - 30 jours",
+  subTrialFranchise:"Essayer Franchise - 30 jours",
   subUpgradeNetwork:"Passer à Network Pro",
   subManage:        "Gérer mon abonnement",
   subNextBilling:   (date) => `Prochaine facturation : ${date}`,
   subLoading:       "Chargement...",
-  subError:         "Erreur — réessayez.",
+  subError:         "Erreur - réessayez.",
   subProFeatures:   "Pro inclut : synchronisation cloud, intégration POS, export Excel, analyses IA, factures récurrentes, envoi courriel direct.",
   subFranchiseFeatures:"Franchise inclut tout Pro + tableau de bord multi-succursales, redevances automatiques, facturation franchise.",
-  subNetworkSyncCovered:"Votre franchiseur couvre votre synchronisation cloud — vous utilisez l'app gratuitement.",
+  subNetworkSyncCovered:"Votre franchiseur couvre votre synchronisation cloud - vous utilisez l'app gratuitement.",
   subNetworkFeatures:"Passez à Network Pro pour débloquer : intégration POS, export Excel, analyses IA, factures récurrentes, envoi courriel direct.",
   subLocations:     (n) => `${n} succursale${n!==1?"s":""}`,
   subCancelNote:    "Annulation à tout moment. Les données restent sauvegardées.",
@@ -1486,13 +1505,13 @@ export const FR = {
   posTestOK:        "Connexion active",
   posTestFail:      "Connexion perdue",
   posOverwriteWarn: "Les valeurs POS seront remplacées. Continuer?",
-  cfgExpenseItems:     "Dépenses d'exploitation — Catégories",
+  cfgExpenseItems:     "Dépenses d'exploitation - Catégories",
   cfgExpenseItemsHint: "Personnalisez les catégories de dépenses qui apparaissent dans votre P&L mensuel.",
   cfgNewExpenseItem:   "Nouvelle catégorie...",
   cfgExpenseReset:     "Restaurer les défauts",
   posAdvTitle:      "Données POS avancées",
   posAdvChoose:     "Choisissez les données supplémentaires à importer",
-  posAdvOffNote:    "Mode simple — import de base inchangé",
+  posAdvOffNote:    "Mode simple - import de base inchangé",
   posAdvPayments:   "Ventilation des paiements (Visa, MC, Débit, Amex, Comptant)",
   posAdvTips:       "Pourboires",
   posAdvNonTaxable: "Articles non-taxables",
@@ -1506,7 +1525,7 @@ export const FR = {
   posAdvDisc:       "Remises",
   posAdvRefunds:    "Remb.",
   posAdvNTLabel:    "Non taxable",
-  posAdvNTNote:     "inclus dans ventes — informatif",
+  posAdvNTNote:     "inclus dans ventes - informatif",
   posAdvTxCountLabel:"Nombre de transactions",
   posAdvTxNote:     "informatif",
   posAdvTxLabel:    "Transactions",
@@ -1515,7 +1534,7 @@ export const FR = {
   posAdvHourlyTitle:"Ventes par heure",
   cfgPinLock:       "Verrou de l'application",
   cfgPinLockDesc:   "NIP requis au démarrage",
-  pinSecurityNote:  "Ce verrou empêche l'accès occasionnel à l'application. Ce n'est pas un système de sécurité avancé — toute personne ayant accès aux fichiers de votre ordinateur pourrait le contourner.",
+  pinSecurityNote:  "Ce verrou empêche l'accès occasionnel à l'application. Ce n'est pas un système de sécurité avancé - toute personne ayant accès aux fichiers de votre ordinateur pourrait le contourner.",
   cfgChangePin:     "Changer le NIP",
   cfgSetupPin:      "Choisissez un NIP (4 à 6 chiffres) :",
   cfgConfirmPin:    "Confirmez votre NIP :",
@@ -1537,7 +1556,7 @@ export const FR = {
   // ── PIN LOCK SCREEN ──
   pinEnterPrompt:   "Entrez votre NIP pour continuer",
   pinWrong:         (n, max) => `NIP incorrect (${n}/${max} tentatives)`,
-  pinLocked:        (t) => `Trop de tentatives — réessayez dans ${t}`,
+  pinLocked:        (t) => `Trop de tentatives - réessayez dans ${t}`,
 
   // ── WELCOME SCREEN ──
   welcomeTitle:     "Bienvenue dans BalanceIQ",
@@ -1549,12 +1568,12 @@ export const FR = {
 
   // ── WARNINGS ──
   warnNegativeAmount:"Le montant ne peut pas être négatif",
-  warnHighAmount:    "Montant inhabituellement élevé — vérifier",
+  warnHighAmount:    "Montant inhabituellement élevé - vérifier",
   warnHighFloat:     "Float inhabituellement élevé",
   warnNegativeFloat: "Le float ne peut pas être négatif",
   warnTerminalMissing:"Entrez le montant terminal (0 si comptant seulement)",
   warnNegativeDeposits:"Les dépôts ne peuvent pas être négatifs",
-  warnHighHours:     "Plus de 16 heures — vérifier",
+  warnHighHours:     "Plus de 16 heures - vérifier",
   warnNegativeHours: "Ne peut pas être négatif",
   warnVariancesOver10:"Écarts > 10$ :",
 
@@ -1612,7 +1631,7 @@ export const FR = {
   entryMode:        "Saisie",
   appMode:          "Mode",
 
-  // ── DAILY TAB — EXTRA ──
+  // ── DAILY TAB - EXTRA ──
   closeDayBtn:      "Fermer la journée",
   closeDayTitle:    "Fermer la journée ?",
   closeDayBody:     "Cette action crée un instantané immuable de la journée. Les modifications ultérieures seront toujours autorisées, mais chaque correction financière devra être justifiée.",
@@ -1736,25 +1755,25 @@ export const FR = {
  inventoryEnd: "Fin journée",
  inventoryUsed: "Utilisé",
  livInfoOnly2: "Informatif seulement",
- livTitle2: "Livraisons — suivi des plateformes",
- livDailySummary: "SUMMAIRE DU JOUR — INFORMATIF",
+ livTitle2: "Livraisons - suivi des plateformes",
+ livDailySummary: "SUMMAIRE DU JOUR - INFORMATIF",
 
- // ── P&L TAB — EXTRA ──
+ // ── P&L TAB - EXTRA ──
  plNetSales: "Ventes nettes",
 
  // ── VENDOR PRICE INTELLIGENCE ──
- priceIntelTitle: (name) => ` Variation de prix — ${name}`,
+ priceIntelTitle: (name) => ` Variation de prix - ${name}`,
  priceIntelBody: (pct, last, cur) => `Cette facture est ${pct}% plus élevée que la précédente (${last} → ${cur}).`,
  priceIntelTrend: "Historique récent",
  priceIntelThresholdLabel: "Seuil d'alerte prix fournisseur",
   priceIntelThresholdHint:  "Alerte si une facture dépasse ce % vs la précédente. Défaut: 5%.",
 
-  // ── ENCAISSE TAB — EXTRA ──
+  // ── ENCAISSE TAB - EXTRA ──
   encModify:        "Modifier",
   encAmount:        "Montant",
   encCarryForward:  "Reporter au lendemain :",
   encCashLocations: "Emplacements de cash",
-  encCashLocationsConfig: "Emplacements de cash — Comptage physique ⑤",
+  encCashLocationsConfig: "Emplacements de cash - Comptage physique ⑤",
   encConfigTitle:   "Configuration",
   // Default cash location names
   encLocTills:      "Tiroirs-caisses",
@@ -1767,17 +1786,17 @@ export const FR = {
   encCatRepairs:    "Réparations",
   encCatOther:      "Autre",
 
-  // ── INTELLIGENCE TAB — EXTRA ──
+  // ── INTELLIGENCE TAB - EXTRA ──
   intelDowEmpty:    "Entrer des données quotidiennes pour voir les tendances",
   intelAnomalyTitle:(n) => `Anomalies Detected (${n} derniers jours)`,
-  intelAnomalyEmpty:"Aucune anomalie — besoin de 3+ jours du même type",
-  intelVelocityTitle:(day) => `Consumption Velocity — ${day}`,
+  intelAnomalyEmpty:"Aucune anomalie - besoin de 3+ jours du même type",
+  intelVelocityTitle:(day) => `Consumption Velocity - ${day}`,
   intelVelocityEmpty:"Entrer les comptages pain (14h–20h) pour voir la vélocité",
-  intelOrderForecast:(day) => `Prévision de commande — ${day}`,
+  intelOrderForecast:(day) => `Prévision de commande - ${day}`,
   intelOrderEmpty:  "Besoin de 2+ données pour ce jour de semaine",
-  intelLivTitle:    "Livraisons — analyse des plateformes",
+  intelLivTitle:    "Livraisons - analyse des plateformes",
   intelLivEmpty:    "Aucune donnée de livraison enregistrée",
-  intelEncaisseMonthData:(n) => `Mois en cours — ${n} jour${n!==1?"s":""} avec données`,
+  intelEncaisseMonthData:(n) => `Mois en cours - ${n} jour${n!==1?"s":""} avec données`,
   intelCategorie:   "Catégorie",
   intelTotalSorties:"Total sorties",
   intelAnomalyAvg:  "Moy:",
@@ -1798,23 +1817,23 @@ export const FR = {
   intelAvgDaily:    (amt) => `Moyenne quotidienne: ${amt}`,
   intelUnusualRises:"Hausses inhabituelles vs mois dernier",
   intelExplainProjections:(day,n)=>`Projection basée sur vos ${n} derniers ${day}s. La moyenne est ce que vous faites normalement. La projection ajuste selon la tendance récente.`,
-  intelTrendUp:   "↑ Tendance à la hausse — vos résultats récents sont au-dessus de la normale",
-  intelTrendDown: "↓ Tendance à la baisse — vos résultats récents sont en dessous de la normale",
-  intelTrendStable:"→ Stable — ventes constantes pour ce jour",
+  intelTrendUp:   "↑ Tendance à la hausse - vos résultats récents sont au-dessus de la normale",
+  intelTrendDown: "↓ Tendance à la baisse - vos résultats récents sont en dessous de la normale",
+  intelTrendStable:"→ Stable - ventes constantes pour ce jour",
   intelConfLow:   "Fiabilité faible (2-3 exemples)",
   intelConfMed:   "Fiabilité moyenne (4-5 exemples)",
   intelConfHigh:  "Fiabilité élevée (6+ exemples)",
   intelOrderMathHam:(avg,tot)=>`Moy: ${avg} dz + Marge: 3 dz = ${tot} dz (Ham)`,
   intelOrderMathHot:(avg,tot)=>`Moy: ${avg} dz + Marge: 2 dz = ${tot} dz (Hot)`,
-  intelForecast5Title:"Prévisions commandes — 5 jours",
+  intelForecast5Title:"Prévisions commandes - 5 jours",
   intelForecast5Explain:"Basé sur votre historique, ajusté selon la météo, température et jours fériés. Quantités avec marge de sécurité (+3 dz ham, +2 dz hot).",
   intelWeekTotal:(ham,hot,sales)=>`Total semaine: HAM ~${ham} dz · HOT ~${hot} dz · Est: ~${sales}`,
-  intelNoWeather: "Météo non dispo — prévision sur historique seul",
+  intelNoWeather: "Météo non dispo - prévision sur historique seul",
   intelBusiest:   "Jour le plus occupé",
   intelSlowest:   "Jour le plus calme",
   intelExplainAnomalies:"Jours où vos ventes ont dévié de plus de 25% par rapport à votre moyenne pour ce jour. Comprendre pourquoi aide à mieux prévoir.",
   intelAnomalyThreshold:"Seuil: ±25% · Basé sur les 14 derniers jours",
-  intelCauseNone: "Aucune cause évidente — ajoutez une note pour cette journée",
+  intelCauseNone: "Aucune cause évidente - ajoutez une note pour cette journée",
   intelCauseWeather:(w)=>`Météo: ${w}`,
   intelCauseCold: (tmp)=>`Froid extrême (${tmp}°C)`,
   intelCauseHeat: (tmp)=>`Chaleur (${tmp}°C)`,
@@ -1827,14 +1846,14 @@ export const FR = {
   intelExplainKpi:"Indicateurs clés sur les 30 derniers jours. Vert = bon, jaune = surveiller, rouge = action requise.",
   intelExplainCashiers:"Écart entre ce que la caisse DEVRAIT contenir (selon le POS) et ce qui s'y trouve réellement. Un écart négatif constant peut indiquer des erreurs ou un problème sérieux.",
   intelExplainVelocity:"Douzaines consommées par fenêtre de temps. Utilisez ceci pour savoir quand mettre la prochaine batch au four ou quand ralentir la production.",
-  intelExplainDelivery:"Analyse de vos ventes via les plateformes. Surveillez les commissions réelles vs contractuelles — certaines plateformes facturent plus via des frais cachés.",
+  intelExplainDelivery:"Analyse de vos ventes via les plateformes. Surveillez les commissions réelles vs contractuelles - certaines plateformes facturent plus via des frais cachés.",
   intelDelivOvercharge:(name,actual,contracted,diff)=>`⚠ ${name} facture ${actual}% au lieu des ${contracted}% contractuels. Différence de ${diff} sur 30 jours. Contactez votre représentant.`,
   intelExplainSorties:"Suivi des sorties de caisse par catégorie. Signale toute catégorie qui augmente de plus de 40% vs le mois précédent.",
   intelEmptyGuidance:"Entrez au moins 2 semaines de données quotidiennes. Allez dans Quotidien → remplissez vos caisses chaque jour.",
   intelNotesHint: "Astuce: Plus vos notes sont détaillées (promo, événement, météo extrême, problème équipement), plus l'analyse sera précise.",
   intelNotesPlaceholder:"Ex: Promo 2-pour-1 midi, four en panne 14h-16h, 3 absences...",
 
-  // ── CONFIG — BUSINESS — EXTRA ──
+  // ── CONFIG - BUSINESS - EXTRA ──
   cfgCompanyInfo:   "Informations de l'entreprise",
   cfgCompanyLogo:   "Logo de l'entreprise",
   cfgChooseImage:   "Choisir une image",
@@ -1851,13 +1870,13 @@ export const FR = {
   cfgNextNum:       "Prochain #",
   cfgNumHint:       "Les numéros s'incrémentent automatiquement à la création de chaque document.",
 
-  // ── CONFIG — STAFF — EXTRA ──
+  // ── CONFIG - STAFF - EXTRA ──
   cfgCashiers:      "Caissiers",
   cfgNamePlaceholder:"Nom...",
   cfgEmployees:     "Employés",
   cfgWageHint:      "Taux horaire auto-rempli dans le rapport quotidien.",
 
-  // ── CONFIG — SUPPLIERS — EXTRA ──
+  // ── CONFIG - SUPPLIERS - EXTRA ──
   cfgSuppliers:     "Fournisseurs (P&L)",
   cfgNewSupplier:   "Nouveau fournisseur...",
   cfgDeliveryPlatforms:"Plateformes de livraison",
@@ -1871,8 +1890,8 @@ export const FR = {
   livActualComm:    "Comm. réelle",
   livNetRevenue:    "Revenu net",
   livOvercharge:    "Surcharge détectée",
-  livOverchargeWarn:"Surcharge détectée sur une plateforme — vérifiez votre contrat.",
-  delivMixTitle:    "Mix livraisons — 30 jours",
+  livOverchargeWarn:"Surcharge détectée sur une plateforme - vérifiez votre contrat.",
+  delivMixTitle:    "Mix livraisons - 30 jours",
   cfgPlatformHint:  "Entrez le taux de commission contractuel (%) par plateforme. Utilisé pour détecter les surcharges.",
   cfgPlatformName:  "Nom de la plateforme...",
   cfgRestoreDefaultPlatforms: "Restaurer les plateformes par defaut",
@@ -1883,31 +1902,31 @@ export const FR = {
   cfgAllCategories: "Toutes les catégories",
   cfgShowInactive:  "Afficher inactifs",
   cfgHideInactive:  "Masquer inactifs",
-  cfgNoProducts:    (btn) => `Aucun produit — cliquez sur "${btn}" pour commencer.`,
+  cfgNoProducts:    (btn) => `Aucun produit - cliquez sur "${btn}" pour commencer.`,
   cfgNoResults:     "Aucun résultat pour cette recherche.",
 
-  // ── CONFIG — FINANCES — EXTRA ──
-  cfgOutflowCats:   "Catégories de sorties — Encaisse",
+  // ── CONFIG - FINANCES - EXTRA ──
+  cfgOutflowCats:   "Catégories de sorties - Encaisse",
   cfgOutflowCatHint:"Catégories disponibles lors de l'enregistrement de sorties de caisse.",
   cfgNewCategory:   "Nouvelle catégorie...",
   cfgLogoLeft:      "Gauche",
   cfgLogoRight:     "Droite",
   cfgLogoCenter:    "Centre",
-  cfgFooterPlaceholder:"Ex: Merci de votre confiance — paiement dû dans 30 jours",
+  cfgFooterPlaceholder:"Ex: Merci de votre confiance - paiement dû dans 30 jours",
   cfgDefaultNotesPlaceholder:"Ex: Soumission valide 30 jours. Tous les prix sont en dollars canadiens.",
   cfgShowTaxNums:   "Afficher les numéros TPS/TVQ sur les documents",
   cfgTemplateApplied:"Paramètres appliqués à tous vos documents (factures, soumissions, commandes)",
   cfgTemplatePreview2:"Aperçu du modèle (facture démo)",
 
-  // ── CONFIG — INTEGRATIONS — EXTRA ──
+  // ── CONFIG - INTEGRATIONS - EXTRA ──
   cfgWeatherCoords: "Coordonnées météo",
   cfgWeatherHint:   "Recherchez votre ville pour auto-remplir la météo sur le rapport quotidien.",
-  cfgWeatherConfigured:(city) => `${city} — météo configurée`,
+  cfgWeatherConfigured:(city) => `${city} - météo configurée`,
   cfgCitySearch:    "Laval, Saint-Hyacinthe, Montréal...",
   cfgSearch:        "Chercher",
   cfgAPIIntegrations:"Intégrations API",
   cfgAuphanKey:     "Clé API ou URL...",
-  cfgAuphanHint:    "À venir — contacter Auphan pour documentation",
+  cfgAuphanHint:    "À venir - contacter Auphan pour documentation",
   cfgGasPrice:      "Prix essence",
   cfgGasHint:       "Auto-rempli du dernier prix connu.",
   cfgEmailService:  "Service courriel (Resend)",
@@ -1942,7 +1961,7 @@ export const FR = {
  showDzKpiLabel: "Afficher le KPI $/douzaine",
  showDzKpiHint: "Active le ratio $/douzaine dans les KPIs et scorecards. Recommandé pour les restaurants vendant à la douzaine.",
  sqftLabel: "Superficie du restaurant (pi²)",
- sqftHint: "Optionnel — utilisé pour calculer le revenu par pied carré.",
+ sqftHint: "Optionnel - utilisé pour calculer le revenu par pied carré.",
  customKpisTitle: "KPIs personnalisés",
  kpiAddBtn: "Ajouter un KPI",
  kpiNameFr: "Nom (FR)",
@@ -1953,7 +1972,7 @@ export const FR = {
  kpiDirLow: "Plus bas = meilleur",
  kpiDeleteKpi: "Supprimer",
 
- // ── CONFIG — DATA — EXTRA ──
+ // ── CONFIG - DATA - EXTRA ──
  cfgLastBackup: (date, count) => ` Dernière: ${date} · ${count} fichiers`,
  auditJournal: "Journal",
  auditCorrections: "Corrections",
@@ -1969,11 +1988,11 @@ export const FR = {
  auditFrom: "DU",
  auditTo: "AU",
 
- // ── CONFIG — APPLICATION — EXTRA ──
+ // ── CONFIG - APPLICATION - EXTRA ──
  cfgPlanDevOnly: "Sélection du plan disponible en mode développement uniquement.",
  cfgActive: "Actif",
 
- // ── WELCOME SCREEN — EXTRA ──
+ // ── WELCOME SCREEN - EXTRA ──
  welcomeTitle2: "Bienvenue sur BalanceIQ",
  welcomeSubtitle2: "Comment utilisez-vous l'application?",
   welcomeRestaurant2:"Restaurant / Franchisé",
@@ -1981,7 +2000,7 @@ export const FR = {
   welcomeFranchisor2:"Franchiseur / Siège social",
   welcomeFranchisorDesc:"Dashboard multi-succursales, redevances, consolidation",
 
-  // ── FRANCHISE — LOCATIONS ──
+  // ── FRANCHISE - LOCATIONS ──
   frcAllNetwork:    "Tout le réseau",
   frcLocationMgmt:  "Gestion des succursales",
   frcNewLocation:   "+ Nouvelle succursale",
@@ -1996,7 +2015,7 @@ export const FR = {
   locTelephone:     "Téléphone",
   locClientLie:     "Client lié (facturation)",
   locStatut:        "Statut",
-  locNone:          "— Aucun —",
+  locNone:          "- Aucun -",
   locRoyaltyOverride: "Taux de redevance personnalisé pour cette succursale",
   locRoyaltyPct:    "Taux redevance (%)",
   locAdPct:         "Contribution pub. (%)",
@@ -2005,12 +2024,12 @@ export const FR = {
   locDelete:        "Supprimer",
   locDeleteConfirm: (nom) => `Supprimer "${nom}" ? Cette action est irréversible.`,
 
-  // ── FRANCHISE — INVITATIONS ──
+  // ── FRANCHISE - INVITATIONS ──
   inviteBtn:           "Inviter",
   inviteShowCode:      "Voir le code",
   inviteLinked:        "Lié",
   invitePending:       "⏳ En attente",
-  inviteTitle:         (nom) => `Code d'invitation — ${nom}`,
+  inviteTitle:         (nom) => `Code d'invitation - ${nom}`,
   inviteDesc:          "Le franchisé entre ce code dans Config → Application pour rejoindre votre réseau.",
   inviteExpiry:        (date) => `Expire le ${date}`,
   inviteCopy:          "Copier",
@@ -2027,10 +2046,10 @@ export const FR = {
   joinNetworkInput:    "Code d'invitation (8 caractères)",
   joinNetworkBtn:      "Rejoindre le réseau",
   joinNetworkBusy:     "Validation…",
-  joinNetworkLinked:   (franchisor, location) => `Lié à ${franchisor} — ${location}`,
+  joinNetworkLinked:   (franchisor, location) => `Lié à ${franchisor} - ${location}`,
   joinNetworkError:    "Code invalide ou expiré. Vérifiez le code avec votre franchiseur.",
 
-  // ── FRANCHISE — ROYALTIES ──
+  // ── FRANCHISE - ROYALTIES ──
   frcRoyaltyConfig: "Configuration des redevances",
   frcRoyaltyRate:   "Taux redevance (%)",
   frcAdContrib:     "Contribution publicitaire (%)",
@@ -2043,16 +2062,16 @@ export const FR = {
   frcMonthly:       "Mensuel",
   frcBillingCategory:"Catégorie de facturation",
   frcBillingProduct:"Produit de facturation",
-  frcSelectPlaceholder:"— Sélectionner —",
+  frcSelectPlaceholder:"- Sélectionner -",
   frcAdvancedOptions:"Options avancées",
 
-  // ── FRANCHISE — WHITE LABEL ──
+  // ── FRANCHISE - WHITE LABEL ──
   frcWhiteLabel:    "Marque blanche",
   frcWhiteLabelDesc:"Personnalise l'apparence des documents générés (factures, états de compte, scorecards).",
   frcEnableWhiteLabel:"Activer la marque blanche",
   frcTier:          "Palier",
 
-  // ── LIVRAISONS — Smart Import ──
+  // ── LIVRAISONS - Smart Import ──
   delivOpenPortal:    "Rapport en ligne",
   delivPortalHint:    "Ouvre le portail marchand pour télécharger le rapport de paiement.",
   delivFileDetected:  (platform) => `Rapport ${platform} détecté dans Téléchargements`,
@@ -2060,20 +2079,20 @@ export const FR = {
   delivIgnore:        "Ignorer",
   delivLastImport:    (date) => `Dernier import : ${date}`,
   delivWatching:      "Surveillance du dossier Téléchargements active",
-  delivWatchHow:      "Téléchargez votre rapport CSV depuis le portail marchand — l'application le détecte automatiquement. Mac : Réglages système → Confidentialité → Fichiers et dossiers → autoriser BalanceIQ. Windows : aucune permission requise.",
+  delivWatchHow:      "Téléchargez votre rapport CSV depuis le portail marchand - l'application le détecte automatiquement. Mac : Réglages système → Confidentialité → Fichiers et dossiers → autoriser BalanceIQ. Windows : aucune permission requise.",
   delivPortalIntroTitle: "Comment importer vos rapports de livraison",
-  delivPortalIntroStep1: "1. Cliquez « Ouvrir » — connectez-vous au portail marchand et téléchargez votre rapport de paiement (CSV).",
-  delivPortalIntroStep2: "2. Enregistrez le fichier dans votre dossier Téléchargements — pas sur le Bureau ni ailleurs.",
+  delivPortalIntroStep1: "1. Cliquez « Ouvrir » - connectez-vous au portail marchand et téléchargez votre rapport de paiement (CSV).",
+  delivPortalIntroStep2: "2. Enregistrez le fichier dans votre dossier Téléchargements - pas sur le Bureau ni ailleurs.",
   delivPortalIntroStep3: "3. BalanceIQ détecte le fichier automatiquement et vous propose de l'importer en un clic.",
   delivPortalIntroMacPerm: "Sur Mac, si rien ne se passe : Réglages système → Confidentialité et sécurité → Fichiers et dossiers → autoriser BalanceIQ.",
-  delivPortalIntroOk: "Compris — Ouvrir le portail",
+  delivPortalIntroOk: "Compris - Ouvrir le portail",
   delivPortalIntroSkip: "Annuler",
-  delivApiConfig:     "Identifiants API — Plateformes de livraison",
+  delivApiConfig:     "Identifiants API - Plateformes de livraison",
   delivApiConfigHint: "Les APIs de paiement ne sont pas encore publiques. Ces champs seront activés dès que DoorDash, Uber Eats et Skip les ouvriront.",
   delivApiKey:        "Clé API",
   delivApiComingSoon: "API à venir",
 
-  // ── OCR — Numérisation de facture ──
+  // ── OCR - Numérisation de facture ──
   ocrScan:            "Scanner",
   ocrScanTitle:       "Numérisation de facture",
   ocrScanHint:        "Photographiez ou sélectionnez une image de votre facture fournisseur. BalanceIQ la lit automatiquement avec l'IA.",
@@ -2086,7 +2105,7 @@ export const FR = {
   ocrInvNum:          "N° facture",
   ocrTotal:           "Total TTC",
   ocrAmountHT:        "Montant HT",
-  ocrBeforeTax:       "avant taxes — ce montant sera ajouté au P&L",
+  ocrBeforeTax:       "avant taxes - ce montant sera ajouté au P&L",
   ocrMapTo:           "Ajouter à la ligne P&L",
   ocrBillDate:        "Date",
   ocrBillNote:        "Note / N° facture",
@@ -2099,7 +2118,7 @@ export const FR = {
   cfgAnthropicKeyHint:"100 scans gratuits/mois inclus dans Pro. Après la limite, entrez votre clé Anthropic pour des scans illimités.",
   ocrScanCount:       (used, limit) => `${used} / ${limit} scans ce mois`,
   ocrDisclaimer:      "L'IA peut faire des erreurs. Vérifiez toujours les montants avant d'ajouter au P&L.",
-  ocrReviewWarning:   "Vérifiez les montants ci-dessus avant de confirmer — l'IA peut mal lire certaines factures. Vous pouvez corriger le montant HT manuellement.",
+  ocrReviewWarning:   "Vérifiez les montants ci-dessus avant de confirmer - l'IA peut mal lire certaines factures. Vous pouvez corriger le montant HT manuellement.",
 
   // ── POS SCAN MODULE ──
   scanButton:          "Scanner un rapport POS",
@@ -2110,7 +2129,7 @@ export const FR = {
   scanApply:           "Appliquer",
   scanApplySave:       "Appliquer et sauvegarder le format",
   scanCancel:          "Annuler",
-  scanUnknown:         "Format non reconnu — veuillez assigner les champs manuellement",
+  scanUnknown:         "Format non reconnu - veuillez assigner les champs manuellement",
   scanPosSystem:       "Système POS",
   scanPosSystemHint:   "Ex: Maitre D', Veloce, Lightspeed, Square…",
   scanFieldVentes:     "Ventes avant taxes",
@@ -2137,7 +2156,7 @@ export const FR = {
   scanEngineLocal:     "Reconnaissance locale (hors ligne)",
   scanErrorNoFile:     "Aucun fichier sélectionné",
   scanErrorOCR:        "Erreur lors de la lecture du fichier",
-  scanErrorCloud:      "Erreur de reconnaissance cloud — passage en mode local",
+  scanErrorCloud:      "Erreur de reconnaissance cloud - passage en mode local",
   scanUnmatchedValues: "Valeurs non assignées",
   scanSelectField:     "Assigner à…",
   scanDetectedText:    "Texte détecté",
@@ -2166,7 +2185,7 @@ export const FR = {
   upgPromptRecipeCosting: "Vos coûts d'ingrédients ont changé ce mois. Pro suit l'impact sur la marge de chaque élément de menu.",
   upgPromptPosApi:        "Votre PDV a déjà les ventes d'aujourd'hui. Pro se connecte directement pour éviter la saisie manuelle.",
   scanUploadingTemplate:"Partage du format en cours…",
-  scanUploadError:     "Erreur lors du partage — format enregistré localement seulement.",
+  scanUploadError:     "Erreur lors du partage - format enregistré localement seulement.",
 
   // ── PRÉVISIONS MODULE ──
   tabPrevisions:       "Prévisions",
@@ -2222,10 +2241,10 @@ export const FR = {
   prevColWaste:        "Gaspillage",
   prevColDate:         "Date",
   prevLastWeek:        "Semaine dernière (réel)",
-  prevMissingData:     (days) => `Données manquantes: ${days} — prévisions basées sur les données disponibles.`,
+  prevMissingData:     (days) => `Données manquantes: ${days} - prévisions basées sur les données disponibles.`,
   prevNoProducts:      "Aucun produit actif. Ajoutez des produits dans l'onglet Produits.",
   // Cell detail
-  prevCellDetail:      "Détail —",
+  prevCellDetail:      "Détail -",
   prevBasedOn:         "Basé sur",
   prevWeightedAvg:     "Moyenne pondérée",
   prevWeatherAdj:      "Ajustement météo",
@@ -2243,9 +2262,9 @@ export const FR = {
   prevNoAlerts:        "Aucune alerte active. Continuez d'entrer vos données de ventes pour affiner les prévisions.",
   prevAlertStockoutMsg:(name,dow,n,sugg) => `${name}: rupture ${n}x les ${dow} récemment. Suggéré: ${sugg}.`,
   prevAlertOverprodMsg:(name,dow,pct,sugg) => `${name}: gaspillage moyen de ${pct}% les ${dow}. Suggéré: ${sugg}.`,
-  prevAlertOptimizedMsg:(name) => `${name}: bien calibré — faible gaspillage, zéro rupture.`,
+  prevAlertOptimizedMsg:(name) => `${name}: bien calibré - faible gaspillage, zéro rupture.`,
   // Manual entry
-  prevManualTitle:     "Entrée manuelle —",
+  prevManualTitle:     "Entrée manuelle -",
   prevManualSave:      "Enregistrer",
   prevManualSaved:     "Enregistré",
   prevAddProduct:      "+ Ajouter produit",
@@ -2264,7 +2283,7 @@ export const FR = {
   prevImportPreview:   "Aperçu des données",
   prevImportConfirm:   "Importer",
   prevImportCancel:    "Annuler",
-  prevImportNewProds:  (n) => `${n} nouveau(x) produit(s) détecté(s) — que faire?`,
+  prevImportNewProds:  (n) => `${n} nouveau(x) produit(s) détecté(s) - que faire?`,
   prevImportAddCat:    "Ajouter au catalogue",
   prevImportIgnore:    "Ignorer",
   prevImportImported:  (n) => `${n} entrée${n!==1?"s":""} importée${n!==1?"s":""} avec succès.`,
@@ -2272,7 +2291,7 @@ export const FR = {
   prevImportSaveFormat:"Sauvegarder ce format",
   prevImportSavedFmt:  "Format sauvegardé",
   prevImportLoadFmt:   "Charger un format sauvegardé",
-  prevImportNoFmt:     "— Aucun format sauvegardé —",
+  prevImportNoFmt:     "- Aucun format sauvegardé -",
   prevImportHistory:   "Fichiers importés",
   prevImportColFilename:"Fichier",
   prevImportColTargetDate: "Date visée",
@@ -2315,7 +2334,7 @@ export const FR = {
   prevPOSNoConn:       "Aucun POS connecté. Connectez un POS dans Config → Intégrations.",
   prevPOSProRequired:  "L'import POS est disponible avec le plan Pro.",
   // Item intelligence
-  prevItemProfile:     "Profil — 30 jours",
+  prevItemProfile:     "Profil - 30 jours",
   prevItemAvgSold:     "Moyenne vendue/jour",
   prevItemAvgMade:     "Moyenne fabriquée/jour",
   prevItemWaste:       "Taux de gaspillage",
@@ -2327,7 +2346,7 @@ export const FR = {
   prevItemUpdateSens2: "au lieu de l'actuel. Mettre à jour?",
   prevItemYes:         "Oui",
   prevItemNo:          "Non",
-  prevItemAccTitle:    "Précision des prévisions — 30 jours",
+  prevItemAccTitle:    "Précision des prévisions - 30 jours",
   prevItemAccAvg:      "Précision moy.",
   prevItemAccBest:     "Meilleur jour",
   prevItemAccWorst:    "Pire jour",
@@ -2337,7 +2356,7 @@ export const FR = {
   prevWeatherManual:   "Manuel",
   prevWeatherAuto:     "Auto",
   prevWeatherReset:    "Réinitialiser",
-  prevWeatherStale:    (days) => `Météo non disponible — dernière MAJ: il y a ${days} jour${days!==1?"s":""}`,
+  prevWeatherStale:    (days) => `Météo non disponible - dernière MAJ: il y a ${days} jour${days!==1?"s":""}`,
   prevWeatherOverride: "Modifier",
   prevWeatherTemp:     "Temp. max (°C)",
   prevWeatherCond:     "Condition",
@@ -2354,16 +2373,16 @@ export const FR = {
   prevAITitle:         "Analyse IA",
   // ── TELEMETRY CONSENT ──
   telemetryTitle:      "Aidez-nous à améliorer BalanceIQ",
-  telemetryBody:       "Partagez des données d'utilisation anonymes — aucune donnée financière, aucun nom, aucune information commerciale n'est transmise. Seulement les fonctionnalités utilisées, la version et la plateforme.",
+  telemetryBody:       "Partagez des données d'utilisation anonymes - aucune donnée financière, aucun nom, aucune information commerciale n'est transmise. Seulement les fonctionnalités utilisées, la version et la plateforme.",
   telemetryAccept:     "Accepter",
   telemetryDecline:    "Non merci",
-  // ── CLOSE ASSURANCE — Blind close ──
+  // ── CLOSE ASSURANCE - Blind close ──
   closeBlindCounting:  "Compte en cours",
   closeBlindSubmit:    "Soumettre le compte",
   closeBlindAwaitReveal: "Soumis, en attente de révélation",
   closeBlindReveal:    "Révéler l'écart",
   closeBlindManagerOnly: "Manager seulement",
-  // ── CLOSE ASSURANCE — Policy settings ──
+  // ── CLOSE ASSURANCE - Policy settings ──
   cpBlindCloseMode:    "Mode de fermeture aveugle",
   cpBlindCloseModeHint:"Masque l'écart pendant le comptage pour eviter les biais.",
   cpBlindOff:          "Desactive - ecart toujours visible",
@@ -2447,7 +2466,7 @@ export const FR = {
 
 // ── ENGLISH ──
 export const EN = {
-  // ── NAVIGATION — Main Tabs ──
+  // ── NAVIGATION - Main Tabs ──
   tabDaily:         "Daily",
   tabPL:            "Monthly P&L",
   tabCash:          "Cash Position",
@@ -2467,9 +2486,9 @@ export const EN = {
   actVsTheoActual:  "Actual cost",
   actVsTheoTheo:    "Theoretical",
   actVsTheoVariance:"Variance",
-  actVsTheoGood:    "— Excellent",
-  actVsTheoWarn:    "— Monitor",
-  actVsTheoBad:     "— Investigate",
+  actVsTheoGood:    "- Excellent",
+  actVsTheoWarn:    "- Monitor",
+  actVsTheoBad:     "- Investigate",
   actVsTheoNoRecipes: "Link a recipe to your Forecasting products to calculate theoretical cost. (Forecasting → edit product → Linked recipe)",
   actVsTheoNoSales: "No sales recorded this month.",
   actVsTheoHint:    "Based on linked recipes. Link more products for better accuracy.",
@@ -2508,7 +2527,7 @@ export const EN = {
   checklistCatMgmt:       "Management",
   checklistCatCustom:     "Other",
   checklistCompTitle:     "Checklist Compliance",
-  checklistCompDesc:      (pct,d) => `${pct}% compliance — last ${d} days`,
+  checklistCompDesc:      (pct,d) => `${pct}% compliance - last ${d} days`,
   checklistCompDays:      (n,t) => `${n}/${t} days with all required tasks completed`,
 
   // ── MULTI-UNIT FRANCHISEE ──
@@ -2524,7 +2543,7 @@ export const EN = {
   myLocSynced:      "Synced",
   myLocNotSynced:   "Not synced",
 
-  // ── NAVIGATION — Config Sub-Tabs ──
+  // ── NAVIGATION - Config Sub-Tabs ──
   cfgBusiness:           "Business",
   cfgStaff:              "Staff",
   cfgSuppliers:          "Suppliers",
@@ -2556,7 +2575,7 @@ export const EN = {
   payrollEeDeduct:  "Employee deductions withheld",
   payrollTotalRemit:"Total estimated remittances",
   payrollTotalCost: "Total estimated payroll cost",
-  payrollDisclaimer:"Estimate only — excludes income tax. Use your payroll software for exact amounts.",
+  payrollDisclaimer:"Estimate only - excludes income tax. Use your payroll software for exact amounts.",
   payrollFrequency: "Pay frequency",
   payrollWeekly:    "Weekly",
   payrollBiweekly:  "Every two weeks",
@@ -2587,7 +2606,7 @@ export const EN = {
   aiNoAuth:           "Sign-in required. Log in via Settings → Application.",
   aiServerError:      (code) => `Server error (${code}). Check your connection.`,
   aiGenericError:     "Analysis error. Please try again.",
-  aiDisclaimer:       "AI-generated — for reference only. Verify with your accountant.",
+  aiDisclaimer:       "AI-generated - for reference only. Verify with your accountant.",
   aiNoData:           "No data available for this analysis.",
 
   // ── RÉSEAU TAB ──
@@ -2600,7 +2619,7 @@ export const EN = {
   reseauRetardCount:  "Overdue invoices",
   reseauRetardLocs:   "Delinquent locations",
   reseauAging:        "Accounts receivable aging",
-  reseauNoRetards:    "No overdue payments — all royalties are current.",
+  reseauNoRetards:    "No overdue payments - all royalties are current.",
   reseauBalance:      "Balance",
   reseauDaysLate:     "Days late",
   reseauLastReminder: "Last reminder",
@@ -2631,7 +2650,7 @@ export const EN = {
   noActiveStores:     "No active locations. Add locations in Config → Locations.",
   noActiveStoresShort:"No active locations.",
   scorecardsLocked:   "Scorecards available with the Franchise plan.",
-  scorecardsDesc:     "Current month scorecards — based on real data from each location",
+  scorecardsDesc:     "Current month scorecards - based on real data from each location",
   royGenTitle:        "Generate Royalty Invoices",
   royCalcBtn:         "Calculate Royalties",
   royCalcBusy:        "Calculating...",
@@ -2640,7 +2659,7 @@ export const EN = {
   royNoClient:        "No linked client",
   reconLocked:        "Multi-location reconciliation available with the Franchise plan.",
   reconPeriod:        "Period:",
-  auditNetTitle:      "Audit Log — All Locations",
+  auditNetTitle:      "Audit Log - All Locations",
   auditFilterAll:     "All",
   actCreated:         "Created",
   actUpdated:         "Updated",
@@ -2686,7 +2705,7 @@ export const EN = {
   reconPartialStatus: "Partial",
   reconUnpaidStatus:  "Unpaid",
 
-  // ── RÉSEAU — P&L Analysis ──
+  // ── RÉSEAU - P&L Analysis ──
   reseauPlTitle:      "Monthly P&L Analysis",
   reseauPlEmpty:      (m) => `No P&L data entered for ${m}. Ask your locations to complete their monthly P&L.`,
   reseauPlTop:        "Top Performer",
@@ -2699,7 +2718,7 @@ export const EN = {
   reseauPlTarget:     "target",
   reseauRoyLocked:    "Royalty generation is available on the Franchise plan.",
 
-  // ── NAVIGATION — Facturation Sub-Tabs ──
+  // ── NAVIGATION - Facturation Sub-Tabs ──
   factDocs:         "Documents",
   factClients:      "Clients",
   factCategories:   "Categories",
@@ -2708,7 +2727,7 @@ export const EN = {
   factSettings:     "Settings",
   factRappels:      "Reminders",
 
-  // ── SPRINT 9 — Reminder Ladder ──
+  // ── SPRINT 9 - Reminder Ladder ──
   rappelTitle:         "Automated reminders",
   rappelSubLadder:     "Ladders",
   rappelSubSteps:      "Steps",
@@ -2746,7 +2765,7 @@ export const EN = {
     ["{company_name}",   "Your company name"],
   ],
 
-  // ── SPRINT 9 — Interest on Overdue ──
+  // ── SPRINT 9 - Interest on Overdue ──
   interestTitle:       "Interest on overdue accounts",
   interestRate:        "Monthly rate (%)",
   interestGrace:       "Grace period (days)",
@@ -2760,7 +2779,7 @@ export const EN = {
   interestGenerated:   (n) => `${n} interest invoice(s) generated`,
   interestNoneOverdue: "No eligible overdue accounts.",
 
-  // ── SPRINT 9 — Deposit Schedules ──
+  // ── SPRINT 9 - Deposit Schedules ──
   depositTitle:        "Deposit schedule",
   depositNew:          "Add deposit",
   depositLabel:        "Description",
@@ -2775,21 +2794,21 @@ export const EN = {
   depositGenerated:    "Generated",
   depositPending:      "Pending",
   depositProGate:      "Deposit schedules are available with BalanceIQ Pro.",
-  depositTaxNote:      "TPS/TVQ applies to each deposit (Revenu Québec — tax owed at time of collection).",
+  depositTaxNote:      "TPS/TVQ applies to each deposit (Revenu Québec - tax owed at time of collection).",
   depositDesc:         "Generate deposit invoices to send to the client before delivery. This is different from \"Record a Deposit\" which logs a payment already received. The paid deposit will be applied as a credit on the final invoice.",
 
-  // ── SPRINT 9 — Per-client settings ──
+  // ── SPRINT 9 - Per-client settings ──
   clientReminderEnabled:  "Automated reminders enabled for this client",
   clientInterestEnabled:  "Late interest charges enabled for this client",
 
-  // ── SPRINT 10 — Stripe online payments ──
+  // ── SPRINT 10 - Stripe online payments ──
   stripeConfig:           "Online Payments (Stripe)",
   stripeConfigHint:       "Let clients pay invoices by card or Interac online via your own Stripe account.",
   stripeSecretKey:        "Stripe secret key (sk_live_... or sk_test_...)",
   stripeTestConn:         "Test connection",
   stripeTesting:          "Testing…",
-  stripeConnected:        (name) => `Connected — ${name}`,
-  stripeNotConnected:     "Not connected — enter your Stripe secret key",
+  stripeConnected:        (name) => `Connected - ${name}`,
+  stripeNotConnected:     "Not connected - enter your Stripe secret key",
   stripeFeesEnabled:      "Add Stripe processing fee to invoices",
   stripeFeeRate:          "Fee rate (%)",
   stripeGenLink:          "Generate payment link",
@@ -2797,14 +2816,14 @@ export const EN = {
   stripePaymentLinkBadge: "Stripe link active",
   stripeCheckPayment:     "Check payment",
   stripeCheckWorking:     "Checking…",
-  stripeSessionPaid:      "Paid via Stripe — mark this invoice as paid?",
-  stripeSessionOpen:      "Pending — client has not paid yet",
-  stripeSessionExpired:   "Link expired — generate a new link",
+  stripeSessionPaid:      "Paid via Stripe - mark this invoice as paid?",
+  stripeSessionOpen:      "Pending - client has not paid yet",
+  stripeSessionExpired:   "Link expired - generate a new link",
   stripePayOnline:        "Pay online",
   stripeFeeDisclosure:    (rate) => `A processing fee of ${rate}% is applied to card payments per merchant policy.`,
-  stripeProGate:          "Stripe Online Payments — Pro feature",
+  stripeProGate:          "Stripe Online Payments - Pro feature",
 
-  // ── SPRINT 10 — Acomba / accounting export ──
+  // ── SPRINT 10 - Acomba / accounting export ──
   ledgerExport:           "Export journal",
   ledgerExportFormat:     "Format",
   ledgerExportDateFrom:   "From",
@@ -2816,20 +2835,20 @@ export const EN = {
   ledgerExportDone:       (n) => `${n} line(s) exported`,
   ledgerExportNone:       "No entries found for this period",
 
-  // ── SPRINT 10 — E-transfer matching ──
+  // ── SPRINT 10 - E-transfer matching ──
   etransferBadge:         "Interac E-Transfer",
   etransferSuggest:       "Match",
   etransferModalTitle:    "Apply Interac E-Transfer",
   etransferSender:        "Detected sender",
   etransferClientMatch:   "Matching client",
-  etransferNoMatch:       "No client found — select manually",
+  etransferNoMatch:       "No client found - select manually",
   etransferOpenInvoices:  "Open invoices",
   etransferApply:         "Apply payment",
   etransferApplied:       "Payment applied",
   etransferSelectClient:  "Select a client",
   etransferSelectInvoice: "Select an invoice",
 
-  // ── SPRINT 10 — Custom payment instructions (3.5.6) ──
+  // ── SPRINT 10 - Custom payment instructions (3.5.6) ──
   invPaymentInstructionsHeader:      "Other payment instructions (optional)",
   invPaymentInstructionsPlaceholder: "E.g. Square link, PayPal, banking details, cheque mailing address. Plain text only.",
   invPaymentInstructionsHelper:      "This text appears on the invoice. BalanceIQ does not track or reconcile payments received through these methods. Use bank reconciliation or e-transfer matching to record incoming payments.",
@@ -2841,7 +2860,7 @@ export const EN = {
   invPaymentInstructionsExternalDisclosure: "External payment link provided by the merchant. BalanceIQ does not verify these links.",
   invPaymentInstructionsHttpWarning:      "Insecure http links will not be clickable. Use https.",
 
-  // ── SPRINT 11 — Quote E-Acceptance (3.9) ──
+  // ── SPRINT 11 - Quote E-Acceptance (3.9) ──
   qaSendForAcceptance:     "Send for acceptance",
   qaAcceptanceStatus:      "Acceptance status",
   qaStatusPending:         "Awaiting client",
@@ -2856,12 +2875,12 @@ export const EN = {
   qaAcceptedIp:            "IP address",
   qaSignatureLabel:        "Signature",
   qaExpiresLabel:          "Link expires",
-  qaProGated:              "Pro feature — requires cloud account",
+  qaProGated:              "Pro feature - requires cloud account",
   qaSendSuccess:           "Acceptance link sent to client",
   qaSendError:             "Could not send acceptance link",
   qaAlreadyAccepted:       "This quote was already accepted electronically.",
 
-  // ── SPRINT 11 — PAD / ACSS Debit (3.11) ──
+  // ── SPRINT 11 - PAD / ACSS Debit (3.11) ──
   padTitle:               "Pre-Authorized Debit (PAD)",
   padDesc:                "Send the client a secure link to authorize automatic bank withdrawals (ACSS Debit). The client enters their banking details on the Stripe-hosted page. You can then charge invoices directly.",
   padSendLink:            "Send PAD link",
@@ -2886,11 +2905,11 @@ export const EN = {
   padChargeForbidden:     "Only the account owner or an admin can charge a customer",
   padChargeDuplicate:     "This invoice already has a PAD charge in progress or completed",
   padChargeOverLimit:     "Amount is over the PAD charge limit",
-  padProGate:             "Pre-Authorized Debit (PAD) — Pro feature",
+  padProGate:             "Pre-Authorized Debit (PAD) - Pro feature",
   padFollowupEnabled:     "Automatic 48h reminder if client hasn't completed",
   padNoMandate:           "No PAD mandate for this client",
 
-  // ── SPRINT 12 — Custom Numbering ──
+  // ── SPRINT 12 - Custom Numbering ──
   numPatternLabel:        "Numbering pattern",
   numPatternHint:         "Variables: {year} {year2} {month} {day} {seq} {seq4} {seq5} {clientCode}",
   numPatternPreview:      "Next number",
@@ -2900,12 +2919,12 @@ export const EN = {
   numCustomEnable:        "Enable custom numbering",
   numSeparateSeq:         "Separate sequence per document type",
   numStartingSeq:         "Starting sequence",
-  // ── SPRINT 12 — Sections ──
+  // ── SPRINT 12 - Sections ──
   sectionAddBtn:          "＋ Add section",
   sectionPlaceholder:     "Section name…",
   sectionSubtotal:        "Subtotal",
   sectionRemove:          "Remove section",
-  // ── SPRINT 12 — Payment Plans ──
+  // ── SPRINT 12 - Payment Plans ──
   ppToggle:               "Payment plan",
   ppConfigure:            "Configure",
   ppInstallments:         "Number of installments",
@@ -2923,9 +2942,9 @@ export const EN = {
   ppInstallmentOf:        (n, total) => `Installment ${n} of ${total}`,
   ppPlanActive:           "Active payment plan",
   ppPlanCancelled:        "Payment plan cancelled",
-  ppEarlyPayNote:         "Full payment received — remaining installments cancelled",
-  ppProGate:              "Payment plans — Pro feature",
-  // ── SPRINT 12 — Tax-Exempt ──
+  ppEarlyPayNote:         "Full payment received - remaining installments cancelled",
+  ppProGate:              "Payment plans - Pro feature",
+  // ── SPRINT 12 - Tax-Exempt ──
   taxExemptTitle:         "Tax Exemption",
   taxExemptToggle:        "Tax-exempt client",
   taxExemptFromTps:       "Exempt from GST",
@@ -2934,7 +2953,7 @@ export const EN = {
   taxExemptNumber:        "Exemption / status card number",
   taxExemptExpiry:        "Expiry date (optional)",
   taxExemptNotes:         "Notes",
-  taxExemptNoDoc:         "Warning: no supporting document linked in the Vault. Recommended for audit (Canada Revenue Agency — CRA, 3 years).",
+  taxExemptNoDoc:         "Warning: no supporting document linked in the Vault. Recommended for audit (Canada Revenue Agency - CRA, 3 years).",
   taxExemptDisclaimer:    "BalanceIQ does not assess exemption eligibility. Verify with your client and accountant.",
   taxExemptTypeIndian:    "Indian Act (s. 87)",
   taxExemptTypeGovFed:    "Federal government",
@@ -2943,19 +2962,19 @@ export const EN = {
   taxExemptTypeDiplomatic:"Diplomatic mission",
   taxExemptTypeOther:     "Other",
   taxExemptStatement:     (type, number) => `Invoice exempt from taxes pursuant to ${type}.${number ? " Exemption number: " + number + "." : ""}`,
-  taxExemptExpired:       "Exemption expired — verify client status before sending",
+  taxExemptExpired:       "Exemption expired - verify client status before sending",
   taxExemptBadge:         "EXEMPT",
-  // ── SPRINT 12 — Proforma ──
+  // ── SPRINT 12 - Proforma ──
   proformaTitle:          "Proforma",
   proformaNew:            "New proforma",
   proformaLabel:          "PROFORMA",
   proformaConvert:        "Convert to invoice",
   proformaConvertConfirm: "Create a real invoice from this proforma?",
-  proformaProGate:        "Proforma invoices — Pro feature",
-  proformaNote:           "Proforma document — no accounting effect (excluded from AR and revenue totals)",
+  proformaProGate:        "Proforma invoices - Pro feature",
+  proformaNote:           "Proforma document - no accounting effect (excluded from AR and revenue totals)",
   filterProforma:         "Proformas",
 
-  // ── SPRINT 13 — Credit Limits (3.16) ──
+  // ── SPRINT 13 - Credit Limits (3.16) ──
   creditLimitTitle:        "Credit Limit",
   creditLimitToggleLabel:  "Enable credit limit",
   creditLimitAmount:       "Limit ($)",
@@ -2964,8 +2983,8 @@ export const EN = {
   creditLimitActionBlock:  "Block (prevent save)",
   creditLimitActionNone:   "No action",
   creditLimitNotes:        "Notes (internal)",
-  creditLimitWarnBanner:   (used, limit) => `⚠ Credit limit exceeded — open AR: ${used} / limit: ${limit}. You can still save.`,
-  creditLimitBlockBanner:  (used, limit) => `🚫 Credit limit exceeded — open AR: ${used} / limit: ${limit}. Save is blocked.`,
+  creditLimitWarnBanner:   (used, limit) => `⚠ Credit limit exceeded - open AR: ${used} / limit: ${limit}. You can still save.`,
+  creditLimitBlockBanner:  (used, limit) => `🚫 Credit limit exceeded - open AR: ${used} / limit: ${limit}. Save is blocked.`,
   creditLimitOverride:     "Manager override",
   creditLimitOverridePH:   "Manager password",
   creditLimitOverrideOk:   "Access granted",
@@ -2973,9 +2992,9 @@ export const EN = {
   creditLimitSetPwTitle:   "Override password",
   creditLimitSetPwHint:    "Required to override a blocked credit limit.",
   creditLimitNearWidget:   "Clients near limit",
-  creditLimitProGate:      "Per-client credit limits — Pro feature",
+  creditLimitProGate:      "Per-client credit limits - Pro feature",
 
-  // ── SPRINT 13 — Inventory Invoice Bridge (3.12) ──
+  // ── SPRINT 13 - Inventory Invoice Bridge (3.12) ──
   invBridgeTitle:          "Forecasting Connection",
   invBridgeToggle:         "Deduct invoiced sales from Forecasting stock",
   invBridgeOnStockout:     "If stock insufficient",
@@ -2983,22 +3002,22 @@ export const EN = {
   invBridgeBlock:          "Block (prevent save)",
   invBridgeProduct:        "Forecasting product",
   invBridgeProductPH:      "Link a product…",
-  invBridgeNegWarn:        (name) => `⚠ Negative stock for "${name}" — verify before sending.`,
+  invBridgeNegWarn:        (name) => `⚠ Negative stock for "${name}" - verify before sending.`,
   invBridgeSaved:          "Stock deductions recorded",
 
-  // ── SPRINT 9 — Statement batch ──
+  // ── SPRINT 9 - Statement batch ──
   stmtMonthEnd:        "Month-end send",
   stmtMonthEndHint:    "Send statement to all clients with an outstanding balance",
   stmtMonthEndDone:    (n) => `${n} statement(s) sent`,
 
-  // ── NAVIGATION — Facturation Filters ──
+  // ── NAVIGATION - Facturation Filters ──
   filterAll:        "All",
   filterQuotes:     "Quotes",
   filterOrders:     "Orders",
   filterInvoices:   "Invoices",
   filterCreditNotes:"Credit Notes",
 
-  // ── NAVIGATION — Network (Franchiseur) Sub-Tabs ──
+  // ── NAVIGATION - Network (Franchiseur) Sub-Tabs ──
   netPerformance:   "Performance",
   netScorecards:    "Scorecards",
   netRoyalties:     "Royalties",
@@ -3117,9 +3136,9 @@ export const EN = {
   dailyPmtGiftCard: "Gift Cards",
   dailyLivMismatch: (pos,man)=>`POS deliveries (${pos}) ≠ Counted deliveries (${man})`,
   dailyPmtMatch:    "Breakdown matches terminal total",
-  dailyPmtMismatch: (det,ter,ecart)=>`Breakdown (${det}) doesn't match terminal (${ter}) — variance of ${ecart}`,
+  dailyPmtMismatch: (det,ter,ecart)=>`Breakdown (${det}) doesn't match terminal (${ter}) - variance of ${ecart}`,
  dailyPosTermMatch: "POS payments and terminal balanced",
- dailyPosTermMismatch:(pos,ter,ecart)=>` POS total (${pos}) ≠ terminal (${ter}) — variance of ${ecart}`,
+ dailyPosTermMismatch:(pos,ter,ecart)=>` POS total (${pos}) ≠ terminal (${ter}) - variance of ${ecart}`,
  dailyExpectedCash:"Expected cash",
  dailyCashVarianceShort:(amt)=>` Cash variance: ${amt} (short)`,
  dailyCashVarianceOver: (amt)=>` Cash variance: ${amt} (over)`,
@@ -3133,10 +3152,10 @@ export const EN = {
  dailySurplus: "Surplus",
  dailyShortage: "Shortage",
  dailyOf:      "of",
- dailyReconOK: (amt) => ` BALANCED — ${amt}`,
+ dailyReconOK: (amt) => ` BALANCED - ${amt}`,
  dailyReconErr: (amt) => ` VARIANCE ${amt}`,
  dailyCashier: "Cashier",
- dailyNoCashier: "— None —",
+ dailyNoCashier: "- None -",
  dailyNetSales: "Net Sales",
  dailyGross: "Gross Total",
  dailyPerDozen: "$/dozen",
@@ -3152,7 +3171,7 @@ export const EN = {
  dailyInventory: "Inventory",
  invAdjusted: "Adjusted",
  invStockLow: "Low stock",
- invWarnEndHigh: "End > Start + Received — check",
+ invWarnEndHigh: "End > Start + Received - check",
  invProjection: "End-of-day projection",
  invBasedOn: (label) => `Based on your pace at ${label}`,
  breadPassedNote: "Past = Start + Received − Remaining at time",
@@ -3227,7 +3246,7 @@ export const EN = {
   livTotalSales:    "Total Platform Sales",
   livTotalDeposits: "Total Deposits Received",
   livInfoOnly:      "Does not affect cash register reconciliation",
-  livNoPlatforms:   "No platforms configured — add in Settings",
+  livNoPlatforms:   "No platforms configured - add in Settings",
   livPending:       "⏳ Awaiting Deposit",
   livSelectPlatform:"Select a platform...",
   livImportN:       (n) => `Import ${n} deposit${n>1?'s':''}`,
@@ -3238,7 +3257,7 @@ export const EN = {
   plRevenueAuto:    "Auto (from daily reports)",
   plMonthlyOverride:"Monthly Override",
   plCOGS:           "Cost of Goods (F&P)",
-  plCOGSHeader:     "Cost of Goods (Food & Paper — before tax)",
+  plCOGSHeader:     "Cost of Goods (Food & Paper - before tax)",
   plPettyCashFP:    "Petty Cash F&P",
   plPettyCashMisc:  "Petty Cash Misc",
   plTotalFP:        "Total F&P",
@@ -3267,7 +3286,7 @@ export const EN = {
   plLabourAuto:     "Auto (from daily reports)",
   plLabourOverride: "Monthly Override",
   plDeliveries:     "Delivery Platforms",
-  plDeliveryInfo:   "For information only — commission paid to platforms. Not included in P&L calculation.",
+  plDeliveryInfo:   "For information only - commission paid to platforms. Not included in P&L calculation.",
   plTotalPlatSales: "Total Platform Sales",
   plTotalDeposits:  "Total Deposits Received",
   plCommission:     "Commission",
@@ -3291,7 +3310,7 @@ export const EN = {
   plSubtractExp:    "− Expenses",
 
   // ── INTELLIGENCE TAB ──
-  intelProjections: (day, date, month) => `Projections — ${day} ${date} ${month}`,
+  intelProjections: (day, date, month) => `Projections - ${day} ${date} ${month}`,
   intelProjected:   "Projected",
   intelAverage:     "Average",
   intelSuggestedOrder:"Suggested Order",
@@ -3301,14 +3320,14 @@ export const EN = {
   intelDozHot:      "dz Hot",
   intelVelocity:    "Consumption Velocity",
   intelAnomalies:   "Anomalies Detected",
-  intelCashVariance:"Cash Variances — 30 Days",
-  intelEncaisseSorties:"Cash Outflows — Monthly Comparison",
+  intelCashVariance:"Cash Variances - 30 Days",
+  intelEncaisseSorties:"Cash Outflows - Monthly Comparison",
   intelColDay:      "Day",
   intelCVShifts:    "shifts",
   intelCVAvg:       "Avg Variance",
   intelCVCumul:     "Cumulative",
   intelCVStatus:    "Status",
-  intelCVNoData:    "No data — variances appear after full reconciliation (Manual + POS)",
+  intelCVNoData:    "No data - variances appear after full reconciliation (Manual + POS)",
   intelCVOK:        "Balanced",
   intelCVShort:     "Consistently short",
   intelCVOver:      "Consistently over",
@@ -3316,7 +3335,7 @@ export const EN = {
   intelCVHistory:   "History (30 days)",
   intelCVColDate:   "Date",
   intelCVColVar:    "Variance",
-  intelCVAlertMsg:  (name, amt) => `${name} is consistently short — cumulative loss of ${amt} over 30 days`,
+  intelCVAlertMsg:  (name, amt) => `${name} is consistently short - cumulative loss of ${amt} over 30 days`,
   intelColData:     "Data",
   intelColAvgSales: "Avg Sales",
   intelColAvgHam:   "Avg Ham",
@@ -3331,7 +3350,7 @@ export const EN = {
   encOutflows:      "④ Cash Outflows",
   encPhysical:      "⑤ Physical Count",
   encReconciliation:"⑥ Reconciliation",
-  encTipOpening:    "Carried forward automatically from yesterday's closing balance. First day or wrong balance? Use Modify to enter it manually — it will be fixed for that day only.",
+  encTipOpening:    "Carried forward automatically from yesterday's closing balance. First day or wrong balance? Use Modify to enter it manually - it will be fixed for that day only.",
   encTipInflows:    "Sales cash = (final cash − float) per register, read automatically from the Daily tab. Add any other cash receipts here: off-register sales, refunds received, invoicing cash payments, etc.",
   encTipDeposits:   "Interac/card deposits are read automatically from the registers. Enter each cash deposit made to the bank during the day here. Each deposit reduces the cash on hand balance.",
   encTipOutflows:   "Cash expenses paid before the bank deposit. E.g.: urgent supplier purchase, employee advance, petty cash. Choose a category to track your outflows by type each month.",
@@ -3340,7 +3359,7 @@ export const EN = {
   encSalesCash:     "+ Sales Cash",
   encOtherInflows:  "+ Other Inflows",
   encCreditDeposit: "Interac / Credit Deposit",
-  encAutoFromReg:   "(auto — from registers)",
+  encAutoFromReg:   "(auto - from registers)",
   encFillRegisters: "⏳ Fill registers first",
   encCashDeposits:  "Cash Deposits",
   encSortie:        "Outflow",
@@ -3349,9 +3368,9 @@ export const EN = {
   encPhysicalCount: "Physical Count",
   encVariance:      "VARIANCE",
   encBalancedOK:    "BALANCED",
-  encNoHistory:     "No history — enter manually for the first day",
+  encNoHistory:     "No history - enter manually for the first day",
   encPhysicalNeeded:"Enter physical count (section ⑤) to see variance.",
-  encDailySummary:  "Daily Summary — for information only",
+  encDailySummary:  "Daily Summary - for information only",
   encCarryCalc:     "Calculated Balance",
   encCarryPhys:     "Physical Count",
   encMonthlySummary:"Monthly Summary",
@@ -3368,7 +3387,7 @@ export const EN = {
   encSlipNumber:    "# Slip",
   encDescPlaceholder:"Description...",
 
-  // ── FACTURATION — COMMON ──
+  // ── FACTURATION - COMMON ──
   facTitle:         "Invoicing",
   facNewQuote:      "+ Quote",
   facNewOrder:      "+ Order",
@@ -3381,7 +3400,7 @@ export const EN = {
   catActiveCount:   (n) => `${n} active${n!==1?"s":""}`,
   catShowInactive:  "Show Inactive",
   catHideInactive:  "Hide Inactive",
-  catEmpty:         "No categories — click \"+ New Category\" to get started.",
+  catEmpty:         "No categories - click \"+ New Category\" to get started.",
   catFieldNom:      "Name",
   catFieldRevenu:   "# Revenue account",
   catFieldEscompte: "# Discount account",
@@ -3396,7 +3415,7 @@ export const EN = {
   prodNewTitle:     "New product / service",
   prodCode:         "Product code",
   prodCategorie:    "Category",
-  prodChoisirCat:   "— Choose a category * —",
+  prodChoisirCat:   "- Choose a category * -",
   prodPrixUnit:     "Unit price ($)",
   prodUniteMes:     "Unit of measure",
   prodCustomUnit:   "Custom unit",
@@ -3408,8 +3427,8 @@ export const EN = {
   prodUnitAutre:    "Other...",
   prodUnites:       {"unité":"unit","douzaine":"dozen","kg":"kg","litre":"litre","heure":"hour","forfait":"flat rate","%":"%","boîte":"box","caisse":"case"},
   prodForecastLink: "Linked Forecasting product",
-  prodForecastLinkPH: "— No link —",
-  prodForecastLinkTip: "Link this product to a Forecasting item. When you select this product on an invoice, BalanceIQ will automatically deduct the sold quantity from that product's Forecasting stock — no manual linking needed per invoice.",
+  prodForecastLinkPH: "- No link -",
+  prodForecastLinkTip: "Link this product to a Forecasting item. When you select this product on an invoice, BalanceIQ will automatically deduct the sold quantity from that product's Forecasting stock - no manual linking needed per invoice.",
   facNewProduct:    "+ Product / Service",
   facSearchDoc:     "Search # or client...",
   facNoDocuments:   "No documents found.",
@@ -3446,14 +3465,14 @@ export const EN = {
   facDebitCol:      "Debit",
   facCreditCol:     "Credit",
   facRunningBalance:"Running Balance",
-  facLockedLines:   "Order completed — lines locked",
+  facLockedLines:   "Order completed - lines locked",
   facOptional:      "Optional",
   facAutoGenerated: "auto-generated",
   facRefOptional:   "Reference (optional)",
   facReasonPlaceholder:"Describe the reason...",
   facCreditDescPlaceholder:"Credit description...",
 
-  // ── FACTURATION — CLIENT FORM ──
+  // ── FACTURATION - CLIENT FORM ──
   cliCodeClient:    "Client Code",
   cliEntreprise:    "Company",
   cliNomEntreprise: "Company name",
@@ -3478,26 +3497,26 @@ export const EN = {
   cliSurReception:  "On receipt",
   cliPersonnalise:  "Custom",
 
-  // ── FACTURATION — CLIENT LIST ──
+  // ── FACTURATION - CLIENT LIST ──
   cliSearch:        "Search...",
   cliActifs:        "Active",
   cliInactifs:      "Inactive",
   cliTous:          "All",
   cliNouveauClient: "New Client",
   cliAucunResultat: "No results.",
-  cliAucunClientStart: (btn) => `No clients yet — click "${btn}" to get started.`,
+  cliAucunClientStart: (btn) => `No clients yet - click "${btn}" to get started.`,
   cliActifsCount:   (n) => `${n} active`,
   cliTelephone:     "Phone",
   cliSoldeDu:       "Balance Due",
 
-  // ── FACTURATION — DOCUMENT EDITORS ──
-  facChooseClient:  "— Select a client —",
+  // ── FACTURATION - DOCUMENT EDITORS ──
+  facChooseClient:  "- Select a client -",
   facDateExpiration:"Expiry Date",
   facDateLivraison: "Delivery Date (opt.)",
   facStatut:        "Status",
   facLignes:        "Lines",
   facProduit:       "Product",
-  facLibre:         "— Freeform —",
+  facLibre:         "- Freeform -",
   facRemise:        "Discount %",
   facAjouterLigne:  "+ Add a line",
   facAucunPaiement: "No payment recorded",
@@ -3519,13 +3538,13 @@ export const EN = {
     "Net 45":"Net 45","Net 60":"Net 60","Personnalisé":"Custom",
   },
 
-  // ── FACTURATION — SUMMARY CARDS ──
+  // ── FACTURATION - SUMMARY CARDS ──
   facInvoicedMonth: "Invoiced This Month",
   facCollectedMonth:"Collected This Month",
   facOutstanding:   "Outstanding",
   facOverdue:       "Overdue",
 
-  // ── FACTURATION — AGING ──
+  // ── FACTURATION - AGING ──
   agingTitle:       "Accounts Receivable",
   agingSummary:     "Summary",
   agingDetailed:    "Detailed",
@@ -3537,7 +3556,7 @@ export const EN = {
   agingAmountDue:   "Amount Due",
   agingBalanceDue:  "Balance Due",
   agingNoUnpaid:    (date) => `No unpaid invoices as of ${date}.`,
-  agingNoBalance:   "No balance due — account in good standing.",
+  agingNoBalance:   "No balance due - account in good standing.",
   agingBulkSend:    (n) => `Send statements (${n})`,
   agingEndOfMonth:  "Send all statements",
   agingNoResendKey: "Resend API key not configured. Add it in Settings > Email.",
@@ -3551,7 +3570,7 @@ export const EN = {
   etatTo:           "to",
   etatPrintPDF:     "Print / PDF",
 
-  // ── FACTURATION — PAYMENT MODES ──
+  // ── FACTURATION - PAYMENT MODES ──
   paymentCash:      "Cash",
   paymentCheque:    "Cheque",
   paymentInterac:   "Interac",
@@ -3559,28 +3578,28 @@ export const EN = {
   paymentTransfer:  "Wire Transfer",
   paymentOther:     "Other",
 
-  // ── FACTURATION — EMAIL COMPOSE ──
-  emailFreeStep1:   "Step 1 — Download the PDF",
-  emailFreeStep2:   "Step 2 — Open your email client",
+  // ── FACTURATION - EMAIL COMPOSE ──
+  emailFreeStep1:   "Step 1 - Download the PDF",
+  emailFreeStep2:   "Step 2 - Open your email client",
   emailAttachManually:"then attach it manually to your email",
-  emailProFeature:  "With BalanceIQ Pro, the PDF is generated and attached automatically — no manual steps.",
+  emailProFeature:  "With BalanceIQ Pro, the PDF is generated and attached automatically - no manual steps.",
   emailDownloaded:  "Downloaded",
 
-  // ── FACTURATION — ACCOUNTING EXPORT ──
+  // ── FACTURATION - ACCOUNTING EXPORT ──
   exportTitle:      "Export for Accounting",
   exportJournalInv: "Invoice Journal",
   exportJournalPay: "Payment Journal",
   exportLedger:     "Accounts Receivable Ledger",
   exportSummary:    "Summary",
-  exportInvDesc:    "Detail by line item — account numbers included",
+  exportInvDesc:    "Detail by line item - account numbers included",
   exportPayDesc:    "Payments received, method and reference",
   exportLedgerDesc: "Balances by client for period",
   exportExcel:      "Excel",
   exportCSV:        "CSV",
   exportAcomba:     "Acomba Journal",
-  exportAcombaDesc: "Double-entry — compatible with Acomba 15+ (GJ journal code, YYYY-MM-DD, period decimal)",
+  exportAcombaDesc: "Double-entry - compatible with Acomba 15+ (GJ journal code, YYYY-MM-DD, period decimal)",
   exportSage50:     "Sage 50 Journal",
-  exportSage50Desc: "Double-entry — compatible with Sage 50 Canadian (Simple Comptable), UTF-8 BOM",
+  exportSage50Desc: "Double-entry - compatible with Sage 50 Canadian (Simple Comptable), UTF-8 BOM",
   exportNoData:     "No data in this period.",
   exportPLAcomba:   "⬇ Acomba / Sage 50",
   exportAccounting: "Accounting",
@@ -3617,7 +3636,7 @@ export const EN = {
   tourStep3Title:   "Deliveries",
   tourStep3Desc:    "Track commissions for DoorDash, Uber Eats and Skip. Import reports directly from CSV files.",
   tourStep4Title:   "Monthly P&L",
-  tourStep4Desc:    "Your full monthly snapshot: revenue, food costs, operating expenses and net profit — always before taxes.",
+  tourStep4Desc:    "Your full monthly snapshot: revenue, food costs, operating expenses and net profit - always before taxes.",
   tourStep5Title:   "Intelligence",
   tourStep5Desc:    "Day-of-week profiles, anomaly detection, automated order suggestions and multi-factor forecasting.",
   tourStep6Title:   "Cash Position",
@@ -3637,14 +3656,14 @@ export const EN = {
  bannerDailyDesc: "Enter your register closings, inventory counts and labour hours each day. This data automatically feeds your Monthly P&L, Cash Position and Intelligence.",
  bannerDailySettings: "Settings → Business for your location info · Settings → Staff & Payroll for your team",
  bannerMonthlyTitle: "Monthly P&L",
- bannerMonthlyDesc: "Your complete monthly snapshot — revenue, food costs, operating expenses and net profit, always before taxes. Set up your suppliers first so you can enter invoices under Cost of Goods.",
+ bannerMonthlyDesc: "Your complete monthly snapshot - revenue, food costs, operating expenses and net profit, always before taxes. Set up your suppliers first so you can enter invoices under Cost of Goods.",
  bannerMonthlySettings:"Settings → P&L & Suppliers to add your suppliers · Revenue and labour fill in automatically from the Daily tab",
  bannerEncaisseTitle: "Cash Position",
  bannerEncaisseDesc: "Daily cash position tracker. Register data is read automatically. Enter other income, deposits and cash expenses to calculate your real balance.",
  bannerEncaisseSettings:"Settings → Cash Position for expense categories and cash locations",
  bannerIntelTitle: "Intelligence",
- bannerIntelDesc: "Day-of-week profiles, anomaly detection, automated order suggestions and multi-factor forecasting — built automatically from your daily entries.",
- bannerIntelSettings: "No configuration needed — Intelligence learns from your daily entries",
+ bannerIntelDesc: "Day-of-week profiles, anomaly detection, automated order suggestions and multi-factor forecasting - built automatically from your daily entries.",
+ bannerIntelSettings: "No configuration needed - Intelligence learns from your daily entries",
  bannerFacTitle: "Invoicing",
  bannerFacDesc: "Create quotes, orders, invoices and credit notes. Manage clients, track payments and send account statements.",
  bannerFacSettings: "Settings → Business for your company details on invoices · Settings → Invoicing for templates and options",
@@ -3658,7 +3677,7 @@ export const EN = {
  showTooltipsOn: "Enabled",
  showTooltipsOff: "Disabled",
  tipRevenue: "Gross revenue from your registers this month. Calculated automatically from the Daily tab. You can override with a manual amount if needed.",
- tipCOGS: "Cost of goods and supplies (before taxes). Option 1: manual entry — type the invoice amount directly into each field. Option 2 (Pro): use the button to scan the invoice and fill in automatically. Set up your suppliers in Settings → P&L & Suppliers.",
+ tipCOGS: "Cost of goods and supplies (before taxes). Option 1: manual entry - type the invoice amount directly into each field. Option 2 (Pro): use the button to scan the invoice and fill in automatically. Set up your suppliers in Settings → P&L & Suppliers.",
  tipLabour: "Monthly payroll cost. Calculated automatically from hours and rates entered in the Daily tab. You can enter a lump sum override if you prefer.",
  tipOpExp: "Fixed and variable operating expenses: rent, electricity, insurance, etc. The Misc petty cash covers one-off expenses without a supplier invoice.",
  supplierEmptyHint: "No suppliers configured. Add your suppliers to enter their invoices here.",
@@ -3708,17 +3727,17 @@ export const EN = {
  yearEndGenerating: "Generating...",
  yearEndLocked: "The year-end package is available on the Pro plan.",
  taxSummaryTitle: "GST/QST Quarterly Summary",
- taxSummaryDesc: "Taxes collected and input credits by quarter — Revenu Québec format.",
+ taxSummaryDesc: "Taxes collected and input credits by quarter - Revenu Québec format.",
  taxGenerate: "Generate summary",
  taxGenerating: "Calculating...",
  taxDisclaimer: "Estimate only. Validate with your accountant before filing.",
- taxCreditsNote: "* Input credits not available — manual entry required in your accounting software.",
+ taxCreditsNote: "* Input credits not available - manual entry required in your accounting software.",
  taxCollected: "Collected",
  taxCredits: "Input credits",
  taxNet: "Net owing",
 
- // ── CONFIG — GL ACCOUNTS ──
- cfgGLAccounts: "GL Account Numbers — Acomba / Sage 50",
+ // ── CONFIG - GL ACCOUNTS ──
+ cfgGLAccounts: "GL Account Numbers - Acomba / Sage 50",
  cfgGLAccountsHint:"Map each line item to an account number in your chart of accounts. Verify with your accountant.",
  cfgGLRevenue: "Revenue (Sales)",
  cfgGLAR: "Accounts Receivable (AR)",
@@ -3726,12 +3745,12 @@ export const EN = {
  cfgGLFP: "Purchases / F&P",
  cfgGLLabour: "Wages & Benefits",
 
- // ── FACTURATION — CLIENT PROFILE ──
+ // ── FACTURATION - CLIENT PROFILE ──
  clientAccountStatement:"Account Statement",
  clientDocHistory: "Document History",
- clientNoBalance: "No balance due — account in good standing.",
+ clientNoBalance: "No balance due - account in good standing.",
 
- // ── FACTURATION — RECURRING ──
+ // ── FACTURATION - RECURRING ──
  recurringTitle: "Recurring Invoices",
  recurringFreq: "Frequency",
  recurringStartDate:"Start Date",
@@ -3741,7 +3760,7 @@ export const EN = {
  recurringActive: "Active",
  recurringInactive:"Inactive",
 
- // ── CONFIG — BUSINESS ──
+ // ── CONFIG - BUSINESS ──
  cfgCompanyName: "Company Name",
  cfgAddress: "Address",
  cfgPhone: "Phone",
@@ -3752,18 +3771,18 @@ export const EN = {
  cfgUploadLogo: "Upload Logo",
  cfgRemoveLogo: "Remove",
 
- // ── CONFIG — STAFF ──
+ // ── CONFIG - STAFF ──
  cfgCashierRoster: "Cashiers",
  cfgEmployeeRoster:"Employees",
  cfgAddCashier: "+ Cashier",
  cfgAddEmployee: "+ Employee",
  cfgDefaultWage: "Default hourly rate",
 
- // ── CONFIG — SUPPLIERS ──
+ // ── CONFIG - SUPPLIERS ──
  cfgAddSupplier: "+ Supplier",
  cfgSupplierName: "Supplier Name",
 
- // ── CONFIG — FINANCES ──
+ // ── CONFIG - FINANCES ──
  cfgExpenseCategories:"Expense Categories",
  cfgInvoiceTemplate:"Invoice Template",
  cfgAccentColor: "Accent Colour",
@@ -3773,7 +3792,7 @@ export const EN = {
  cfgShowTaxNumbers:"Show Tax Numbers",
  cfgTemplatePreview:"Template Preview",
 
- // ── CONFIG — INTEGRATIONS ──
+ // ── CONFIG - INTEGRATIONS ──
  cfgAPIKey: "API Key",
  cfgResendKey: "Resend API Key",
  cfgSendFrom: "Send From Email",
@@ -3782,7 +3801,7 @@ export const EN = {
  cfgTestFail: (err) => ` ${err}`,
  cfgTestInProgress:"Testing…",
 
- // ── CONFIG — DATA ──
+ // ── CONFIG - DATA ──
  cfgBackupJSON: "Backup JSON",
  cfgRestoreBackup: "Restore from Backup",
  cfgOpenFolder: "Open Folder",
@@ -3792,15 +3811,15 @@ export const EN = {
  cfgExportCSV: "CSV",
  cfgExportPDF: "PDF",
 
- // ── CONFIG — APPEARANCE ──
+ // ── CONFIG - APPEARANCE ──
  cfgTheme: "Theme",
  cfgThemeDark: "Dark",
- cfgThemeLight: "Light — Warm",
+ cfgThemeLight: "Light - Warm",
  cfgLanguage: "Language",
  cfgLanguageFR: "Français",
  cfgLanguageEN: "English",
 
- // ── CONFIG — APPLICATION ──
+ // ── CONFIG - APPLICATION ──
  cfgAppMode: "Application Mode",
  cfgModeRestaurant:"Restaurant / Franchisee",
  cfgModeFranchisor:"Franchisor / Head Office",
@@ -3815,7 +3834,7 @@ export const EN = {
  cfgReportEmailHint:"Email address used to send P&L reports. Leave blank to use your default mail client.",
  plSendEmailBtn: (email) => email ? `Send to ${email}` : "Send by email",
  cfgInvTitle: "Inventory Tracking",
- cfgInvDisabledNote:"Inventory tracking is off — no inventory section on the Daily tab.",
+ cfgInvDisabledNote:"Inventory tracking is off - no inventory section on the Daily tab.",
  cfgInvWhat: "What do you want to track?",
  cfgInvNom: "Name",
  cfgInvUnite: "Unit",
@@ -3836,6 +3855,25 @@ export const EN = {
  cfgCloudSignOut: "Sign out",
  cfgCloudEmail: "Email",
  cfgCloudPassword: "Password",
+ printSavePdf: "Print / Save PDF",
+ voidDocumentQ: "Void this document?",
+ cancelQuote: "Cancel the quote",
+ noDepositPlanned: "No deposit scheduled.",
+ noRecurringConfigured: "No recurring invoice set up.",
+ noRecurringPending: "No recurring invoice pending.",
+ loadingData: "Loading data...",
+ noEntries: "No entries",
+ noCorrections: "No corrections recorded.",
+ noVoids: "No voids recorded.",
+ stripeWebhookPath: "Developers → Webhooks → Add endpoint",
+ stripeSelectEvents: "Select these 4 events: ",
+ stripeAddEndpoint: "Add endpoint",
+ statsDays: "Days:",
+ statsCashiers: "Cashiers:",
+ statsEmployees: "Employees:",
+ statsSuppliers: "Suppliers:",
+ statsPlatforms: "Platforms:",
+ posScanNoValue: "No value detected",
  posOauthUnavailable: "Connecting this point of sale is not available in this build of BalanceIQ. Use the manual access token for now.",
  saveFailedBanner: (key, msg) => `A change could not be saved (${key}): ${msg}. Redo it, or restart BalanceIQ if it keeps happening.`,
  saveFailedDismiss: "Got it",
@@ -3845,7 +3883,7 @@ export const EN = {
  cfgCloudPasswordMismatch: "The passwords do not match.",
  cfgCloudFullName: "Full name",
  cfgCloudOrgName: "Restaurant / organization name",
- cfgCloudConnected:(email,plan)=>`Connected: ${email} — Plan: ${plan}`,
+ cfgCloudConnected:(email,plan)=>`Connected: ${email} - Plan: ${plan}`,
  cfgCloudFreeNote: "Data stays on your computer. Create an account to enable cloud sync (Pro/Franchise).",
  cfgCloudSyncing: "Syncing...",
  cfgCloudSynced: "Synced",
@@ -3862,23 +3900,23 @@ export const EN = {
  cfgCloudForgotHint: "Enter your email and we'll send you a link to reset your password.",
   cfgCloudBackToSignIn:  "Back to sign in",
 
-  // ── CONFIG — SUBSCRIPTION ──
+  // ── CONFIG - SUBSCRIPTION ──
   subTitle:         "Your Subscription",
   subCurrentPlan:   "Current plan",
   subFree:          "Free",
   subNetwork:       "Network",
   subPro:           "Pro",
   subFranchise:     "Franchise",
-  subTrialPro:      "Try Pro free — 30 days",
-  subTrialFranchise:"Try Franchise — 30 days",
+  subTrialPro:      "Try Pro free - 30 days",
+  subTrialFranchise:"Try Franchise - 30 days",
   subUpgradeNetwork:"Upgrade to Network Pro",
   subManage:        "Manage subscription",
   subNextBilling:   (date) => `Next billing: ${date}`,
   subLoading:       "Loading...",
-  subError:         "Error — please try again.",
+  subError:         "Error - please try again.",
   subProFeatures:   "Pro includes: cloud sync, POS integration, Excel export, AI analysis, recurring invoices, direct email send.",
   subFranchiseFeatures:"Franchise includes everything in Pro + multi-location dashboard, automatic royalties, franchise invoicing.",
-  subNetworkSyncCovered:"Your franchisor covers your cloud sync — you use the app for free.",
+  subNetworkSyncCovered:"Your franchisor covers your cloud sync - you use the app for free.",
   subNetworkFeatures:"Upgrade to Network Pro to unlock: POS integration, Excel export, AI analysis, recurring invoices, direct email send.",
   subLocations:     (n) => `${n} location${n!==1?"s":""}`,
   subCancelNote:    "Cancel anytime. All your data stays saved.",
@@ -3929,13 +3967,13 @@ export const EN = {
   posTestOK:        "Connection active",
   posTestFail:      "Connection lost",
   posOverwriteWarn: "POS values will be replaced. Continue?",
-  cfgExpenseItems:     "Operating Expenses — Categories",
+  cfgExpenseItems:     "Operating Expenses - Categories",
   cfgExpenseItemsHint: "Customize the expense categories that appear in your monthly P&L.",
   cfgNewExpenseItem:   "New category...",
   cfgExpenseReset:     "Restore defaults",
   posAdvTitle:      "Advanced POS Data",
   posAdvChoose:     "Choose additional data to import",
-  posAdvOffNote:    "Simple mode — basic import unchanged",
+  posAdvOffNote:    "Simple mode - basic import unchanged",
   posAdvPayments:   "Payment breakdown (Visa, MC, Debit, Amex, Cash)",
   posAdvTips:       "Tips",
   posAdvNonTaxable: "Non-taxable items",
@@ -3949,7 +3987,7 @@ export const EN = {
   posAdvDisc:       "Discounts",
   posAdvRefunds:    "Refunds",
   posAdvNTLabel:    "Non-taxable",
-  posAdvNTNote:     "included in sales — informational",
+  posAdvNTNote:     "included in sales - informational",
   posAdvTxCountLabel:"Transaction count",
   posAdvTxNote:     "informational",
   posAdvTxLabel:    "Transactions",
@@ -3958,7 +3996,7 @@ export const EN = {
   posAdvHourlyTitle:"Sales by hour",
   cfgPinLock:       "App Lock",
   cfgPinLockDesc:   "PIN required at startup",
-  pinSecurityNote:  "This lock prevents casual access to the app. It is not advanced security — anyone with access to your computer's files could bypass it.",
+  pinSecurityNote:  "This lock prevents casual access to the app. It is not advanced security - anyone with access to your computer's files could bypass it.",
   cfgChangePin:     "Change PIN",
   cfgSetupPin:      "Choose a PIN (4 to 6 digits):",
   cfgConfirmPin:    "Confirm your PIN:",
@@ -3980,7 +4018,7 @@ export const EN = {
   // ── PIN LOCK SCREEN ──
   pinEnterPrompt:   "Enter your PIN to continue",
   pinWrong:         (n, max) => `Incorrect PIN (${n}/${max} attempts)`,
-  pinLocked:        (t) => `Too many attempts — try again in ${t}`,
+  pinLocked:        (t) => `Too many attempts - try again in ${t}`,
 
   // ── WELCOME SCREEN ──
   welcomeTitle:     "Welcome to BalanceIQ",
@@ -3992,12 +4030,12 @@ export const EN = {
 
   // ── WARNINGS ──
   warnNegativeAmount:"Amount cannot be negative",
-  warnHighAmount:    "Unusually high amount — verify",
+  warnHighAmount:    "Unusually high amount - verify",
   warnHighFloat:     "Unusually high float",
   warnNegativeFloat: "Float cannot be negative",
   warnTerminalMissing:"Enter terminal amount (0 if cash only)",
   warnNegativeDeposits:"Deposits cannot be negative",
-  warnHighHours:     "More than 16 hours — verify",
+  warnHighHours:     "More than 16 hours - verify",
   warnNegativeHours: "Cannot be negative",
   warnVariancesOver10:"Variances > $10:",
 
@@ -4055,7 +4093,7 @@ export const EN = {
   entryMode:        "Entry",
   appMode:          "Mode",
 
-  // ── DAILY TAB — EXTRA ──
+  // ── DAILY TAB - EXTRA ──
   closeDayBtn:      "Close out day",
   closeDayTitle:    "Close out this day?",
   closeDayBody:     "This creates an immutable snapshot of the day. Further edits are still allowed, but every financial correction will require a reason.",
@@ -4179,25 +4217,25 @@ export const EN = {
   inventoryEnd:     "End of Day",
   inventoryUsed:    "Used",
   livInfoOnly2:     "Informational only",
-  livTitle2:        "Deliveries — Platform Tracking",
-  livDailySummary:  "DAILY SUMMARY — INFORMATIONAL",
+  livTitle2:        "Deliveries - Platform Tracking",
+  livDailySummary:  "DAILY SUMMARY - INFORMATIONAL",
 
-  // ── P&L TAB — EXTRA ──
+  // ── P&L TAB - EXTRA ──
   plNetSales:       "Net Sales",
 
   // ── VENDOR PRICE INTELLIGENCE ──
-  priceIntelTitle:    (name) => `Price Change — ${name}`,
+  priceIntelTitle:    (name) => `Price Change - ${name}`,
   priceIntelBody:     (pct, last, cur) => `This invoice is ${pct}% higher than the previous one (${last} → ${cur}).`,
   priceIntelTrend:    "Recent history",
   priceIntelThresholdLabel: "Supplier price alert threshold",
   priceIntelThresholdHint:  "Alert when an invoice exceeds this % vs the previous one. Default: 5%.",
 
-  // ── ENCAISSE TAB — EXTRA ──
+  // ── ENCAISSE TAB - EXTRA ──
   encModify:        "Edit",
   encAmount:        "Amount",
   encCarryForward:  "Carry to next day:",
   encCashLocations: "Cash Locations",
-  encCashLocationsConfig: "Cash Locations — Physical Count ⑤",
+  encCashLocationsConfig: "Cash Locations - Physical Count ⑤",
   encConfigTitle:   "Configuration",
   // Default cash location names
   encLocTills:      "Cash Drawers (Tills)",
@@ -4210,17 +4248,17 @@ export const EN = {
   encCatRepairs:    "Repairs",
   encCatOther:      "Other",
 
-  // ── INTELLIGENCE TAB — EXTRA ──
+  // ── INTELLIGENCE TAB - EXTRA ──
   intelDowEmpty:    "Enter daily data to see trends",
   intelAnomalyTitle:(n) => `Anomalies Detected (last ${n} days)`,
-  intelAnomalyEmpty:"No anomaly — need 3+ days of the same type",
-  intelVelocityTitle:(day) => `Consumption Velocity — ${day}`,
+  intelAnomalyEmpty:"No anomaly - need 3+ days of the same type",
+  intelVelocityTitle:(day) => `Consumption Velocity - ${day}`,
   intelVelocityEmpty:"Enter bread counts (2pm–8pm) to see velocity",
-  intelOrderForecast:(day) => `Order Forecast — ${day}`,
+  intelOrderForecast:(day) => `Order Forecast - ${day}`,
   intelOrderEmpty:  "Need 2+ data points for this day of week",
-  intelLivTitle:    "Deliveries — Platform Analysis",
+  intelLivTitle:    "Deliveries - Platform Analysis",
   intelLivEmpty:    "No delivery data recorded",
-  intelEncaisseMonthData:(n) => `Current month — ${n} day${n!==1?"s":""} with data`,
+  intelEncaisseMonthData:(n) => `Current month - ${n} day${n!==1?"s":""} with data`,
   intelCategorie:   "Category",
   intelTotalSorties:"Total Outflows",
   intelAnomalyAvg:  "Avg:",
@@ -4241,23 +4279,23 @@ export const EN = {
   intelAvgDaily:    (amt) => `Daily average: ${amt}`,
   intelUnusualRises:"Unusual Increases vs Last Month",
   intelExplainProjections:(day,n)=>`Projection based on your last ${n} ${day}s. The average is your normal sales. The projection adjusts for recent trends.`,
-  intelTrendUp:   "↑ Trending up — your recent results are above normal",
-  intelTrendDown: "↓ Trending down — your recent results are below normal",
-  intelTrendStable:"→ Stable — consistent sales for this day",
+  intelTrendUp:   "↑ Trending up - your recent results are above normal",
+  intelTrendDown: "↓ Trending down - your recent results are below normal",
+  intelTrendStable:"→ Stable - consistent sales for this day",
   intelConfLow:   "Low confidence (2-3 samples)",
   intelConfMed:   "Medium confidence (4-5 samples)",
   intelConfHigh:  "High confidence (6+ samples)",
   intelOrderMathHam:(avg,tot)=>`Avg: ${avg} dz + Margin: 3 dz = ${tot} dz (Ham)`,
   intelOrderMathHot:(avg,tot)=>`Avg: ${avg} dz + Margin: 2 dz = ${tot} dz (Hot)`,
-  intelForecast5Title:"Order Forecast — 5 Days",
+  intelForecast5Title:"Order Forecast - 5 Days",
   intelForecast5Explain:"Based on your sales history, adjusted for weather, temperature and holidays. Quantities include a safety margin (+3 dz ham, +2 dz hot).",
   intelWeekTotal:(ham,hot,sales)=>`Weekly total: HAM ~${ham} dz · HOT ~${hot} dz · Est: ~${sales}`,
-  intelNoWeather: "Weather unavailable — forecast based on history only",
+  intelNoWeather: "Weather unavailable - forecast based on history only",
   intelBusiest:   "Busiest day",
   intelSlowest:   "Slowest day",
   intelExplainAnomalies:"Days where your sales deviated more than 25% from your average for that weekday. Understanding why helps you forecast better.",
   intelAnomalyThreshold:"Threshold: ±25% · Based on last 14 days",
-  intelCauseNone: "No obvious cause — add a note for this day",
+  intelCauseNone: "No obvious cause - add a note for this day",
   intelCauseWeather:(w)=>`Weather: ${w}`,
   intelCauseCold: (tmp)=>`Extreme cold (${tmp}°C)`,
   intelCauseHeat: (tmp)=>`Heat (${tmp}°C)`,
@@ -4270,14 +4308,14 @@ export const EN = {
   intelExplainKpi:"Key performance indicators over the last 30 days. Green = good, yellow = watch, red = action needed.",
   intelExplainCashiers:"Difference between what the register SHOULD contain (per POS) and what's actually there. Consistent negative variances may indicate handling errors or a more serious issue.",
   intelExplainVelocity:"How many dozens are consumed per time window. Use this to know when to put the next batch in the oven or when to slow down production.",
-  intelExplainDelivery:"Analysis of your delivery platform sales. Watch actual vs contracted commission rates — some platforms charge more via hidden fees.",
+  intelExplainDelivery:"Analysis of your delivery platform sales. Watch actual vs contracted commission rates - some platforms charge more via hidden fees.",
   intelDelivOvercharge:(name,actual,contracted,diff)=>`⚠ ${name} is charging ${actual}% instead of contracted ${contracted}%. Difference of ${diff} over 30 days. Contact your rep.`,
   intelExplainSorties:"Cash outflow tracking by category. Automatically flags categories increasing more than 40% vs the previous month.",
   intelEmptyGuidance:"Enter at least 2 weeks of daily data. Go to Daily → fill in your registers each day.",
   intelNotesHint: "Tip: The more detail you add here (promo, event, extreme weather, equipment issue), the more accurate the analysis will be.",
   intelNotesPlaceholder:"Ex: 2-for-1 lunch promo, oven down 2pm-4pm, 3 call-outs...",
 
-  // ── CONFIG — BUSINESS — EXTRA ──
+  // ── CONFIG - BUSINESS - EXTRA ──
   cfgCompanyInfo:   "Company Information",
   cfgCompanyLogo:   "Company Logo",
   cfgChooseImage:   "Choose image",
@@ -4294,13 +4332,13 @@ export const EN = {
   cfgNextNum:       "Next #",
   cfgNumHint:       "Numbers increment automatically when each document is created.",
 
-  // ── CONFIG — STAFF — EXTRA ──
+  // ── CONFIG - STAFF - EXTRA ──
   cfgCashiers:      "Cashiers",
   cfgNamePlaceholder:"Name...",
   cfgEmployees:     "Employees",
   cfgWageHint:      "Hourly rate auto-filled in the daily report.",
 
-  // ── CONFIG — SUPPLIERS — EXTRA ──
+  // ── CONFIG - SUPPLIERS - EXTRA ──
   cfgSuppliers:     "Suppliers (P&L)",
   cfgNewSupplier:   "New supplier...",
   cfgDeliveryPlatforms:"Delivery Platforms",
@@ -4314,8 +4352,8 @@ export const EN = {
  livActualComm: "Actual comm.",
  livNetRevenue: "Net revenue",
  livOvercharge: "Overcharge detected",
- livOverchargeWarn:"Overcharge detected on a platform — check your contract.",
- delivMixTitle: "Delivery Mix — 30 days",
+ livOverchargeWarn:"Overcharge detected on a platform - check your contract.",
+ delivMixTitle: "Delivery Mix - 30 days",
  cfgPlatformHint: "Enter your contracted commission rate (%) per platform. Used to detect overcharges.",
  cfgPlatformName: "Platform name...",
  cfgRestoreDefaultPlatforms: "Restore default platforms",
@@ -4326,31 +4364,31 @@ export const EN = {
  cfgAllCategories: "All categories",
  cfgShowInactive: "Show inactive",
  cfgHideInactive: "Hide inactive",
- cfgNoProducts: (btn) => `No products — click "${btn}" to get started.`,
+ cfgNoProducts: (btn) => `No products - click "${btn}" to get started.`,
  cfgNoResults: "No results for this search.",
 
- // ── CONFIG — FINANCES — EXTRA ──
+ // ── CONFIG - FINANCES - EXTRA ──
  cfgOutflowCats: "Cash Outflow Categories",
  cfgOutflowCatHint:"Categories available when recording cash outflows.",
  cfgNewCategory: "New category...",
  cfgLogoLeft: "Left",
  cfgLogoRight: "Right",
  cfgLogoCenter: "Center",
- cfgFooterPlaceholder:"Ex: Thank you for your business — payment due in 30 days",
+ cfgFooterPlaceholder:"Ex: Thank you for your business - payment due in 30 days",
  cfgDefaultNotesPlaceholder:"Ex: Quote valid 30 days. All prices are in Canadian dollars.",
  cfgShowTaxNums: "Show GST/QST numbers on documents",
  cfgTemplateApplied:"Settings applied to all your documents (invoices, quotes, orders)",
  cfgTemplatePreview2:"Template preview (demo invoice)",
 
- // ── CONFIG — INTEGRATIONS — EXTRA ──
+ // ── CONFIG - INTEGRATIONS - EXTRA ──
  cfgWeatherCoords: "Weather Coordinates",
  cfgWeatherHint: "Search your city to auto-fill weather on the daily report.",
- cfgWeatherConfigured:(city) => ` ${city} — weather configured`,
+ cfgWeatherConfigured:(city) => ` ${city} - weather configured`,
  cfgCitySearch: "Laval, Saint-Hyacinthe, Montreal...",
  cfgSearch: "Search",
  cfgAPIIntegrations:"API Integrations",
  cfgAuphanKey: "API Key or URL...",
- cfgAuphanHint: "Coming soon — contact Auphan for documentation",
+ cfgAuphanHint: "Coming soon - contact Auphan for documentation",
  cfgGasPrice: "Gas Price",
  cfgGasHint: "Auto-filled from last known price.",
  cfgEmailService: "Email Service (Resend)",
@@ -4385,7 +4423,7 @@ export const EN = {
   showDzKpiLabel:   "Show $/dozen KPI",
   showDzKpiHint:    "Enables the $/dozen ratio in KPIs and scorecards. Recommended for restaurants selling by the dozen.",
   sqftLabel:        "Restaurant floor area (sqft)",
-  sqftHint:         "Optional — used to calculate revenue per square foot.",
+  sqftHint:         "Optional - used to calculate revenue per square foot.",
   customKpisTitle:  "Custom KPIs",
   kpiAddBtn:        "Add KPI",
   kpiNameFr:        "Name (FR)",
@@ -4396,7 +4434,7 @@ export const EN = {
   kpiDirLow:        "Lower is better",
   kpiDeleteKpi:     "Delete",
 
-  // ── CONFIG — DATA — EXTRA ──
+  // ── CONFIG - DATA - EXTRA ──
   cfgLastBackup:    (date, count) => `✓ Last: ${date} · ${count} files`,
   auditJournal:     "Log",
   auditCorrections: "Corrections",
@@ -4412,11 +4450,11 @@ export const EN = {
   auditFrom:        "FROM",
   auditTo:          "TO",
 
-  // ── CONFIG — APPLICATION — EXTRA ──
+  // ── CONFIG - APPLICATION - EXTRA ──
   cfgPlanDevOnly:   "Plan selection available in development mode only.",
   cfgActive:        "Active",
 
-  // ── WELCOME SCREEN — EXTRA ──
+  // ── WELCOME SCREEN - EXTRA ──
   welcomeTitle2:    "Welcome to BalanceIQ",
   welcomeSubtitle2: "How do you use the application?",
   welcomeRestaurant2:"Restaurant / Franchisee",
@@ -4424,7 +4462,7 @@ export const EN = {
   welcomeFranchisor2:"Franchisor / Head Office",
   welcomeFranchisorDesc:"Multi-location dashboard, royalties, consolidation",
 
-  // ── FRANCHISE — LOCATIONS ──
+  // ── FRANCHISE - LOCATIONS ──
   frcAllNetwork:    "All locations",
   frcLocationMgmt:  "Location Management",
   frcNewLocation:   "+ New Location",
@@ -4439,7 +4477,7 @@ export const EN = {
   locTelephone:     "Phone",
   locClientLie:     "Linked Client (billing)",
   locStatut:        "Status",
-  locNone:          "— None —",
+  locNone:          "- None -",
   locRoyaltyOverride: "Custom royalty rate for this location",
   locRoyaltyPct:    "Royalty Rate (%)",
   locAdPct:         "Ad Contribution (%)",
@@ -4448,12 +4486,12 @@ export const EN = {
   locDelete:        "Delete",
   locDeleteConfirm: (nom) => `Delete "${nom}"? This cannot be undone.`,
 
-  // ── FRANCHISE — INVITATIONS ──
+  // ── FRANCHISE - INVITATIONS ──
   inviteBtn:           "Invite",
   inviteShowCode:      "Show Code",
   inviteLinked:        "Linked",
   invitePending:       "⏳ Pending",
-  inviteTitle:         (nom) => `Invitation Code — ${nom}`,
+  inviteTitle:         (nom) => `Invitation Code - ${nom}`,
   inviteDesc:          "The franchisee enters this code in Config → Application to join your network.",
   inviteExpiry:        (date) => `Expires ${date}`,
   inviteCopy:          "Copy",
@@ -4470,10 +4508,10 @@ export const EN = {
   joinNetworkInput:    "Invitation code (8 characters)",
   joinNetworkBtn:      "Join Network",
   joinNetworkBusy:     "Validating…",
-  joinNetworkLinked:   (franchisor, location) => `Linked to ${franchisor} — ${location}`,
+  joinNetworkLinked:   (franchisor, location) => `Linked to ${franchisor} - ${location}`,
   joinNetworkError:    "Invalid or expired code. Check the code with your franchisor.",
 
-  // ── FRANCHISE — ROYALTIES ──
+  // ── FRANCHISE - ROYALTIES ──
   frcRoyaltyConfig: "Royalty Configuration",
   frcRoyaltyRate:   "Royalty Rate (%)",
   frcAdContrib:     "Advertising Contribution (%)",
@@ -4486,16 +4524,16 @@ export const EN = {
   frcMonthly:       "Monthly",
   frcBillingCategory:"Billing Category",
   frcBillingProduct:"Billing Product",
-  frcSelectPlaceholder:"— Select —",
+  frcSelectPlaceholder:"- Select -",
   frcAdvancedOptions:"Advanced Options",
 
-  // ── FRANCHISE — WHITE LABEL ──
+  // ── FRANCHISE - WHITE LABEL ──
   frcWhiteLabel:    "White Label",
   frcWhiteLabelDesc:"Customizes the appearance of generated documents (invoices, statements, scorecards).",
   frcEnableWhiteLabel:"Enable White Label",
   frcTier:          "Tier",
 
-  // ── LIVRAISONS — Smart Import ──
+  // ── LIVRAISONS - Smart Import ──
   delivOpenPortal:    "Online Report",
   delivPortalHint:    "Opens the merchant portal to download your payout report.",
   delivFileDetected:  (platform) => `${platform} report detected in Downloads`,
@@ -4503,20 +4541,20 @@ export const EN = {
   delivIgnore:        "Dismiss",
   delivLastImport:    (date) => `Last import: ${date}`,
   delivWatching:      "Watching Downloads folder",
-  delivWatchHow:      "Download your CSV payout report from the merchant portal — the app detects it automatically. Mac: System Settings → Privacy → Files & Folders → allow BalanceIQ. Windows: no permission required.",
+  delivWatchHow:      "Download your CSV payout report from the merchant portal - the app detects it automatically. Mac: System Settings → Privacy → Files & Folders → allow BalanceIQ. Windows: no permission required.",
   delivPortalIntroTitle: "How to import your delivery reports",
-  delivPortalIntroStep1: "1. Click \"Open\" — log in to the merchant portal and download your payout report (CSV).",
-  delivPortalIntroStep2: "2. Save the file to your Downloads folder — not the Desktop or anywhere else.",
+  delivPortalIntroStep1: "1. Click \"Open\" - log in to the merchant portal and download your payout report (CSV).",
+  delivPortalIntroStep2: "2. Save the file to your Downloads folder - not the Desktop or anywhere else.",
   delivPortalIntroStep3: "3. BalanceIQ automatically detects the file and offers to import it in one click.",
   delivPortalIntroMacPerm: "On Mac, if nothing happens: System Settings → Privacy & Security → Files & Folders → allow BalanceIQ.",
-  delivPortalIntroOk: "Got it — Open portal",
+  delivPortalIntroOk: "Got it - Open portal",
   delivPortalIntroSkip: "Cancel",
-  delivApiConfig:     "API Credentials — Delivery Platforms",
+  delivApiConfig:     "API Credentials - Delivery Platforms",
   delivApiConfigHint: "Payment APIs are not yet public. These fields will activate once DoorDash, Uber Eats and Skip open their APIs.",
   delivApiKey:        "API Key",
   delivApiComingSoon: "API coming soon",
 
-  // ── OCR — Invoice Scanner ──
+  // ── OCR - Invoice Scanner ──
   ocrScan:            "Scan",
   ocrScanTitle:       "Invoice Scanner",
   ocrScanHint:        "Take a photo or select an image of your supplier invoice. BalanceIQ reads it automatically with AI.",
@@ -4529,7 +4567,7 @@ export const EN = {
   ocrInvNum:          "Invoice #",
   ocrTotal:           "Total (with tax)",
   ocrAmountHT:        "Amount (before tax)",
-  ocrBeforeTax:       "before tax — this amount will be added to P&L",
+  ocrBeforeTax:       "before tax - this amount will be added to P&L",
   ocrMapTo:           "Add to P&L line",
   ocrBillDate:        "Date",
   ocrBillNote:        "Note / Invoice #",
@@ -4542,7 +4580,7 @@ export const EN = {
   cfgAnthropicKeyHint:"100 free scans/month included in Pro. After the limit, enter your Anthropic key for unlimited scans.",
   ocrScanCount:       (used, limit) => `${used} / ${limit} scans this month`,
   ocrDisclaimer:      "AI can make mistakes. Always verify amounts before adding to P&L.",
-  ocrReviewWarning:   "Please verify all amounts above before confirming — AI may misread some invoices. You can correct the before-tax amount manually.",
+  ocrReviewWarning:   "Please verify all amounts above before confirming - AI may misread some invoices. You can correct the before-tax amount manually.",
 
   // ── POS SCAN MODULE ──
   scanButton:          "Scan a POS Report",
@@ -4553,7 +4591,7 @@ export const EN = {
   scanApply:           "Apply",
   scanApplySave:       "Apply and save format",
   scanCancel:          "Cancel",
-  scanUnknown:         "Unknown format — please assign fields manually",
+  scanUnknown:         "Unknown format - please assign fields manually",
   scanPosSystem:       "POS System",
   scanPosSystemHint:   "E.g. Maitre D', Veloce, Lightspeed, Square…",
   scanFieldVentes:     "Sales before tax",
@@ -4580,7 +4618,7 @@ export const EN = {
   scanEngineLocal:     "Local recognition (offline)",
   scanErrorNoFile:     "No file selected",
   scanErrorOCR:        "Error reading file",
-  scanErrorCloud:      "Cloud recognition error — switching to local",
+  scanErrorCloud:      "Cloud recognition error - switching to local",
   scanUnmatchedValues: "Unassigned values",
   scanSelectField:     "Assign to…",
   scanDetectedText:    "Detected text",
@@ -4609,7 +4647,7 @@ export const EN = {
   upgPromptRecipeCosting: "Your ingredient costs changed this month. Pro tracks how that affects each menu item's margin.",
   upgPromptPosApi:        "Your POS has today's sales already. Pro connects directly so you skip manual entry.",
   scanUploadingTemplate:"Sharing format…",
-  scanUploadError:     "Share error — format saved locally only.",
+  scanUploadError:     "Share error - format saved locally only.",
 
   // ── PRÉVISIONS MODULE ──
   tabPrevisions:       "Forecasting",
@@ -4665,10 +4703,10 @@ export const EN = {
   prevColWaste:        "Waste",
   prevColDate:         "Date",
   prevLastWeek:        "Last week (actual)",
-  prevMissingData:     (days) => `Missing data: ${days} — forecasts use the most recent available data.`,
+  prevMissingData:     (days) => `Missing data: ${days} - forecasts use the most recent available data.`,
   prevNoProducts:      "No active products. Add products in the Products tab.",
   // Cell detail
-  prevCellDetail:      "Detail —",
+  prevCellDetail:      "Detail -",
   prevBasedOn:         "Based on",
   prevWeightedAvg:     "Weighted average",
   prevWeatherAdj:      "Weather adjustment",
@@ -4686,9 +4724,9 @@ export const EN = {
   prevNoAlerts:        "No active alerts. Keep entering sales data to improve forecast accuracy.",
   prevAlertStockoutMsg:(name,dow,n,sugg) => `${name}: stockout ${n}x on ${dow} recently. Suggested: ${sugg}.`,
   prevAlertOverprodMsg:(name,dow,pct,sugg) => `${name}: average ${pct}% waste on ${dow}. Suggested: ${sugg}.`,
-  prevAlertOptimizedMsg:(name) => `${name}: well calibrated — low waste, zero stockouts.`,
+  prevAlertOptimizedMsg:(name) => `${name}: well calibrated - low waste, zero stockouts.`,
   // Manual entry
-  prevManualTitle:     "Manual Entry —",
+  prevManualTitle:     "Manual Entry -",
   prevManualSave:      "Save",
   prevManualSaved:     "Saved",
   prevAddProduct:      "+ Add product",
@@ -4707,7 +4745,7 @@ export const EN = {
   prevImportPreview:   "Data preview",
   prevImportConfirm:   "Import",
   prevImportCancel:    "Cancel",
-  prevImportNewProds:  (n) => `${n} new product${n!==1?"s":""} detected — what should we do?`,
+  prevImportNewProds:  (n) => `${n} new product${n!==1?"s":""} detected - what should we do?`,
   prevImportAddCat:    "Add to catalog",
   prevImportIgnore:    "Ignore",
   prevImportImported:  (n) => `${n} entr${n!==1?"ies":"y"} imported successfully.`,
@@ -4715,7 +4753,7 @@ export const EN = {
   prevImportSaveFormat:"Save format",
   prevImportSavedFmt:  "Format saved",
   prevImportLoadFmt:   "Load a saved format",
-  prevImportNoFmt:     "— No saved formats —",
+  prevImportNoFmt:     "- No saved formats -",
   prevImportHistory:   "Imported files",
   prevImportColFilename:"File",
   prevImportColTargetDate: "Target date",
@@ -4758,7 +4796,7 @@ export const EN = {
   prevPOSNoConn:       "No POS connected. Connect a POS in Config → Integrations.",
   prevPOSProRequired:  "POS import is available on the Pro plan.",
   // Item intelligence
-  prevItemProfile:     "Profile — 30 days",
+  prevItemProfile:     "Profile - 30 days",
   prevItemAvgSold:     "Avg sold / day",
   prevItemAvgMade:     "Avg made / day",
   prevItemWaste:       "Waste rate",
@@ -4770,7 +4808,7 @@ export const EN = {
   prevItemUpdateSens2: "instead of current. Update?",
   prevItemYes:         "Yes",
   prevItemNo:          "No",
-  prevItemAccTitle:    "Forecast accuracy — 30 days",
+  prevItemAccTitle:    "Forecast accuracy - 30 days",
   prevItemAccAvg:      "Avg accuracy",
   prevItemAccBest:     "Best day",
   prevItemAccWorst:    "Worst day",
@@ -4780,7 +4818,7 @@ export const EN = {
   prevWeatherManual:   "Manual",
   prevWeatherAuto:     "Auto",
   prevWeatherReset:    "Reset",
-  prevWeatherStale:    (days) => `Weather unavailable — last updated ${days} day${days!==1?"s":""} ago`,
+  prevWeatherStale:    (days) => `Weather unavailable - last updated ${days} day${days!==1?"s":""} ago`,
   prevWeatherOverride: "Override",
   prevWeatherTemp:     "Max temp (°C)",
   prevWeatherCond:     "Condition",
@@ -4797,16 +4835,16 @@ export const EN = {
   prevAITitle:         "AI Analysis",
   // ── TELEMETRY CONSENT ──
   telemetryTitle:      "Help us improve BalanceIQ",
-  telemetryBody:       "Share anonymous usage data — no financial data, names, or business info is ever sent. Only which features are used, your version, and platform.",
+  telemetryBody:       "Share anonymous usage data - no financial data, names, or business info is ever sent. Only which features are used, your version, and platform.",
   telemetryAccept:     "Accept",
   telemetryDecline:    "No thanks",
-  // ── CLOSE ASSURANCE — Blind close ──
+  // ── CLOSE ASSURANCE - Blind close ──
   closeBlindCounting:  "Counting in progress",
   closeBlindSubmit:    "Submit count",
   closeBlindAwaitReveal: "Submitted, awaiting reveal",
   closeBlindReveal:    "Reveal variance",
   closeBlindManagerOnly: "Manager only",
-  // ── CLOSE ASSURANCE — Policy settings ──
+  // ── CLOSE ASSURANCE - Policy settings ──
   cpBlindCloseMode:    "Blind close mode",
   cpBlindCloseModeHint:"Hides the variance during counting to avoid bias.",
   cpBlindOff:          "Off - variance always visible",

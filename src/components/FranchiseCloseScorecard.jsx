@@ -10,7 +10,7 @@ function ScoreRow({ label, value, t }) {
     <tr style={{ borderTop: `1px solid ${t.divider}` }}>
       <td style={{ padding: '5px 12px', color: t.text, fontSize: 11 }}>{label}</td>
       <td style={{ padding: '5px 12px', fontVariantNumeric: 'tabular-nums', fontSize: 11, fontWeight: 700, color, textAlign: 'right' }}>
-        {pct != null ? `${pct}%` : '—'}
+        {pct != null ? `${pct}%` : '-'}
       </td>
     </tr>
   );

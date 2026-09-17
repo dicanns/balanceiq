@@ -1,5 +1,5 @@
 /**
- * compliancePdfBuilder.js — Close Compliance PDF report builder.
+ * compliancePdfBuilder.js - Close Compliance PDF report builder.
  * Pure function, no React, no IPC.
  * Called from CloseComplianceTab via window.api.pdf.toPDF (Pro-gated).
  */
@@ -10,19 +10,19 @@ const escapeHtml = (s) =>
 const fmtCents = (cents) =>
   new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' }).format((cents ?? 0) / 100);
 
-const pct = (v) => (v != null ? `${v}%` : '—');
+const pct = (v) => (v != null ? `${v}%` : '-');
 
 const bandLabel = (band, fr) => ({
   green:  fr ? 'Excellente' : 'Excellent',
   yellow: fr ? 'Acceptable' : 'Acceptable',
   red:    fr ? 'Insuffisante' : 'Needs attention',
-}[band] || '—');
+}[band] || '-');
 
 const bandColor = { green: '#16a34a', yellow: '#d97706', red: '#dc2626' };
 
 const row = (label, value, color = '#1a1a2e') =>
   `<tr><td style="padding:5px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;color:#374151">${escapeHtml(label)}</td>` +
-  `<td style="padding:5px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;font-weight:700;color:${color};text-align:right;font-variant-numeric:tabular-nums">${escapeHtml(String(value ?? '—'))}</td></tr>`;
+  `<td style="padding:5px 10px;border-bottom:1px solid #e5e7eb;font-size:12px;font-weight:700;color:${color};text-align:right;font-variant-numeric:tabular-nums">${escapeHtml(String(value ?? '-'))}</td></tr>`;
 
 const sectionHeader = (title) =>
   `<h3 style="margin:20px 0 6px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.7px;border-bottom:1px solid #e5e7eb;padding-bottom:4px">${title}</h3>`;
@@ -101,7 +101,7 @@ export function buildCompliancePdfHTML({ kpis, lists, scorecard, lang, location 
             const v = e.value;
             const c = v == null ? '#6b7280' : v >= 0.85 ? '#16a34a' : v >= 0.65 ? '#d97706' : '#dc2626';
             const lbl = fr ? e.labelFr : e.label;
-            const display = v != null ? `${Math.round(v * 100)}%` : '—';
+            const display = v != null ? `${Math.round(v * 100)}%` : '-';
             return `<span style="font-size:10px;background:#fff;border:1px solid #e5e7eb;border-radius:5px;padding:2px 7px;color:${c};font-weight:700">${escapeHtml(lbl)}: ${display}</span>`;
           }).join('')}
         </div>
@@ -115,8 +115,8 @@ export function buildCompliancePdfHTML({ kpis, lists, scorecard, lang, location 
     items.length === 0 ? emptyRow : items.map(s =>
       `<tr>
         <td style="padding:4px 10px;font-size:11px;border-bottom:1px solid #f3f4f6">${escapeHtml(s.date_key)}</td>
-        <td style="padding:4px 10px;font-size:11px;border-bottom:1px solid #f3f4f6;color:#7c3aed">${escapeHtml(s.shift_key || '—')}</td>
-        <td style="padding:4px 10px;font-size:11px;border-bottom:1px solid #f3f4f6;color:#6b7280">${escapeHtml(s.submitted_at?.slice(0, 16).replace('T', ' ') || s.status || '—')}</td>
+        <td style="padding:4px 10px;font-size:11px;border-bottom:1px solid #f3f4f6;color:#7c3aed">${escapeHtml(s.shift_key || '-')}</td>
+        <td style="padding:4px 10px;font-size:11px;border-bottom:1px solid #f3f4f6;color:#6b7280">${escapeHtml(s.submitted_at?.slice(0, 16).replace('T', ' ') || s.status || '-')}</td>
       </tr>`
     ).join('');
 
@@ -142,7 +142,7 @@ export function buildCompliancePdfHTML({ kpis, lists, scorecard, lang, location 
     items.length === 0 ? emptyRow : items.map(s =>
       `<tr>
         <td style="padding:4px 10px;font-size:11px;border-bottom:1px solid #f3f4f6">${escapeHtml(s.date_key)}</td>
-        <td style="padding:4px 10px;font-size:11px;border-bottom:1px solid #f3f4f6;color:#7c3aed">${escapeHtml(s.shift_key || '—')}</td>
+        <td style="padding:4px 10px;font-size:11px;border-bottom:1px solid #f3f4f6;color:#7c3aed">${escapeHtml(s.shift_key || '-')}</td>
         <td style="padding:4px 10px;font-size:11px;border-bottom:1px solid #f3f4f6;color:#d97706;font-weight:600">⚠ ${s.warning_count} ${T.warnings2}</td>
       </tr>`
     ).join('');
@@ -200,12 +200,12 @@ ${sectionHeader(T.kpiTitle)}
 <table>
   <tbody>
     ${row(T.sessions,  kpis.sessionCount, '#1a1a2e')}
-    ${row(`${T.avgTime} (${T.minutes})`, kpis.avgTimeToCloseMinutes ?? '—', timeColor)}
+    ${row(`${T.avgTime} (${T.minutes})`, kpis.avgTimeToCloseMinutes ?? '-', timeColor)}
     ${row(T.overrides, kpis.overrideCount, ovColor)}
     ${row(T.reopened,  kpis.reopenCount,   rvColor)}
     ${row(T.checklist, pct(kpis.checklistCompliancePct),  ckColor)}
     ${row(T.evidence,  pct(kpis.evidenceCompletenessPct), evColor)}
-    ${row(`${T.depositLag} (${T.days})`, kpis.depositVerifLagDays ?? '—', dpColor)}
+    ${row(`${T.depositLag} (${T.days})`, kpis.depositVerifLagDays ?? '-', dpColor)}
     ${row(fr ? 'Fermetures avec registres' : 'Closes with register closures', kpis.totalClosures ?? 0, '#1a1a2e')}
   </tbody>
 </table>

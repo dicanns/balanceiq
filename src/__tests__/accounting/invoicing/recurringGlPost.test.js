@@ -1,12 +1,12 @@
 /**
- * FAC-GL-001 — Recurring Invoice GL Post
+ * FAC-GL-001 - Recurring Invoice GL Post
  *
  * Scenario: simulate RecurringGenerateModal's doGenerate logic for one
  * recurring rule, then call ledger:invoice:post (the IPC handler logic)
  * directly and assert a balanced journal entry was posted.
  *
  * This test exercises the same path that RecurringGenerateModal fires
- * after saveFactures — it verifies the GL layer accepts the generated
+ * after saveFactures - it verifies the GL layer accepts the generated
  * invoice and records a balanced, posted entry.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

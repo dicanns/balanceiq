@@ -56,7 +56,7 @@ export default function DocumentsTab({ isFranchisor, orgId, cloudUser, T, t, onU
     if (!cloudUser || !orgId) { setLoading(false); return; }
     setLoading(true); setLoadErr(null);
     try {
-      // Fetch documents — treat missing table as empty (migration not yet run)
+      // Fetch documents - treat missing table as empty (migration not yet run)
       const { data: docs, error: docsErr } = await supabase
         .from('franchise_documents')
         .select('*')
@@ -226,7 +226,7 @@ export default function DocumentsTab({ isFranchisor, orgId, cloudUser, T, t, onU
   }
 
   if (loading) {
-    return<div style={{ padding: 16, fontSize: 12, opacity: 0.5 }}>Chargement...</div>;
+    return<div style={{ padding: 16, fontSize: 12, opacity: 0.5 }}>{T.loading}</div>;
   }
 
   if (loadErr === '__setup__') {
@@ -237,7 +237,7 @@ export default function DocumentsTab({ isFranchisor, orgId, cloudUser, T, t, onU
     return<div style={{ padding: 16, fontSize: 12, color: '#ef4444' }}>{loadErr}<button onClick={loadData} style={btnGhost}>{T.docRetry || 'Retry'}</button></div>;
   }
 
-  return (<div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>{/* Download notification — user must explicitly choose to open */}
+  return (<div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>{/* Download notification - user must explicitly choose to open */}
       {downloadNotif && (<div style={{ padding: '10px 14px', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap'}}><span style={{ fontSize: 16 }}></span><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 12, fontWeight: 600 }}>{T.docDownloaded}: {downloadNotif.filename}</div><div style={{ fontSize: 10, opacity: 0.6 }}>{T.docSavedTo}: {downloadNotif.folder}</div></div><button
  onClick={() =>{ window.api.docs.openDownloaded(downloadNotif.filePath); setDownloadNotif(null); }}
  style={{ padding:'4px 10px', borderRadius: 5, border: '1px solid rgba(255,255,255,0.2)', background: 'transparent', color: 'inherit', fontSize: 11, cursor: 'pointer' }}>

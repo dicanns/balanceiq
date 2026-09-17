@@ -82,7 +82,7 @@ export default function CloseReviewModal({
 
   if (!open) return null;
 
-  const fmt = v => v == null ? '—' : new Intl.NumberFormat(fr ? 'fr-CA' : 'en-CA', { style: 'currency', currency: 'CAD' }).format(v);
+  const fmt = v => v == null ? '-' : new Intl.NumberFormat(fr ? 'fr-CA' : 'en-CA', { style: 'currency', currency: 'CAD' }).format(v);
 
   const StatusRow = ({ color, icon, children }) => (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 12, color, marginBottom: 3 }}>
@@ -292,14 +292,14 @@ export default function CloseReviewModal({
         {!canClose && (
           <div style={{ marginTop: 12, padding: '8px 12px', borderRadius: 7, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', fontSize: 11.5, color: '#f87171' }}>
             {blockers.length > 0
-              ? (fr ? '⛔ Fermeture bloquée — résolvez les blocages ci-dessus.' : '⛔ Close blocked — resolve the issues above.')
+              ? (fr ? '⛔ Fermeture bloquée - résolvez les blocages ci-dessus.' : '⛔ Close blocked - resolve the issues above.')
               : variances.some(v => v.variance == null)
-              ? (fr ? '⛔ Fermeture bloquée — complétez le décompte (POS + Argent final requis).' : '⛔ Close blocked — complete the cash count (POS sales + Final Cash required).')
+              ? (fr ? '⛔ Fermeture bloquée - complétez le décompte (POS + Argent final requis).' : '⛔ Close blocked - complete the cash count (POS sales + Final Cash required).')
               : signoffRequired && warnings.length > 0 && !allOverrideReasonsFilled
-              ? (fr ? '⛔ Fermeture bloquée — saisissez une raison pour chaque avertissement.' : '⛔ Close blocked — enter a reason for each warning.')
+              ? (fr ? '⛔ Fermeture bloquée - saisissez une raison pour chaque avertissement.' : '⛔ Close blocked - enter a reason for each warning.')
               : signoffRequired && warnings.length > 0 && !overrideActor
-              ? (fr ? '⛔ Fermeture bloquée — vérifiez l\'identité du responsable.' : '⛔ Close blocked — verify manager identity.')
-              : (fr ? '⛔ Fermeture bloquée — sélectionnez une raison pour chaque écart ci-dessus.' : '⛔ Close blocked — select a reason for each variance above.')
+              ? (fr ? '⛔ Fermeture bloquée - vérifiez l\'identité du responsable.' : '⛔ Close blocked - verify manager identity.')
+              : (fr ? '⛔ Fermeture bloquée - sélectionnez une raison pour chaque écart ci-dessus.' : '⛔ Close blocked - select a reason for each variance above.')
             }
           </div>
         )}

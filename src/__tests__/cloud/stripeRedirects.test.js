@@ -1,5 +1,5 @@
 /**
- * STRIPE-001  client-supplied priceId is rejected — planKey required
+ * STRIPE-001  client-supplied priceId is rejected - planKey required
  * STRIPE-002  invalid planKey returns error; valid planKey resolves to correct price
  * STRIPE-003  redirect URLs must be on allowed domains
  */
@@ -46,7 +46,7 @@ describe('STRIPE-001: priceId from client is rejected', () => {
     // Sending only priceId (no planKey) triggers missing planKey error.
     const result = simulateCheckout({
       orgId: 'org-1',
-      // No planKey — simulates attacker sending raw priceId
+      // No planKey - simulates attacker sending raw priceId
     });
     expect(result.status).toBe(400);
     expect(result.error).toContain('planKey');

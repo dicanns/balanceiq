@@ -1,5 +1,5 @@
 /**
- * MATCH-002 — Bank Matching Ambiguity
+ * MATCH-002 - Bank Matching Ambiguity
  *
  * When two learned rules exist for the same description pattern pointing to
  * different COA accounts, the engine must NOT auto-apply. The transaction must
@@ -49,7 +49,7 @@ describe('MATCH-002 matching engine ambiguity', () => {
     }
   });
 
-  it('transaction with ambiguous description stays unmatched — no auto-apply', () => {
+  it('transaction with ambiguous description stays unmatched - no auto-apply', () => {
     db.prepare(
       `INSERT INTO bank_transactions (bank_account_id, transaction_date, description, amount, match_status)
        VALUES (?, '2026-03-15', 'HYDRO-QUEBEC DEBIT', -210.50, 'unmatched')`

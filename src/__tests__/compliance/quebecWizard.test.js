@@ -1,5 +1,5 @@
 /**
- * QC-WIZARD-001  generateTaxPeriods — period structure correctness
+ * QC-WIZARD-001  generateTaxPeriods - period structure correctness
  * QC-WIZARD-002  taxRegistrationSave + taxRegistrationGet round-trip
  */
 import { describe, it, expect, beforeEach } from 'vitest';

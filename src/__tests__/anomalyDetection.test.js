@@ -128,7 +128,7 @@ describe('DOW profile building', () => {
   it('ignores zero-sale days (closed days)', () => {
     const dataWithClosed = [
       { dow: 1, venteNet: 1000 },
-      { dow: 1, venteNet: 0    },  // closed — should not count
+      { dow: 1, venteNet: 0    },  // closed - should not count
       { dow: 1, venteNet: 1200 },
     ];
     const profiles = buildDOWProfiles(dataWithClosed);

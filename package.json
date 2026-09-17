@@ -1,7 +1,7 @@
 {
   "name": "balanceiq",
   "version": "1.74.0",
-  "description": "L'intelligence derrière vos chiffres.",
+  "description": "L'intelligence derri\u00e8re vos chiffres.",
   "main": "main.js",
   "scripts": {
     "prestart": "npx @electron/rebuild -f -w better-sqlite3",
@@ -25,7 +25,8 @@
     "audit": "npm audit --omit=dev --audit-level=high",
     "scan:semgrep": "semgrep --config .semgrep.yml src/",
     "check:tdz": "node scripts/check-tdz.js",
-    "lint:undef": "eslint --config eslint.undef.config.mjs \"src/App.jsx\" \"src/components/**/*.jsx\" \"src/services/**/*.js\" \"src/utils/**/*.js\" \"src/db/**/*.js\""
+    "lint:undef": "eslint --config eslint.undef.config.mjs \"src/App.jsx\" \"src/components/**/*.jsx\" \"src/services/**/*.js\" \"src/utils/**/*.js\" \"src/db/**/*.js\"",
+    "check:no-em-dash": "node scripts/check-no-em-dash.js"
   },
   "dependencies": {
     "@sentry/electron": "^7.19.0",

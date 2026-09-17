@@ -73,9 +73,9 @@ async function buildYearEndHTML(fiscalStart, fiscalEnd, liveData, suppliers, fac
     ].forEach(k => { expT += plData[k] || 0; });
 
     const np = revenue - fpT - labC - expT;
-    const fpPct = revenue > 0 ? (fpT / revenue * 100).toFixed(1) : '—';
-    const labPct = revenue > 0 ? (labC / revenue * 100).toFixed(1) : '—';
-    const npPct = revenue > 0 ? (np / revenue * 100).toFixed(1) : '—';
+    const fpPct = revenue > 0 ? (fpT / revenue * 100).toFixed(1) : '-';
+    const labPct = revenue > 0 ? (labC / revenue * 100).toFixed(1) : '-';
+    const npPct = revenue > 0 ? (np / revenue * 100).toFixed(1) : '-';
 
     const fmt = n => `${n >= 0 ? '' : '-'}$${Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
     const monthLabel = new Date(parseInt(my), parseInt(mm) - 1, 1).toLocaleDateString(lang === 'en' ? 'en-CA' : 'fr-CA', { month: 'long', year: 'numeric' });
@@ -85,7 +85,7 @@ async function buildYearEndHTML(fiscalStart, fiscalEnd, liveData, suppliers, fac
   }
 
   const fmt = n => `${n >= 0 ? '' : '-'}$${Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
-  const fmtPct = (v, rev) => rev > 0 ? `${(v / rev * 100).toFixed(1)}%` : '—';
+  const fmtPct = (v, rev) => rev > 0 ? `${(v / rev * 100).toFixed(1)}%` : '-';
   const co = companyInfo || {};
   const today = new Date().toLocaleDateString(lang === 'en' ? 'en-CA' : 'fr-CA', { year: 'numeric', month: 'long', day: 'numeric' });
   const titleYE = lang === 'en' ? 'Year-End Package' : 'Dossier de fin d\'année';
@@ -94,7 +94,7 @@ async function buildYearEndHTML(fiscalStart, fiscalEnd, liveData, suppliers, fac
   const titleAR = lang === 'en' ? 'Year-End AR Aging' : 'Vieillissement AR fin d\'exercice';
   const titleSup = lang === 'en' ? 'Supplier Cost Breakdown' : 'Détail par fournisseur';
 
-  // Invoice journal — filter by date range
+  // Invoice journal - filter by date range
   const fyStart = `${fiscalStart}-01`;
   const fyEndDate = `${fiscalEnd}-${new Date(parseInt(fiscalEnd.split('-')[0]), parseInt(fiscalEnd.split('-')[1]), 0).getDate()}`;
   const invoices = (facFactures || []).filter(f => f.date >= fyStart && f.date<= fyEndDate);
@@ -146,8 +146,8 @@ td:not(:first-child){text-align:right}
   // Cover
   h += `<div class="cover"><h1>${titleYE}</h1><p class="sub">${co.name || 'BalanceIQ'} &nbsp;|&nbsp; ${fiscalLabel} &nbsp;|&nbsp; ${lang === 'en' ? 'Generated' : 'Généré le'} ${today}</p>${co.address ? `<p class="sub">${co.address}</p>` : ''}
   ${co.tps ? `<p class="sub">TPS: ${co.tps}${co.tvq ? ` &nbsp;|&nbsp; TVQ: ${co.tvq}` : ''}</p>` : ''}</div><div class="disclaimer">${lang === 'en'
-    ? 'Operational estimates only — always validate with your accountant.'
-    : 'Estimations opérationnelles seulement — toujours valider avec votre comptable.'}</div>`;
+    ? 'Operational estimates only - always validate with your accountant.'
+    : 'Estimations opérationnelles seulement - toujours valider avec votre comptable.'}</div>`;
 
   // Monthly P&L summary table
   h += `<h2>${titlePL}</h2><table><tr><th>${lang === 'en' ? 'Month' : 'Mois'}</th><th>${lang === 'en' ? 'Revenue' : 'Revenus'}</th><th>F&P %</th><th>${lang === 'en' ? 'Labour %' : 'Main-d\'œuvre %'}</th><th>${lang === 'en' ? 'Expenses' : 'Dépenses'}</th><th>${lang === 'en' ? 'Net Profit' : 'Profit net'} %</th></tr>`;
@@ -169,7 +169,7 @@ td:not(:first-child){text-align:right}
     invoices.forEach(f => {
       const total = (f.subtotalHT || 0) + (f.tps || 0) + (f.tvq || 0);
       invTot += total; invDue += f.montantDu || 0;
-      h += `<tr><td>${f.numero || '—'}</td><td>${f.date || '—'}</td><td>${f.clientNom || '—'}</td><td>${fmt(f.subtotalHT || 0)}</td><td>${fmt(f.tps || 0)}</td><td>${fmt(f.tvq || 0)}</td><td>${fmt(total)}</td><td class="${(f.montantDu || 0) >0.01 ? 'r' : 'g'}">${fmt(f.montantDu || 0)}</td><td>${f.statut || '—'}</td></tr>`;
+      h += `<tr><td>${f.numero || '-'}</td><td>${f.date || '-'}</td><td>${f.clientNom || '-'}</td><td>${fmt(f.subtotalHT || 0)}</td><td>${fmt(f.tps || 0)}</td><td>${fmt(f.tvq || 0)}</td><td>${fmt(total)}</td><td class="${(f.montantDu || 0) >0.01 ? 'r' : 'g'}">${fmt(f.montantDu || 0)}</td><td>${f.statut || '-'}</td></tr>`;
     });
     h += `<tr class="tot"><td colspan="6">${lang === 'en' ? 'TOTAL' : 'TOTAL'}</td><td>${fmt(invTot)}</td><td class="r">${fmt(invDue)}</td><td></td></tr>`;
     h += `</table>`;
@@ -201,7 +201,7 @@ td:not(:first-child){text-align:right}
     h += `<table><tr><th>${lang === 'en' ? 'Supplier' : 'Fournisseur'}</th><th>${lang === 'en' ? 'Annual total' : 'Total annuel'}</th><th>%</th></tr>`;
     const supEntries = Object.entries(supTotals).sort((a, b) => b[1] - a[1]);
     supEntries.forEach(([name, total]) => {
-      h += `<tr><td>${name}</td><td>${fmt(total)}</td><td>${totFP > 0 ? (total / totFP * 100).toFixed(1) + '%' : '—'}</td></tr>`;
+      h += `<tr><td>${name}</td><td>${fmt(total)}</td><td>${totFP > 0 ? (total / totFP * 100).toFixed(1) + '%' : '-'}</td></tr>`;
     });
     h += `<tr class="tot"><td>${lang === 'en' ? 'TOTAL F&P' : 'TOTAL F&P'}</td><td>${fmt(totFP)}</td><td>100%</td></tr></table>`;
   }

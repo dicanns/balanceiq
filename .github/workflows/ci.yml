@@ -38,5 +38,35 @@ jobs:
       - name: Temporal dead zone check
         run: npm run check:tdz
 
+      - name: No em dashes
+        run: npm run check:no-em-dash
+
       - name: npm audit (production, high+)
         run: npm run audit
+
+  e2e:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Vite
+        run: npx vite build
+
+      - name: Boot the real app and walk the screens
+        run: npm run test:e2e
+
+      - name: Keep failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failures
+          path: test-results/
+          if-no-files-found: ignore

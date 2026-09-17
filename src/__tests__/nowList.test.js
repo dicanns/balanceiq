@@ -1,12 +1,12 @@
 /**
- * BalanceIQ — NOW List Items 1–6 Test Suite
+ * BalanceIQ - NOW List Items 1–6 Test Suite
  *
  * Covers all new functionality from code_prompt_NOW_list.md:
- *   Item 1 — SQLite schema migration runner
- *   Item 2 — Upgrade prompt dismissal TTL logic
- *   Item 3 — Daily close state machine
- *   Item 5 — Onboarding checklist completion logic
- *   Item 6 — Vendor price intelligence (threshold detection, trend history)
+ *   Item 1 - SQLite schema migration runner
+ *   Item 2 - Upgrade prompt dismissal TTL logic
+ *   Item 3 - Daily close state machine
+ *   Item 5 - Onboarding checklist completion logic
+ *   Item 6 - Vendor price intelligence (threshold detection, trend history)
  *
  * Run: npx vitest run src/__tests__/nowList.test.js
  */
@@ -16,7 +16,7 @@ import Database from 'better-sqlite3';
 
 // ─── Shared test DB builder ───────────────────────────────────────────────────
 // Mirrors the production schema (all tables through v1.23.2, including
-// migration v2–v4 tables).  Uses in-memory SQLite — no Electron needed.
+// migration v2–v4 tables).  Uses in-memory SQLite - no Electron needed.
 function buildTestDb() {
   const db = new Database(':memory:');
   db.pragma('foreign_keys = ON');
@@ -69,9 +69,9 @@ afterEach(()  => { db.close(); });
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ITEM 1 — Migration System
+// ITEM 1 - Migration System
 // ═══════════════════════════════════════════════════════════════════════════════
-describe('Item 1 — Schema migration runner', () => {
+describe('Item 1 - Schema migration runner', () => {
 
   // Simulate the runMigrations logic in pure JS (no Electron dependency)
   function simulateMigrations(database, migrations) {
@@ -151,7 +151,7 @@ describe('Item 1 — Schema migration runner', () => {
     fresh.close();
   });
 
-  it('stops and propagates error on failed migration — does not advance version', () => {
+  it('stops and propagates error on failed migration - does not advance version', () => {
     const fresh = new Database(':memory:');
     const migrations = [
       { version: 1, up: () => {} },
@@ -193,9 +193,9 @@ describe('Item 1 — Schema migration runner', () => {
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ITEM 2 — Upgrade Prompt Dismissal TTL
+// ITEM 2 - Upgrade Prompt Dismissal TTL
 // ═══════════════════════════════════════════════════════════════════════════════
-describe('Item 2 — Upgrade prompt dismissals (TTL logic)', () => {
+describe('Item 2 - Upgrade prompt dismissals (TTL logic)', () => {
 
   const TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -284,9 +284,9 @@ describe('Item 2 — Upgrade prompt dismissals (TTL logic)', () => {
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ITEM 3 — Daily Close State Machine
+// ITEM 3 - Daily Close State Machine
 // ═══════════════════════════════════════════════════════════════════════════════
-describe('Item 3 — Daily close state machine', () => {
+describe('Item 3 - Daily close state machine', () => {
 
   // Pure state machine logic (mirrors App.jsx getCloseStatus)
   function getCloseStatus(closedDays, dateKey, anyData, allBal) {
@@ -306,7 +306,7 @@ describe('Item 3 — Daily close state machine', () => {
     expect(getCloseStatus({}, '2026-04-01', true, false)).toBe('in_progress');
   });
 
-  it('in_progress even if all caisses balance — until explicitly closed', () => {
+  it('in_progress even if all caisses balance - until explicitly closed', () => {
     expect(getCloseStatus({}, '2026-04-01', true, true)).toBe('in_progress');
   });
 
@@ -382,9 +382,9 @@ describe('Item 3 — Daily close state machine', () => {
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ITEM 5 — Onboarding Checklist
+// ITEM 5 - Onboarding Checklist
 // ═══════════════════════════════════════════════════════════════════════════════
-describe('Item 5 — Onboarding checklist progress', () => {
+describe('Item 5 - Onboarding checklist progress', () => {
 
   const OB_ITEMS = ['ob1', 'ob2', 'ob3', 'ob4', 'ob5', 'ob6'];
 
@@ -419,7 +419,7 @@ describe('Item 5 — Onboarding checklist progress', () => {
     expect(rows[0].completed).toBe(1);
   });
 
-  it('markDone is idempotent (upsert — no duplicate rows)', () => {
+  it('markDone is idempotent (upsert - no duplicate rows)', () => {
     markDone('ob1');
     markDone('ob1');
     markDone('ob1');
@@ -485,7 +485,7 @@ describe('Item 5 — Onboarding checklist progress', () => {
     expect(isAutoOb4([{ id: '1', name: 'Sysco' }])).toBe(true);
   });
 
-  it('auto-complete does not write to DB — manual completion still required for ob2/ob5/ob6', () => {
+  it('auto-complete does not write to DB - manual completion still required for ob2/ob5/ob6', () => {
     // Auto-complete for ob1/ob3/ob4 doesn't touch onboarding_progress table
     // ob2, ob5, ob6 require explicit markDone call
     const NON_AUTO = ['ob2', 'ob5', 'ob6'];
@@ -498,9 +498,9 @@ describe('Item 5 — Onboarding checklist progress', () => {
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ITEM 6 — Vendor Price Intelligence
+// ITEM 6 - Vendor Price Intelligence
 // ═══════════════════════════════════════════════════════════════════════════════
-describe('Item 6 — Vendor price intelligence', () => {
+describe('Item 6 - Vendor price intelligence', () => {
 
   function record(supplierKey, supplierName, amount, billId, monthKey = '2026-04', billDate = '') {
     db.prepare(
@@ -560,9 +560,9 @@ describe('Item 6 — Vendor price intelligence', () => {
     expect(last).toBeNull();
   });
 
-  it('bill_id uniqueness — duplicate bill_id is silently ignored (OR IGNORE)', () => {
+  it('bill_id uniqueness - duplicate bill_id is silently ignored (OR IGNORE)', () => {
     record('sup_001', 'Sysco', 850.00, 'bill-1');
-    record('sup_001', 'Sysco', 999.00, 'bill-1'); // same ID — should be ignored
+    record('sup_001', 'Sysco', 999.00, 'bill-1'); // same ID - should be ignored
     const rows = getRecent('sup_001');
     expect(rows).toHaveLength(1);
     expect(rows[0].amount).toBe(850.00); // original preserved
@@ -619,14 +619,14 @@ describe('Item 6 — Vendor price intelligence', () => {
   });
 
   it('respects configurable threshold (1%)', () => {
-    expect(shouldAlert(856, 850, 1)).toBe(false);  // +0.7% — below 1% threshold, no alert
-    expect(shouldAlert(858.5, 850, 1)).toBe(true); // +1.0% — exactly at threshold
-    expect(shouldAlert(860, 850, 1)).toBe(true);   // +1.2% — above threshold
+    expect(shouldAlert(856, 850, 1)).toBe(false);  // +0.7% - below 1% threshold, no alert
+    expect(shouldAlert(858.5, 850, 1)).toBe(true); // +1.0% - exactly at threshold
+    expect(shouldAlert(860, 850, 1)).toBe(true);   // +1.2% - above threshold
   });
 
   it('respects configurable threshold (10%)', () => {
-    expect(shouldAlert(920, 850, 10)).toBe(false); // +8.2% — below 10%
-    expect(shouldAlert(935, 850, 10)).toBe(true);  // +10% — at threshold
+    expect(shouldAlert(920, 850, 10)).toBe(false); // +8.2% - below 10%
+    expect(shouldAlert(935, 850, 10)).toBe(true);  // +10% - at threshold
   });
 
   it('pctChange rounds to 1 decimal place', () => {
@@ -699,9 +699,9 @@ describe('Item 6 — Vendor price intelligence', () => {
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// INTEGRATION — Migration v4 table works correctly after schema bootstrap
+// INTEGRATION - Migration v4 table works correctly after schema bootstrap
 // ═══════════════════════════════════════════════════════════════════════════════
-describe('Integration — new tables co-exist without interference', () => {
+describe('Integration - new tables co-exist without interference', () => {
 
   it('all 3 new tables (v2/v3/v4) exist and are independently writable', () => {
     // upgrade_prompt_dismissals

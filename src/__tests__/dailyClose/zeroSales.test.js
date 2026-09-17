@@ -44,7 +44,7 @@ describe('ZERO-SALES-001: hasPOS=true when posVentes=0', () => {
     expect(hasPOSFromCashes(cashes)).toBe(true);
   });
 
-  it('multiple registers — one is zero-sales, one has sales — still hasPOS=true', () => {
+  it('multiple registers - one is zero-sales, one has sales - still hasPOS=true', () => {
     const cashes = [{ posVentes: 250 }, { posVentes: 0 }];
     expect(hasPOSFromCashes(cashes)).toBe(true);
   });
@@ -122,7 +122,7 @@ describe('ZERO-SALES-005: closedCnt incremented for zero-sales register', () => 
     expect(buildClosedCount(cashes)).toBe(0);
   });
 
-  it('two registers — one zero-sales closed, one regular closed', () => {
+  it('two registers - one zero-sales closed, one regular closed', () => {
     const cashes = [
       { posVentes: 0, interac: 0, finalCash: 0 },
       { posVentes: 320, interac: 200, finalCash: 120 },

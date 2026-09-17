@@ -84,14 +84,14 @@ serve(async (req: Request) => {
 
     const failedBanner = (failedPayments || 0) > 0
       ? `<div style="background:#fee2e2;border-left:4px solid #ef4444;padding:12px 16px;margin:20px 0;border-radius:4px">
-           <strong>⚠️ ${failedPayments} org(s) with failed payments</strong> — check Stripe dashboard.
+           <strong>⚠️ ${failedPayments} org(s) with failed payments</strong> - check Stripe dashboard.
          </div>`
       : '';
 
     const html = `
       <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">
         <div style="background:linear-gradient(135deg,#f97316,#ea580c);padding:24px;border-radius:8px 8px 0 0">
-          <h1 style="margin:0;color:white;font-size:20px">BalanceIQ — Weekly Digest</h1>
+          <h1 style="margin:0;color:white;font-size:20px">BalanceIQ - Weekly Digest</h1>
           <p style="margin:4px 0 0;color:rgba(255,255,255,0.85);font-size:13px">
             Week of ${now.toLocaleDateString('en-CA', { month: 'long', day: 'numeric', year: 'numeric' })}
           </p>
@@ -149,7 +149,7 @@ serve(async (req: Request) => {
       body: JSON.stringify({
         from: 'BalanceIQ <noreply@dicanns.ca>',
         to: [TO_EMAIL],
-        subject: `BalanceIQ Weekly — ${totalInstalls} installs, ${paidOrgs} paid`,
+        subject: `BalanceIQ Weekly - ${totalInstalls} installs, ${paidOrgs} paid`,
         html,
       }),
     });

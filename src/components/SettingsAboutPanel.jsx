@@ -3,8 +3,8 @@ import React, { useState } from 'react';
 export const LAW25_SECTIONS = [
   {
     id: 'law25',
-    titleFr: 'Loi 25 — Protection des renseignements personnels',
-    titleEn: 'Law 25 — Personal Information Protection',
+    titleFr: 'Loi 25 - Protection des renseignements personnels',
+    titleEn: 'Law 25 - Personal Information Protection',
     icon: '🔒',
     bodyFr: [
       'BalanceIQ est conforme à la Loi modernisant des dispositions législatives en matière de protection des renseignements personnels (Loi 25, Québec).',
@@ -76,13 +76,13 @@ export const LAW25_SECTIONS = [
     icon: '📋',
     bodyFr: [
       'Toute correction apportée à une entrée comptable enregistrée est tracée : qui a modifié, quand, et quelle valeur a été remplacée.',
-      'Les entrées de grand livre approuvées ne peuvent pas être supprimées — elles sont inversées (écriture de contrepartie) et une nouvelle entrée corrigée est créée. La piste d\'audit reste complète.',
+      'Les entrées de grand livre approuvées ne peuvent pas être supprimées - elles sont inversées (écriture de contrepartie) et une nouvelle entrée corrigée est créée. La piste d\'audit reste complète.',
       'Les fermetures de caisse approuvées requièrent une autorisation de gestion pour être rouvertes. Toute réouverture est enregistrée dans le journal de fermeture.',
       'La politique d\'identité locale (NIP gestionnaire) est configurable dans Configuration → Politique de fermeture.',
     ],
     bodyEn: [
       'Any correction made to a recorded accounting entry is traced: who modified it, when, and what value was replaced.',
-      'Approved general ledger entries cannot be deleted — they are reversed (contra entry) and a new corrected entry is created. The audit trail remains complete.',
+      'Approved general ledger entries cannot be deleted - they are reversed (contra entry) and a new corrected entry is created. The audit trail remains complete.',
       'Approved close sessions require management authorization to reopen. Every reopening is recorded in the close log.',
       'The local identity policy (manager PIN) is configurable in Settings → Close Policy.',
     ],

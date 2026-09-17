@@ -1,5 +1,5 @@
 /**
- * BalanceIQ — Electron E2E Tests (Playwright)
+ * BalanceIQ - Electron E2E Tests (Playwright)
  *
  * Prerequisites: `npm run build:mac` (or `npm start` for dev mode)
  * Run: npx playwright test --project=electron
@@ -203,7 +203,7 @@ test.describe('Language switching FR → EN', () => {
   test('language toggle button exists', async () => {
     const langBtn = await window.$('button:has-text("EN"), button:has-text("FR"), [data-lang-toggle]');
     if (!langBtn) {
-      test.skip(); // App is French-only — no language toggle
+      test.skip(); // App is French-only - no language toggle
       return;
     }
     expect(langBtn).not.toBeNull();

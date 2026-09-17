@@ -1,5 +1,5 @@
 /**
- * Stepped Royalty Tests — Bug Fix Validation
+ * Stepped Royalty Tests - Bug Fix Validation
  *
  * Before the fix, buildRoyaltyPreview() always used flat rate regardless of
  * paliersMensuels config. calcRoyaltyFull() now correctly applies paliers.
@@ -26,7 +26,7 @@ const PALIERS = [
 ];
 
 // ────────────────────────────────────────────────────────────────────────────
-describe('calcSteppedRoyaltyRate — tier selection', () => {
+describe('calcSteppedRoyaltyRate - tier selection', () => {
   it('lowest tier for sales below first threshold', () => {
     expect(calcSteppedRoyaltyRate(20000, PALIERS)).toBe(4);
     expect(calcSteppedRoyaltyRate(0,     PALIERS)).toBe(4);
@@ -62,7 +62,7 @@ describe('calcSteppedRoyaltyRate — tier selection', () => {
     expect(calcSteppedRoyaltyRate(50000, null)).toBe(0);
   });
 
-  it('paliers need not be sorted — finds correct tier regardless of order', () => {
+  it('paliers need not be sorted - finds correct tier regardless of order', () => {
     const unsorted = [
       { minVentes: 50000, rate: 6 },
       { minVentes: 0,     rate: 4 },
@@ -74,7 +74,7 @@ describe('calcSteppedRoyaltyRate — tier selection', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-describe('calcRoyaltyFull — flat structure', () => {
+describe('calcRoyaltyFull - flat structure', () => {
   const flatConfig = { structure: 'fixed', rate: 4, adRate: 1.5 };
   const noOverride = { royaltyOverride: false };
 
@@ -93,7 +93,7 @@ describe('calcRoyaltyFull — flat structure', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-describe('calcRoyaltyFull — stepped structure (THE BUG FIX)', () => {
+describe('calcRoyaltyFull - stepped structure (THE BUG FIX)', () => {
   const steppedConfig = {
     structure: 'paliers',
     paliersMensuels: PALIERS,
@@ -138,7 +138,7 @@ describe('calcRoyaltyFull — stepped structure (THE BUG FIX)', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-describe('calcRoyaltyFull — location-level override takes priority', () => {
+describe('calcRoyaltyFull - location-level override takes priority', () => {
   const steppedConfig = {
     structure: 'paliers',
     paliersMensuels: PALIERS,
@@ -169,7 +169,7 @@ describe('calcRoyaltyFull — location-level override takes priority', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-describe('Multi-location royalty scenario — franchise network', () => {
+describe('Multi-location royalty scenario - franchise network', () => {
   const config = {
     structure: 'paliers',
     paliersMensuels: PALIERS,

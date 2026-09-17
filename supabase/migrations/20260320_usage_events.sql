@@ -20,7 +20,7 @@ CREATE INDEX IF NOT EXISTS idx_usage_org_id  ON usage_events(org_id);
 -- RLS: orgs can only read their own rows; inserts open to anon (telemetry write)
 ALTER TABLE usage_events ENABLE ROW LEVEL SECURITY;
 
--- Allow all inserts (telemetry is unauthenticated write — device_id as org_id for free users)
+-- Allow all inserts (telemetry is unauthenticated write - device_id as org_id for free users)
 CREATE POLICY "usage_events_insert"
   ON usage_events FOR INSERT
   WITH CHECK (true);

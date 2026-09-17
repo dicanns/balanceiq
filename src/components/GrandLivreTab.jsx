@@ -31,7 +31,7 @@ const STATUS_STYLE = {
 const TYPE_SIGN = { asset: 1, cogs: 1, expense: 1, liability: -1, equity: -1, revenue: -1 };
 
 function fmtCents(cents) {
-  if (!cents && cents !== 0) return '—';
+  if (!cents && cents !== 0) return '-';
   const abs = Math.abs(cents);
   const dollars = (abs / 100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   return cents < 0 ? `(${dollars})` : dollars;
@@ -425,7 +425,7 @@ function EntryFormModal({ lang, accounts, editEntry, onClose, onSaved }) {
               <tr key={i}>
                 <td style={{ padding: '4px 4px' }}>
                   <select value={line.account_id} onChange={e => updateLine(i, 'account_id', e.target.value)} style={{ ...inputStyle, margin: 0 }}>
-                    <option value="">— {t.account} —</option>
+                    <option value="">- {t.account} -</option>
                     {accounts.filter(a => !a.is_archived).map(a => (
                       <option key={a.id} value={a.id}>{a.account_number} {coaLabel(a, lang)}</option>
                     ))}
@@ -508,7 +508,7 @@ function ReverseModal({ lang, entry, onClose, onDone }) {
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ background: '#1a1d2e', border: '1px solid #2d3148', borderRadius: 12, width: 480, padding: 28 }}>
         <h3 style={{ margin: '0 0 16px', color: '#f1f5f9' }}>{t.confirmReverse}</h3>
-        <p style={{ color: '#94a3b8', fontSize: 14, marginBottom: 16 }}>{entry.entry_number} — {entry.description}</p>
+        <p style={{ color: '#94a3b8', fontSize: 14, marginBottom: 16 }}>{entry.entry_number} - {entry.description}</p>
         <label style={labelStyle}>{t.reversalReason} *</label>
         <textarea value={reason} onChange={e => setReason(e.target.value)}
           rows={3} style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', resize: 'vertical' }} />
@@ -539,7 +539,7 @@ function EntryDetailModal({ lang, entry, onClose }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
           <div>
             <h3 style={{ margin: 0, color: '#f1f5f9', fontSize: 16 }}>{entry.entry_number}</h3>
-            <p style={{ margin: '4px 0 0', color: '#94a3b8', fontSize: 13 }}>{fmtDate(entry.entry_date)} — {entry.description || '—'}</p>
+            <p style={{ margin: '4px 0 0', color: '#94a3b8', fontSize: 13 }}>{fmtDate(entry.entry_date)} - {entry.description || '-'}</p>
           </div>
           <span style={{ background: statusCfg.bg, color: statusCfg.color, padding: '3px 10px', borderRadius: 20, fontSize: 12 }}>
             {statusCfg.label[lang]}
@@ -721,7 +721,7 @@ function JournalTab({ lang, accounts }) {
                   <td style={{ padding: '9px 6px', color: '#94a3b8' }}>{fmtDate(entry.entry_date)}</td>
                   <td style={{ padding: '9px 6px', color: '#e2e8f0', fontFamily: 'monospace' }}>{entry.entry_number}</td>
                   <td style={{ padding: '9px 6px', color: '#cbd5e1', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {entry.description || '—'}
+                    {entry.description || '-'}
                   </td>
                   <td style={{ padding: '9px 6px', color: '#64748b' }}>{srcLabel ? srcLabel[lang] : entry.source_type}</td>
                   <td style={{ padding: '9px 6px', textAlign: 'center' }}>
@@ -908,7 +908,7 @@ function IncomeStatementTab({ lang }) {
 
 function TrialBalanceTab({ lang }) {
   const t = UI[lang];
-  // Default to previous month — last fully-closed period is more useful than mid-current-month
+  // Default to previous month - last fully-closed period is more useful than mid-current-month
   const prevMonth = new Date(); prevMonth.setDate(1); prevMonth.setMonth(prevMonth.getMonth() - 1);
   const [selYear,  setSelYear]  = useState(prevMonth.getFullYear());
   const [selMonth, setSelMonth] = useState(prevMonth.getMonth() + 1);
@@ -1291,7 +1291,7 @@ function ControlVarianceTab({ lang }) {
   React.useEffect(() => { generate(); }, [generate]);
 
   function fmtC(cents) {
-    if (cents === null) return '—';
+    if (cents === null) return '-';
     const abs = Math.abs(cents / 100);
     const s = abs.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
     return cents < 0 ? `(${s})` : s;
@@ -1332,13 +1332,13 @@ function ControlVarianceTab({ lang }) {
                 else if (r.status === 'variance') statusEl = <span style={{ color: '#ef4444', fontWeight: 700 }}>⚠ {isFr ? 'Écart' : 'Variance'}</span>;
                 else if (r.status === 'zero')  statusEl = <span style={{ color: '#22c55e', fontWeight: 700 }}>✓ {isFr ? 'Zéro' : 'Zero'}</span>;
                 else if (r.status === 'nonzero') statusEl = <span style={{ color: '#f59e0b', fontWeight: 700 }}>⚠ {isFr ? 'Non-zéro' : 'Non-zero'}</span>;
-                else statusEl = <span style={{ color: '#64748b' }}>—</span>;
+                else statusEl = <span style={{ color: '#64748b' }}>-</span>;
                 return (
                   <tr key={r.num}>
                     <td style={td}><span style={{ color: '#64748b', marginRight: 6 }}>{r.num}</span>{isFr ? r.fr : r.en}</td>
                     <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: glDisplay === null ? '#334155' : '#f1f5f9' }}>{fmtC(glDisplay)}</td>
                     <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: r.sub === null ? '#334155' : '#f1f5f9' }}>{fmtC(r.sub)}</td>
-                    <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: r.variance === null ? '#334155' : r.variance === 0 ? '#22c55e' : '#ef4444' }}>{r.variance !== null ? fmtC(r.variance) : '—'}</td>
+                    <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: r.variance === null ? '#334155' : r.variance === 0 ? '#22c55e' : '#ef4444' }}>{r.variance !== null ? fmtC(r.variance) : '-'}</td>
                     <td style={td}>{statusEl}</td>
                   </tr>
                 );

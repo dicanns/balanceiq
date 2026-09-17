@@ -97,7 +97,7 @@ async function _flush() {
     const { error } = await supabase.from('usage_events').insert(batch);
     if (error) throw error;
   } catch (_) {
-    // Offline — re-queue for next attempt
+    // Offline - re-queue for next attempt
     _queue = [...batch, ..._queue];
     _persistQueue();
   }

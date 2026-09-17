@@ -1,5 +1,5 @@
 // Province-aware tax computation service.
-// All amounts in integer cents. Never uses getDb() — callers must pass _db.
+// All amounts in integer cents. Never uses getDb() - callers must pass _db.
 
 export const FORMULA_VERSION_PROVINCE = 'v2.0-province-2026';
 

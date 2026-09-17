@@ -1,4 +1,4 @@
-# CLAUDE.md — BalanceIQ Dev Rules
+# CLAUDE.md - BalanceIQ Dev Rules
 
 These rules are standing invariants. They are enforced by automated checks
 in CI (npm test, npm run check:edge-auth, npm run audit). Breaking any of
@@ -35,17 +35,17 @@ Covered paths as of v1.38.2:
 - RecurringGenerateModal doGenerate (line ~3520)
 
 Verified clean by grep audit: all remaining `statut:"Envoyée"` occurrences
-in App.jsx are filter predicates, status-color maps, or the demo PDF — not
+in App.jsx are filter predicates, status-color maps, or the demo PDF - not
 new invoice creation sites. Payment plan installments use `statut:"Brouillon"`
 at generation and are posted through the normal doSave path.
 
 Integration test: src/__tests__/integration/recurringInvoiceToGL.test.js
 (INT-001) covers all three bypass paths end-to-end.
 
-### 4. No em dashes in any file
-The character `--` (em dash, U+2014) is banned from all source files,
-docs, and comments. Use a regular hyphen `-` or double hyphen `--` instead.
-This is a global project rule.
+### 4. No em dashes in any file (enforced by check:no-em-dash)
+The em dash (U+2014) is banned from every text file in the repository:
+source, tests, docs, comments and user-facing strings alike. Use a
+hyphen `-`. `npm run check:no-em-dash` lists offenders and fails CI.
 
 ### 5. Shared constants over duplicated definitions
 When two functions or modules must share a business rule (e.g.
@@ -65,6 +65,13 @@ level in package.json. The advisories in exceljs's Node-only helpers
 and similar functions accept an optional `_db` parameter. Tests must pass
 an in-memory db -- never rely on `getDb()` (which requires Electron's
 `app.getPath`). New GL/accounting functions must follow the same pattern.
+
+### 8. Money in new tables is INTEGER cents (enforced by MONEY-001)
+Thirty-two columns hold money as `_cents INTEGER`; a known set of older
+tables hold it as `REAL` (listed in src/__tests__/accounting/gl/moneyColumns.test.js).
+New money columns are integer cents. Convert at the boundary with
+`Math.round(x * 100)` and never compare a REAL amount to a cents amount
+without converting first.
 
 ---
 

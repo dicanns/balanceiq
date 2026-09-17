@@ -1,7 +1,7 @@
 // ── AUDIT LOGGER SERVICE ──────────────────────────────────────────────────────
 // Central service for writing to the append-only audit_log table.
 // RULES:
-//   - Only INSERTs — never update or delete audit entries
+//   - Only INSERTs - never update or delete audit entries
 //   - Financial field corrections ALWAYS require a reason
 //   - All text displayed to the user is in French
 // ─────────────────────────────────────────────────────────────────────────────
@@ -15,7 +15,7 @@ export const FINANCIAL_FIELDS = {
     'hamEnd','hotEnd','hamReceived','hotReceived',
   ]),
   pl: new Set([
-    // any supplier amount or expense amount — checked by prefix in isFinancialField()
+    // any supplier amount or expense amount - checked by prefix in isFinancialField()
     '__pl_supplier__','__pl_expense__','revenueOverride',
   ]),
   invoice: new Set([
@@ -43,7 +43,7 @@ async function _log(entry) {
   try {
     await window.api.audit.log(entry);
   } catch (err) {
-    // Never let audit failures crash the app — log to console only
+    // Never let audit failures crash the app - log to console only
     console.error('[AuditLogger] Failed to write entry:', err, entry);
   }
 }
@@ -51,11 +51,11 @@ async function _log(entry) {
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
- * logCreate — called when any record is created for the first time.
- * @param {string} module      — 'daily' | 'invoice' | 'client' | etc.
- * @param {string} recordType  — e.g. 'facture' | 'soumission' | 'client' | 'caisse'
- * @param {string} recordId    — unique ID of the record
- * @param {object} newData     — full initial data snapshot
+ * logCreate - called when any record is created for the first time.
+ * @param {string} module      - 'daily' | 'invoice' | 'client' | etc.
+ * @param {string} recordType  - e.g. 'facture' | 'soumission' | 'client' | 'caisse'
+ * @param {string} recordId    - unique ID of the record
+ * @param {object} newData     - full initial data snapshot
  */
 export async function logCreate(module, recordType, recordId, newData) {
   await _log({
@@ -68,14 +68,14 @@ export async function logCreate(module, recordType, recordId, newData) {
 }
 
 /**
- * logUpdate — called when a non-financial field changes (no reason required).
+ * logUpdate - called when a non-financial field changes (no reason required).
  * @param {string} module
  * @param {string} recordType
  * @param {string} recordId
  * @param {string} fieldName
  * @param {*}      oldValue
  * @param {*}      newValue
- * @param {string} [reason]   — optional for non-financial fields
+ * @param {string} [reason]   - optional for non-financial fields
  */
 export async function logUpdate(module, recordType, recordId, fieldName, oldValue, newValue, reason) {
   await _log({
@@ -91,7 +91,7 @@ export async function logUpdate(module, recordType, recordId, fieldName, oldValu
 }
 
 /**
- * logVoid — called when a record is cancelled/voided (NOT deleted).
+ * logVoid - called when a record is cancelled/voided (NOT deleted).
  * Reason is REQUIRED.
  * @param {string} module
  * @param {string} recordType
@@ -109,7 +109,7 @@ export async function logVoid(module, recordType, recordId, reason) {
 }
 
 /**
- * logCorrection — called when a financial field is changed after initial save.
+ * logCorrection - called when a financial field is changed after initial save.
  * Reason is ALWAYS required.
  * @param {string} module
  * @param {string} recordType
@@ -117,7 +117,7 @@ export async function logVoid(module, recordType, recordId, reason) {
  * @param {string} fieldName
  * @param {*}      oldValue
  * @param {*}      newValue
- * @param {string} reason     — REQUIRED
+ * @param {string} reason     - REQUIRED
  */
 export async function logCorrection(module, recordType, recordId, fieldName, oldValue, newValue, reason) {
   await _log({
@@ -133,9 +133,9 @@ export async function logCorrection(module, recordType, recordId, fieldName, old
 }
 
 /**
- * logRestore — called when data is restored from a JSON backup.
- * @param {string} restoreDate  — ISO date string of the backup file
- * @param {number} recordCount  — number of records restored
+ * logRestore - called when data is restored from a JSON backup.
+ * @param {string} restoreDate  - ISO date string of the backup file
+ * @param {number} recordCount  - number of records restored
  */
 export async function logRestore(restoreDate, recordCount) {
   await _log({
@@ -164,11 +164,11 @@ function _getModalRoot() {
 }
 
 /**
- * promptCorrectionReason — shows a modal dialog asking the user to enter a
+ * promptCorrectionReason - shows a modal dialog asking the user to enter a
  * reason for a financial correction. Returns a Promise that resolves with
  * the entered reason string (never empty), or null if cancelled.
  *
- * @param {string} [fieldLabel] — optional human-readable field name for the message
+ * @param {string} [fieldLabel] - optional human-readable field name for the message
  * @returns {Promise<string|null>}
  */
 export function promptCorrectionReason(fieldLabel, lang = 'fr') {

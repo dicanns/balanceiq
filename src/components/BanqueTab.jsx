@@ -29,7 +29,7 @@ const UI = {
     importTitle:      'Importer un relevé bancaire',
     importBtn:        'Importer',
     importing:        'Importation…',
-    importResult:     (r) => `${r.rowCount} transactions importées — ${r.autoMatched} auto, ${r.suggested} suggestions, ${r.unmatched} non appariées${r.duplicateRows ? `, ${r.duplicateRows} doublons ignorés` : ''}.`,
+    importResult:     (r) => `${r.rowCount} transactions importées - ${r.autoMatched} auto, ${r.suggested} suggestions, ${r.unmatched} non appariées${r.duplicateRows ? `, ${r.duplicateRows} doublons ignorés` : ''}.`,
     importDupe:       'Ce relevé a déjà été importé (fichier identique).',
     errors: {
       ERR_STATEMENT_DUPLICATE:          'Ce relevé a déjà été importé (fichier identique).',
@@ -68,12 +68,12 @@ const UI = {
     match:            'Apparier',
     unmatch:          'Désapparier',
     selectCoa:        'Sélectionner un compte GL…',
-    selectAccount:    '— Sélectionner un compte —',
+    selectAccount:    '- Sélectionner un compte -',
     notes:            'Notes',
     saveCategorize:   'Enregistrer',
     transferLabel:    'Virement entre mes propres comptes',
     transferHint:     'Un paiement de carte de crédit, ou de l\'argent déplacé entre deux de vos comptes. La ligne reste rapprochée, mais l\'écriture vient de l\'autre relevé - la comptabiliser ici la compterait deux fois.',
-    previewTitle:     (name) => `Rapprochement — ${name}`,
+    previewTitle:     (name) => `Rapprochement - ${name}`,
     stmtBalance:      'Solde au relevé',
     biqBalance:       'Solde BalanceIQ',
     ecart:            'Écart',
@@ -154,7 +154,7 @@ const UI = {
     done:             'Terminé',
     deleteStmt:       'Supprimer',
     confirmDeleteStmt:(a, b) => `Supprimer le relevé du ${a} au ${b} et toutes ses transactions importées? Le fichier pourra ensuite être réimporté.`,
-    deleteStmtDone:   (n) => `Relevé supprimé — ${n} transaction(s) retirée(s).`,
+    deleteStmtDone:   (n) => `Relevé supprimé - ${n} transaction(s) retirée(s).`,
     openingBalanceLbl:'Solde d\'ouverture',
   },
   en: {
@@ -182,7 +182,7 @@ const UI = {
     importTitle:      'Import Bank Statement',
     importBtn:        'Import',
     importing:        'Importing…',
-    importResult:     (r) => `${r.rowCount} transactions imported — ${r.autoMatched} auto-matched, ${r.suggested} suggested, ${r.unmatched} unmatched${r.duplicateRows ? `, ${r.duplicateRows} duplicates skipped` : ''}.`,
+    importResult:     (r) => `${r.rowCount} transactions imported - ${r.autoMatched} auto-matched, ${r.suggested} suggested, ${r.unmatched} unmatched${r.duplicateRows ? `, ${r.duplicateRows} duplicates skipped` : ''}.`,
     importDupe:       'This statement appears to be already imported (identical file).',
     errors: {
       ERR_STATEMENT_DUPLICATE:          'This statement has already been imported (identical file).',
@@ -221,12 +221,12 @@ const UI = {
     match:            'Match',
     unmatch:          'Unmatch',
     selectCoa:        'Select a GL account…',
-    selectAccount:    '— Select an account —',
+    selectAccount:    '- Select an account -',
     notes:            'Notes',
     saveCategorize:   'Save',
     transferLabel:    'Transfer between my own accounts',
     transferHint:     'A credit card payment, or money moved between two of your accounts. The line still reconciles, but the entry comes from the other statement - recording it here would count it twice.',
-    previewTitle:     (name) => `Reconciliation — ${name}`,
+    previewTitle:     (name) => `Reconciliation - ${name}`,
     stmtBalance:      'Statement Balance',
     biqBalance:       'BalanceIQ Balance',
     ecart:            'Difference',
@@ -307,7 +307,7 @@ const UI = {
     done:             'Done',
     deleteStmt:       'Delete',
     confirmDeleteStmt:(a, b) => `Delete the statement from ${a} to ${b} and all transactions it imported? The file can then be re-imported.`,
-    deleteStmtDone:   (n) => `Statement deleted — ${n} transaction(s) removed.`,
+    deleteStmtDone:   (n) => `Statement deleted - ${n} transaction(s) removed.`,
     openingBalanceLbl:'Opening balance',
   },
 };
@@ -317,7 +317,7 @@ const fmt = (n) => {
   return (v < 0 ? '-' : '') + '$ ' + Math.abs(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 };
 
-const fmtDate = (d) => d ? d.slice(0, 10) : '—';
+const fmtDate = (d) => d ? d.slice(0, 10) : '-';
 
 // ── BanqueTab ─────────────────────────────────────────────────────────────────
 export default function BanqueTab({ lang = 'fr', t: theme }) {
@@ -491,7 +491,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   useEffect(() => { if (subTab === 'rapprochements') { loadStatements(); loadRecPreview(); } }, [subTab, selectedAccount]);
   useEffect(() => { if (subTab === 'regles') loadLearnedRules(); }, [subTab]);
 
-  // Guard AFTER all hooks — React Rules of Hooks require hooks before any early return
+  // Guard AFTER all hooks - React Rules of Hooks require hooks before any early return
   if (!bankAvailable) {
     return (
       <div style={{ padding: 32, color: C.muted, textAlign: 'center' }}>
@@ -718,7 +718,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
     if (!up.includes('INTERAC') && !up.includes('E-TFR') && !up.includes('ETFR')) return null;
     const patterns = [/VIREMENT INTERAC\s+(.+?)(?:\s+\d|$)/i, /INTERAC\s+(.+?)(?:\s+\d|$)/i, /E-TFR\s+(.+?)(?:\s+\d|$)/i];
     for (const p of patterns) { const m = description.match(p); if (m?.[1]) return m[1].trim(); }
-    return '—';
+    return '-';
   };
 
   // An e-transfer RECEIVED is a customer settling what they owe us -> Accounts

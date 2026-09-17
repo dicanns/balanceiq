@@ -194,7 +194,7 @@ function ResultGroup({ label, items, selectedIndex, onSelect, onHover, indexOffs
             <span style={styles.itemIcon}>{item._icon}</span>
             <span style={styles.itemMain}>
               <HighlightedText text={item._label} query={query} />
-              {item._sub && <span style={styles.itemSub}>— <HighlightedText text={item._sub} query={query} /></span>}
+              {item._sub && <span style={styles.itemSub}>- <HighlightedText text={item._sub} query={query} /></span>}
             </span>
             {item._hint && <span style={styles.itemHint}>{item._hint} ↗</span>}
           </div>
@@ -362,7 +362,7 @@ export default function GlobalSearch({ isOpen, onClose, onNavigate, lang = 'fr',
     return items;
   }, [results, query, lang, T]);
 
-  // Split for display — map flat items back to groups
+  // Split for display - map flat items back to groups
   const groups = useMemo(() => {
     const q = query.trim();
     const actions = getActionResults(q, lang).map(a => ({

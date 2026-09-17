@@ -101,7 +101,7 @@ describe('PDF-EXPORT-001 Pro tier PDF generation', () => {
 });
 
 // ════════════════════════════════════════════════════════
-// PDF-EXPORT-002  Free tier gate (no window.api mock needed — pure logic)
+// PDF-EXPORT-002  Free tier gate (no window.api mock needed - pure logic)
 // ════════════════════════════════════════════════════════
 describe('PDF-EXPORT-002 Free tier gate logic', () => {
   it('canUse returns false for reportingAdvanced on free plan', () => {
@@ -117,7 +117,7 @@ describe('PDF-EXPORT-002 Free tier gate logic', () => {
   });
 
   it('PDF builder itself is plan-agnostic (caller enforces the gate)', () => {
-    // Builder should still produce HTML regardless — the gate is in the component
+    // Builder should still produce HTML regardless - the gate is in the component
     const html = buildCompliancePdfHTML({ kpis: kpisBase, lists: listsBase, scorecard: null, lang: 'fr' });
     expect(html).toBeTruthy();
   });

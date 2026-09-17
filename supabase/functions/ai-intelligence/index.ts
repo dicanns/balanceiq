@@ -42,8 +42,8 @@ Data:
     case 'anomalies':
       // deno-lint-ignore no-explicit-any
       return `${fr
-        ? `Tu es conseiller pour un restaurant rapide. Analyse ces anomalies de ventes. Pour chaque anomalie, les notes du propriétaire (si présentes) sont des faits réels confirmés — base-toi sur elles en priorité. Classe chaque cause comme CONFIRMÉE (note présente) ou POSSIBLE (déduction). Donne une explication de 3-4 phrases et une action concrète. Si certaines anomalies n'ont pas de notes, encourage le propriétaire à en ajouter. Réponds en français seulement.`
-        : `You are a fast-food restaurant advisor. Analyze these sales anomalies. For each anomaly, the owner's notes (if present) are real confirmed facts — prioritize them. Label each cause as CONFIRMED (note present) or POSSIBLE (inference). Give a 3-4 sentence explanation and one concrete action. If some anomalies have no notes, encourage the owner to add them. Reply in English only.`
+        ? `Tu es conseiller pour un restaurant rapide. Analyse ces anomalies de ventes. Pour chaque anomalie, les notes du propriétaire (si présentes) sont des faits réels confirmés - base-toi sur elles en priorité. Classe chaque cause comme CONFIRMÉE (note présente) ou POSSIBLE (déduction). Donne une explication de 3-4 phrases et une action concrète. Si certaines anomalies n'ont pas de notes, encourage le propriétaire à en ajouter. Réponds en français seulement.`
+        : `You are a fast-food restaurant advisor. Analyze these sales anomalies. For each anomaly, the owner's notes (if present) are real confirmed facts - prioritize them. Label each cause as CONFIRMED (note present) or POSSIBLE (inference). Give a 3-4 sentence explanation and one concrete action. If some anomalies have no notes, encourage the owner to add them. Reply in English only.`
       }
 
 ${(ctx.anomalies as Array<{day:string,date:string,venteNet:number,avg:number,pct:number,note?:string,weather?:string,tempC?:number}>)
@@ -88,7 +88,7 @@ ${(ctx.locations as Array<{name:string,monthlySales:number,labourPct:number,avgD
     case 'previsions_weekly': {
       // deno-lint-ignore no-explicit-any
       const lines = (ctx.products as Array<any>).map((p: any) =>
-        `- ${p.name} (${p.category||'—'}): avg sold/day=${p.avgSold}, stockouts=${p.stockouts}, waste=${p.waste!=null?p.waste+'%':'?'}, week forecast=${p.weekForecast}, sensitivity=${p.sensitivity}`
+        `- ${p.name} (${p.category||'-'}): avg sold/day=${p.avgSold}, stockouts=${p.stockouts}, waste=${p.waste!=null?p.waste+'%':'?'}, week forecast=${p.weekForecast}, sensitivity=${p.sensitivity}`
       ).join('\n');
       const weather = ctx.weather || 'unknown';
       return `${fr
@@ -112,7 +112,7 @@ Weather this week: ${weather}`;
         : `You are a production planning advisor for a food business. Analyze this product profile and give a 4-5 sentence analysis in English: sales patterns, risks, and 3 specific recommendations on production quantities by day of week. Be precise and actionable.`
       }
 
-Product: "${ctx.name}" | Category: ${ctx.category||'—'} | Shelf life: ${ctx.shelfLife}d | Weather sensitivity: ${ctx.sensitivity} | Base qty: ${ctx.baseQty}
+Product: "${ctx.name}" | Category: ${ctx.category||'-'} | Shelf life: ${ctx.shelfLife}d | Weather sensitivity: ${ctx.sensitivity} | Base qty: ${ctx.baseQty}
 Avg sold/day: ${ctx.avgSold} | Waste rate: ${ctx.waste!=null?ctx.waste+'%':'?'} | Stockout days: ${ctx.stockoutDays} | Trend: ${ctx.trend!=null?(ctx.trend>0?'+':'')+ctx.trend+'%':'?'}
 
 Sales history (newest first):
@@ -138,7 +138,7 @@ serve(async (req) => {
       return ok({ error: 'missing_params', message: 'Missing queryType or contextData.' }, corsHeaders);
     }
 
-    // Always authenticate — ownApiKey only controls which key pays for the Anthropic call,
+    // Always authenticate - ownApiKey only controls which key pays for the Anthropic call,
     // never whether the user is authorized to use this endpoint.
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
@@ -222,7 +222,7 @@ serve(async (req) => {
     if (!claudeRes.ok) {
       const errBody = await claudeRes.text();
       console.error('Claude API error:', claudeRes.status, errBody);
-      // API failed — do NOT increment quota
+      // API failed - do NOT increment quota
       return ok({ error: 'claude_error', message: `Anthropic error (${claudeRes.status}): ${errBody.slice(0, 200)}` }, corsHeaders);
     }
 

@@ -73,7 +73,7 @@ Deno.serve(async (req: Request) => {
       if (!email || !resend_api_key) { skipped++; continue; }
 
       const name = mandate.client_name || email;
-      const subject = 'Rappel — Autorisation de prélèvement automatique en attente';
+      const subject = 'Rappel - Autorisation de prélèvement automatique en attente';
       const html = `
         <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
           <h2 style="color:#f97316">Rappel de prélèvement automatique (PAD)</h2>

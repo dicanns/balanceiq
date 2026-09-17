@@ -150,7 +150,7 @@ function scoreTemplate(ocrText, template) {
   for (const p of patterns) {
     try {
       if (new RegExp(p.label_regex, 'i').test(upperText)) hits++;
-    } catch (_) { /* bad regex — skip */ }
+    } catch (_) { /* bad regex - skip */ }
   }
   return hits / patterns.length;
 }
@@ -341,7 +341,7 @@ export default function POSScanModal({ isOpen, onClose, onApply, caisseIndex, da
       if (isProCloud) {
         try {
           setProgressLabel(T.scanEngineCloud + '…');
-          // Always send as PNG image (rendered from PDF if needed) — Claude Haiku is image-only
+          // Always send as PNG image (rendered from PDF if needed) - Claude Haiku is image-only
           const result = await runCloudOCR(canvasPngBase64, 'image/png');
           if (result && result.fields) {
             cloudFields = result;
@@ -364,7 +364,7 @@ export default function POSScanModal({ isOpen, onClose, onApply, caisseIndex, da
       setSupplementPng(preprocessedPng);
 
       if (!cloudFields) {
-        // Tesseract path — run in main process via IPC (avoids Web Worker CDN issues in Electron)
+        // Tesseract path - run in main process via IPC (avoids Web Worker CDN issues in Electron)
         setProgressLabel('Tesseract OCR…');
         setProgress(40);
         rawText = await window.api.posScan.runOCR(preprocessedPng);
@@ -392,7 +392,7 @@ export default function POSScanModal({ isOpen, onClose, onApply, caisseIndex, da
         setOcrText('');
         setStep('confirm');
       } else {
-        // Tesseract path — match template
+        // Tesseract path - match template
         setOcrText(rawText);
         const { template, score } = findBestTemplate(rawText, templates);
         setMatchedTemplate(template);
@@ -405,7 +405,7 @@ export default function POSScanModal({ isOpen, onClose, onApply, caisseIndex, da
           initRowState(fields, []);
           setStep('confirm');
         } else {
-          // Unknown format — go to mapping UI
+          // Unknown format - go to mapping UI
           const lines = parseOCRLines(rawText);
           setOcrLines(lines);
           setStep('mapping');
@@ -414,7 +414,7 @@ export default function POSScanModal({ isOpen, onClose, onApply, caisseIndex, da
 
       setProgress(100);
 
-      // Log to history (use local vars — React state not yet flushed at this point)
+      // Log to history (use local vars - React state not yet flushed at this point)
       try {
         const _tplId = cloudFields
           ? (templates.find(t2 => t2.pos_system === cloudFields.pos_system)?.id || null)
@@ -782,7 +782,7 @@ export default function POSScanModal({ isOpen, onClose, onApply, caisseIndex, da
                         value={rowAssignments[row.id] || ''}
                         onChange={e =>setRowAssignments(prev => ({ ...prev, [row.id]: e.target.value }))}
                         style={{ ...inputStyle, width: 'auto', fontSize: 11 }}
-                      ><option value="">— {T.scanSkipField} —</option>{FIELD_KEYS.map(fk => (<option key={fk} value={fk}>{getFieldLabel(fk, T)}</option>))}</select></td><td style={{ padding: '7px 0 7px 8px', textAlign: 'center' }}><ConfBadge conf={row.confidence} T={T} /></td></tr>))}</tbody></table>{allRows.length === 0 && (<div style={{ textAlign: 'center', padding: '20px 0', color: t.textMuted, fontSize: 12 }}>{T.scanUnknown}</div>)}
+                      ><option value="">- {T.scanSkipField} -</option>{FIELD_KEYS.map(fk => (<option key={fk} value={fk}>{getFieldLabel(fk, T)}</option>))}</select></td><td style={{ padding: '7px 0 7px 8px', textAlign: 'center' }}><ConfBadge conf={row.confidence} T={T} /></td></tr>))}</tbody></table>{allRows.length === 0 && (<div style={{ textAlign: 'center', padding: '20px 0', color: t.textMuted, fontSize: 12 }}>{T.scanUnknown}</div>)}
             {matchedTemplate?.is_community === 1 && (<div style={{ marginTop: 12, textAlign: 'center' }}><button
                   onClick={async () =>{
                     try {
@@ -837,7 +837,7 @@ export default function POSScanModal({ isOpen, onClose, onApply, caisseIndex, da
                       ><span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{line.raw}</span>{isAssigned && assignedTo !== 'skip' && (<span style={{ fontSize: 9, color: '#86efac', marginLeft: 6, whiteSpace: 'nowrap' }}>→ {getFieldLabel(assignedTo, T)}</span>)}
                         {isSelected && line.extractedValue != null && (<span style={{ fontSize: 9, color: '#f97316', marginLeft: 6, fontWeight: 700 }}>{line.extractedValue}</span>)}</div>);
                   })}
-                  {ocrLines.length === 0 && (<div style={{ color: t.textMuted, fontSize: 11 }}>Aucune valeur détectée</div>)}</div></div>{/* Right: caisse fields */}<div style={{ overflow: 'auto', padding: 16 }}><div style={{ fontSize: 10, fontWeight: 700, color: t.textMuted, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>{T.scanCaisseFields}</div>{selectedLine !== null && (<div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 6, background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.2)', fontSize: 11, color: '#f97316' }}>←<b>«{ocrLines.find(l => l.idx === selectedLine)?.raw?.slice(0, 30)}…»</b>— {T.scanSelectField}</div>)}<div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{fieldOptions.map(({ key, label }) => {
+                  {ocrLines.length === 0 && (<div style={{ color: t.textMuted, fontSize: 11 }}>{T.posScanNoValue}</div>)}</div></div>{/* Right: caisse fields */}<div style={{ overflow: 'auto', padding: 16 }}><div style={{ fontSize: 10, fontWeight: 700, color: t.textMuted, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 }}>{T.scanCaisseFields}</div>{selectedLine !== null && (<div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 6, background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.2)', fontSize: 11, color: '#f97316' }}>←<b>«{ocrLines.find(l => l.idx === selectedLine)?.raw?.slice(0, 30)}…»</b>- {T.scanSelectField}</div>)}<div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{fieldOptions.map(({ key, label }) => {
                     const assigned = assignedFields.has(key);
                     const value = lineValueOverrides[key];
                     return (<div
@@ -869,7 +869,7 @@ export default function POSScanModal({ isOpen, onClose, onApply, caisseIndex, da
 
   // ── Render: community sharing ─────────────────────────────────────────────────
   if (step === 'sharing') {
-    return (<div style={overlay}><div style={{ ...modal, width: 440 }}><div style={header}><div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{shareStatus === 'done' ? '' + T.scanSaved : T.scanSaved}</div><button onClick={handleClose} style={{ background: 'none', border: 'none', color: t.textMuted, fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>×</button></div><div style={body}>{shareStatus === null && (<><div style={{ fontSize: 13, color: t.text, lineHeight: 1.6, marginBottom: 20 }}>{T.scanSharePrompt}</div><div style={{ fontSize: 11, color: t.textMuted, padding: '8px 12px', borderRadius: 6, background: 'rgba(255,255,255,0.04)', border: `1px solid ${t.innerBorder || 'rgba(255,255,255,0.08)'}` }}>ℹ Seule la structure du format est partagée — aucune donnée financière n'est envoyée.</div></>)}
+    return (<div style={overlay}><div style={{ ...modal, width: 440 }}><div style={header}><div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{shareStatus === 'done' ? '' + T.scanSaved : T.scanSaved}</div><button onClick={handleClose} style={{ background: 'none', border: 'none', color: t.textMuted, fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>×</button></div><div style={body}>{shareStatus === null && (<><div style={{ fontSize: 13, color: t.text, lineHeight: 1.6, marginBottom: 20 }}>{T.scanSharePrompt}</div><div style={{ fontSize: 11, color: t.textMuted, padding: '8px 12px', borderRadius: 6, background: 'rgba(255,255,255,0.04)', border: `1px solid ${t.innerBorder || 'rgba(255,255,255,0.08)'}` }}>ℹ Seule la structure du format est partagée - aucune donnée financière n'est envoyée.</div></>)}
             {shareStatus === 'uploading' && (<div style={{ textAlign: 'center', padding: '20px 0' }}><div style={{ fontSize: 24, marginBottom: 12 }}>⏳</div><div style={{ fontSize: 12, color: t.textMuted }}>{T.scanUploadingTemplate}</div></div>)}
             {shareStatus === 'done' && (<div style={{ textAlign: 'center', padding: '20px 0'}}><div style={{ fontSize: 32, marginBottom: 12 }}></div><div style={{ fontSize: 13, color: t.text, lineHeight: 1.6 }}>{T.scanShareThanks}</div></div>)}
  {shareStatus ==='error' && (<div style={{ textAlign: 'center', padding: '20px 0'}}><div style={{ fontSize: 24, marginBottom: 12 }}></div><div style={{ fontSize: 12, color:'#f97316' }}>{T.scanUploadError}</div></div>)}</div><div style={footer}>{shareStatus === null && (<><button onClick={handleClose} style={btnSecondary}>{T.scanShareNo}</button><button onClick={handleShare} style={btnPrimary}>{T.scanShareYes}</button></>)}
@@ -879,11 +879,11 @@ export default function POSScanModal({ isOpen, onClose, onApply, caisseIndex, da
   // ── Render: scan history ──────────────────────────────────────────────────────
   if (step === 'history') {
  return (<div style={overlay} onClick={handleClose}><div style={modal} onClick={e =>e.stopPropagation()}><div style={header}><div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{T.scanHistory}</div><button onClick={handleClose} style={{ background:'none', border: 'none', color: t.textMuted, fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>×</button></div><div style={body}>{historyEntries.length === 0 ? (<div style={{ textAlign:'center', padding: '30px 0', color: t.textMuted, fontSize: 12 }}>{T.scanHistoryEmpty}</div>) : (<table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}><thead><tr>{[T.scanHistoryDate, T.scanHistoryPOS, T.scanHistoryEngine, T.scanHistoryCorrections].map(h => (<th key={h} style={{ textAlign: 'left', color: t.textMuted, fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, padding: '0 8px 8px 0', borderBottom: `1px solid ${t.innerBorder || 'rgba(255,255,255,0.08)'}` }}>{h}</th>))}</tr></thead><tbody>{historyEntries.map(entry => {
-                    let tplName = '—';
+                    let tplName = '-';
                     const tpl = templates.find(t2 => t2.id === entry.template_id);
                     if (tpl) tplName = tpl.pos_system;
                     return (<tr key={entry.id} style={{ borderBottom: `1px solid rgba(255,255,255,0.04)` }}><td style={{ padding: '6px 8px 6px 0', color: t.text }}>{entry.date_key}</td><td style={{ padding: '6px 8px 6px 0', color: t.text }}>{tplName}</td><td style={{ padding: '6px 8px 6px 0', color: t.textMuted }}><span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, background: entry.ocr_engine === 'claude-haiku' ? 'rgba(139,92,246,0.15)' : 'rgba(255,255,255,0.07)', color: entry.ocr_engine === 'claude-haiku' ? '#8b5cf6' : t.textMuted }}>{entry.ocr_engine === 'claude-haiku' ? ' cloud' : 'local'}</span></td><td style={{ padding: '6px 0 6px 0', color: entry.corrections_made >0 ? '#f97316': t.textMuted }}>
- {entry.corrections_made > 0 ? `${entry.corrections_made} ` :'—'}</td></tr>);
+ {entry.corrections_made > 0 ? `${entry.corrections_made} ` :'-'}</td></tr>);
                   })}</tbody></table>)}</div><div style={footer}><button onClick={() =>setStep('idle')} style={btnSecondary}>← {T.scanButton}</button><button onClick={handleClose} style={btnPrimary}>{T.scanCloseHistory}</button></div></div></div>
     );
   }

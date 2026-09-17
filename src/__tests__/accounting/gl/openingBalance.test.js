@@ -1,5 +1,5 @@
 /**
- * GL-016 — Opening Balance Entry
+ * GL-016 - Opening Balance Entry
  *
  * Opening balance is the one entry that cannot be allowed to double-post.
  * If a migration re-runs and opening balance applies twice, every downstream

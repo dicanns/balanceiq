@@ -1,5 +1,5 @@
 /**
- * MIG-007 — Backup and Restore Across Migration Boundary
+ * MIG-007 - Backup and Restore Across Migration Boundary
  *
  * Scenario: take a "backup" of a pre-migration database (by copying its state),
  * run the migration, restore the backup to a new DB, run the migration again.
@@ -107,7 +107,7 @@ describe('MIG-007 backup and restore', () => {
     // Restore backup (pre-migration state)
     restored = restoreBackup(buildLegacyDb());
 
-    // Run migration on restored DB — must succeed without error
+    // Run migration on restored DB - must succeed without error
     expect(() => runMigrations(restored)).not.toThrow();
 
     // Verify restored DB has the same legacy data
@@ -158,7 +158,7 @@ describe('MIG-007-B full SQLite backup and restore across accounting tables', ()
     db1 = null; db2 = null;
   });
 
-  it('seeds accounting tables, backs up, wipes, restores — all counts match', () => {
+  it('seeds accounting tables, backs up, wipes, restores - all counts match', () => {
     // COA accounts are already seeded by buildAccountingDb; grab one for FK use
     const { id: coaId } = db1.prepare(`SELECT id FROM chart_of_accounts LIMIT 1`).get();
 

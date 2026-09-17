@@ -1,5 +1,5 @@
 /**
- * D5 — bankReconcileClose: suggested transactions must NOT be reconciled.
+ * D5 - bankReconcileClose: suggested transactions must NOT be reconciled.
  *
  * Scenario: a statement has one 'matched' and one 'suggested' transaction.
  * Closing the statement must mark only the 'matched' transaction as reconciled=1.
@@ -28,7 +28,7 @@ function seed(database) {
      VALUES (?, '2026-01-01', '2026-01-31', 100.00)`
   ).run(accountId);
 
-  // matched transaction: $100 credit — will be reconciled after close
+  // matched transaction: $100 credit - will be reconciled after close
   const { lastInsertRowid: matchedId } = database.prepare(
     `INSERT INTO bank_transactions
        (bank_account_id, bank_statement_id, transaction_date, description, amount, match_status)
@@ -45,7 +45,7 @@ function seed(database) {
   return { accountId, statementId, matchedId, suggestedId };
 }
 
-describe('D5 bankReconcileClose — suggested transactions excluded', () => {
+describe('D5 bankReconcileClose - suggested transactions excluded', () => {
   it('matched transaction is reconciled=1 after close', () => {
     const { accountId, statementId, matchedId } = seed(db);
     const result = bankReconcileClose(accountId, statementId, db);

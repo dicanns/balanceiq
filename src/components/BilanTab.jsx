@@ -8,8 +8,8 @@ const T = {
     computing: 'Calcul en cours...',
     draft: 'Bilan provisoire',
     final: 'Bilan final',
-    draftBanner: 'Bilan provisoire — anomalies detectees',
-    finalBanner: 'Bilan final — tous les elements sont reconcilies',
+    draftBanner: 'Bilan provisoire - anomalies detectees',
+    finalBanner: 'Bilan final - tous les elements sont reconcilies',
     noEntries: 'Aucune ecriture comptabilisee. Commencez par saisir un solde d\'ouverture dans le Grand livre.',
     assets: 'ACTIFS',
     currentAssets: 'Actifs a court terme',
@@ -42,8 +42,8 @@ const T = {
     computing: 'Computing...',
     draft: 'Draft balance sheet',
     final: 'Final balance sheet',
-    draftBanner: 'Draft balance sheet — exceptions detected',
-    finalBanner: 'Final balance sheet — all items reconciled',
+    draftBanner: 'Draft balance sheet - exceptions detected',
+    finalBanner: 'Final balance sheet - all items reconciled',
     noEntries: 'No posted journal entries. Start by posting an opening balance entry in the General Ledger.',
     assets: 'ASSETS',
     currentAssets: 'Current assets',
@@ -99,9 +99,9 @@ function Section({ title, accounts = [], total, indent = 1, lang = 'fr' }) {
     <div style={{ marginBottom: 8 }}>
       <div style={{ fontSize: 10.5, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4, paddingLeft: indent * 12 }}>{title}</div>
       {accounts.map((a, i) => (
-        <SectionRow key={i} label={`${a.account_number} — ${lang === 'en' && a.name_en ? a.name_en : a.name_fr}`} value={a.balance} indent={indent + 1} />
+        <SectionRow key={i} label={`${a.account_number} - ${lang === 'en' && a.name_en ? a.name_en : a.name_fr}`} value={a.balance} indent={indent + 1} />
       ))}
-      <SectionRow label={`Total — ${title}`} value={total} bold indent={indent} />
+      <SectionRow label={`Total - ${title}`} value={total} bold indent={indent} />
     </div>
   );
 }
@@ -278,7 +278,7 @@ export default function BilanTab({ lang = 'fr', canUsePro = false, onUpgrade }) 
           <div style={card}>
             <div style={{ fontSize: 12.5, fontWeight: 800, color: '#f1f5f9', marginBottom: 10, borderBottom: '1px solid rgba(148,163,184,0.2)', paddingBottom: 6 }}>{L.equity}</div>
             {(bilan.sections.equity?.accounts || []).map((a, i) => (
-              <SectionRow key={i} label={`${a.account_number} — ${lang === 'en' && a.name_en ? a.name_en : a.name_fr}`} value={a.balance} indent={1} />
+              <SectionRow key={i} label={`${a.account_number} - ${lang === 'en' && a.name_en ? a.name_en : a.name_fr}`} value={a.balance} indent={1} />
             ))}
             <SectionRow label={L.netIncome} value={bilan.sections.equity?.netIncome || 0} indent={1} />
             <SectionRow label={L.totalEquity} value={bilan.sections.equity?.total || 0} bold />

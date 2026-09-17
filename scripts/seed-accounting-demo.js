@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Accounting Demo Data Seeder — Sprint 8 Canary Substitute
+ * Accounting Demo Data Seeder - Sprint 8 Canary Substitute
  *
  * Populates a live BalanceIQ SQLite database with 3 months of realistic
  * restaurant accounting data (Jan–Mar 2026), then:
@@ -83,7 +83,7 @@ function postEntry({ entry_date, description, source_type = 'manual', lines }) {
   const totalDebit  = lines.reduce((s, l) => s + (l.debit_cents  || 0), 0);
   const totalCredit = lines.reduce((s, l) => s + (l.credit_cents || 0), 0);
   if (totalDebit !== totalCredit) {
-    throw new Error(`Entry not balanced on ${entry_date}: D=${totalDebit} C=${totalCredit} — ${description}`);
+    throw new Error(`Entry not balanced on ${entry_date}: D=${totalDebit} C=${totalCredit} - ${description}`);
   }
 
   return db.transaction(() => {
@@ -126,7 +126,7 @@ if (existingDemo > 0) {
   console.log('    Delete demo entries first or use a fresh DB. Proceeding anyway...\n');
 }
 
-// ── Chart of Accounts — resolve IDs ──────────────────────────────────────────
+// ── Chart of Accounts - resolve IDs ──────────────────────────────────────────
 
 const A = {
   cash_ops:      coaByNumber('1010'), // Encaisse (banque opération)
@@ -176,7 +176,7 @@ console.log('📌 Posting opening balances (Dec 31 2025)...');
 
 postEntry({
   entry_date: '2025-12-31',
-  description: 'Soldes d\'ouverture — 1er janvier 2026',
+  description: 'Soldes d\'ouverture - 1er janvier 2026',
   source_type: 'opening_balance',
   lines: [
     { account_id: A.cash_ops,   debit_cents: 4250000 },  // $42,500 bank
@@ -196,7 +196,7 @@ postEntry({
 
 console.log('📅 January 2026...');
 
-// Revenue — 3 weeks posted (sales posted weekly, collect TPS/TVQ)
+// Revenue - 3 weeks posted (sales posted weekly, collect TPS/TVQ)
 const janRevWeeks = [
   { d: '2026-01-07', meals: 1842000, bev: 289000, deliv: 312000 },
   { d: '2026-01-14', meals: 1956000, bev: 301000, deliv: 287000 },
@@ -220,9 +220,9 @@ for (const w of janRevWeeks) {
   });
 }
 
-// COGS — food purchases mid-month
+// COGS - food purchases mid-month
 postEntry({
-  entry_date: '2026-01-15', description: 'Achats nourriture — janvier (fournisseur Metro)', source_type: 'demo',
+  entry_date: '2026-01-15', description: 'Achats nourriture - janvier (fournisseur Metro)', source_type: 'demo',
   lines: [
     { account_id: A.cogs_food, debit_cents: 2280000, tax_code: 'both' },
     { account_id: A.tps_recv,  debit_cents: Math.round(2280000 * 0.05), tax_code: 'tps' },
@@ -231,7 +231,7 @@ postEntry({
   ],
 });
 postEntry({
-  entry_date: '2026-01-15', description: 'Achats boissons — janvier (fournisseur Sysco)', source_type: 'demo',
+  entry_date: '2026-01-15', description: 'Achats boissons - janvier (fournisseur Sysco)', source_type: 'demo',
   lines: [
     { account_id: A.cogs_bev,  debit_cents: 480000, tax_code: 'both' },
     { account_id: A.tps_recv,  debit_cents: Math.round(480000 * 0.05), tax_code: 'tps' },
@@ -241,7 +241,7 @@ postEntry({
 });
 // Packaging
 postEntry({
-  entry_date: '2026-01-20', description: 'Emballages — janvier', source_type: 'demo',
+  entry_date: '2026-01-20', description: 'Emballages - janvier', source_type: 'demo',
   lines: [
     { account_id: A.cogs_pkg,  debit_cents: 185000, tax_code: 'both' },
     { account_id: A.tps_recv,  debit_cents: Math.round(185000 * 0.05) },
@@ -249,19 +249,19 @@ postEntry({
     { account_id: A.ap,        credit_cents: 185000 + Math.round(185000 * 0.05) + Math.round(185000 * 0.09975) },
   ],
 });
-// Delivery commissions (Uber/DoorDash — no TPS/TVQ on commission)
+// Delivery commissions (Uber/DoorDash - no TPS/TVQ on commission)
 postEntry({
-  entry_date: '2026-01-31', description: 'Commissions livraisons — janvier (DoorDash + Uber Eats)', source_type: 'demo',
+  entry_date: '2026-01-31', description: 'Commissions livraisons - janvier (DoorDash + Uber Eats)', source_type: 'demo',
   lines: [
     { account_id: A.cogs_deliv, debit_cents: 278000 },
     { account_id: A.cash_ops,   credit_cents: 278000 },
   ],
 });
 
-// Payroll — twice monthly
+// Payroll - twice monthly
 for (const d of ['2026-01-15', '2026-01-31']) {
   postEntry({
-    entry_date: d, description: `Paie — ${d}`, source_type: 'demo',
+    entry_date: d, description: `Paie - ${d}`, source_type: 'demo',
     lines: [
       { account_id: A.wages_prod,  debit_cents: 1840000 },
       { account_id: A.wages_admin, debit_cents:  580000 },
@@ -273,7 +273,7 @@ for (const d of ['2026-01-15', '2026-01-31']) {
 
 // Expenses
 postEntry({
-  entry_date: '2026-01-01', description: 'Loyer — janvier 2026', source_type: 'demo',
+  entry_date: '2026-01-01', description: 'Loyer - janvier 2026', source_type: 'demo',
   lines: [
     { account_id: A.rent,     debit_cents: 450000 },
     { account_id: A.tps_recv, debit_cents: Math.round(450000 * 0.05) },
@@ -282,7 +282,7 @@ postEntry({
   ],
 });
 postEntry({
-  entry_date: '2026-01-10', description: 'Hydro-Québec — janvier', source_type: 'demo',
+  entry_date: '2026-01-10', description: 'Hydro-Québec - janvier', source_type: 'demo',
   lines: [
     { account_id: A.hydro,    debit_cents: 68000 },
     { account_id: A.tps_recv, debit_cents: Math.round(68000 * 0.05) },
@@ -291,7 +291,7 @@ postEntry({
   ],
 });
 postEntry({
-  entry_date: '2026-01-10', description: 'Télécommunications — janvier', source_type: 'demo',
+  entry_date: '2026-01-10', description: 'Télécommunications - janvier', source_type: 'demo',
   lines: [
     { account_id: A.telecom,  debit_cents: 18500 },
     { account_id: A.tps_recv, debit_cents: Math.round(18500 * 0.05) },
@@ -300,7 +300,7 @@ postEntry({
   ],
 });
 postEntry({
-  entry_date: '2026-01-31', description: 'Frais bancaires + merchant fees — janvier', source_type: 'demo',
+  entry_date: '2026-01-31', description: 'Frais bancaires + merchant fees - janvier', source_type: 'demo',
   lines: [
     { account_id: A.bank_chg, debit_cents: 3200 },
     { account_id: A.cc_fees,  debit_cents: 48000 },
@@ -308,7 +308,7 @@ postEntry({
   ],
 });
 postEntry({
-  entry_date: '2026-01-31', description: 'Assurances (portion mensuelle) — janvier', source_type: 'demo',
+  entry_date: '2026-01-31', description: 'Assurances (portion mensuelle) - janvier', source_type: 'demo',
   lines: [
     { account_id: A.insurance, debit_cents: 28000 },
     { account_id: A.prepaid,   credit_cents: 28000 },
@@ -316,7 +316,7 @@ postEntry({
 });
 // Pay AP from January purchases
 postEntry({
-  entry_date: '2026-01-25', description: 'Paiement fournisseurs — janvier', source_type: 'demo',
+  entry_date: '2026-01-25', description: 'Paiement fournisseurs - janvier', source_type: 'demo',
   lines: [
     { account_id: A.ap,       debit_cents: 3100000 },
     { account_id: A.cash_ops, credit_cents: 3100000 },
@@ -324,7 +324,7 @@ postEntry({
 });
 // Depreciation on equipment (straight-line $85,000 / 10yr / 12mo)
 postEntry({
-  entry_date: '2026-01-31', description: 'Amortissement équipement — janvier', source_type: 'demo',
+  entry_date: '2026-01-31', description: 'Amortissement équipement - janvier', source_type: 'demo',
   lines: [
     { account_id: A.depreciation, debit_cents: 70833 },
     { account_id: A.equip,        credit_cents: 70833 },
@@ -361,7 +361,7 @@ for (const w of febRevWeeks) {
   });
 }
 postEntry({
-  entry_date: '2026-02-14', description: 'Achats nourriture — février (Metro + Sysco)', source_type: 'demo',
+  entry_date: '2026-02-14', description: 'Achats nourriture - février (Metro + Sysco)', source_type: 'demo',
   lines: [
     { account_id: A.cogs_food, debit_cents: 2420000, tax_code: 'both' },
     { account_id: A.tps_recv,  debit_cents: Math.round(2420000 * 0.05) },
@@ -370,7 +370,7 @@ postEntry({
   ],
 });
 postEntry({
-  entry_date: '2026-02-28', description: 'Commissions livraisons — février', source_type: 'demo',
+  entry_date: '2026-02-28', description: 'Commissions livraisons - février', source_type: 'demo',
   lines: [
     { account_id: A.cogs_deliv, debit_cents: 294000 },
     { account_id: A.cash_ops,   credit_cents: 294000 },
@@ -378,7 +378,7 @@ postEntry({
 });
 for (const d of ['2026-02-15', '2026-02-28']) {
   postEntry({
-    entry_date: d, description: `Paie — ${d}`, source_type: 'demo',
+    entry_date: d, description: `Paie - ${d}`, source_type: 'demo',
     lines: [
       { account_id: A.wages_prod,   debit_cents: 1840000 },
       { account_id: A.wages_admin,  debit_cents:  580000 },
@@ -388,7 +388,7 @@ for (const d of ['2026-02-15', '2026-02-28']) {
   });
 }
 postEntry({
-  entry_date: '2026-02-01', description: 'Loyer — février 2026', source_type: 'demo',
+  entry_date: '2026-02-01', description: 'Loyer - février 2026', source_type: 'demo',
   lines: [
     { account_id: A.rent,     debit_cents: 450000 },
     { account_id: A.tps_recv, debit_cents: Math.round(450000 * 0.05) },
@@ -397,7 +397,7 @@ postEntry({
   ],
 });
 postEntry({
-  entry_date: '2026-02-10', description: 'Hydro-Québec — février', source_type: 'demo',
+  entry_date: '2026-02-10', description: 'Hydro-Québec - février', source_type: 'demo',
   lines: [
     { account_id: A.hydro,    debit_cents: 72000 },
     { account_id: A.tps_recv, debit_cents: Math.round(72000 * 0.05) },
@@ -415,7 +415,7 @@ postEntry({
   ],
 });
 postEntry({
-  entry_date: '2026-02-28', description: 'Frais bancaires + merchant fees — février', source_type: 'demo',
+  entry_date: '2026-02-28', description: 'Frais bancaires + merchant fees - février', source_type: 'demo',
   lines: [
     { account_id: A.bank_chg, debit_cents: 3200 },
     { account_id: A.cc_fees,  debit_cents: 51000 },
@@ -423,21 +423,21 @@ postEntry({
   ],
 });
 postEntry({
-  entry_date: '2026-02-28', description: 'Assurances (portion mensuelle) — février', source_type: 'demo',
+  entry_date: '2026-02-28', description: 'Assurances (portion mensuelle) - février', source_type: 'demo',
   lines: [
     { account_id: A.insurance, debit_cents: 28000 },
     { account_id: A.prepaid,   credit_cents: 28000 },
   ],
 });
 postEntry({
-  entry_date: '2026-02-28', description: 'Amortissement équipement — février', source_type: 'demo',
+  entry_date: '2026-02-28', description: 'Amortissement équipement - février', source_type: 'demo',
   lines: [
     { account_id: A.depreciation, debit_cents: 70833 },
     { account_id: A.equip,        credit_cents: 70833 },
   ],
 });
 postEntry({
-  entry_date: '2026-02-25', description: 'Paiement fournisseurs — février', source_type: 'demo',
+  entry_date: '2026-02-25', description: 'Paiement fournisseurs - février', source_type: 'demo',
   lines: [
     { account_id: A.ap,       debit_cents: 3200000 },
     { account_id: A.cash_ops, credit_cents: 3200000 },
@@ -445,7 +445,7 @@ postEntry({
 });
 // Equipment repair
 postEntry({
-  entry_date: '2026-02-20', description: 'Réparation four à convection — facture TechCuisine', source_type: 'demo',
+  entry_date: '2026-02-20', description: 'Réparation four à convection - facture TechCuisine', source_type: 'demo',
   lines: [
     { account_id: A.maint,    debit_cents: 148000 },
     { account_id: A.tps_recv, debit_cents: Math.round(148000 * 0.05) },
@@ -484,7 +484,7 @@ for (const w of marRevWeeks) {
   });
 }
 postEntry({
-  entry_date: '2026-03-15', description: 'Achats nourriture — mars (Metro + Sysco)', source_type: 'demo',
+  entry_date: '2026-03-15', description: 'Achats nourriture - mars (Metro + Sysco)', source_type: 'demo',
   lines: [
     { account_id: A.cogs_food, debit_cents: 2510000, tax_code: 'both' },
     { account_id: A.tps_recv,  debit_cents: Math.round(2510000 * 0.05) },
@@ -493,7 +493,7 @@ postEntry({
   ],
 });
 postEntry({
-  entry_date: '2026-03-15', description: 'Achats boissons — mars', source_type: 'demo',
+  entry_date: '2026-03-15', description: 'Achats boissons - mars', source_type: 'demo',
   lines: [
     { account_id: A.cogs_bev,  debit_cents: 520000, tax_code: 'both' },
     { account_id: A.tps_recv,  debit_cents: Math.round(520000 * 0.05) },
@@ -502,7 +502,7 @@ postEntry({
   ],
 });
 postEntry({
-  entry_date: '2026-03-31', description: 'Commissions livraisons — mars', source_type: 'demo',
+  entry_date: '2026-03-31', description: 'Commissions livraisons - mars', source_type: 'demo',
   lines: [
     { account_id: A.cogs_deliv, debit_cents: 305000 },
     { account_id: A.cash_ops,   credit_cents: 305000 },
@@ -510,7 +510,7 @@ postEntry({
 });
 for (const d of ['2026-03-15', '2026-03-31']) {
   postEntry({
-    entry_date: d, description: `Paie — ${d}`, source_type: 'demo',
+    entry_date: d, description: `Paie - ${d}`, source_type: 'demo',
     lines: [
       { account_id: A.wages_prod,   debit_cents: 1840000 },
       { account_id: A.wages_admin,  debit_cents:  580000 },
@@ -520,7 +520,7 @@ for (const d of ['2026-03-15', '2026-03-31']) {
   });
 }
 postEntry({
-  entry_date: '2026-03-01', description: 'Loyer — mars 2026', source_type: 'demo',
+  entry_date: '2026-03-01', description: 'Loyer - mars 2026', source_type: 'demo',
   lines: [
     { account_id: A.rent,     debit_cents: 450000 },
     { account_id: A.tps_recv, debit_cents: Math.round(450000 * 0.05) },
@@ -529,7 +529,7 @@ postEntry({
   ],
 });
 postEntry({
-  entry_date: '2026-03-10', description: 'Hydro-Québec — mars', source_type: 'demo',
+  entry_date: '2026-03-10', description: 'Hydro-Québec - mars', source_type: 'demo',
   lines: [
     { account_id: A.hydro,    debit_cents: 65000 },
     { account_id: A.tps_recv, debit_cents: Math.round(65000 * 0.05) },
@@ -538,7 +538,7 @@ postEntry({
   ],
 });
 postEntry({
-  entry_date: '2026-03-10', description: 'Télécommunications — mars', source_type: 'demo',
+  entry_date: '2026-03-10', description: 'Télécommunications - mars', source_type: 'demo',
   lines: [
     { account_id: A.telecom,  debit_cents: 18500 },
     { account_id: A.tps_recv, debit_cents: Math.round(18500 * 0.05) },
@@ -547,7 +547,7 @@ postEntry({
   ],
 });
 postEntry({
-  entry_date: '2026-03-31', description: 'Frais bancaires + merchant fees — mars', source_type: 'demo',
+  entry_date: '2026-03-31', description: 'Frais bancaires + merchant fees - mars', source_type: 'demo',
   lines: [
     { account_id: A.bank_chg, debit_cents: 3200 },
     { account_id: A.cc_fees,  debit_cents: 53000 },
@@ -555,22 +555,22 @@ postEntry({
   ],
 });
 postEntry({
-  entry_date: '2026-03-31', description: 'Assurances (portion mensuelle) — mars', source_type: 'demo',
+  entry_date: '2026-03-31', description: 'Assurances (portion mensuelle) - mars', source_type: 'demo',
   lines: [
     { account_id: A.insurance, debit_cents: 28000 },
     { account_id: A.prepaid,   credit_cents: 28000 },
   ],
 });
 postEntry({
-  entry_date: '2026-03-31', description: 'Amortissement équipement — mars', source_type: 'demo',
+  entry_date: '2026-03-31', description: 'Amortissement équipement - mars', source_type: 'demo',
   lines: [
     { account_id: A.depreciation, debit_cents: 70833 },
     { account_id: A.equip,        credit_cents: 70833 },
   ],
 });
-// Pro fees (accountant — quarterly)
+// Pro fees (accountant - quarterly)
 postEntry({
-  entry_date: '2026-03-31', description: 'Honoraires comptable — Q1 2026', source_type: 'demo',
+  entry_date: '2026-03-31', description: 'Honoraires comptable - Q1 2026', source_type: 'demo',
   lines: [
     { account_id: A.pro_fees,  debit_cents: 120000 },
     { account_id: A.tps_recv,  debit_cents: Math.round(120000 * 0.05) },
@@ -580,7 +580,7 @@ postEntry({
 });
 // BalanceIQ licence
 postEntry({
-  entry_date: '2026-03-31', description: 'Logiciel BalanceIQ — abonnement Q1', source_type: 'demo',
+  entry_date: '2026-03-31', description: 'Logiciel BalanceIQ - abonnement Q1', source_type: 'demo',
   lines: [
     { account_id: A.it_sw,    debit_cents: 4200 },
     { account_id: A.tps_recv, debit_cents: Math.round(4200 * 0.05) },
@@ -589,7 +589,7 @@ postEntry({
   ],
 });
 postEntry({
-  entry_date: '2026-03-28', description: 'Paiement fournisseurs — mars', source_type: 'demo',
+  entry_date: '2026-03-28', description: 'Paiement fournisseurs - mars', source_type: 'demo',
   lines: [
     { account_id: A.ap,       debit_cents: 3400000 },
     { account_id: A.cash_ops, credit_cents: 3400000 },
@@ -597,7 +597,7 @@ postEntry({
 });
 // Inventory count adjustment
 postEntry({
-  entry_date: '2026-03-31', description: 'Ajustement inventaire physique — fin mars', source_type: 'demo',
+  entry_date: '2026-03-31', description: 'Ajustement inventaire physique - fin mars', source_type: 'demo',
   lines: [
     { account_id: A.cogs_food, debit_cents: 42000 },
     { account_id: A.inventory, credit_cents: 42000 },
@@ -771,7 +771,7 @@ if (!existingTax) {
     `INSERT INTO tax_periods (period_type, period_start, period_end, tps_collected, tvq_collected, tps_cti, tvq_rti, net_tps_owed, net_tvq_owed, status, notes, filed_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'filed', ?, ?)`
   ).run('quarterly','2026-01-01','2026-03-31', tpsCollected, tvqCollected, tpsCti, tvqRti, netTps, netTvq,
-    'Période démo Q1 2026 — générée par le semeur de données', '2026-04-20T10:00:00.000Z');
+    'Période démo Q1 2026 - générée par le semeur de données', '2026-04-20T10:00:00.000Z');
   console.log('  ✅ Q1 TPS/TVQ period saved and marked FILED');
 } else {
   console.log('  ℹ️  Q1 tax period already exists');
@@ -809,7 +809,7 @@ console.log(`  │  Total Capitaux propres:   $${totalEquity.toFixed(2).padStart
 console.log(`  │  Résultat net Q1:          $${netIncome.toFixed(2).padStart(12)}            │`);
 console.log(`  │  Passif + CP + RN:         $${(totalLiab + totalEquity + netIncome).toFixed(2).padStart(12)}            │`);
 const balanced = Math.abs(totalAssets - (totalLiab + totalEquity + netIncome)) < 0.05;
-console.log(`  │  ${balanced ? '✅ ÉQUILIBRÉ' : '❌ DÉSÉQUILIBRÉ — vérifiez les écritures'}`);
+console.log(`  │  ${balanced ? '✅ ÉQUILIBRÉ' : '❌ DÉSÉQUILIBRÉ - vérifiez les écritures'}`);
 console.log(`  └──────────────────────────────────────────────────────────┘\n`);
 
 // Save snapshot
@@ -841,7 +841,7 @@ console.log(`    Supplier bills:   ${bills.length}`);
 console.log(`    Bank txns:        ${bankRows.length}`);
 console.log(`    Periods closed:   Jan 2026, Feb 2026`);
 console.log(`    Period open:      Mar 2026`);
-console.log(`    Tax period:       Q1 2026 (TPS/TVQ) — FILED`);
+console.log(`    Tax period:       Q1 2026 (TPS/TVQ) - FILED`);
 console.log(`    Balance sheet:    2026-03-31 snapshot saved`);
 console.log('────────────────────────────────────────────────────────────\n');
 console.log('    Open BalanceIQ → Grand Livre → Bilan to verify.');

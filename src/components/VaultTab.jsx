@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 
 const T = {
   fr: {
+    loading: 'Chargement...',
     title: 'Coffre-fort des pièces justificatives',
-    subtitle: 'Stockage local sécurisé — 6 ans de rétention conformément à la législation fiscale',
+    subtitle: 'Stockage local sécurisé - 6 ans de rétention conformément à la législation fiscale',
     search: 'Rechercher dans le coffre-fort...',
     attach: 'Attacher un document',
     openFolder: 'Ouvrir le dossier',
@@ -50,8 +51,9 @@ const T = {
     reassignOk: 'Document classé.',
   },
   en: {
+    loading: 'Loading...',
     title: 'Source Document Vault',
-    subtitle: 'Local secure storage — 6-year retention as required by tax law',
+    subtitle: 'Local secure storage - 6-year retention as required by tax law',
     search: 'Search the vault...',
     attach: 'Attach a document',
     openFolder: 'Open folder',
@@ -108,7 +110,7 @@ const ENTITY_LABELS = (t) => ({
 });
 
 function fmtSize(bytes) {
-  if (!bytes) return '—';
+  if (!bytes) return '-';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
@@ -267,7 +269,7 @@ export default function VaultTab({ lang = 'fr', canUsePro = false, onUpgrade }) 
       {/* Documents list */}
       <div style={{ background: s.card, border: `1px solid ${s.cardBorder}`, borderRadius: 9, overflow: 'hidden', marginBottom: 16 }}>
         {loading ? (
-          <div style={{ padding: 24, textAlign: 'center', color: s.textMuted, fontSize: 12 }}>Chargement…</div>
+          <div style={{ padding: 24, textAlign: 'center', color: s.textMuted, fontSize: 12 }}>{t.loading}</div>
         ) : docs.length === 0 ? (
           <div style={{ padding: 24, textAlign: 'center', color: s.textMuted, fontSize: 12 }}>
             {query ? t.noResults : t.noDocuments}
@@ -293,7 +295,7 @@ export default function VaultTab({ lang = 'fr', canUsePro = false, onUpgrade }) 
                     <span style={{ fontSize: 9.5, background: 'rgba(148,163,184,0.1)', padding: '2px 7px', borderRadius: 10 }}>{entityLabel(doc)}</span>
                     {doc.entity_id > 0 && <span style={{ marginLeft: 4, fontSize: 10, color: s.textMuted }}>#{doc.entity_id}</span>}
                   </td>
-                  <td style={{ padding: '8px 12px', color: s.textMuted, whiteSpace: 'nowrap' }}>{doc.created_at?.slice(0, 10) || '—'}</td>
+                  <td style={{ padding: '8px 12px', color: s.textMuted, whiteSpace: 'nowrap' }}>{doc.created_at?.slice(0, 10) || '-'}</td>
                   <td style={{ padding: '8px 12px', color: s.textMuted, fontVariantNumeric: 'tabular-nums' }}>{fmtSize(doc.size_bytes)}</td>
                   <td style={{ padding: '8px 12px' }}>
                     <div style={{ display: 'flex', gap: 4 }}>
@@ -367,8 +369,8 @@ export default function VaultTab({ lang = 'fr', canUsePro = false, onUpgrade }) 
       {/* Privacy note */}
       <div style={{ marginTop: 12, padding: '8px 12px', borderRadius: 6, background: 'rgba(14,165,233,0.06)', border: '1px solid rgba(14,165,233,0.12)', fontSize: 10.5, color: '#7dd3fc' }}>
         🔒 {lang === 'fr'
-          ? 'Les documents sont stockés localement sur votre ordinateur. La synchronisation cloud (Pro) utilise un chiffrement côté serveur AES-256 — BalanceIQ peut déchiffrer vos documents pour les synchroniser. Ce n\'est pas du chiffrement de bout en bout.'
-          : 'Documents are stored locally on your computer. Cloud sync (Pro) uses server-side AES-256 encryption — BalanceIQ can decrypt your documents for sync. This is not end-to-end encryption.'}
+          ? 'Les documents sont stockés localement sur votre ordinateur. La synchronisation cloud (Pro) utilise un chiffrement côté serveur AES-256 - BalanceIQ peut déchiffrer vos documents pour les synchroniser. Ce n\'est pas du chiffrement de bout en bout.'
+          : 'Documents are stored locally on your computer. Cloud sync (Pro) uses server-side AES-256 encryption - BalanceIQ can decrypt your documents for sync. This is not end-to-end encryption.'}
       </div>
     </div>
   );

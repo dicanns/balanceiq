@@ -44,7 +44,7 @@ const UI = {
     edit:          'Modifier',
     archive:       'Archiver',
     restore:       'Restaurer',
-    archiveConfirm:(num, name) => `Archiver le compte ${num} — ${name} ?`,
+    archiveConfirm:(num, name) => `Archiver le compte ${num} - ${name} ?`,
     importOk:      (c, s) => `Import: ${c} créé(s), ${s} ignoré(s)`,
     requiredErr:   'Numéro et nom (FR) requis.',
     saveErr:       'Erreur lors de la sauvegarde.',
@@ -83,7 +83,7 @@ const UI = {
     edit:          'Edit',
     archive:       'Archive',
     restore:       'Restore',
-    archiveConfirm:(num, name) => `Archive account ${num} — ${name}?`,
+    archiveConfirm:(num, name) => `Archive account ${num} - ${name}?`,
     importOk:      (c, s) => `Import: ${c} created, ${s} skipped`,
     requiredErr:   'Account number and name (FR) are required.',
     saveErr:       'Error saving account.',
@@ -114,7 +114,7 @@ function AccountModal({ account, lang, onSave, onClose, C = { text:'#e2e8f0', su
     if (!form.account_number.trim() || !form.name_fr.trim()) {
       setError(t.requiredErr); return;
     }
-    if (!window.api?.coa) { setError('API non disponible — redémarrez l\'application.'); return; }
+    if (!window.api?.coa) { setError('API non disponible - redémarrez l\'application.'); return; }
     try {
       if (isEdit && account.is_system) {
         // Only the label may change on a built-in account. The number and type are

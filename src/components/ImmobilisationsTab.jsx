@@ -33,11 +33,11 @@ const T = {
     upgradeBtn: 'Passer a Pro',
     halfYearNote: 'Regle de la demi-annee appliquee a la premiere annee',
     classHelp: {
-      '8':  'Classe 8 — Equipement divers (20% degressif)',
-      '10': 'Classe 10 — Vehicules (30% degressif)',
-      '12': 'Classe 12 — Petits outils / uniformes (100%)',
-      '13': 'Classe 13 — Ameliorations locatives (lineaire)',
-      '50': 'Classe 50 — Materiel informatique (55% degressif)',
+      '8':  'Classe 8 - Equipement divers (20% degressif)',
+      '10': 'Classe 10 - Vehicules (30% degressif)',
+      '12': 'Classe 12 - Petits outils / uniformes (100%)',
+      '13': 'Classe 13 - Ameliorations locatives (lineaire)',
+      '50': 'Classe 50 - Materiel informatique (55% degressif)',
     },
   },
   en: {
@@ -72,11 +72,11 @@ const T = {
     upgradeBtn: 'Upgrade to Pro',
     halfYearNote: 'Half-year rule applied in first year',
     classHelp: {
-      '8':  'Class 8 — Misc equipment (20% declining)',
-      '10': 'Class 10 — Vehicles (30% declining)',
-      '12': 'Class 12 — Small tools / uniforms (100%)',
-      '13': 'Class 13 — Leasehold improvements (straight-line)',
-      '50': 'Class 50 — Computer equipment (55% declining)',
+      '8':  'Class 8 - Misc equipment (20% declining)',
+      '10': 'Class 10 - Vehicles (30% declining)',
+      '12': 'Class 12 - Small tools / uniforms (100%)',
+      '13': 'Class 13 - Leasehold improvements (straight-line)',
+      '50': 'Class 50 - Computer equipment (55% declining)',
     },
   },
 };

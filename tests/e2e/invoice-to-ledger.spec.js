@@ -1,5 +1,5 @@
 /**
- * E2E — Invoice to General Ledger (Playwright)
+ * E2E - Invoice to General Ledger (Playwright)
  *
  * Covers the full chain: create invoice in UI -> finalize -> verify GL entry
  * with correct debit AR + credits Revenue/TPS/TVQ.

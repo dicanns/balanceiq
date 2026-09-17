@@ -1,5 +1,5 @@
 /**
- * NETWORK-SCORE-001  networkScore.js — pure function correctness
+ * NETWORK-SCORE-001  networkScore.js - pure function correctness
  * NETWORK-SCORE-002  networkScoreSave / networkScoreGet / networkScoreList DB round-trips
  */
 import { describe, it, expect, beforeEach } from 'vitest';

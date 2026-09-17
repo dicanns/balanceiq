@@ -2,12 +2,12 @@
  * TRANSLATION-AUDIT-001  Accountant-friendly terminology in FR + EN
  *
  * Verifies that accounting-facing labels use formal accountant vocabulary,
- * not operator shorthand. No behavior change — vocabulary only.
+ * not operator shorthand. No behavior change - vocabulary only.
  */
 import { describe, it, expect } from 'vitest';
 import { FR, EN } from '../../i18n/translations.js';
 
-describe('TRANSLATION-AUDIT-001 AR aging — Comptes clients / Accounts Receivable', () => {
+describe('TRANSLATION-AUDIT-001 AR aging - Comptes clients / Accounts Receivable', () => {
   it('FR aging title is Comptes clients (not Âge des comptes)', () => {
     expect(FR.agingTitle).toBe('Comptes clients');
   });
@@ -17,7 +17,7 @@ describe('TRANSLATION-AUDIT-001 AR aging — Comptes clients / Accounts Receivab
   });
 });
 
-describe('TRANSLATION-AUDIT-001 P&L revenue — Revenus / Revenue', () => {
+describe('TRANSLATION-AUDIT-001 P&L revenue - Revenus / Revenue', () => {
   it('FR P&L revenue label is Revenus (not Ventes)', () => {
     expect(FR.plRevenue).toBe('Revenus');
   });
@@ -27,7 +27,7 @@ describe('TRANSLATION-AUDIT-001 P&L revenue — Revenus / Revenue', () => {
   });
 });
 
-describe('TRANSLATION-AUDIT-001 GL account mapping — accountant labels', () => {
+describe('TRANSLATION-AUDIT-001 GL account mapping - accountant labels', () => {
   it('FR GL revenue uses Revenus (not Ventes)', () => {
     expect(FR.cfgGLRevenue).toMatch(/[Rr]evenus/);
     expect(FR.cfgGLRevenue).not.toMatch(/^Ventes/);
@@ -46,7 +46,7 @@ describe('TRANSLATION-AUDIT-001 GL account mapping — accountant labels', () =>
   });
 });
 
-describe('TRANSLATION-AUDIT-001 CRA / ARC — full agency name', () => {
+describe('TRANSLATION-AUDIT-001 CRA / ARC - full agency name', () => {
   it('FR tax-exempt no-doc warning uses ARC not bare CRA', () => {
     expect(FR.taxExemptNoDoc).toContain('ARC');
     expect(FR.taxExemptNoDoc).toContain('Agence du revenu du Canada');
@@ -58,7 +58,7 @@ describe('TRANSLATION-AUDIT-001 CRA / ARC — full agency name', () => {
   });
 });
 
-describe('TRANSLATION-AUDIT-001 fiscal year — exercice / Fiscal year', () => {
+describe('TRANSLATION-AUDIT-001 fiscal year - exercice / Fiscal year', () => {
   it('FR fiscal year start uses exercice (not année fiscale)', () => {
     expect(FR.yearEndFiscalStart).toMatch(/exercice/i);
   });

@@ -3,7 +3,7 @@
  * PROVINCE-TAX-002  ON HST
  * PROVINCE-TAX-003  BC GST+PST
  * PROVINCE-TAX-004  fallback to QC when supplier has no province assigned
- * PROVINCE-TAX-005  reproducibility — tax_calc_log captures province profile id,
+ * PROVINCE-TAX-005  reproducibility - tax_calc_log captures province profile id,
  *                   historical results unaffected by rate changes
  */
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -211,7 +211,7 @@ describe('PROVINCE-TAX-005 reproducibility', () => {
     db.prepare('UPDATE province_tax_profiles SET gst_rate=0.10 WHERE province_code=?').run('QC');
 
     const row = db.prepare('SELECT * FROM tax_calc_log WHERE calculation_type=?').get('historical_test');
-    // The logged result was computed at the OLD rate — should still be 1498 (500 + 998)
+    // The logged result was computed at the OLD rate - should still be 1498 (500 + 998)
     expect(row.result).toBe(1498);
     expect(row.province_tax_profile_id).toBe(qcId);
   });

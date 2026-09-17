@@ -1,4 +1,4 @@
-// BalanceIQ — Learning Engine
+// BalanceIQ - Learning Engine
 // Runs silently in the background after data saves (10s debounce).
 // Never blocks the UI. All errors are caught and logged to console only.
 // TODO: add rush_hour pattern when POS hourly data is available

@@ -1,32 +1,32 @@
-# BalanceIQ — Changelog & Rollback Reference
+# BalanceIQ - Changelog & Rollback Reference
 
 This file documents every meaningful change made to the codebase, in reverse-chronological order.
 Each entry includes what changed, why, and exactly how to roll it back if needed.
 
 ---
 
-## v1.22.6 — March 31, 2026
+## v1.22.6 - March 31, 2026
 
 ### Fixed
-- **SQLite crash on launch (NODE_MODULE_VERSION mismatch)** — CI builds were packaging `better-sqlite3.node` compiled for system Node.js instead of Electron 31's ABI (NMV 125 vs 141). Added `npx @electron/rebuild -f -w better-sqlite3` to both Mac and Windows CI jobs before `electron-builder`. This fixes the "Impossible d'initialiser la base de données SQLite" crash that affected released builds.
+- **SQLite crash on launch (NODE_MODULE_VERSION mismatch)** - CI builds were packaging `better-sqlite3.node` compiled for system Node.js instead of Electron 31's ABI (NMV 125 vs 141). Added `npx @electron/rebuild -f -w better-sqlite3` to both Mac and Windows CI jobs before `electron-builder`. This fixes the "Impossible d'initialiser la base de données SQLite" crash that affected released builds.
 
 ---
 
-## v1.22.5 — March 31, 2026
+## v1.22.5 - March 31, 2026
 
 ### Fixed
-- **NaN data corruption in 3 financial calculations** — `calcManualTotal`, `calcInvoiceLine`, and `calcLabourCost` used `||0` guard which passes truthy non-numeric strings (e.g. `'abc'`) unchanged, producing `NaN` in arithmetic. Replaced with `parseFloat + Number.isFinite` helper `n()` so any non-numeric input safely returns `0`.
-- **HTML injection in PDF builders** — User-supplied strings (client names, notes, document numbers, addresses) were interpolated directly into raw HTML template literals used by `BrowserWindow.loadFile()`. Added `escapeHtml()` helper and applied it to all 8 PDF/report builder functions in `App.jsx` and `flashReport.js`.
+- **NaN data corruption in 3 financial calculations** - `calcManualTotal`, `calcInvoiceLine`, and `calcLabourCost` used `||0` guard which passes truthy non-numeric strings (e.g. `'abc'`) unchanged, producing `NaN` in arithmetic. Replaced with `parseFloat + Number.isFinite` helper `n()` so any non-numeric input safely returns `0`.
+- **HTML injection in PDF builders** - User-supplied strings (client names, notes, document numbers, addresses) were interpolated directly into raw HTML template literals used by `BrowserWindow.loadFile()`. Added `escapeHtml()` helper and applied it to all 8 PDF/report builder functions in `App.jsx` and `flashReport.js`.
 
 ### Added
-- **10 MB storage hard cap + 500-character field truncation** — `storageSet()` in `database.js` now rejects payloads over 10 MB and recursively truncates known free-text fields (notes, names, addresses, etc.) to 500 characters before writing. Prevents pathological inputs from bloating or corrupting the SQLite store.
-- **101 chaos/edge-case tests** — New `src/__tests__/chaos/userBehavior.test.js` covers input validation (negatives, overflow, non-numeric strings, XSS, emoji, 500-char fields), race conditions (double close-out, concurrent edits), boundary conditions ($0 sales, 365 days, 100-line invoices), and storage-layer enforcement. Run with `npm run test:chaos` or included automatically in `npm test`.
+- **10 MB storage hard cap + 500-character field truncation** - `storageSet()` in `database.js` now rejects payloads over 10 MB and recursively truncates known free-text fields (notes, names, addresses, etc.) to 500 characters before writing. Prevents pathological inputs from bloating or corrupting the SQLite store.
+- **101 chaos/edge-case tests** - New `src/__tests__/chaos/userBehavior.test.js` covers input validation (negatives, overflow, non-numeric strings, XSS, emoji, 500-char fields), race conditions (double close-out, concurrent edits), boundary conditions ($0 sales, 365 days, 100-line invoices), and storage-layer enforcement. Run with `npm run test:chaos` or included automatically in `npm test`.
 
 ---
 
-## Session 4 — March 7, 2026
+## Session 4 - March 7, 2026
 
-### [4-A] Gas price scraper — IPC handler in main process
+### [4-A] Gas price scraper - IPC handler in main process
 
 **What changed:** Added a real gas price scraper replacing the `alert()` placeholder.
 
@@ -38,11 +38,11 @@ Each entry includes what changed, why, and exactly how to roll it back if needed
 
 **Why:** The "Vérifier le prix" button previously did nothing. Wired it to fetch live gas price.
 
-**Source decision:** Attempted Régie de l'énergie QC first — confirmed JS-rendered (no price data in static HTML). Switched to CAA Canada (`https://www.caa.ca/gas-prices/`) which publishes today's national average in static HTML inside `div.national_single_price` (e.g. `"150.5/L"` = 1.505 $/L).
+**Source decision:** Attempted Régie de l'énergie QC first - confirmed JS-rendered (no price data in static HTML). Switched to CAA Canada (`https://www.caa.ca/gas-prices/`) which publishes today's national average in static HTML inside `div.national_single_price` (e.g. `"150.5/L"` = 1.505 $/L).
 
 ---
 
-#### `main.js` — what was added
+#### `main.js` - what was added
 
 Added `net` to the Electron require at line 1:
 ```js
@@ -81,13 +81,13 @@ ipcMain.handle('gas:getPrice', async () => {
           if (priceCents && priceCents > 80 && priceCents < 350) {
             resolve({ price: (priceCents / 100).toFixed(3) });
           } else {
-            resolve({ error: 'Prix introuvable — vérifier la connexion internet.' });
+            resolve({ error: 'Prix introuvable - vérifier la connexion internet.' });
           }
         } catch (err) { resolve({ error: 'Erreur de traitement de la page.' }); }
       });
       response.on('error', () => resolve({ error: 'Erreur réseau.' }));
     });
-    req.on('error', () => resolve({ error: 'Erreur réseau — vérifier la connexion internet.' }));
+    req.on('error', () => resolve({ error: 'Erreur réseau - vérifier la connexion internet.' }));
     req.end();
   });
 });
@@ -97,7 +97,7 @@ ipcMain.handle('gas:getPrice', async () => {
 
 ---
 
-#### `preload.js` — what was added
+#### `preload.js` - what was added
 
 ```js
 // BEFORE:
@@ -124,7 +124,7 @@ contextBridge.exposeInMainWorld('api', {
 
 ---
 
-#### `src/App.jsx` — what was added
+#### `src/App.jsx` - what was added
 
 **1. Two new state variables** (added after `const [editingSupName,...]`):
 ```js
@@ -132,7 +132,7 @@ const [gasCheckLoading,setGasCheckLoading]=useState(false);
 const [gasCheckMsg,setGasCheckMsg]=useState(null);
 ```
 
-**2. New `upd` position** — `upd` was moved up (before `checkGasPrice`) to avoid a temporal dead zone error that caused a blank screen. Original position was after `saveApiCfg`. The `const upd=useCallback(...)` line itself is unchanged.
+**2. New `upd` position** - `upd` was moved up (before `checkGasPrice`) to avoid a temporal dead zone error that caused a blank screen. Original position was after `saveApiCfg`. The `const upd=useCallback(...)` line itself is unchanged.
 
 **3. New `checkGasPrice` function** (added after `upd`):
 ```js
@@ -144,17 +144,17 @@ const checkGasPrice=useCallback(async()=>{
       upd(selectedDate,"gas",result.price);
       setGasCheckMsg({ok:true,text:`✓ Prix mis à jour: ${Number(result.price).toFixed(3)} $/L`});
     }else{
-      setGasCheckMsg({ok:false,text:"Impossible de vérifier — entrer le prix manuellement"});
+      setGasCheckMsg({ok:false,text:"Impossible de vérifier - entrer le prix manuellement"});
     }
   }catch(e){
-    setGasCheckMsg({ok:false,text:"Impossible de vérifier — entrer le prix manuellement"});
+    setGasCheckMsg({ok:false,text:"Impossible de vérifier - entrer le prix manuellement"});
   }finally{
     setGasCheckLoading(false);
   }
 },[selectedDate,upd]);
 ```
 
-**4. Button replacement** — the old placeholder button:
+**4. Button replacement** - the old placeholder button:
 ```js
 // BEFORE (single line):
 <button onClick={()=>alert("Disponible lors de la prochaine mise à jour.")}
@@ -177,44 +177,44 @@ const checkGasPrice=useCallback(async()=>{
 
 ---
 
-#### `package.json` / `node_modules` — dependency added
+#### `package.json` / `node_modules` - dependency added
 
 ```
 npm install cheerio
 ```
 Adds `cheerio` and its dependencies (~21 packages) to `node_modules` and `package-lock.json`.
 
-**To roll back:** `npm uninstall cheerio` — also remove the `gas:getPrice` IPC handler first or it will throw on startup.
+**To roll back:** `npm uninstall cheerio` - also remove the `gas:getPrice` IPC handler first or it will throw on startup.
 
 ---
 
-### [4-B] Bug fix — blank screen on startup
+### [4-B] Bug fix - blank screen on startup
 
 **What happened:** `checkGasPrice` was initially placed before `upd` in the component body. Since both use `const` (no hoisting), referencing `upd` in the deps array `[selectedDate, upd]` before it was declared threw a `ReferenceError` during render, causing a blank white screen.
 
-**Fix:** Moved the `upd` declaration above `checkGasPrice`. No logic changed — just ordering.
+**Fix:** Moved the `upd` declaration above `checkGasPrice`. No logic changed - just ordering.
 
 **Lesson:** In a React component, any `useCallback`/`useMemo` that references another hook's return value in its deps array must come *after* that hook in the file.
 
 ---
 
-## Session 4 (continued) — March 7, 2026
+## Session 4 (continued) - March 7, 2026
 
-### [4-C] Electron-builder — icons + installers
+### [4-C] Electron-builder - icons + installers
 
 **Files created:**
-- `build/icon.png` — 1024×1024 source PNG
-- `build/icon.icns` — macOS icon (10 sizes via `iconutil`)
-- `build/icon.ico` — Windows icon (7 sizes via Pillow)
-- `build/make-icons.py` — icon generation script (re-run if you need to regenerate)
+- `build/icon.png` - 1024×1024 source PNG
+- `build/icon.icns` - macOS icon (10 sizes via `iconutil`)
+- `build/icon.ico` - Windows icon (7 sizes via Pillow)
+- `build/make-icons.py` - icon generation script (re-run if you need to regenerate)
 
 **Files modified:**
-- `package.json` — build config updated
+- `package.json` - build config updated
 
 **Outputs (in `release/`):**
-- `release/BalanceIQ-1.0.0.dmg` — Mac Intel x64 (~103 MB)
-- `release/BalanceIQ-1.0.0-arm64.dmg` — Mac Apple Silicon (~97 MB)
-- `release/BalanceIQ Setup 1.0.0.exe` — Windows x64 NSIS installer (~79 MB)
+- `release/BalanceIQ-1.0.0.dmg` - Mac Intel x64 (~103 MB)
+- `release/BalanceIQ-1.0.0-arm64.dmg` - Mac Apple Silicon (~97 MB)
+- `release/BalanceIQ Setup 1.0.0.exe` - Windows x64 NSIS installer (~79 MB)
 
 **To rebuild icons:** `python3 build/make-icons.py`
 **To rebuild Mac:** `npm run build:mac`
@@ -223,10 +223,10 @@ Adds `cheerio` and its dependencies (~21 packages) to `node_modules` and `packag
 
 **Key decisions:**
 - `release/` directory used for all installer output (separate from `dist/` which is Vite's output)
-- `build:win` does NOT re-run `vite build` — it reuses the existing `dist/` built by `build:mac`
-- `asar: true` + `asarUnpack: ["node_modules/better-sqlite3/**/*"]` — native .node file unpacked from ASAR so it can be loaded by require() at runtime
-- better-sqlite3 prebuilt binaries are downloaded automatically by electron-builder for each platform (darwin x64/arm64, win32 x64) — no cross-compilation needed
-- No code signing configured — apps are unsigned. macOS will show a Gatekeeper warning on first launch (right-click → Open to bypass). For distribution, add an Apple Developer ID certificate.
+- `build:win` does NOT re-run `vite build` - it reuses the existing `dist/` built by `build:mac`
+- `asar: true` + `asarUnpack: ["node_modules/better-sqlite3/**/*"]` - native .node file unpacked from ASAR so it can be loaded by require() at runtime
+- better-sqlite3 prebuilt binaries are downloaded automatically by electron-builder for each platform (darwin x64/arm64, win32 x64) - no cross-compilation needed
+- No code signing configured - apps are unsigned. macOS will show a Gatekeeper warning on first launch (right-click → Open to bypass). For distribution, add an Apple Developer ID certificate.
 
 **electron-builder config additions to package.json `"build"` section:**
 ```json
@@ -276,32 +276,32 @@ Adds `cheerio` and its dependencies (~21 packages) to `node_modules` and `packag
 
 ---
 
-## Session 3 — March 6, 2026
+## Session 3 - March 6, 2026
 
 ### [3-A] Electron project scaffolded and working
 
 **Files created:**
-- `main.js` — Electron main process, IPC storage handlers
-- `preload.js` — contextBridge exposing `window.api.storage`
-- `src/App.jsx` — React app migrated from `app.jsx`
-- `src/index.html` — entry HTML
-- `src/index.jsx` — React entry point
-- `src/db/database.js` — SQLite wrapper using `better-sqlite3`
-- `vite.config.js` — Vite config (root: src, outDir: ../dist)
-- `package.json` — all dependencies declared
+- `main.js` - Electron main process, IPC storage handlers
+- `preload.js` - contextBridge exposing `window.api.storage`
+- `src/App.jsx` - React app migrated from `app.jsx`
+- `src/index.html` - entry HTML
+- `src/index.jsx` - React entry point
+- `src/db/database.js` - SQLite wrapper using `better-sqlite3`
+- `vite.config.js` - Vite config (root: src, outDir: ../dist)
+- `package.json` - all dependencies declared
 
 **Key decisions:**
 - `better-sqlite3` v12+ required (v9 is incompatible with Electron 31)
 - Native rebuild needed: `npx electron-rebuild -f -w better-sqlite3`
 - Dev: `npm start` runs Vite + Electron concurrently via `wait-on`
 
-### [3-B] Branding — "Dic Ann's Ops" → "BalanceIQ"
+### [3-B] Branding - "Dic Ann's Ops" → "BalanceIQ"
 
 - App header text changed to "BalanceIQ"
 - Icon letters changed from "DA" to "BIQ"
 - Window title set to "BalanceIQ" in `createWindow()`
 
-### [3-C] Storage migration — `window.storage` → SQLite IPC
+### [3-C] Storage migration - `window.storage` → SQLite IPC
 
 All `window.storage.get(key)` / `window.storage.set(key, value)` calls in `App.jsx` replaced with:
 - `window.api.storage.get(key)` → IPC `storage:get`
@@ -311,21 +311,21 @@ SQLite table: `kv_store(key TEXT PRIMARY KEY, value TEXT)`
 DB file location: `app.getPath('userData')/balanceiq.db`
 
 Storage keys in use:
-- `dicann-v7` — all daily data
-- `dicann-roster` — cashier names
-- `dicann-emp-roster` — employee roster with wages
-- `dicann-suppliers-v2` — supplier list
-- `dicann-api-config` — API keys/config
-- `dicann-pl-{YYYY-MM}` — monthly P&L (one key per month)
-- `balanceiq-theme` — light/dark preference
+- `dicann-v7` - all daily data
+- `dicann-roster` - cashier names
+- `dicann-emp-roster` - employee roster with wages
+- `dicann-suppliers-v2` - supplier list
+- `dicann-api-config` - API keys/config
+- `dicann-pl-{YYYY-MM}` - monthly P&L (one key per month)
+- `balanceiq-theme` - light/dark preference
 
 ---
 
-## Sessions 1–2 — Pre-Electron (prototype in Claude.ai artifacts)
+## Sessions 1–2 - Pre-Electron (prototype in Claude.ai artifacts)
 
 All feature development happened in the browser prototype (`app.jsx`).
 That file is preserved at `/Users/anthonyzammit/balanceiq/app.jsx` as the original reference.
-Do not delete it — it is the source of truth for all business logic.
+Do not delete it - it is the source of truth for all business logic.
 
 ---
 
@@ -340,5 +340,5 @@ Do not delete it — it is the source of truth for all business logic.
 **The safest full rollback** for session 4 is:
 1. Restore `main.js` to session 3 state (remove `net` + `gas:getPrice` handler)
 2. Restore `preload.js` to session 3 state (remove `gas` block)
-3. Restore `App.jsx` changes (remove state, function, button — swap back placeholder)
+3. Restore `App.jsx` changes (remove state, function, button - swap back placeholder)
 4. Run `npm uninstall cheerio`

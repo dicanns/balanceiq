@@ -1,4 +1,4 @@
-// POS OAuth bounce page — receives code from Square/Clover/Shopify and
+// POS OAuth bounce page - receives code from Square/Clover/Shopify and
 // redirects to the balanceiq:// deep link so Electron can handle the callback.
 Deno.serve(async (req) => {
   const url = new URL(req.url);
@@ -13,7 +13,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  // No code — show a simple error page
+  // No code - show a simple error page
   const rawError = url.searchParams.get('error_description') || url.searchParams.get('error') || 'Unknown error';
   const error = rawError.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
   return new Response(

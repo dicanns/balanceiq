@@ -86,9 +86,9 @@ function insertApproval(db, sessionId, { stage = 'approved', actor_name = 'Manag
 describe('EXCEPTION-001 detectCashierVariancePattern', () => {
   it('flags cashiers above 30% rate with >= 5 sessions', () => {
     const summary = [
-      { cashier_name: 'Alice', total_closures: 10, variance_closures: 4 }, // 40% — flag
-      { cashier_name: 'Bob',   total_closures: 10, variance_closures: 2 }, // 20% — ok
-      { cashier_name: 'Carol', total_closures: 4,  variance_closures: 3 }, // < MIN_SESSIONS — skip
+      { cashier_name: 'Alice', total_closures: 10, variance_closures: 4 }, // 40% - flag
+      { cashier_name: 'Bob',   total_closures: 10, variance_closures: 2 }, // 20% - ok
+      { cashier_name: 'Carol', total_closures: 4,  variance_closures: 3 }, // < MIN_SESSIONS - skip
     ];
     const result = detectCashierVariancePattern(summary);
     expect(result).toHaveLength(1);
@@ -150,8 +150,8 @@ describe('EXCEPTION-001 detectRegisterVariancePattern', () => {
 describe('EXCEPTION-001 detectDayOfWeekPattern', () => {
   it('flags days above 50% rate with >= 4 samples', () => {
     const summary = [
-      { dow: 5, total_closures: 6, variance_closures: 4 }, // Friday, 67% — flag
-      { dow: 1, total_closures: 6, variance_closures: 2 }, // Monday, 33% — ok
+      { dow: 5, total_closures: 6, variance_closures: 4 }, // Friday, 67% - flag
+      { dow: 1, total_closures: 6, variance_closures: 2 }, // Monday, 33% - ok
       { dow: 0, total_closures: 3, variance_closures: 3 }, // Sunday, < DOW_MIN_SAMPLES
     ];
     const result = detectDayOfWeekPattern(summary);
@@ -282,8 +282,8 @@ describe('EXCEPTION-002 closeExceptionPatterns DB function', () => {
   it('counts variance closures above $5 threshold per cashier', () => {
     const sid1 = insertSession(db, { date_key: '2026-04-10' });
     const sid2 = insertSession(db, { date_key: '2026-04-11' });
-    insertClosure(db, sid1, { cashier_name: 'Alice', register_key: 'R1', variance_cents: 600 }); // > 500 — counts
-    insertClosure(db, sid2, { cashier_name: 'Alice', register_key: 'R1', variance_cents: 200 }); // <= 500 — no
+    insertClosure(db, sid1, { cashier_name: 'Alice', register_key: 'R1', variance_cents: 600 }); // > 500 - counts
+    insertClosure(db, sid2, { cashier_name: 'Alice', register_key: 'R1', variance_cents: 200 }); // <= 500 - no
 
     const result = closeExceptionPatterns({ dateFrom: '2026-04-01', dateTo: '2026-04-30' }, db);
     const alice = result.cashierSummary.find(r => r.cashier_name === 'Alice');

@@ -1,5 +1,5 @@
 // ── POS CONFIGURATION ──────────────────────────────────────────────────────
-// Public credentials only — app secrets stay in main.js (main process only).
+// Public credentials only - app secrets stay in main.js (main process only).
 // isDev switches URLs between sandbox and production automatically.
 
 const isDev = import.meta.env?.DEV ?? true;
@@ -40,7 +40,7 @@ export const POS_CONFIG = {
   },
   maitred: {
     name: 'Maitre D\'',
-    // API key + server URL — no OAuth. User provides their on-premises server URL.
+    // API key + server URL - no OAuth. User provides their on-premises server URL.
     // Full API docs: https://docs.maitredpos.com
     authType: 'apikey',
     apiKeyOnly: true, // No OAuth flow

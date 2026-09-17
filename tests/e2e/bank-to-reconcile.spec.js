@@ -1,5 +1,5 @@
 /**
- * E2E — Bank Import to Reconciliation Close (Playwright)
+ * E2E - Bank Import to Reconciliation Close (Playwright)
  *
  * Covers: CSV import -> categorize row -> accept suggestion -> unmatched row blocks close
  * -> match last row -> reconciliation closes and period locks.
@@ -89,7 +89,7 @@ test.describe('Bank import to reconciliation close', () => {
     await rapBtn.click();
     await window.waitForTimeout(400);
 
-    // Attempt to close reconciliation — should show an error/blocked state
+    // Attempt to close reconciliation - should show an error/blocked state
     const closeBtn = await window.$('button:has-text("Cloturer"), button:has-text("Close")');
     if (!closeBtn) { test.skip(); return; }
     await closeBtn.click();

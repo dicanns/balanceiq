@@ -1,5 +1,5 @@
 /**
- * BalanceIQ — Chaos / User-Abuse Tests
+ * BalanceIQ - Chaos / User-Abuse Tests
  *
  * Simulates a user trying to break things:
  *   • Input validation (negatives, overflow, XSS, emoji, length bombs)
@@ -112,12 +112,12 @@ afterEach(() => { db.close(); });
 
 
 // ═════════════════════════════════════════════════════════════════════════════
-// INPUT VALIDATION — NUMERIC FIELDS
+// INPUT VALIDATION - NUMERIC FIELDS
 // ═════════════════════════════════════════════════════════════════════════════
 
-describe('Input validation — negative numbers in every numeric field', () => {
+describe('Input validation - negative numbers in every numeric field', () => {
   it('tax on negative sales returns negative (signals upstream validation needed)', () => {
-    // calcTPS/TVQ propagate negatives — UI must reject before calling
+    // calcTPS/TVQ propagate negatives - UI must reject before calling
     expect(calcTPS(-500)).toBe(-25);
     // Math.round(-49.875 * 100) = -4987 (JS rounds -0.5 toward +Infinity) → -49.87, not -49.88
     expect(calcTVQ(-500)).toBe(-49.87);
@@ -162,7 +162,7 @@ describe('Input validation — negative numbers in every numeric field', () => {
   });
 });
 
-describe('Input validation — letters / non-numeric in numeric fields', () => {
+describe('Input validation - letters / non-numeric in numeric fields', () => {
   it('parseNumericField rejects pure text strings', () => {
     expect(parseNumericField('abc')).toBe(null);
     expect(parseNumericField('one hundred')).toBe(null);
@@ -199,7 +199,7 @@ describe('Input validation — letters / non-numeric in numeric fields', () => {
   });
 });
 
-describe('Input validation — overflow values (999999999.99 in sales)', () => {
+describe('Input validation - overflow values (999999999.99 in sales)', () => {
   const OVERFLOW = 999_999_999.99;
 
   it('calcTPS on overflow does not return Infinity or NaN', () => {
@@ -236,7 +236,7 @@ describe('Input validation — overflow values (999999999.99 in sales)', () => {
   });
 });
 
-describe('Input validation — too many decimal places (0.001)', () => {
+describe('Input validation - too many decimal places (0.001)', () => {
   it('r2 rounds 0.001 to 0 (not stored as sub-cent value)', () => {
     expect(r2(0.001)).toBe(0);
     expect(r2(1.999)).toBe(2);
@@ -257,7 +257,7 @@ describe('Input validation — too many decimal places (0.001)', () => {
   });
 });
 
-describe('Input validation — empty strings where numbers expected', () => {
+describe('Input validation - empty strings where numbers expected', () => {
   it('parseNumericField returns null for empty string', () => {
     expect(parseNumericField('')).toBe(null);
   });
@@ -284,7 +284,7 @@ describe('Input validation — empty strings where numbers expected', () => {
   });
 });
 
-describe('Input validation — HTML / script injection in text fields (XSS)', () => {
+describe('Input validation - HTML / script injection in text fields (XSS)', () => {
   const xssPayloads = [
     '<script>alert("xss")</script>',
     '<img src=x onerror=alert(1)>',
@@ -306,14 +306,14 @@ describe('Input validation — HTML / script injection in text fields (XSS)', ()
     const payload = '<script>alert("xss")</script>';
     db.prepare('INSERT INTO kv_store (key, value) VALUES (?, ?)').run('test-xss', payload);
     const row = db.prepare('SELECT value FROM kv_store WHERE key = ?').get('test-xss');
-    // SQLite stores the raw string — sanitisation must happen at display/render time
+    // SQLite stores the raw string - sanitisation must happen at display/render time
     expect(row.value).toBe(payload);
-    // sanitiseText strips tags but preserves text content — 'alert("xss")' remains.
+    // sanitiseText strips tags but preserves text content - 'alert("xss")' remains.
     // React's JSX escaping prevents execution, but the app should ideally strip content too.
     const sanitised = sanitiseText(row.value);
     expect(sanitised).not.toMatch(/<script/i);   // no opening tag
     expect(sanitised).not.toMatch(/<\/script>/i); // no closing tag
-    expect(sanitised).toBe('alert("xss")');       // text content still present — document this gap
+    expect(sanitised).toBe('alert("xss")');       // text content still present - document this gap
   });
 
   it('SQL injection payload in business name does not corrupt the DB', () => {
@@ -353,7 +353,7 @@ describe('Input validation — HTML / script injection in text fields (XSS)', ()
   });
 });
 
-describe('Input validation — dates in the future', () => {
+describe('Input validation - dates in the future', () => {
   it('calcAgingDays with a future invoice date produces a negative age', () => {
     // A future-dated invoice should have negative aging days
     const days = calcAgingDays('2099-12-31', '2026-03-31');
@@ -376,7 +376,7 @@ describe('Input validation — dates in the future', () => {
   });
 });
 
-describe('Input validation — dates from 1970', () => {
+describe('Input validation - dates from 1970', () => {
   it('calcAgingDays handles epoch dates without throwing', () => {
     const days = calcAgingDays('1970-01-01', '2026-03-31');
     expect(typeof days).toBe('number');
@@ -403,7 +403,7 @@ describe('Input validation — dates from 1970', () => {
 // RACE CONDITIONS
 // ═════════════════════════════════════════════════════════════════════════════
 
-describe('Race conditions — closing the same register twice simultaneously', () => {
+describe('Race conditions - closing the same register twice simultaneously', () => {
   it('two identical close-out snapshots for the same date produce two DB rows (audit trail)', () => {
     const closeoutData = JSON.stringify({ venteNet: 1200, date: '2026-03-31', caisseId: 1 });
     const insert = db.prepare('INSERT INTO daily_snapshots (date, data, device_id) VALUES (?, ?, ?)');
@@ -411,7 +411,7 @@ describe('Race conditions — closing the same register twice simultaneously', (
     insert.run('2026-03-31', closeoutData, 'DEV-001'); // second fire
 
     const rows = db.prepare('SELECT * FROM daily_snapshots WHERE date = ? ORDER BY id').all('2026-03-31');
-    expect(rows.length).toBe(2); // both stored — no UNIQUE constraint on date
+    expect(rows.length).toBe(2); // both stored - no UNIQUE constraint on date
   });
 
   it('the app reading latest snapshot after double-close gets the last write', () => {
@@ -428,8 +428,8 @@ describe('Race conditions — closing the same register twice simultaneously', (
   });
 });
 
-describe('Race conditions — concurrent edit simulation (last-write-wins semantics)', () => {
-  it('two rapid kv_store updates to the same key — last one wins via REPLACE', () => {
+describe('Race conditions - concurrent edit simulation (last-write-wins semantics)', () => {
+  it('two rapid kv_store updates to the same key - last one wins via REPLACE', () => {
     const upsert = db.prepare('INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)');
     upsert.run('dicann-v7', JSON.stringify({ edit: 1 }));
     upsert.run('dicann-v7', JSON.stringify({ edit: 2 }));
@@ -452,7 +452,7 @@ describe('Race conditions — concurrent edit simulation (last-write-wins semant
   });
 });
 
-describe('Race conditions — language switch mid-form (data integrity)', () => {
+describe('Race conditions - language switch mid-form (data integrity)', () => {
   it('switching language does not alter numeric data already in state', () => {
     // Simulates the app's React state holding cash data while locale changes
     const state = { interac: 450.75, finalCash: 120.00, lang: 'fr' };
@@ -461,7 +461,7 @@ describe('Race conditions — language switch mid-form (data integrity)', () => 
     state.lang = 'en'; // toggle language
     const manualAfter = calcManualTotal(state.interac, state.finalCash, 0);
 
-    expect(manualBefore).toBe(manualAfter); // pure function — locale-agnostic
+    expect(manualBefore).toBe(manualAfter); // pure function - locale-agnostic
   });
 });
 
@@ -470,7 +470,7 @@ describe('Race conditions — language switch mid-form (data integrity)', () => 
 // EDGE CASES
 // ═════════════════════════════════════════════════════════════════════════════
 
-describe('Edge case — $0 sales (dead day)', () => {
+describe('Edge case - $0 sales (dead day)', () => {
   it('all tax calculations return 0 for zero sales', () => {
     expect(calcTPS(0)).toBe(0);
     expect(calcTVQ(0)).toBe(0);
@@ -510,7 +510,7 @@ describe('Edge case — $0 sales (dead day)', () => {
   });
 });
 
-describe('Edge case — negative variance (cash OVER)', () => {
+describe('Edge case - negative variance (cash OVER)', () => {
   it('calcVariance is negative when manual < expected (short)', () => {
     // short: cashier handed in less than POS said was there
     const variance = calcVariance(700, 750);
@@ -537,7 +537,7 @@ describe('Edge case — negative variance (cash OVER)', () => {
   });
 });
 
-describe('Edge case — invoice with 100 line items', () => {
+describe('Edge case - invoice with 100 line items', () => {
   it('calcInvoiceTotals handles 100 lines without overflow or NaN', () => {
     const lines = Array.from({ length: 100 }, (_, i) => ({
       quantite: i + 1,
@@ -566,7 +566,7 @@ describe('Edge case — invoice with 100 line items', () => {
   });
 });
 
-describe('Edge case — recipe with 50 ingredients', () => {
+describe('Edge case - recipe with 50 ingredients', () => {
   it('calcRecipeCost handles 50 ingredients without NaN or Infinity', () => {
     const ingredients = Array.from({ length: 50 }, (_, i) => ({
       quantity: 0.25 + i * 0.01,
@@ -588,7 +588,7 @@ describe('Edge case — recipe with 50 ingredients', () => {
   });
 });
 
-describe('Edge case — 365 consecutive close-outs (encaisse chain)', () => {
+describe('Edge case - 365 consecutive close-outs (encaisse chain)', () => {
   it('computeEncaisseChain over 365 days chains opening→closing correctly', () => {
     const days = Array.from({ length: 365 }, (_, i) => ({
       cashVentes: 800 + (i % 7) * 50, // cycles through weekday variation
@@ -633,7 +633,7 @@ describe('Edge case — 365 consecutive close-outs (encaisse chain)', () => {
   });
 });
 
-describe('Edge case — tip pool with 1 employee', () => {
+describe('Edge case - tip pool with 1 employee', () => {
   it('equal method with 1 employee gives them all the tips', () => {
     const result = calcTipPool('equal', 150, [{ name: 'Marie', hours: 8 }]);
     expect(result.length).toBe(1);
@@ -651,7 +651,7 @@ describe('Edge case — tip pool with 1 employee', () => {
   });
 });
 
-describe('Edge case — tip pool with $0 tips', () => {
+describe('Edge case - tip pool with $0 tips', () => {
   it('calcTipPool with 0 total returns empty (nothing to distribute)', () => {
     const result = calcTipPool('equal', 0, [{ name: 'Marie' }, { name: 'Jean' }]);
     expect(result).toEqual([]);
@@ -663,7 +663,7 @@ describe('Edge case — tip pool with $0 tips', () => {
   });
 });
 
-describe('Edge case — écocontribution with 0% takeout', () => {
+describe('Edge case - écocontribution with 0% takeout', () => {
   it('calcEcoItem with 0% takeout yields zero across all outputs', () => {
     const { takeoutUnits, weightKg, weightTonnes } = calcEcoItem(50000, 20, 0);
     expect(takeoutUnits).toBe(0);
@@ -677,7 +677,7 @@ describe('Edge case — écocontribution with 0% takeout', () => {
   });
 });
 
-describe('Edge case — forecast with only 1 day of data', () => {
+describe('Edge case - forecast with only 1 day of data', () => {
   it('calcProjectionFinDeJour from a single 14h checkpoint does not crash', () => {
     // window 0 = open→14h (fraction 1/4); consumed so far = 8 dz
     const projection = calcProjectionFinDeJour(8, 0);
@@ -708,7 +708,7 @@ describe('Edge case — forecast with only 1 day of data', () => {
   });
 });
 
-describe('Edge case — delete the only register then try to close out', () => {
+describe('Edge case - delete the only register then try to close out', () => {
   it('close-out with empty caisses array produces $0 totals', () => {
     const caisses = []; // all registers deleted
 
@@ -740,7 +740,7 @@ describe('Edge case — delete the only register then try to close out', () => {
 // STATE CORRUPTION
 // ═════════════════════════════════════════════════════════════════════════════
 
-describe('State corruption — SQLite file locked by another process', () => {
+describe('State corruption - SQLite file locked by another process', () => {
   it('opening a second connection to the same in-memory DB is independent', () => {
     // In-memory DBs are per-connection so this tests isolation, not file-locking,
     // but verifies that a locked/busy DB doesn't silently corrupt data.
@@ -756,7 +756,7 @@ describe('State corruption — SQLite file locked by another process', () => {
   });
 
   it('WAL mode pragma is accepted without error', () => {
-    // App uses WAL for concurrency — verify the pragma is safe
+    // App uses WAL for concurrency - verify the pragma is safe
     expect(() => db.pragma('journal_mode = WAL')).not.toThrow();
   });
 
@@ -765,7 +765,7 @@ describe('State corruption — SQLite file locked by another process', () => {
   });
 });
 
-describe('State corruption — app crash mid-close-out', () => {
+describe('State corruption - app crash mid-close-out', () => {
   it('partial write inside a rolled-back transaction leaves DB clean', () => {
     const insert = db.prepare('INSERT INTO daily_snapshots (date, data, device_id) VALUES (?, ?, ?)');
 
@@ -773,11 +773,11 @@ describe('State corruption — app crash mid-close-out', () => {
       db.transaction(() => {
         insert.run('2026-03-31', '{"step":"partial","venteNet":1200}', 'DEV-001');
         throw new Error('Simulated crash mid-write');
-        // This line never runs — simulating a crash
+        // This line never runs - simulating a crash
       })();
     } catch { /* swallow simulated crash */ }
 
-    // Transaction was rolled back — no rows should exist
+    // Transaction was rolled back - no rows should exist
     const rows = db.prepare("SELECT * FROM daily_snapshots WHERE date = '2026-03-31'").all();
     expect(rows.length).toBe(0);
   });
@@ -805,7 +805,7 @@ describe('State corruption — app crash mid-close-out', () => {
 
     const raw = db.prepare('SELECT value FROM kv_store WHERE key = ?').get('dicann-v7').value;
     expect(() => JSON.parse(raw)).toThrow(SyntaxError);
-    // App should catch this and fall back to defaults — tested here by asserting parse throws cleanly
+    // App should catch this and fall back to defaults - tested here by asserting parse throws cleanly
   });
 
   it('truncated close-out data (missing required fields) degrades gracefully', () => {
@@ -821,7 +821,7 @@ describe('State corruption — app crash mid-close-out', () => {
   });
 });
 
-describe('State corruption — cloud sync fails mid-write', () => {
+describe('State corruption - cloud sync fails mid-write', () => {
   it('local kv_store is NOT rolled back when a simulated sync error is thrown', () => {
     // The cloud sync is a fire-and-forget operation that must not corrupt local data
     const upsert = db.prepare('INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)');
@@ -837,7 +837,7 @@ describe('State corruption — cloud sync fails mid-write', () => {
     // Local write succeeds
     localWrite('dicann-v7', JSON.stringify({ venteNet: 1500 }));
 
-    // Cloud sync fails — must NOT undo local write
+    // Cloud sync fails - must NOT undo local write
     let syncError = null;
     try { failingCloudSync(); } catch (e) { syncError = e; }
 
@@ -849,7 +849,7 @@ describe('State corruption — cloud sync fails mid-write', () => {
     expect(JSON.parse(row.value).venteNet).toBe(1500);
   });
 
-  it('sync conflict — server value newer than local: local should NOT be silently overwritten', () => {
+  it('sync conflict - server value newer than local: local should NOT be silently overwritten', () => {
     // App must compare timestamps before overwriting
     const local  = { venteNet: 1500, updatedAt: '2026-03-31T14:00:00Z' };
     const remote = { venteNet: 1800, updatedAt: '2026-03-31T15:00:00Z' };
@@ -859,7 +859,7 @@ describe('State corruption — cloud sync fails mid-write', () => {
     expect(winner.venteNet).toBe(1800); // remote is newer
   });
 
-  it('sync conflict — local newer than server: local wins', () => {
+  it('sync conflict - local newer than server: local wins', () => {
     const local  = { venteNet: 1500, updatedAt: '2026-03-31T16:00:00Z' };
     const remote = { venteNet: 1200, updatedAt: '2026-03-31T14:00:00Z' };
 
@@ -880,7 +880,7 @@ describe('State corruption — cloud sync fails mid-write', () => {
 
 
 // ═════════════════════════════════════════════════════════════════════════════
-// ADDITIONAL ABUSE — BOUNDARY COMBINATIONS
+// ADDITIONAL ABUSE - BOUNDARY COMBINATIONS
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('Boundary combinations', () => {
@@ -955,7 +955,7 @@ describe('Boundary combinations', () => {
 // REGRESSION TESTS FOR THE THREE FIXED NaN GAPS
 // ═════════════════════════════════════════════════════════════════════════════
 
-describe('Fix regression — calcManualTotal now uses parseFloat coercion', () => {
+describe('Fix regression - calcManualTotal now uses parseFloat coercion', () => {
   it('string numbers coerce correctly ("42.50" → 42.50)', () => {
     expect(calcManualTotal('42.50', '100', '0')).toBe(142.50);
   });
@@ -978,7 +978,7 @@ describe('Fix regression — calcManualTotal now uses parseFloat coercion', () =
   });
 });
 
-describe('Fix regression — calcInvoiceLine now uses parseFloat coercion', () => {
+describe('Fix regression - calcInvoiceLine now uses parseFloat coercion', () => {
   it('string qty / price coerce correctly', () => {
     expect(calcInvoiceLine('3', '10.00')).toBe(30);
   });
@@ -1001,7 +1001,7 @@ describe('Fix regression — calcInvoiceLine now uses parseFloat coercion', () =
   });
 });
 
-describe('Fix regression — calcLabourCost now uses parseFloat coercion', () => {
+describe('Fix regression - calcLabourCost now uses parseFloat coercion', () => {
   it('string hours / wage coerce correctly', () => {
     expect(calcLabourCost([{ hours: '8', wage: '15.25' }])).toBe(122);
   });
@@ -1012,7 +1012,7 @@ describe('Fix regression — calcLabourCost now uses parseFloat coercion', () =>
     expect(Number.isNaN(cost)).toBe(false);
   });
 
-  it('mixed roster: valid + invalid entries — invalid contributes 0', () => {
+  it('mixed roster: valid + invalid entries - invalid contributes 0', () => {
     const employees = [
       { hours: 8, wage: 15.25 },       // $122 valid
       { hours: 'bad', wage: 'bad' },   // $0 (coerced)
@@ -1021,14 +1021,14 @@ describe('Fix regression — calcLabourCost now uses parseFloat coercion', () =>
     expect(calcLabourCost(employees)).toBe(206);
   });
 
-  it('null hours coerce to 0 — employee with no hours logged contributes $0', () => {
+  it('null hours coerce to 0 - employee with no hours logged contributes $0', () => {
     expect(calcLabourCost([{ hours: null, wage: 15.25 }])).toBe(0);
   });
 });
 
 
 // ═════════════════════════════════════════════════════════════════════════════
-// STORAGE LAYER — FIELD LENGTH ENFORCEMENT (database.js storageSet)
+// STORAGE LAYER - FIELD LENGTH ENFORCEMENT (database.js storageSet)
 // ═════════════════════════════════════════════════════════════════════════════
 
 // Inline the same logic as database.js storageSet so these tests run without Electron.
@@ -1070,7 +1070,7 @@ function simulateStorageSet(key, value) {
   return true;
 }
 
-describe('Storage layer — 10 MB payload guard', () => {
+describe('Storage layer - 10 MB payload guard', () => {
   it('accepts a normal-sized payload without error', () => {
     const payload = JSON.stringify({ venteNet: 1200, notes: 'Normal day.' });
     expect(() => simulateStorageSet('test-normal', payload)).not.toThrow();
@@ -1086,7 +1086,7 @@ describe('Storage layer — 10 MB payload guard', () => {
   });
 });
 
-describe('Storage layer — free-text field clamping at 500 chars', () => {
+describe('Storage layer - free-text field clamping at 500 chars', () => {
   it('clamps "notes" field to 500 characters', () => {
     const payload = JSON.stringify({ notes: 'A'.repeat(600) });
     simulateStorageSet('test-clamp-notes', payload);

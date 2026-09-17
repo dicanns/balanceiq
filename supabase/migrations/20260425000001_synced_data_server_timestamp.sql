@@ -1,5 +1,5 @@
 -- E2: Server-side updated_at for synced_data conflict resolution.
--- The client no longer sends updated_at — Postgres stamps it on every write.
+-- The client no longer sends updated_at - Postgres stamps it on every write.
 -- This prevents a client with a wrong clock from winning a conflict.
 
 -- Add version counter for optimistic concurrency (E3)

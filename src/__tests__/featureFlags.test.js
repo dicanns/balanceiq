@@ -1,7 +1,7 @@
 /**
  * Feature Flag Enforcement Tests
  * Verifies canUse() correctly gates every paid feature per plan.
- * Uses setPlan() to switch plans at runtime — tests the full matrix.
+ * Uses setPlan() to switch plans at runtime - tests the full matrix.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
@@ -43,7 +43,7 @@ describe('Plan switching', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-describe('Free plan — core features always on', () => {
+describe('Free plan - core features always on', () => {
   const FREE_FEATURES = [
     'clientDatabase', 'categoriesProducts', 'invoiceFlow', 'creditNotes',
     'singlePaymentRecord', 'basicAging', 'pdfPrint', 'mailtoEmail',
@@ -57,7 +57,7 @@ describe('Free plan — core features always on', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-describe('Free plan — paid features locked', () => {
+describe('Free plan - paid features locked', () => {
   const PRO_FEATURES = [
     'bulkEncaissement', 'autoApplyPayments', 'detailedAging', 'bulkEmailStatements',
     'recurringInvoices', 'directEmailSend', 'excelExport', 'depositTracking',
@@ -82,7 +82,7 @@ describe('Free plan — paid features locked', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-describe('Pro plan — all Pro features unlocked', () => {
+describe('Pro plan - all Pro features unlocked', () => {
   beforeEach(() => setPlan('pro'));
 
   const PRO_FEATURES = [
@@ -106,7 +106,7 @@ describe('Pro plan — all Pro features unlocked', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-describe('Franchise plan — all features unlocked', () => {
+describe('Franchise plan - all features unlocked', () => {
   beforeEach(() => setPlan('franchise'));
 
   const ALL_FEATURES = Object.keys(PLAN_FEATURES.franchise);
@@ -118,7 +118,7 @@ describe('Franchise plan — all features unlocked', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-describe('Network plan — Pro features + cloud sync, no franchise features', () => {
+describe('Network plan - Pro features + cloud sync, no franchise features', () => {
   beforeEach(() => setPlan('network'));
 
   it('cloud backup enabled', () => {

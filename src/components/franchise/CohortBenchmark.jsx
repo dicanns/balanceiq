@@ -146,7 +146,7 @@ export default function CohortBenchmark({ monthlyData = {}, locations = [], lang
               borderRadius: 9, padding: '9px 14px', flex: '1 1 auto', minWidth: 120,
             }}>
               <div style={{ fontSize: 8.5, color: t.textMuted, textTransform: 'uppercase', letterSpacing: 0.7, fontWeight: 600, marginBottom: 3 }}>
-                {T.networkAvg} — {fr ? m.labelFr : m.labelEn}
+                {T.networkAvg} - {fr ? m.labelFr : m.labelEn}
               </div>
               <div style={{ fontSize: 17, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#a78bfa' }}>
                 {fmt(stat.mean, m.format, lang)}

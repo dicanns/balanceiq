@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest';
 import { formatDateKey, prevDateKey, getQCHoliday, QC_HOL } from '../utils/calculations.js';
 
 // ────────────────────────────────────────────────────────────────────────────
-describe('formatDateKey — Date → YYYY-MM-DD', () => {
+describe('formatDateKey - Date → YYYY-MM-DD', () => {
   it('formats a regular date correctly', () => {
     expect(formatDateKey(new Date(2026, 2, 25))).toBe('2026-03-25'); // March = month 2
   });
@@ -36,7 +36,7 @@ describe('formatDateKey — Date → YYYY-MM-DD', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-describe('prevDateKey — previous day navigation', () => {
+describe('prevDateKey - previous day navigation', () => {
   it('steps back one day within a month', () => {
     expect(prevDateKey('2026-03-25')).toBe('2026-03-24');
     expect(prevDateKey('2026-03-10')).toBe('2026-03-09');
@@ -67,7 +67,7 @@ describe('prevDateKey — previous day navigation', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-describe('getQCHoliday — Quebec statutory holidays', () => {
+describe('getQCHoliday - Quebec statutory holidays', () => {
   it('returns null for a regular business day', () => {
     expect(getQCHoliday(new Date(2026, 2, 25))).toBeNull(); // Wed March 25
     expect(getQCHoliday(new Date(2026, 2, 10))).toBeNull();

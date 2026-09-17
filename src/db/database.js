@@ -19,12 +19,12 @@ function getDataDir() {
 // ── Schema Migration System ──────────────────────────────────────────────────
 // Each entry runs exactly once, in version order.
 // Version 1 = baseline covering all tables through v1.23.0.
-// New tables for Items 2–6 and beyond go here as new migrations — never as
+// New tables for Items 2–6 and beyond go here as new migrations - never as
 // raw CREATE TABLE calls scattered through getDb().
 const MIGRATIONS = [
   {
     version: 1,
-    description: 'Baseline schema — all tables through v1.23.0 (POS scan module)',
+    description: 'Baseline schema - all tables through v1.23.0 (POS scan module)',
     up: (_db) => {
       // All tables already exist via CREATE TABLE IF NOT EXISTS in getDb().
       // This entry just stamps the version on new and existing databases.
@@ -32,7 +32,7 @@ const MIGRATIONS = [
   },
   {
     version: 2,
-    description: 'Upgrade prompt dismissals table (Item 2 — outcome-based prompts)',
+    description: 'Upgrade prompt dismissals table (Item 2 - outcome-based prompts)',
     up: (database) => {
       database.prepare(`CREATE TABLE IF NOT EXISTS upgrade_prompt_dismissals (
         prompt_key TEXT NOT NULL PRIMARY KEY,
@@ -72,9 +72,9 @@ const MIGRATIONS = [
   },
   {
     version: 5,
-    description: 'Global search — FTS5 indexes for ingredients + forecast_products + search_history table',
+    description: 'Global search - FTS5 indexes for ingredients + forecast_products + search_history table',
     up: (database) => {
-      // FTS5 virtual tables (shadow indexes — real data stays in source tables)
+      // FTS5 virtual tables (shadow indexes - real data stays in source tables)
       database.prepare(`CREATE VIRTUAL TABLE IF NOT EXISTS fts_ingredients USING fts5(
         name_fr, name_en, category,
         content='ingredients', content_rowid='id'
@@ -90,7 +90,7 @@ const MIGRATIONS = [
       try { database.prepare(`INSERT INTO fts_forecast_products(rowid, name, category)
         SELECT id, name, COALESCE(category,'') FROM forecast_products`).run(); } catch(_) {}
 
-      // Sync triggers — ingredients
+      // Sync triggers - ingredients
       database.prepare(`CREATE TRIGGER IF NOT EXISTS fts_ing_insert AFTER INSERT ON ingredients BEGIN
         INSERT INTO fts_ingredients(rowid, name_fr, name_en, category)
         VALUES (new.id, new.name_fr, COALESCE(new.name_en,''), COALESCE(new.category,''));
@@ -103,7 +103,7 @@ const MIGRATIONS = [
         DELETE FROM fts_ingredients WHERE rowid=old.id;
       END`).run();
 
-      // Sync triggers — forecast_products
+      // Sync triggers - forecast_products
       database.prepare(`CREATE TRIGGER IF NOT EXISTS fts_fp_insert AFTER INSERT ON forecast_products BEGIN
         INSERT INTO fts_forecast_products(rowid, name, category) VALUES (new.id, new.name, COALESCE(new.category,''));
       END`).run();
@@ -138,7 +138,7 @@ const MIGRATIONS = [
       database.prepare(`DROP TABLE IF EXISTS fts_ingredients`).run();
       database.prepare(`DROP TABLE IF EXISTS fts_forecast_products`).run();
 
-      // Recreate with unicode61 — remove_diacritics=1 is the default, so
+      // Recreate with unicode61 - remove_diacritics=1 is the default, so
       // "ete" matches "été", "caisse" matches "caïsse", etc.
       database.prepare(`CREATE VIRTUAL TABLE IF NOT EXISTS fts_ingredients USING fts5(
         name_fr, name_en, category,
@@ -157,7 +157,7 @@ const MIGRATIONS = [
       try { database.prepare(`INSERT INTO fts_forecast_products(rowid, name, category)
         SELECT id, name, COALESCE(category,'') FROM forecast_products`).run(); } catch(_) {}
 
-      // Recreate sync triggers — ingredients
+      // Recreate sync triggers - ingredients
       database.prepare(`CREATE TRIGGER IF NOT EXISTS fts_ing_insert AFTER INSERT ON ingredients BEGIN
         INSERT INTO fts_ingredients(rowid, name_fr, name_en, category)
         VALUES (new.id, new.name_fr, COALESCE(new.name_en,''), COALESCE(new.category,''));
@@ -170,7 +170,7 @@ const MIGRATIONS = [
         DELETE FROM fts_ingredients WHERE rowid=old.id;
       END`).run();
 
-      // Recreate sync triggers — forecast_products
+      // Recreate sync triggers - forecast_products
       database.prepare(`CREATE TRIGGER IF NOT EXISTS fts_fp_insert AFTER INSERT ON forecast_products BEGIN
         INSERT INTO fts_forecast_products(rowid, name, category) VALUES (new.id, new.name, COALESCE(new.category,''));
       END`).run();
@@ -184,7 +184,7 @@ const MIGRATIONS = [
   },
   {
     version: 9,
-    description: 'General Ledger Core (Grand livre) — Sprint 2 Accounting Suite',
+    description: 'General Ledger Core (Grand livre) - Sprint 2 Accounting Suite',
     up: (database) => {
       database.prepare(`CREATE TABLE IF NOT EXISTS accounting_periods (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -274,7 +274,7 @@ const MIGRATIONS = [
   },
   {
     version: 8,
-    description: 'Chart of Accounts (Plan comptable) — Sprint 1 Accounting Suite',
+    description: 'Chart of Accounts (Plan comptable) - Sprint 1 Accounting Suite',
     up: (database) => {
       database.prepare(`CREATE TABLE IF NOT EXISTS chart_of_accounts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -384,7 +384,7 @@ const MIGRATIONS = [
   },
   {
     version: 7,
-    description: 'Fix FTS5 forecast_products — UUID ids cannot be FTS5 rowids; switch to standalone table with fp_id column',
+    description: 'Fix FTS5 forecast_products - UUID ids cannot be FTS5 rowids; switch to standalone table with fp_id column',
     up: (database) => {
       database.prepare(`DROP TRIGGER IF EXISTS fts_fp_insert`).run();
       database.prepare(`DROP TRIGGER IF EXISTS fts_fp_update`).run();
@@ -416,7 +416,7 @@ const MIGRATIONS = [
   },
   {
     version: 10,
-    description: 'Bank Reconciliation (Rapprochement bancaire) — Sprint 3 Accounting Suite',
+    description: 'Bank Reconciliation (Rapprochement bancaire) - Sprint 3 Accounting Suite',
     up: (database) => {
       database.prepare(`CREATE TABLE IF NOT EXISTS bank_accounts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -483,7 +483,7 @@ const MIGRATIONS = [
   },
   {
     version: 11,
-    description: 'CTI/RTI Input Tax Credits — Sprint 4 Accounting Suite',
+    description: 'CTI/RTI Input Tax Credits - Sprint 4 Accounting Suite',
     up: (database) => {
       // Add tax tracking columns to bank_transactions
       database.prepare(`ALTER TABLE bank_transactions ADD COLUMN tax_claimable INTEGER DEFAULT 0`).run();
@@ -533,7 +533,7 @@ const MIGRATIONS = [
   },
   {
     version: 12,
-    description: 'Balance Sheet + AP Tracking + CCA Depreciation — Sprint 6 Accounting Suite',
+    description: 'Balance Sheet + AP Tracking + CCA Depreciation - Sprint 6 Accounting Suite',
     up: (database) => {
       database.prepare(`CREATE TABLE IF NOT EXISTS supplier_bills (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -643,7 +643,7 @@ const MIGRATIONS = [
   },
   {
     version: 13,
-    description: 'Source Document Vault + Recurring Transactions — Sprint 7 Accounting Suite',
+    description: 'Source Document Vault + Recurring Transactions - Sprint 7 Accounting Suite',
     up: (database) => {
       database.prepare(`CREATE TABLE IF NOT EXISTS source_documents (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -715,7 +715,7 @@ const MIGRATIONS = [
   },
   {
     version: 14,
-    description: 'Sprint 9 — Reminder Ladder + Deposit Schedules',
+    description: 'Sprint 9 - Reminder Ladder + Deposit Schedules',
     up: (database) => {
       database.prepare(`CREATE TABLE IF NOT EXISTS reminder_ladder (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -767,19 +767,19 @@ const MIGRATIONS = [
         `INSERT INTO reminder_ladder (name, is_default, is_active) VALUES ('Défaut', 1, 1)`
       ).run().lastInsertRowid;
       const steps = [
-        { days: 3,  sfr: 'Rappel amical — Facture {numero}',          sen: 'Friendly reminder — Invoice {numero}',
+        { days: 3,  sfr: 'Rappel amical - Facture {numero}',          sen: 'Friendly reminder - Invoice {numero}',
           bfr: 'Bonjour {client_name},\n\nNous vous rappelons que la facture {numero} d\'un montant de {amount_due} est due depuis {days_overdue} jour(s).\n\nMerci de votre règlement rapide.\n\n{company_name}',
           ben: 'Hello {client_name},\n\nThis is a friendly reminder that invoice {numero} for {amount_due} has been due for {days_overdue} day(s).\n\nThank you for your prompt payment.\n\n{company_name}' },
-        { days: 7,  sfr: 'Rappel ferme — Facture {numero}',           sen: 'Payment reminder — Invoice {numero}',
+        { days: 7,  sfr: 'Rappel ferme - Facture {numero}',           sen: 'Payment reminder - Invoice {numero}',
           bfr: 'Bonjour {client_name},\n\nNous n\'avons pas encore reçu le paiement de la facture {numero} ({amount_due}), maintenant en retard de {days_overdue} jour(s).\n\nVeuillez procéder au paiement dès que possible.\n\n{company_name}',
           ben: 'Hello {client_name},\n\nWe have not yet received payment for invoice {numero} ({amount_due}), now {days_overdue} day(s) overdue.\n\nPlease arrange payment at your earliest convenience.\n\n{company_name}' },
-        { days: 14, sfr: 'Compte en retard — Facture {numero}',       sen: 'Past due — Invoice {numero}',
+        { days: 14, sfr: 'Compte en retard - Facture {numero}',       sen: 'Past due - Invoice {numero}',
           bfr: 'Bonjour {client_name},\n\nLa facture {numero} ({amount_due}) est maintenant en retard de {days_overdue} jours. Des intérêts peuvent s\'appliquer conformément à nos conditions.\n\nCommuniquez avec nous pour régulariser la situation.\n\n{company_name}',
           ben: 'Hello {client_name},\n\nInvoice {numero} ({amount_due}) is now {days_overdue} days past due. Interest charges may apply per our terms.\n\nPlease contact us to resolve this matter.\n\n{company_name}' },
-        { days: 30, sfr: 'Dernier avis — Facture {numero}',           sen: 'Final notice — Invoice {numero}',
+        { days: 30, sfr: 'Dernier avis - Facture {numero}',           sen: 'Final notice - Invoice {numero}',
           bfr: 'Bonjour {client_name},\n\nCeci est un dernier avis concernant la facture {numero} ({amount_due}), maintenant en retard de {days_overdue} jours.\n\nSans règlement sous 7 jours, nous devrons transmettre ce dossier à notre service de recouvrement.\n\n{company_name}',
           ben: 'Hello {client_name},\n\nThis is a final notice regarding invoice {numero} ({amount_due}), now {days_overdue} days past due.\n\nIf payment is not received within 7 days, we will refer this matter to collections.\n\n{company_name}' },
-        { days: 60, sfr: 'Mise en demeure — Facture {numero}',        sen: 'Collection notice — Invoice {numero}',
+        { days: 60, sfr: 'Mise en demeure - Facture {numero}',        sen: 'Collection notice - Invoice {numero}',
           bfr: 'Bonjour {client_name},\n\nMalgré nos rappels précédents, la facture {numero} ({amount_due}) demeure impayée depuis {days_overdue} jours.\n\nCe dossier sera remis à notre service juridique si aucun règlement n\'est effectué d\'ici 5 jours ouvrables.\n\n{company_name}',
           ben: 'Hello {client_name},\n\nDespite previous notices, invoice {numero} ({amount_due}) remains unpaid for {days_overdue} days.\n\nThis matter will be referred to our legal department if payment is not received within 5 business days.\n\n{company_name}' },
       ];
@@ -792,7 +792,7 @@ const MIGRATIONS = [
   },
   {
     version: 15,
-    description: 'Sprint 12 — Document Number Registry + Payment Plans',
+    description: 'Sprint 12 - Document Number Registry + Payment Plans',
     up: (database) => {
       database.prepare(`CREATE TABLE IF NOT EXISTS document_number_registry (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -820,7 +820,7 @@ const MIGRATIONS = [
   },
   {
     version: 16,
-    description: 'Sprint 13 — Invoice Inventory Deductions',
+    description: 'Sprint 13 - Invoice Inventory Deductions',
     up: (database) => {
       database.prepare(`CREATE TABLE IF NOT EXISTS invoice_inventory_deductions (
         id TEXT PRIMARY KEY,
@@ -840,14 +840,14 @@ const MIGRATIONS = [
   },
   {
     version: 17,
-    description: 'Sprint 15 — Bank match reason label',
+    description: 'Sprint 15 - Bank match reason label',
     up: (database) => {
       try { database.prepare(`ALTER TABLE bank_transactions ADD COLUMN match_reason TEXT`).run(); } catch (_) {}
     },
   },
   {
     version: 18,
-    description: 'Security sprint — durable cloud sync queue',
+    description: 'Security sprint - durable cloud sync queue',
     up: (database) => {
       database.prepare(`CREATE TABLE IF NOT EXISTS sync_queue (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1631,7 +1631,7 @@ function preMigrationSnapshot(dataDir, backupDir, keep = 5) {
 }
 
 // Runs all pending migrations in ascending version order.
-// If any migration fails the error is re-thrown — the app must not start
+// If any migration fails the error is re-thrown - the app must not start
 // with a partially-migrated schema.
 function runMigrations(database) {
   const currentVersion = database.pragma('user_version', { simple: true });
@@ -1779,7 +1779,7 @@ function getDb() {
       );
     `);
 
-    // ── Column migrations (safe — columns may already exist) ─────────────────
+    // ── Column migrations (safe - columns may already exist) ─────────────────
     try { db.prepare("ALTER TABLE forecast_products ADD COLUMN unit_cost REAL").run(); } catch(e) {}
     try { db.prepare("ALTER TABLE forecast_products ADD COLUMN sell_price REAL").run(); } catch(e) {}
     try { db.prepare("ALTER TABLE forecast_products ADD COLUMN recipe_id TEXT").run(); } catch(e) {}
@@ -2046,7 +2046,7 @@ function getDeviceId() {
   return id;
 }
 
-// Insert one audit entry — APPEND ONLY, never update or delete
+// Insert one audit entry - APPEND ONLY, never update or delete
 function auditInsert(entry) {
   const deviceId = getDeviceId();
   getDb().prepare(`
@@ -2139,7 +2139,7 @@ function storageSet(key, value) {
     const parsed = JSON.parse(value);
     sanitised = JSON.stringify(clampFreeTextFields(parsed));
   } catch {
-    // Not JSON (e.g. raw string values) — store as-is, size already checked above
+    // Not JSON (e.g. raw string values) - store as-is, size already checked above
   }
   getDb().prepare('INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)').run(key, sanitised);
   return true;
@@ -2154,7 +2154,7 @@ function storageGetAll() {
   return result;
 }
 
-// Save an immutable daily snapshot — APPEND ONLY, never update or delete
+// Save an immutable daily snapshot - APPEND ONLY, never update or delete
 function snapshotSave(date, data) {
   const deviceId = getDeviceId();
   getDb().prepare(`
@@ -2739,7 +2739,7 @@ function upgradePromptGetDismissedAt(key) {
   return row ? row.dismissed_at : null;
 }
 
-// Records a dismissal (upsert — replaces any previous timestamp).
+// Records a dismissal (upsert - replaces any previous timestamp).
 function upgradePromptDismiss(key) {
   getDb().prepare(
     "INSERT OR REPLACE INTO upgrade_prompt_dismissals (prompt_key, dismissed_at) VALUES (?, datetime('now','localtime'))"
@@ -2767,7 +2767,7 @@ function searchIngredients(raw, limit = 6) {
       ORDER BY rank LIMIT ?
     `).all(q, limit);
   } catch (_) {
-    // FTS5 query parse error — fall back to LIKE
+    // FTS5 query parse error - fall back to LIKE
     return getDb().prepare(
       `SELECT id, name_fr, name_en, category, current_unit_price, default_unit
        FROM ingredients WHERE name_fr LIKE ? OR COALESCE(name_en,'') LIKE ? LIMIT ?`
@@ -3097,7 +3097,7 @@ function glPostEntry(entryId, _db) {
   const period = db.prepare(`SELECT * FROM accounting_periods WHERE id=?`).get(entry.period_id);
   if (period && period.status === 'closed') throw new Error('ERR_PERIOD_CLOSED_POST');
 
-  // An opening_balance entry must be unique per location — re-running a migration
+  // An opening_balance entry must be unique per location - re-running a migration
   // or user error must never result in two opening balance postings.
   if (entry.source_type === 'opening_balance') {
     const existing = db.prepare(
@@ -3401,7 +3401,7 @@ function periodOpen({ period_type = 'month', fiscal_year, start_date, end_date, 
      VALUES (?, ?, ?, ?, 'open', ?)`
   ).run(period_type, fiscal_year, start_date, end_date, location_id || null);
   if (!info.lastInsertRowid) {
-    // Already exists — just ensure it's open
+    // Already exists - just ensure it's open
     const existing = db.prepare(
       `SELECT id, status FROM accounting_periods WHERE period_type=? AND start_date=? AND end_date=? AND (location_id IS ? OR location_id=?)`
     ).get(period_type, start_date, end_date, location_id, location_id);
@@ -3563,7 +3563,7 @@ function _parseBankCSV(csvText, columnMap) {
   return rows;
 }
 
-// Parse OFX/QFX/QBO — lightweight regex (no full XML parser needed for stable OFX 1.x)
+// Parse OFX/QFX/QBO - lightweight regex (no full XML parser needed for stable OFX 1.x)
 // Pull the closing ledger balance out of an OFX file: <LEDGERBAL><BALAMT>nnn.
 // Returns null when absent so the caller can fall back.
 function _parseOFXLedgerBalance(text) {
@@ -3620,7 +3620,7 @@ function _runMatchingEngine(db, bankAccountId, txIds) {
 
     const normDesc = _normDescription(tx.description);
 
-    // Check learned rules — auto-match if count >= 3 and amount/date are within window
+    // Check learned rules - auto-match if count >= 3 and amount/date are within window
     const rule = learnedMap[normDesc];
     if (rule && rule.match_count >= 3) {
       db.prepare(`UPDATE bank_transactions SET match_status='suggested', coa_account_id=?, match_reason=? WHERE id=?`)
@@ -3726,13 +3726,6 @@ function bankTransactionsList(bankAccountId, { dateFrom, dateTo, statusFilter, l
     ORDER BY bt.transaction_date DESC, bt.id DESC
     LIMIT ?
   `).all(...params);
-}
-
-function bankTransactionMatch(txId, entityType, entityId) {
-  getDb().prepare(
-    `UPDATE bank_transactions SET match_status='matched', matched_entity_type=?, matched_entity_id=? WHERE id=?`
-  ).run(entityType, entityId, txId);
-  return true;
 }
 
 function bankTransactionUnmatch(txId, _db) {
@@ -3892,7 +3885,7 @@ function bankTransactionCategorize(txId, coaAccountId, notes, tax) {
 }
 
 // Statuses that are considered cleared and included in the reconciled balance.
-// 'suggested' is intentionally excluded — it is a pending auto-match that the
+// 'suggested' is intentionally excluded - it is a pending auto-match that the
 // user has not confirmed, so it must not silently close with a statement.
 const RECONCILABLE_STATUSES = ['matched', 'manual'];
 
@@ -5521,7 +5514,7 @@ function getBalanceSheetBlockers(asOfDate, _db) {
     }
   } catch (_) {}
 
-  // 4. Unpaid supplier bills (AP subledger check — informational)
+  // 4. Unpaid supplier bills (AP subledger check - informational)
   try {
     const unpaidAp = db.prepare(`SELECT COUNT(*) AS cnt FROM supplier_bills WHERE paid=0 AND due_date IS NOT NULL AND due_date <= ?`).get(asOfDate);
     if (unpaidAp.cnt > 0) {
@@ -5740,19 +5733,19 @@ function _seedDefaultLadderIfEmpty(db) {
     `INSERT INTO reminder_ladder (name, is_default, is_active) VALUES ('Défaut', 1, 1)`
   ).run().lastInsertRowid;
   const steps = [
-    { days: 3,  sfr: 'Rappel amical — Facture {numero}',       sen: 'Friendly reminder — Invoice {numero}',
+    { days: 3,  sfr: 'Rappel amical - Facture {numero}',       sen: 'Friendly reminder - Invoice {numero}',
       bfr: 'Bonjour {client_name},\n\nNous vous rappelons que la facture {numero} d\'un montant de {amount_due} est due depuis {days_overdue} jour(s).\n\nMerci de votre règlement rapide.\n\n{company_name}',
       ben: 'Hello {client_name},\n\nThis is a friendly reminder that invoice {numero} for {amount_due} has been due for {days_overdue} day(s).\n\nThank you for your prompt payment.\n\n{company_name}' },
-    { days: 7,  sfr: 'Rappel ferme — Facture {numero}',        sen: 'Payment reminder — Invoice {numero}',
+    { days: 7,  sfr: 'Rappel ferme - Facture {numero}',        sen: 'Payment reminder - Invoice {numero}',
       bfr: 'Bonjour {client_name},\n\nNous n\'avons pas encore reçu le paiement de la facture {numero} ({amount_due}), maintenant en retard de {days_overdue} jour(s).\n\nVeuillez procéder au paiement dès que possible.\n\n{company_name}',
       ben: 'Hello {client_name},\n\nWe have not yet received payment for invoice {numero} ({amount_due}), now {days_overdue} day(s) overdue.\n\nPlease arrange payment at your earliest convenience.\n\n{company_name}' },
-    { days: 14, sfr: 'Compte en retard — Facture {numero}',    sen: 'Past due — Invoice {numero}',
+    { days: 14, sfr: 'Compte en retard - Facture {numero}',    sen: 'Past due - Invoice {numero}',
       bfr: 'Bonjour {client_name},\n\nLa facture {numero} ({amount_due}) est maintenant en retard de {days_overdue} jours. Des intérêts peuvent s\'appliquer conformément à nos conditions.\n\nCommuniquez avec nous pour régulariser la situation.\n\n{company_name}',
       ben: 'Hello {client_name},\n\nInvoice {numero} ({amount_due}) is now {days_overdue} days past due. Interest charges may apply per our terms.\n\nPlease contact us to resolve this matter.\n\n{company_name}' },
-    { days: 30, sfr: 'Dernier avis — Facture {numero}',        sen: 'Final notice — Invoice {numero}',
+    { days: 30, sfr: 'Dernier avis - Facture {numero}',        sen: 'Final notice - Invoice {numero}',
       bfr: 'Bonjour {client_name},\n\nCeci est un dernier avis concernant la facture {numero} ({amount_due}), maintenant en retard de {days_overdue} jours.\n\nSans règlement sous 7 jours, nous devrons transmettre ce dossier à notre service de recouvrement.\n\n{company_name}',
       ben: 'Hello {client_name},\n\nThis is a final notice regarding invoice {numero} ({amount_due}), now {days_overdue} days past due.\n\nIf payment is not received within 7 days, we will refer this matter to collections.\n\n{company_name}' },
-    { days: 60, sfr: 'Mise en demeure — Facture {numero}',     sen: 'Collection notice — Invoice {numero}',
+    { days: 60, sfr: 'Mise en demeure - Facture {numero}',     sen: 'Collection notice - Invoice {numero}',
       bfr: 'Bonjour {client_name},\n\nMalgré nos rappels précédents, la facture {numero} ({amount_due}) demeure impayée depuis {days_overdue} jours.\n\nCe dossier sera remis à notre service juridique si aucun règlement n\'est effectué d\'ici 5 jours ouvrables.\n\n{company_name}',
       ben: 'Hello {client_name},\n\nDespite previous notices, invoice {numero} ({amount_due}) remains unpaid for {days_overdue} days.\n\nThis matter will be referred to our legal department if payment is not received within 5 business days.\n\n{company_name}' },
   ];
@@ -6032,7 +6025,7 @@ function inventoryDeductSummaryByDate(date) {
 
 function syncQueuePush(key, value) {
   const db = getDb();
-  // Deduplicate by key — only keep the latest value per key
+  // Deduplicate by key - only keep the latest value per key
   db.prepare(`DELETE FROM sync_queue WHERE key=?`).run(key);
   db.prepare(`INSERT INTO sync_queue (key, value) VALUES (?, ?)`).run(key, typeof value === 'string' ? value : JSON.stringify(value));
 }
@@ -6387,7 +6380,7 @@ function evaluateCloseAssurance({
       }
       // Determine severity based on rule (we use variance threshold, not checklist rule here)
       // The variance rule is always "inform" level by default at the register level
-      // unless the store-wide threshold is crossed — per spec the per-register level
+      // unless the store-wide threshold is crossed - per spec the per-register level
       // produces info/warning/blocker based on whether it exceeds the threshold.
       // For per-register: produce a warning (not a blocker) if variance_per_register_cents exceeded
       push(warnings, 'VAR_REGISTER_EXCEEDED',
@@ -6947,7 +6940,7 @@ module.exports = {
   bankAccountsList, bankAccountCreate, bankAccountUpdate, bankAccountArchive,
   bankStatementImport, bankStatementsList, bankStatementDelete,
   bankAccountPostOpeningBalance, bankPostMissingEntries, bankFindOrphanEntries, bankSubledgerBalances,
-  bankTransactionsList, bankTransactionMatch, bankTransactionUnmatch, bankTransactionCategorize,
+  bankTransactionsList, bankTransactionUnmatch, bankTransactionCategorize,
   bankLinesForBillAmount,
   bankReconcilePreview, bankReconcileClose, bankReconcileReopen,
   bankLearnedRulesList, bankLearnedRuleDelete,

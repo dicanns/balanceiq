@@ -31,7 +31,7 @@ CREATE POLICY "read_pending_by_code" ON franchise_invitations
   FOR SELECT USING (status = 'pending');
 
 -- 3. Update synced_data RLS: franchisor org can read child org data
--- Drop existing policy first (may be named differently — safe with IF EXISTS)
+-- Drop existing policy first (may be named differently - safe with IF EXISTS)
 DROP POLICY IF EXISTS "Users can manage own org data" ON synced_data;
 DROP POLICY IF EXISTS "org_own" ON synced_data;
 

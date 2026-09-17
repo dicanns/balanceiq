@@ -1,5 +1,5 @@
 /**
- * MIG-011 — Tax Metadata Backfill for Legacy Bank Transactions
+ * MIG-011 - Tax Metadata Backfill for Legacy Bank Transactions
  *
  * Pre-migration bank_transactions rows (created before Sprint 4 / v11) lack the
  * tax_claimable and suspense_entry_id columns. After migration v11 runs (ALTER TABLE
@@ -45,7 +45,7 @@ function buildV10Db() {
     })();
   }
 
-  // Insert legacy bank transactions (no tax columns yet — they don't exist at v10)
+  // Insert legacy bank transactions (no tax columns yet - they don't exist at v10)
   const coaRow = db.prepare(`SELECT id FROM chart_of_accounts WHERE account_number='1010'`).get();
   const coaExpense = db.prepare(`SELECT id FROM chart_of_accounts WHERE account_number='6100'`).get();
 

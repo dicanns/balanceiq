@@ -1,5 +1,5 @@
 /**
- * BalanceIQ — Database Integrity Tests
+ * BalanceIQ - Database Integrity Tests
  * Tests SQLite constraints and business-rule enforcement using an in-memory database
  * that mirrors the production schema (no Electron dependency needed).
  */
@@ -138,7 +138,7 @@ afterEach(() => {
 // ────────────────────────────────────────────────────────────────────────────
 // DAILY CLOSE-OUT → SNAPSHOT IMMUTABILITY
 // ────────────────────────────────────────────────────────────────────────────
-describe('Daily close-out — snapshot immutability', () => {
+describe('Daily close-out - snapshot immutability', () => {
   it('creates a snapshot and verifies it can be read back', () => {
     const data = JSON.stringify({ venteNet: 1450.75, caisses: 2, date: '2026-03-25' });
     db.prepare(`INSERT INTO daily_snapshots (date, data, device_id) VALUES (?, ?, ?)`).run('2026-03-25', data, 'DEV-001');
@@ -149,7 +149,7 @@ describe('Daily close-out — snapshot immutability', () => {
   });
 
   it('allows multiple snapshots for the same date (history)', () => {
-    // App always inserts new snapshots — no UNIQUE constraint on date
+    // App always inserts new snapshots - no UNIQUE constraint on date
     db.prepare(`INSERT INTO daily_snapshots (date, data, device_id) VALUES (?, ?, ?)`).run('2026-03-25', '{"v":1}', 'DEV-001');
     db.prepare(`INSERT INTO daily_snapshots (date, data, device_id) VALUES (?, ?, ?)`).run('2026-03-25', '{"v":2}', 'DEV-001');
 
@@ -158,7 +158,7 @@ describe('Daily close-out — snapshot immutability', () => {
     expect(JSON.parse(rows[0].data).v).toBe(2); // latest first
   });
 
-  it('snapshot data is immutable — no UPDATE on daily_snapshots', () => {
+  it('snapshot data is immutable - no UPDATE on daily_snapshots', () => {
     // Production code never UPDATEs snapshots. Verify by checking the data is unchanged.
     db.prepare(`INSERT INTO daily_snapshots (date, data, device_id) VALUES (?, ?, ?)`).run('2026-03-24', '{"venteNet":1000}', 'DEV-001');
 
@@ -173,7 +173,7 @@ describe('Daily close-out — snapshot immutability', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-// AUDIT TRAIL — EDIT AFTER CLOSE-OUT
+// AUDIT TRAIL - EDIT AFTER CLOSE-OUT
 // ────────────────────────────────────────────────────────────────────────────
 describe('Audit trail on financial edits', () => {
   it('inserts an audit log entry on financial field change', () => {
@@ -240,7 +240,7 @@ describe('Duplicate checklist entry prevention', () => {
       .run(1, '2026-03-24', 1);
     expect(() => {
       db.prepare(`INSERT INTO checklist_entries (template_id, date, completed) VALUES (?, ?, ?)`)
-        .run(1, '2026-03-25', 0);  // same template, different date — OK
+        .run(1, '2026-03-25', 0);  // same template, different date - OK
     }).not.toThrow();
   });
 
@@ -301,9 +301,9 @@ describe('Foreign key constraints', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-// PRICE HISTORY — APPEND-ONLY (NEVER OVERWRITE)
+// PRICE HISTORY - APPEND-ONLY (NEVER OVERWRITE)
 // ────────────────────────────────────────────────────────────────────────────
-describe('Supplier price history — append only', () => {
+describe('Supplier price history - append only', () => {
   let ingredientId;
 
   beforeEach(() => {
@@ -353,7 +353,7 @@ describe('Supplier price history — append only', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-// TIP POOL FINALIZATION — CAN'T MODIFY AFTER CONFIRMED
+// TIP POOL FINALIZATION - CAN'T MODIFY AFTER CONFIRMED
 // ────────────────────────────────────────────────────────────────────────────
 describe('Tip pool finalization', () => {
   it('saves a tip pool session with finalized=0 (draft)', () => {

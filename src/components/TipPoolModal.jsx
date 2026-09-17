@@ -294,7 +294,7 @@ export default function TipPoolModal({ lang = 'fr', date, dailyEmployees = [], s
 
   function doPrint() {
     const rows = (results || employees).map(e =>
-      `<tr><td>${e.name}</td><td>${e.hours || '—'}</td><td>${fmt(e.share)}</td></tr>`
+      `<tr><td>${e.name}</td><td>${e.hours || '-'}</td><td>${fmt(e.share)}</td></tr>`
     ).join('');
     const html = `<html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;padding:20px;font-size:13px}
       h2{color:#f97316}table{width:100%;border-collapse:collapse;margin-top:12px}
@@ -359,11 +359,11 @@ export default function TipPoolModal({ lang = 'fr', date, dailyEmployees = [], s
                     {needsPct && (<input type="number" min="0" max="100" step="1" style={{ ...inp, textAlign: 'center' }}
                         value={e.pct || ''} placeholder="0" onChange={ev =>updateEmployee(i, 'pct', ev.target.value)} />
                     )}<span style={{ textAlign: 'right', fontSize: 13, fontWeight: 600, color: e.share >0 ? '#16a34a' : th.muted }}>
-                      {results ? fmt(e.share) : '—'}</span><button onClick={() =>removeEmployee(i)} style={{ background: 'none', border: 'none', color: th.muted, cursor: 'pointer', fontSize: 14, padding: 0 }}>
+                      {results ? fmt(e.share) : '-'}</span><button onClick={() =>removeEmployee(i)} style={{ background: 'none', border: 'none', color: th.muted, cursor: 'pointer', fontSize: 14, padding: 0 }}>
                       {T.remove}</button></div>))}
 
                 {needsPct && (<div style={{ fontSize: 11, color: Math.abs(pctSum - 100) < 0.01 ? '#16a34a' : '#ef4444', textAlign: 'right', marginTop: 2 }}>{T.pct} total: {round2(pctSum)}%
-                    {pctError && ` — ${T.pctSum}`}</div>)}</div>{/* Notes */}<div><label style={{ display: 'block', fontSize: 12, color: th.muted, marginBottom: 4 }}>{T.notes}</label><input style={inp} value={notes} onChange={e =>setNotes(e.target.value)} placeholder="..." /></div>{/* Actions */}<div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}><button style={btn(false)} onClick={onClose}>{T.cancel}</button>{results && !saved && (<button style={btn(false)} onClick={doPrint}>{T.print}</button>)}
+                    {pctError && ` - ${T.pctSum}`}</div>)}</div>{/* Notes */}<div><label style={{ display: 'block', fontSize: 12, color: th.muted, marginBottom: 4 }}>{T.notes}</label><input style={inp} value={notes} onChange={e =>setNotes(e.target.value)} placeholder="..." /></div>{/* Actions */}<div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}><button style={btn(false)} onClick={onClose}>{T.cancel}</button>{results && !saved && (<button style={btn(false)} onClick={doPrint}>{T.print}</button>)}
                 {results && saved && (<button style={{ ...btn(false), color: '#16a34a' }} onClick={doPrint}>{T.print}</button>)}
                 {!results && (<button style={btn(true)} onClick={calculate}
                     disabled={!totalTips || employees.length === 0}>{T.calculate}</button>)}
@@ -375,7 +375,7 @@ export default function TipPoolModal({ lang = 'fr', date, dailyEmployees = [], s
                 ?<p style={{ color: th.muted, fontSize: 13 }}>{T.noHistory}</p>: history.map((h, i) => {
                   let dists = [];
                   try { dists = JSON.parse(h.distributions || '[]'); } catch (e) {}
-                  return (<div key={i} style={{ border: `1px solid ${th.border}`, borderRadius: 8, padding: 12, marginBottom: 10 }}><div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}><span style={{ fontWeight: 600, fontSize: 13, color: th.text }}>{h.date}</span><span style={{ fontWeight: 700, color: '#f97316' }}>{fmt(h.total_tips)}</span></div>{dists.map((d, j) => (<div key={j} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: th.muted, padding: '2px 0' }}><span>{d.name || '—'}</span><span style={{ color: '#16a34a', fontWeight: 600 }}>{fmt(d.share)}</span></div>))}
+                  return (<div key={i} style={{ border: `1px solid ${th.border}`, borderRadius: 8, padding: 12, marginBottom: 10 }}><div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}><span style={{ fontWeight: 600, fontSize: 13, color: th.text }}>{h.date}</span><span style={{ fontWeight: 700, color: '#f97316' }}>{fmt(h.total_tips)}</span></div>{dists.map((d, j) => (<div key={j} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: th.muted, padding: '2px 0' }}><span>{d.name || '-'}</span><span style={{ color: '#16a34a', fontWeight: 600 }}>{fmt(d.share)}</span></div>))}
                       {h.finalized_by && (<div style={{ fontSize: 11, color: th.muted, marginTop: 4, fontStyle: 'italic' }}>{h.finalized_by}</div>)}</div>);
                 })
               }</div>)}

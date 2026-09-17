@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import { computeEncaisseChain } from '../utils/calculations.js';
 
 // ────────────────────────────────────────────────────────────────────────────
-describe('Encaisse running chain — basic chain', () => {
+describe('Encaisse running chain - basic chain', () => {
   it('first day starts at 0 when no prior closing', () => {
     const result = computeEncaisseChain([
       { date: '2026-03-24', cashVentes: 850, autresEntrees: 0, depots: 800, sorties: 50 },
@@ -53,7 +53,7 @@ describe('Encaisse running chain — basic chain', () => {
     expect(result[2].opening).toBe(200);      // day 3 opening = day 2 closing
   });
 
-  it('7-day rolling chain — matches a full restaurant week', () => {
+  it('7-day rolling chain - matches a full restaurant week', () => {
     const week = [
       { cashVentes: 1200, depots: 1100, sorties: 50 },   // Mon closing = 50
       { cashVentes: 980,  depots: 900,  sorties: 80 },   // Tue closing = 50
@@ -82,7 +82,7 @@ describe('Encaisse running chain — basic chain', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-describe('Encaisse chain — edge cases', () => {
+describe('Encaisse chain - edge cases', () => {
   it('empty array returns empty array', () => {
     expect(computeEncaisseChain([])).toEqual([]);
   });

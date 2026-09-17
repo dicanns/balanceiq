@@ -21,7 +21,7 @@ de suivi et d'analytique.
 - Météo et prix de l'essence automatiques
 - Journal d'audit en ajout seulement (append-only)
 - Génération PDF, courriel, export CSV/Excel
-- Fonctionne hors-ligne — les données opérationnelles sont stockées localement. Les fonctionnalités cloud optionnelles (sync, IA, OCR, POS) envoient des données sur des serveurs canadiens uniquement si vous les activez. La télémétrie est optionnelle.
+- Fonctionne hors-ligne - les données opérationnelles sont stockées localement. Les fonctionnalités cloud optionnelles (sync, IA, OCR, POS) envoient des données sur des serveurs canadiens uniquement si vous les activez. La télémétrie est optionnelle.
 - Mac (.dmg) et Windows (.exe)
 - Bilingue : Français / English
 
@@ -51,7 +51,7 @@ tracking, reconciliation, and analytics.
 - Weather and gas price auto-fill
 - Append-only audit trail (enforced at the application level)
 - PDF generation, email, CSV/Excel export
-- Works offline — operational data is stored locally on your computer. Optional cloud features (sync, AI, OCR, POS) send data to Canadian servers only when you enable them. Telemetry is opt-in.
+- Works offline - operational data is stored locally on your computer. Optional cloud features (sync, AI, OCR, POS) send data to Canadian servers only when you enable them. Telemetry is opt-in.
 - Mac (.dmg) and Windows (.exe)
 - Bilingual: Français / English
 
@@ -70,7 +70,7 @@ Téléchargez / Download the latest .dmg (Mac) or .exe (Windows):
 
 ### Installation
 
-**Mac:** Download the .dmg and double-click to install. The app is signed and notarized by Apple — no security warnings.
+**Mac:** Download the .dmg and double-click to install. The app is signed and notarized by Apple - no security warnings.
 
 **Windows:** Download the .exe installer. Windows SmartScreen may show a warning because the app is not yet EV code-signed. Click "More info" then "Run anyway" to proceed. This is normal for new software without an Extended Validation certificate.
 
@@ -80,6 +80,6 @@ Voir / See [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## Licence / License
 
-MIT — voir / see [LICENSE](LICENSE)
+MIT - voir / see [LICENSE](LICENSE)
 
 Fait au Québec 🍁 Made in Quebec

@@ -1,5 +1,5 @@
 /**
- * pad-webhook edge function (spec 3.11) — multi-tenant revision
+ * pad-webhook edge function (spec 3.11) - multi-tenant revision
  *
  * Each operator stores their Stripe webhook signing secret in pad_config
  * (via set-pad-config). This function reads that per-org secret at runtime
@@ -9,7 +9,7 @@
  *   1. Read raw body + stripe-signature header
  *   2. Parse JSON (without verifying) to extract org_id from metadata
  *   3. Look up that org's webhook_secret from pad_config
- *   4. Verify Stripe signature — reject if invalid
+ *   4. Verify Stripe signature - reject if invalid
  *   5. Process event
  */
 

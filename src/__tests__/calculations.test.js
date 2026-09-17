@@ -1,5 +1,5 @@
 /**
- * BalanceIQ — Financial Calculation Tests
+ * BalanceIQ - Financial Calculation Tests
  * Covers every formula that touches money.
  * Uses realistic Dic Ann's / Quebec QSR demo data.
  */
@@ -65,7 +65,7 @@ describe('Tax calculations (TPS 5% / TVQ 9.975%)', () => {
 // ────────────────────────────────────────────────────────────────────────────
 describe('Cash register reconciliation', () => {
   // Demo day: busy Tuesday at Dic Ann's Laval
-  // Caisse #1 — balanced
+  // Caisse #1 - balanced
   const c1 = {
     interac: 420.50,
     finalCash: 185.25,
@@ -100,7 +100,7 @@ describe('Cash register reconciliation', () => {
     const expected = calcExpectedInRegister(posGross, 95);
     const manual   = calcManualTotal(320, 147.31, 395); // contrived to hit 667.31
     const variance = calcVariance(manual, expected);
-    // Just check the formula — value depends on inputs
+    // Just check the formula - value depends on inputs
     expect(typeof variance).toBe('number');
   });
 
@@ -171,7 +171,7 @@ describe('Labour calculations', () => {
 // P&L CALCULATIONS
 // ────────────────────────────────────────────────────────────────────────────
 describe('P&L calculations', () => {
-  // Demo month — Dic Ann's Laval, March 2026
+  // Demo month - Dic Ann's Laval, March 2026
   const revenue   = 48500;
   const foodCost  = 17850;  // ~36.8%
   const labourCost = 15680;  // ~32.3%
@@ -277,7 +277,7 @@ describe('Invoice line totals', () => {
 // ────────────────────────────────────────────────────────────────────────────
 // TIP POOLING
 // ────────────────────────────────────────────────────────────────────────────
-describe('Tip pool — all 4 distribution methods', () => {
+describe('Tip pool - all 4 distribution methods', () => {
   const employees = [
     { name: 'Alice', hours: 8,  points: 40, pct: 35 },
     { name: 'Bob',   hours: 6,  points: 30, pct: 35 },
@@ -286,14 +286,14 @@ describe('Tip pool — all 4 distribution methods', () => {
   ];
   const totalTips = 200;
 
-  it('equal shares — $200 split 4 ways = $50 each', () => {
+  it('equal shares - $200 split 4 ways = $50 each', () => {
     const result = calcTipPool('equal', totalTips, employees);
     result.forEach((e) => expect(e.share).toBe(50));
     const sum = result.reduce((s, e) => s + e.share, 0);
     expect(sum).toBe(totalTips);
   });
 
-  it('hours-weighted — proportional to hours worked', () => {
+  it('hours-weighted - proportional to hours worked', () => {
     // Hours: 8+6+4+2 = 20. Alice = 8/20 × 200 = 80
     const result = calcTipPool('hours', totalTips, employees);
     expect(result.find((e) => e.name === 'Alice').share).toBe(80);
@@ -304,7 +304,7 @@ describe('Tip pool — all 4 distribution methods', () => {
     expect(sum).toBe(totalTips);
   });
 
-  it('points-weighted — proportional to point system', () => {
+  it('points-weighted - proportional to point system', () => {
     // Points: 40+30+20+10 = 100. Alice = 40/100 × 200 = 80
     const result = calcTipPool('points', totalTips, employees);
     expect(result.find((e) => e.name === 'Alice').share).toBe(80);
@@ -315,7 +315,7 @@ describe('Tip pool — all 4 distribution methods', () => {
     expect(sum).toBe(totalTips);
   });
 
-  it('percentage — manual percentages add to 100', () => {
+  it('percentage - manual percentages add to 100', () => {
     // 35+35+20+10 = 100. Alice = 35% × 200 = 70
     const result = calcTipPool('pct', totalTips, employees);
     expect(result.find((e) => e.name === 'Alice').share).toBe(70);
@@ -327,7 +327,7 @@ describe('Tip pool — all 4 distribution methods', () => {
   });
 
   it('rounding remainder absorbed into first employee', () => {
-    // $100.03 equal split 3 ways: $33.34, $33.34, $33.35 (nope — goes to first)
+    // $100.03 equal split 3 ways: $33.34, $33.34, $33.35 (nope - goes to first)
     // Actual: each = round2(100.03/3) = round2(33.343) = 33.34 × 3 = 100.02
     // remainder = 100.03 - 100.02 = 0.01 → added to first
     const emps = [
@@ -558,7 +558,7 @@ describe('Delivery platform commission tracking', () => {
     expect(calcDeliveryCommission(400, 25)).toBe(100);
   });
 
-  it('detects overcharge — actual commission higher than expected', () => {
+  it('detects overcharge - actual commission higher than expected', () => {
     // Expected: $500 × 30% = $150
     // Actual: deposit was $330 instead of $350 → commission = 500 - 330 = 170
     const expected = calcDeliveryCommission(500, 30);
@@ -568,7 +568,7 @@ describe('Delivery platform commission tracking', () => {
     expect(variance).toBeGreaterThan(0); // over
   });
 
-  it('detects undercharge — actual commission lower than expected', () => {
+  it('detects undercharge - actual commission lower than expected', () => {
     const expected = calcDeliveryCommission(600, 30);  // 180
     const actual   = 165;
     const variance = calcDeliveryVariance(expected, actual);

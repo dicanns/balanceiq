@@ -1,10 +1,10 @@
-// BalanceIQ — Schema Migrations (extracted from database.js)
-// No Electron dependency — safe to import in Node tests and in main process.
+// BalanceIQ - Schema Migrations (extracted from database.js)
+// No Electron dependency - safe to import in Node tests and in main process.
 
 const MIGRATIONS = [
   {
     version: 1,
-    description: 'Baseline schema — all tables through v1.23.0 (POS scan module)',
+    description: 'Baseline schema - all tables through v1.23.0 (POS scan module)',
     up: (_db) => {
       // All tables already exist via CREATE TABLE IF NOT EXISTS in getDb().
       // This entry just stamps the version on new and existing databases.
@@ -12,7 +12,7 @@ const MIGRATIONS = [
   },
   {
     version: 2,
-    description: 'Upgrade prompt dismissals table (Item 2 — outcome-based prompts)',
+    description: 'Upgrade prompt dismissals table (Item 2 - outcome-based prompts)',
     up: (database) => {
       database.prepare(`CREATE TABLE IF NOT EXISTS upgrade_prompt_dismissals (
         prompt_key TEXT NOT NULL PRIMARY KEY,
@@ -52,7 +52,7 @@ const MIGRATIONS = [
   },
   {
     version: 5,
-    description: 'Global search — FTS5 indexes for ingredients + forecast_products + search_history table',
+    description: 'Global search - FTS5 indexes for ingredients + forecast_products + search_history table',
     up: (database) => {
       database.prepare(`CREATE VIRTUAL TABLE IF NOT EXISTS fts_ingredients USING fts5(
         name_fr, name_en, category,
@@ -153,7 +153,7 @@ const MIGRATIONS = [
   },
   {
     version: 7,
-    description: 'Fix FTS5 forecast_products — UUID ids cannot be FTS5 rowids; switch to standalone table with fp_id column',
+    description: 'Fix FTS5 forecast_products - UUID ids cannot be FTS5 rowids; switch to standalone table with fp_id column',
     up: (database) => {
       database.prepare(`DROP TRIGGER IF EXISTS fts_fp_insert`).run();
       database.prepare(`DROP TRIGGER IF EXISTS fts_fp_update`).run();
@@ -185,7 +185,7 @@ const MIGRATIONS = [
   },
   {
     version: 8,
-    description: 'Chart of Accounts (Plan comptable) — Sprint 1 Accounting Suite',
+    description: 'Chart of Accounts (Plan comptable) - Sprint 1 Accounting Suite',
     up: (database) => {
       database.prepare(`CREATE TABLE IF NOT EXISTS chart_of_accounts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -288,7 +288,7 @@ const MIGRATIONS = [
   },
   {
     version: 9,
-    description: 'General Ledger Core (Grand livre) — Sprint 2 Accounting Suite',
+    description: 'General Ledger Core (Grand livre) - Sprint 2 Accounting Suite',
     up: (database) => {
       database.prepare(`CREATE TABLE IF NOT EXISTS accounting_periods (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -376,7 +376,7 @@ const MIGRATIONS = [
   },
   {
     version: 10,
-    description: 'Bank Reconciliation (Rapprochement bancaire) — Sprint 3 Accounting Suite',
+    description: 'Bank Reconciliation (Rapprochement bancaire) - Sprint 3 Accounting Suite',
     up: (database) => {
       database.prepare(`CREATE TABLE IF NOT EXISTS bank_accounts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -443,9 +443,9 @@ const MIGRATIONS = [
   },
   {
     version: 12,
-    description: 'Balance Sheet + AP Tracking + CCA Depreciation — Sprint 6 Accounting Suite',
+    description: 'Balance Sheet + AP Tracking + CCA Depreciation - Sprint 6 Accounting Suite',
     up: (database) => {
-      // Supplier bills — new relational table (bills were previously in kv_store JSON)
+      // Supplier bills - new relational table (bills were previously in kv_store JSON)
       database.prepare(`CREATE TABLE IF NOT EXISTS supplier_bills (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         month_key TEXT NOT NULL,
@@ -554,7 +554,7 @@ const MIGRATIONS = [
   },
   {
     version: 11,
-    description: 'CTI/RTI Input Tax Credits — Sprint 4 Accounting Suite',
+    description: 'CTI/RTI Input Tax Credits - Sprint 4 Accounting Suite',
     up: (database) => {
       database.prepare(`ALTER TABLE bank_transactions ADD COLUMN tax_claimable INTEGER DEFAULT 0`).run();
       database.prepare(`ALTER TABLE bank_transactions ADD COLUMN suspense_entry_id INTEGER`).run();
@@ -603,7 +603,7 @@ const MIGRATIONS = [
   },
   {
     version: 13,
-    description: 'Source Document Vault + Recurring Transactions — Sprint 7 Accounting Suite',
+    description: 'Source Document Vault + Recurring Transactions - Sprint 7 Accounting Suite',
     up: (database) => {
       database.prepare(`CREATE TABLE IF NOT EXISTS source_documents (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -675,7 +675,7 @@ const MIGRATIONS = [
   },
   {
     version: 14,
-    description: 'Sprint 9 — Reminder Ladder + Deposit Schedules',
+    description: 'Sprint 9 - Reminder Ladder + Deposit Schedules',
     up: (database) => {
       database.prepare(`CREATE TABLE IF NOT EXISTS reminder_ladder (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -726,11 +726,11 @@ const MIGRATIONS = [
         `INSERT INTO reminder_ladder (name, is_default, is_active) VALUES ('Defaut', 1, 1)`
       ).run().lastInsertRowid;
       const steps = [
-        { days: 3,  sfr: 'Rappel amical — Facture {numero}',         sen: 'Friendly reminder — Invoice {numero}',        bfr: '', ben: '' },
-        { days: 7,  sfr: 'Rappel ferme — Facture {numero}',          sen: 'Payment reminder — Invoice {numero}',         bfr: '', ben: '' },
-        { days: 14, sfr: 'Compte en retard — Facture {numero}',      sen: 'Past due — Invoice {numero}',                 bfr: '', ben: '' },
-        { days: 30, sfr: 'Dernier avis — Facture {numero}',          sen: 'Final notice — Invoice {numero}',             bfr: '', ben: '' },
-        { days: 60, sfr: 'Mise en demeure — Facture {numero}',       sen: 'Collection notice — Invoice {numero}',        bfr: '', ben: '' },
+        { days: 3,  sfr: 'Rappel amical - Facture {numero}',         sen: 'Friendly reminder - Invoice {numero}',        bfr: '', ben: '' },
+        { days: 7,  sfr: 'Rappel ferme - Facture {numero}',          sen: 'Payment reminder - Invoice {numero}',         bfr: '', ben: '' },
+        { days: 14, sfr: 'Compte en retard - Facture {numero}',      sen: 'Past due - Invoice {numero}',                 bfr: '', ben: '' },
+        { days: 30, sfr: 'Dernier avis - Facture {numero}',          sen: 'Final notice - Invoice {numero}',             bfr: '', ben: '' },
+        { days: 60, sfr: 'Mise en demeure - Facture {numero}',       sen: 'Collection notice - Invoice {numero}',        bfr: '', ben: '' },
       ];
       const ins = database.prepare(
         `INSERT INTO reminder_steps (ladder_id, days_after_due, subject_fr, subject_en, body_fr, body_en, attach_pdf, include_payment_link)
@@ -741,7 +741,7 @@ const MIGRATIONS = [
   },
   {
     version: 15,
-    description: 'Sprint 12 — Document Number Registry + Payment Plans',
+    description: 'Sprint 12 - Document Number Registry + Payment Plans',
     up: (database) => {
       database.prepare(`CREATE TABLE IF NOT EXISTS document_number_registry (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -769,7 +769,7 @@ const MIGRATIONS = [
   },
   {
     version: 16,
-    description: 'Sprint 13 — Invoice Inventory Deductions',
+    description: 'Sprint 13 - Invoice Inventory Deductions',
     up: (database) => {
       database.prepare(`CREATE TABLE IF NOT EXISTS invoice_inventory_deductions (
         id TEXT PRIMARY KEY,
@@ -789,14 +789,14 @@ const MIGRATIONS = [
   },
   {
     version: 17,
-    description: 'Sprint 15 — Bank match reason label',
+    description: 'Sprint 15 - Bank match reason label',
     up: (database) => {
       try { database.prepare(`ALTER TABLE bank_transactions ADD COLUMN match_reason TEXT`).run(); } catch (_) {}
     },
   },
   {
     version: 18,
-    description: 'Security sprint — durable cloud sync queue',
+    description: 'Security sprint - durable cloud sync queue',
     up: (database) => {
       database.prepare(`CREATE TABLE IF NOT EXISTS sync_queue (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

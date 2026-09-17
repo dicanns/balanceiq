@@ -240,12 +240,12 @@ function ApplyModal({ packet, locations, onApply, onClose, T, t }) {
           <div style={{ display: 'flex', gap: 8 }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 9.5, color: t.textMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>{T.royaltyRate}</div>
-              <input type="number" step="0.1" min="0" max="100" value={royaltyRate} onChange={e => setRR(e.target.value)} placeholder="—"
+              <input type="number" step="0.1" min="0" max="100" value={royaltyRate} onChange={e => setRR(e.target.value)} placeholder="-"
                 style={{ background: t.inputBg, border: `1px solid ${t.inputBorder}`, borderRadius: 5, color: t.text, fontSize: 11, padding: '4px 8px', width: '100%', outline: 'none' }} />
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 9.5, color: t.textMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>{T.adRate}</div>
-              <input type="number" step="0.1" min="0" max="100" value={adRate} onChange={e => setAR(e.target.value)} placeholder="—"
+              <input type="number" step="0.1" min="0" max="100" value={adRate} onChange={e => setAR(e.target.value)} placeholder="-"
                 style={{ background: t.inputBg, border: `1px solid ${t.inputBorder}`, borderRadius: 5, color: t.text, fontSize: 11, padding: '4px 8px', width: '100%', outline: 'none' }} />
             </div>
           </div>

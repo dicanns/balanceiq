@@ -1,7 +1,7 @@
--- POS Report Scan — Community Templates
+-- POS Report Scan - Community Templates
 -- Phase 4: Community template database
 -- Operators can opt-in to share locally-built POS format templates.
--- Only template patterns are stored — never financial data.
+-- Only template patterns are stored - never financial data.
 
 CREATE TABLE IF NOT EXISTS pos_scan_community_templates (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

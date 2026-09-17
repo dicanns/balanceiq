@@ -1,5 +1,5 @@
 /**
- * Custom Payment Instructions (spec 3.5.6 v2) — pure utility functions.
+ * Custom Payment Instructions (spec 3.5.6 v2) - pure utility functions.
  * No React, no Electron dependency. Imported by App.jsx and tests.
  */
 
@@ -10,7 +10,7 @@ function escapeHtmlCPI(s) {
 }
 
 // Simple deterministic hash for audit "before/after" fingerprints.
-// Not cryptographic — just stable change detection in an append-only audit log.
+// Not cryptographic - just stable change detection in an append-only audit log.
 export function cpiHash(text) {
   if (!text) return 'empty';
   let h = 5381;
@@ -24,7 +24,7 @@ export function cpiHash(text) {
  * Sanitize raw input for storage per spec 3.5.6.7.
  * Returns { text, sanitized, error }.
  *   sanitized: true only when meaningful content was removed (HTML tags, null bytes, blocked schemes).
- *   error: 'too_long' when post-sanitization length > 500 — caller must reject the write.
+ *   error: 'too_long' when post-sanitization length > 500 - caller must reject the write.
  */
 export function sanitizeCPI(raw) {
   if (!raw) return { text: '', sanitized: false, error: null };
@@ -38,7 +38,7 @@ export function sanitizeCPI(raw) {
   // Normalize line endings
   s = s.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
-  // Strip HTML tags — all of them
+  // Strip HTML tags - all of them
   const beforeHtml = s;
   s = s.replace(/<[^>]*>/g, '');
   const hadHtml = s !== beforeHtml;
@@ -55,7 +55,7 @@ export function sanitizeCPI(raw) {
   // Trim overall
   s = s.trim();
 
-  // Reject over 500 — do NOT silently truncate
+  // Reject over 500 - do NOT silently truncate
   if (s.length > 500) {
     return { text: '', sanitized: false, error: 'too_long' };
   }
@@ -147,7 +147,7 @@ export function isSentAndDiffers(invoice, draftText) {
 
 /**
  * Return a new invoice object with the initial snapshot set.
- * Does not write anything — caller persists and audits.
+ * Does not write anything - caller persists and audits.
  */
 export function applyInitialSnapshot(invoice) {
   return {
@@ -158,7 +158,7 @@ export function applyInitialSnapshot(invoice) {
 
 /**
  * Return the new invoice object after a reissue, or an error.
- * Does not write anything — caller persists and audits.
+ * Does not write anything - caller persists and audits.
  */
 export function applyReissueSnapshot(invoice, draftText, reason) {
   if (!reason || !reason.trim()) return { invoice: null, error: 'reason_required' };
@@ -173,7 +173,7 @@ export function applyReissueSnapshot(invoice, draftText, reason) {
 }
 
 /**
- * True when a reissue actually changed the snapshot — only then should an audit event be written.
+ * True when a reissue actually changed the snapshot - only then should an audit event be written.
  */
 export function shouldWriteReissueAudit(oldSnapshot, newText) {
   return (oldSnapshot ?? null) !== (newText ?? null);

@@ -1,5 +1,5 @@
 /**
- * BalanceIQ — Comprehensive Stress Test (Playwright E2E)
+ * BalanceIQ - Comprehensive Stress Test (Playwright E2E)
  *
  * Clicks through every tab, major section, and data-entry flow to catch
  * crashes that only appear in the built Electron environment.
@@ -8,7 +8,7 @@
  *
  * Notes:
  * - Tests run serially (state is shared across suites via SQLite)
- * - Test data written to SQLite persists — clearly labeled for easy cleanup
+ * - Test data written to SQLite persists - clearly labeled for easy cleanup
  * - Cloud sync / login intentionally skipped
  * - Pro-gated features: upgrade prompt is dismissed and test continues
  */
@@ -84,7 +84,7 @@ async function assertNoNaN(win, label) {
 // =============================================================================
 // SUITE 0: App launch + welcome screen
 // =============================================================================
-test.describe.serial('0 — App launch & mode selection', () => {
+test.describe.serial('0 - App launch & mode selection', () => {
   let app, win;
 
   test.beforeAll(async () => {
@@ -113,7 +113,7 @@ test.describe.serial('0 — App launch & mode selection', () => {
 // =============================================================================
 // SUITE 1: Sidebar tab navigation
 // =============================================================================
-test.describe.serial('1 — Sidebar tab navigation', () => {
+test.describe.serial('1 - Sidebar tab navigation', () => {
   let app, win;
 
   test.beforeAll(async () => {
@@ -146,7 +146,7 @@ test.describe.serial('1 — Sidebar tab navigation', () => {
 // =============================================================================
 // SUITE 2: Daily close-out data entry
 // =============================================================================
-test.describe.serial('2 — Daily close-out data entry', () => {
+test.describe.serial('2 - Daily close-out data entry', () => {
   let app, win;
 
   test.beforeAll(async () => {
@@ -182,7 +182,7 @@ test.describe.serial('2 — Daily close-out data entry', () => {
   test('notes textarea accepts text', async () => {
     const ta = await win.locator('textarea').first();
     if (await ta.count() === 0) { test.skip(); return; }
-    await ta.fill('Test automatisé — stress test 2026-04-04');
+    await ta.fill('Test automatisé - stress test 2026-04-04');
     const val = await ta.inputValue();
     expect(val.length).toBeGreaterThan(0);
     await assertNoCrash(win, 'Notes textarea');
@@ -211,7 +211,7 @@ test.describe.serial('2 — Daily close-out data entry', () => {
 // =============================================================================
 // SUITE 3: Monthly P&L
 // =============================================================================
-test.describe.serial('3 — Monthly P&L', () => {
+test.describe.serial('3 - Monthly P&L', () => {
   let app, win;
 
   test.beforeAll(async () => {
@@ -258,7 +258,7 @@ test.describe.serial('3 — Monthly P&L', () => {
 // =============================================================================
 // SUITE 4: Intelligence tab
 // =============================================================================
-test.describe.serial('4 — Intelligence tab', () => {
+test.describe.serial('4 - Intelligence tab', () => {
   let app, win;
 
   test.beforeAll(async () => {
@@ -286,7 +286,7 @@ test.describe.serial('4 — Intelligence tab', () => {
 // =============================================================================
 // SUITE 5: Encaisse tab
 // =============================================================================
-test.describe.serial('5 — Encaisse (cash position) tab', () => {
+test.describe.serial('5 - Encaisse (cash position) tab', () => {
   let app, win;
 
   test.beforeAll(async () => {
@@ -317,7 +317,7 @@ test.describe.serial('5 — Encaisse (cash position) tab', () => {
 // =============================================================================
 // SUITE 6: Facturation (invoicing) tab
 // =============================================================================
-test.describe.serial('6 — Facturation (invoicing) tab', () => {
+test.describe.serial('6 - Facturation (invoicing) tab', () => {
   let app, win;
 
   test.beforeAll(async () => {
@@ -382,7 +382,7 @@ test.describe.serial('6 — Facturation (invoicing) tab', () => {
 // =============================================================================
 // SUITE 7: Config / Settings tab
 // =============================================================================
-test.describe.serial('7 — Config tab', () => {
+test.describe.serial('7 - Config tab', () => {
   let app, win;
 
   test.beforeAll(async () => {
@@ -441,7 +441,7 @@ test.describe.serial('7 — Config tab', () => {
 // =============================================================================
 // SUITE 8: Gaspillage (Waste) tab
 // =============================================================================
-test.describe.serial('8 — Gaspillage tab', () => {
+test.describe.serial('8 - Gaspillage tab', () => {
   let app, win;
 
   test.beforeAll(async () => {
@@ -461,9 +461,9 @@ test.describe.serial('8 — Gaspillage tab', () => {
 });
 
 // =============================================================================
-// SUITE 9: Edge case inputs — bad data, no crash
+// SUITE 9: Edge case inputs - bad data, no crash
 // =============================================================================
-test.describe.serial('9 — Edge case inputs', () => {
+test.describe.serial('9 - Edge case inputs', () => {
   let app, win;
 
   test.beforeAll(async () => {
@@ -502,7 +502,7 @@ test.describe.serial('9 — Edge case inputs', () => {
 // =============================================================================
 // FINAL: JS error summary
 // =============================================================================
-test('Final — no unhandled JS errors during run', async () => {
+test('Final - no unhandled JS errors during run', async () => {
   if (JS_ERRORS.length > 0) {
     console.error('\n=== JS ERRORS CAPTURED DURING STRESS TEST ===');
     JS_ERRORS.forEach((e) => console.error(e));

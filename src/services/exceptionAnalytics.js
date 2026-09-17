@@ -1,5 +1,5 @@
 /**
- * Close exception pattern detection — pure functions, no side effects.
+ * Close exception pattern detection - pure functions, no side effects.
  * All thresholds are exported constants so tests can reference them.
  */
 
@@ -19,7 +19,7 @@ export const DOW_NAMES_EN = ['Sunday','Monday','Tuesday','Wednesday','Thursday',
 export const DOW_NAMES_FR = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 
 /**
- * Pattern 1 — cashier with repeated variance.
+ * Pattern 1 - cashier with repeated variance.
  * @param {Array<{cashier_name:string, total_closures:number, variance_closures:number}>} cashierSummary
  */
 export function detectCashierVariancePattern(cashierSummary) {
@@ -41,7 +41,7 @@ export function detectCashierVariancePattern(cashierSummary) {
 }
 
 /**
- * Pattern 2 — register with repeated variance.
+ * Pattern 2 - register with repeated variance.
  * @param {Array<{register_key:string, total_closures:number, variance_closures:number}>} registerSummary
  */
 export function detectRegisterVariancePattern(registerSummary) {
@@ -62,7 +62,7 @@ export function detectRegisterVariancePattern(registerSummary) {
 }
 
 /**
- * Pattern 3 — day-of-week variance pattern.
+ * Pattern 3 - day-of-week variance pattern.
  * @param {Array<{dow:number, total_closures:number, variance_closures:number}>} dowSummary
  *         dow: 0=Sunday … 6=Saturday (SQLite strftime %w)
  */
@@ -86,7 +86,7 @@ export function detectDayOfWeekPattern(dowSummary) {
 }
 
 /**
- * Pattern 4 — delayed approval (avg submit→finalize lag > 2h).
+ * Pattern 4 - delayed approval (avg submit→finalize lag > 2h).
  * @param {number[]} lagMinutes  list of per-session lags in minutes
  */
 export function detectDelayedApprovalPattern(lagMinutes) {
@@ -101,7 +101,7 @@ export function detectDelayedApprovalPattern(lagMinutes) {
 }
 
 /**
- * Pattern 5 — reopen frequency > 10%.
+ * Pattern 5 - reopen frequency > 10%.
  * @param {{ sessionCount:number, reopenCount:number }} counts
  */
 export function detectReopenPattern({ sessionCount = 0, reopenCount = 0 } = {}) {

@@ -153,8 +153,8 @@ export default function LocalUsersManager({ T = {}, t = {}, lang = 'fr', onUsers
           {users.length === 0 && (
             <div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 6, background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.25)', fontSize: 11, color: '#f97316' }}>
               {fr
-                ? 'Le premier utilisateur doit etre Gerant ou Proprietaire — il pourra ensuite gerer les autres.'
-                : 'The first user must be Manager or Owner — they will be able to manage others.'}
+                ? 'Le premier utilisateur doit etre Gerant ou Proprietaire - il pourra ensuite gerer les autres.'
+                : 'The first user must be Manager or Owner - they will be able to manage others.'}
             </div>
           )}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>

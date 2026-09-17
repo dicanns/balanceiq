@@ -1,13 +1,13 @@
 /**
- * flashReport.js — Daily Flash Report email builder
+ * flashReport.js - Daily Flash Report email builder
  * Generates a branded HTML email summary from daily data.
- * Pure function — no React, no IPC. Called from App.jsx.
+ * Pure function - no React, no IPC. Called from App.jsx.
  */
 
 const fmtCAD = (n) =>
   (n ?? 0).toLocaleString('fr-CA', { style: 'currency', currency: 'CAD' });
 
-const fmtPct = (n) => (n != null ? `${n.toFixed(1)}%` : '—');
+const fmtPct = (n) => (n != null ? `${n.toFixed(1)}%` : '-');
 
 const escapeHtml = (s) => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#x27;');
 
@@ -113,7 +113,7 @@ export function buildFlashReportHTML(data, lang = 'fr', isPro = false) {
       const cashierId = c.cashierId || `#${i + 1}`;
 
       const statusColor = !mc || !c.posVentes ? '#6b7280' : bal ? '#16a34a' : ecart < 0 ? '#ef4444' : '#f59e0b';
-      const statusLabel = !mc || !c.posVentes ? '—' : bal
+      const statusLabel = !mc || !c.posVentes ? '-' : bal
         ? T.balanced
         : `${ecart < 0 ? T.short : T.over} ${fmtCAD(Math.abs(ecart))}`;
 
@@ -179,7 +179,7 @@ export function buildFlashReportHTML(data, lang = 'fr', isPro = false) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${T.subject} — ${dateLabel}</title>
+  <title>${T.subject} - ${dateLabel}</title>
 </head>
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:'Helvetica Neue',Arial,sans-serif">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 0">
@@ -193,7 +193,7 @@ export function buildFlashReportHTML(data, lang = 'fr', isPro = false) {
               <tr>
                 <td>
                   <div style="font-size:20px;font-weight:800;color:#fff;letter-spacing:-0.3px">BalanceIQ</div>
-                  <div style="font-size:13px;color:rgba(255,255,255,0.85);margin-top:2px">${T.subject} — ${dateLabel}</div>
+                  <div style="font-size:13px;color:rgba(255,255,255,0.85);margin-top:2px">${T.subject} - ${dateLabel}</div>
                   ${locationHtml}
                 </td>
                 ${isPro ? `<td align="right"><span style="background:rgba(255,255,255,0.2);color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:12px;letter-spacing:1px">${T.proTag}</span></td>` : ''}

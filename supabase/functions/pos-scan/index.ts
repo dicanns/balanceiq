@@ -19,15 +19,15 @@ Extract the following fields from the attached end-of-day POS report image.
 Return ONLY valid JSON, no explanation.
 
 Fields to extract:
-- ventes_avant_taxes (net sales before tax — look for "Ventes nettes", "Net Sales", "Sales before tax", "Sous-total")
-- tps (federal tax / GST / TPS — look for "TPS", "GST", "Taxe fédérale")
-- tvq (provincial tax / QST / TVQ — look for "TVQ", "QST", "Taxe provinciale")
-- interac (Interac/debit card total — look for "Interac", "Débit", "Debit")
+- ventes_avant_taxes (net sales before tax - look for "Ventes nettes", "Net Sales", "Sales before tax", "Sous-total")
+- tps (federal tax / GST / TPS - look for "TPS", "GST", "Taxe fédérale")
+- tvq (provincial tax / QST / TVQ - look for "TVQ", "QST", "Taxe provinciale")
+- interac (Interac/debit card total - look for "Interac", "Débit", "Debit")
 - visa (Visa/credit card total, if present)
 - mastercard (Mastercard total, if present)
-- especes (cash total — look for "Comptant", "Cash", "Espèces")
-- livraisons (delivery total — DoorDash, Uber Eats, Skip, etc.)
-- nb_transactions (transaction count — look for "Transactions", "Nb transactions", "#")
+- especes (cash total - look for "Comptant", "Cash", "Espèces")
+- livraisons (delivery total - DoorDash, Uber Eats, Skip, etc.)
+- nb_transactions (transaction count - look for "Transactions", "Nb transactions", "#")
 - pos_system (detected POS system name, if identifiable from logos, headers, or footer text)
 
 For each field found, return:

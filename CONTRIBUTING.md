@@ -8,7 +8,7 @@ Every pull request must pass these checks before merge.
 Run `npm test && npm run check:edge-auth && npm run audit` locally first.
 
 - [ ] If this PR touches money, auth, or data: did I post through ledger?
-      (invoicePost / creditNotePost — direct `statut:"Envoyée"` without invoicePost is a bug)
+      (invoicePost / creditNotePost - direct `statut:"Envoyée"` without invoicePost is a bug)
 - [ ] If this PR adds a new SQLite table: did I add it to backup?
       (Verify: `npm run test:backup-parity`)
 - [ ] If this PR adds a new edge function: does it call `requireOrgMember`
@@ -18,7 +18,7 @@ Run `npm test && npm run check:edge-auth && npm run audit` locally first.
       with what it accepts and what auth/validation it applies?
 - [ ] If this PR skips a test (`.skip` / `.todo`): does the comment
       include a sprint reference (e.g. `Sprint 16`)?
-- [ ] No em dashes (`—`) anywhere in code or docs (project rule).
+- [ ] No em dashes (`-`) anywhere in code or docs (project rule).
 
 ---
 
@@ -53,16 +53,16 @@ de `src/i18n/translations.js`. Aucune chaîne de caractères en dur dans les com
 **Intégrité des données financières**
 Les calculs financiers (réconciliation, P&L, facturation) doivent préserver l'intégrité
 du journal d'audit. Toute modification d'un enregistrement existant passe par
-`logUpdate()` ou `logCorrection()` — jamais en écrasant silencieusement les données.
+`logUpdate()` ou `logCorrection()` - jamais en écrasant silencieusement les données.
 
 **Pas de suppression sur les données financières**
-Les factures, paiements, soumissions et commandes ne se suppriment pas — ils
+Les factures, paiements, soumissions et commandes ne se suppriment pas - ils
 s'annulent (`void`). Utiliser `logVoid()` et mettre le statut à `"Annulée"`.
 La suppression physique n'est autorisée que pour les données de configuration
 (fournisseurs, clients, catégories).
 
 **Code de conduite**
-Soyez respectueux, inclusif et constructif dans toutes les interactions —
+Soyez respectueux, inclusif et constructif dans toutes les interactions -
 issues, pull requests, commentaires de code. Les contributions de tous niveaux
 d'expérience sont les bienvenues.
 
@@ -99,14 +99,14 @@ All visible UI text must have a key in both the `FR` and `EN` objects in
 **Financial data integrity**
 Financial calculations (reconciliation, P&L, invoicing) must preserve audit trail
 integrity. Any modification to an existing record goes through `logUpdate()` or
-`logCorrection()` — never by silently overwriting data.
+`logCorrection()` - never by silently overwriting data.
 
 **No hard deletes on financial data**
-Invoices, payments, quotes, and orders are not deleted — they are voided.
+Invoices, payments, quotes, and orders are not deleted - they are voided.
 Use `logVoid()` and set status to `"Annulée"`. Hard deletes are only permitted
 for configuration data (suppliers, clients, categories).
 
 **Code of conduct**
-Be respectful, inclusive, and constructive in all interactions —
+Be respectful, inclusive, and constructive in all interactions -
 issues, pull requests, code reviews. Contributions from all experience
 levels are welcome.

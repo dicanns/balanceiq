@@ -64,7 +64,7 @@ CREATE POLICY "reads_insert" ON announcement_reads FOR INSERT WITH CHECK (user_i
 -- Bucket name: franchise-docs
 -- Public: false (private, signed URLs only)
 -- File size limit: 10 MB
--- Allowed MIME types: (leave open — PDFs, images, Word docs, etc.)
+-- Allowed MIME types: (leave open - PDFs, images, Word docs, etc.)
 
 -- Storage RLS policy (run after bucket is created):
 /*

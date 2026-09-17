@@ -1,4 +1,4 @@
-// Pure functions for onboarding setup — no DB calls, no Electron dependencies.
+// Pure functions for onboarding setup - no DB calls, no Electron dependencies.
 
 function pad(n) {
   return String(n).padStart(2, '0');
@@ -12,7 +12,7 @@ function lastDayOf(year, month) {
 
 /**
  * Generate tax filing periods for a fiscal year.
- * Pure function — no I/O.
+ * Pure function - no I/O.
  *
  * @param {object} opts
  * @param {number} opts.fiscalYearEndMonth - 1-12, month the fiscal year ends

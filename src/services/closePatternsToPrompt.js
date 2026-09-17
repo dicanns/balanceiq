@@ -1,5 +1,5 @@
 /**
- * closePatternsToPrompt.js — Serialize close exception patterns + scorecard
+ * closePatternsToPrompt.js - Serialize close exception patterns + scorecard
  * into a structured AI prompt context object.
  * Pure function, no React, no IPC.
  */

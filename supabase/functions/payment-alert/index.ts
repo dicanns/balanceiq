@@ -32,7 +32,7 @@ serve(async (req: Request) => {
       <tr>
         <td style="padding:8px 16px 8px 0;font-size:13px">${org.name || org.id}</td>
         <td style="padding:8px 16px 8px 0;font-size:13px;text-transform:uppercase;color:#6366f1">${org.plan}</td>
-        <td style="padding:8px 0;font-size:12px;color:#9ca3af">${org.stripe_customer_id || '—'}</td>
+        <td style="padding:8px 0;font-size:12px;color:#9ca3af">${org.stripe_customer_id || '-'}</td>
       </tr>
     `).join('');
 

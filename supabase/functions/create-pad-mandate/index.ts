@@ -7,7 +7,7 @@
  *
  * Creates a Stripe Checkout Session in setup mode for ACSS Debit (Canadian PAD),
  * inserts a pending record in pad_mandates, and returns the hosted URL to email to the client.
- * No JWT required — called from Electron app with anon key.
+ * No JWT required - called from Electron app with anon key.
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';

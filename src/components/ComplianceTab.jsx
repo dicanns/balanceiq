@@ -21,7 +21,7 @@ const PLACEHOLDER_NEXT = {
 
 const UI_DOCS = {
   fr: {
-    title: 'Documents requis — CTI/RTI (art. 169(4) LTA)',
+    title: 'Documents requis - CTI/RTI (art. 169(4) LTA)',
     subtitle: 'Factures d\'achat de plus de 100 $ avec CTI/RTI réclamés mais sans pièce justificative dans le Coffre-fort.',
     allClear: 'Toutes les factures avec CTI/RTI sont documentées.',
     flagged: (n) => `${n} facture(s) sans pièce justificative`,
@@ -34,7 +34,7 @@ const UI_DOCS = {
     noDoc: 'Pièce manquante',
   },
   en: {
-    title: 'Required Documents — ITC/ITR (s. 169(4) ETA)',
+    title: 'Required Documents - ITC/ITR (s. 169(4) ETA)',
     subtitle: 'Purchase bills over $100 with ITC/ITR claimed but no supporting document in the Vault.',
     allClear: 'All bills with ITC/ITR claims are documented.',
     flagged: (n) => `${n} bill(s) missing supporting documents`,
@@ -115,7 +115,7 @@ function DocumentsSubTab({ lang, t }) {
                     CTI ${cti}
                   </span>
                   <span style={{ fontSize: 10, color: t.textMuted }}>
-                    {b.bill_date || b.month_key || '—'}
+                    {b.bill_date || b.month_key || '-'}
                   </span>
                   <span style={{
                     fontSize: 9, fontWeight: 700, padding: '2px 7px',
@@ -255,8 +255,8 @@ export default function ComplianceTab({ t, lang, canUse }) {
         </div>
         <div style={{ fontSize: 12, color: t.textSub, textAlign: 'center', lineHeight: 1.6 }}>
           {fr
-            ? 'Suivez vos obligations fiscales canadiennes — déclarations TPS/TVQ, périodes, documents requis et révision comptable — en un seul endroit.'
-            : 'Track your Canadian tax obligations — GST/QST filings, periods, required documents, and accountant review — all in one place.'}
+            ? 'Suivez vos obligations fiscales canadiennes - déclarations TPS/TVQ, périodes, documents requis et révision comptable - en un seul endroit.'
+            : 'Track your Canadian tax obligations - GST/QST filings, periods, required documents, and accountant review - all in one place.'}
         </div>
         <div style={{
           padding: '12px 18px',
@@ -320,13 +320,13 @@ export default function ComplianceTab({ t, lang, canUse }) {
 
       {/* Content area */}
       <div style={{ flex: 1, padding: 24, overflowY: 'auto' }}>
-        {/* Periods sub-tab — live data */}
+        {/* Periods sub-tab - live data */}
         {subTab === 'periods' && <PeriodsSubTab lang={lang} t={t} />}
 
-        {/* Documents sub-tab — vault compliance check */}
+        {/* Documents sub-tab - vault compliance check */}
         {subTab === 'documents' && <DocumentsSubTab lang={lang} t={t} />}
 
-        {/* Other sub-tabs — placeholder */}
+        {/* Other sub-tabs - placeholder */}
         {subTab !== 'periods' && subTab !== 'documents' && (
           <div style={{
             background: t.card,

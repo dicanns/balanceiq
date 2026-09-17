@@ -1,5 +1,5 @@
 /**
- * BalanceIQ — Accounting Test Schema Builder
+ * BalanceIQ - Accounting Test Schema Builder
  *
  * Creates in-memory SQLite databases mirroring the production accounting schema
  * (migrations v8-v11: COA, GL, Bank, Tax). No Electron dependency.

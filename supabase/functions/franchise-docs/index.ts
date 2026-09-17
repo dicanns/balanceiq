@@ -27,11 +27,11 @@ serve(async (req) => {
     const authHeader = req.headers.get('Authorization') || '';
     const token = authHeader.replace('Bearer ', '');
 
-    // User client — verifies identity
+    // User client - verifies identity
     const userClient = createClient(SUPABASE_URL, ANON_KEY, {
       global: { headers: { Authorization: `Bearer ${token}` } },
     });
-    // Service client — storage + writes
+    // Service client - storage + writes
     const svc = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
     // Verify user is authenticated
@@ -95,7 +95,7 @@ serve(async (req) => {
       if (!verifyOwner(orgId)) return forbidden();
       if (!isAdminOrOwner()) return forbidden();
 
-      // Reload storage_path from DB — never trust client-supplied paths
+      // Reload storage_path from DB - never trust client-supplied paths
       const { data: doc } = await svc
         .from('franchise_documents')
         .select('id, org_id, storage_path')

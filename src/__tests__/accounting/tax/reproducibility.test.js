@@ -1,5 +1,5 @@
 /**
- * TAX-016 — Tax Period Computation Reproducibility
+ * TAX-016 - Tax Period Computation Reproducibility
  *
  * The same inputs must always produce byte-for-byte identical outputs.
  * Historical filed periods must not be altered when formula version changes.

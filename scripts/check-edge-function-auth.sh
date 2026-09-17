@@ -51,7 +51,7 @@ for f in supabase/functions/*/index.ts; do
   while IFS= read -r tbl; do
     [ -z "$tbl" ] && continue
 
-    # Skip storage bucket names (contain a hyphen — not valid unquoted table names)
+    # Skip storage bucket names (contain a hyphen - not valid unquoted table names)
     if echo "$tbl" | grep -q '-'; then continue; fi
 
     # Skip allowlisted Supabase-managed tables

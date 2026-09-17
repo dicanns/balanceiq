@@ -354,7 +354,7 @@ function StepRegisters({ lang, roster, saveRoster, onNext, onBack }) {
         }}><span></span><span>{lang === 'fr'
               ? `${count} caisse${count > 1 ? 's' : ''} configurée${count > 1 ? 's' : ''}`
               : `${count} register${count > 1 ? 's' : ''} configured`}
-            {' — '}
+            {' - '}
             {Array.from({ length: count }, (_, i) => `Caisse ${i + 1}`).join(', ')}</span></div>)}<div style={STYLES.footer}><button style={STYLES.btnSecondary} onClick={onBack}>← {lang === 'fr' ? 'Retour' : 'Back'}</button><button
           style={{ ...STYLES.btnPrimary, width: 'auto', flex: 1, opacity: count ? 1 : 0.4, cursor: count ? 'pointer' : 'not-allowed' }}
           onClick={onNext}
@@ -365,14 +365,14 @@ function StepRegisters({ lang, roster, saveRoster, onNext, onBack }) {
 // Step 4
 function StepDemo({ lang, onNext, onBack }) {
   return (<div><div style={STYLES.stepTitle}>{lang === 'fr' ? 'Votre premier jour équilibré' : 'Your first balanced day'}</div><div style={STYLES.stepDesc}>{lang === 'fr'
-          ? 'Chaque jour, vous entrerez les lectures POS et le comptage manuel — BalanceIQ détecte automatiquement tout écart.'
-          : 'Each day, enter POS readings and your manual count — BalanceIQ automatically flags any discrepancy.'}</div>{/* Demo card */}<div style={{
+          ? 'Chaque jour, vous entrerez les lectures POS et le comptage manuel - BalanceIQ détecte automatiquement tout écart.'
+          : 'Each day, enter POS readings and your manual count - BalanceIQ automatically flags any discrepancy.'}</div>{/* Demo card */}<div style={{
         background: 'rgba(255,255,255,0.03)',
         border: '1px solid rgba(255,255,255,0.08)',
         borderRadius: '12px',
         padding: '20px',
         marginBottom: '20px',
-      }}><div style={{ fontSize: '12px', fontWeight: '600', color: '#6B7080', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: '16px' }}>{lang === 'fr' ? 'Caisse 1 — Exemple' : 'Register 1 — Example'}</div><div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={{ fontSize: '13px', color: '#6B7080' }}>{lang === 'fr' ? 'Total POS' : 'POS Total'}</span><span style={{ fontSize: '16px', fontWeight: '600', color: '#E8E8EC', fontFamily: "'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif" }}>$1,247.50</span></div><div style={{ height: '1px', background: 'rgba(255,255,255,0.06)' }} /><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={{ fontSize: '13px', color: '#6B7080' }}>{lang === 'fr' ? 'Comptage manuel' : 'Manual count'}</span><span style={{ fontSize: '16px', fontWeight: '600', color: '#E8E8EC', fontFamily: "'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif" }}>$1,247.50</span></div><div style={{ height: '1px', background: 'rgba(255,255,255,0.06)' }} /><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={{ fontSize: '13px', color: '#6B7080' }}>{lang === 'fr' ? 'Statut' : 'Status'}</span><div style={{
+      }}><div style={{ fontSize: '12px', fontWeight: '600', color: '#6B7080', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: '16px' }}>{lang === 'fr' ? 'Caisse 1 - Exemple' : 'Register 1 - Example'}</div><div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={{ fontSize: '13px', color: '#6B7080' }}>{lang === 'fr' ? 'Total POS' : 'POS Total'}</span><span style={{ fontSize: '16px', fontWeight: '600', color: '#E8E8EC', fontFamily: "'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif" }}>$1,247.50</span></div><div style={{ height: '1px', background: 'rgba(255,255,255,0.06)' }} /><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={{ fontSize: '13px', color: '#6B7080' }}>{lang === 'fr' ? 'Comptage manuel' : 'Manual count'}</span><span style={{ fontSize: '16px', fontWeight: '600', color: '#E8E8EC', fontFamily: "'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif" }}>$1,247.50</span></div><div style={{ height: '1px', background: 'rgba(255,255,255,0.06)' }} /><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={{ fontSize: '13px', color: '#6B7080' }}>{lang === 'fr' ? 'Statut' : 'Status'}</span><div style={{
               display: 'flex',
               alignItems: 'center',
               gap: '6px',

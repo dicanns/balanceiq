@@ -75,7 +75,7 @@ const {
   bankAccountsList, bankAccountCreate, bankAccountUpdate, bankAccountArchive,
   bankStatementImport, bankStatementsList, bankStatementDelete,
   bankAccountPostOpeningBalance, bankPostMissingEntries, bankSubledgerBalances,
-  bankTransactionsList, bankTransactionMatch, bankTransactionUnmatch, bankTransactionCategorize,
+  bankTransactionsList, bankTransactionUnmatch, bankTransactionCategorize,
   bankLinesForBillAmount,
   bankReconcilePreview, bankReconcileClose, bankReconcileReopen,
   bankLearnedRulesList, bankLearnedRuleDelete,
@@ -147,6 +147,11 @@ const { hashPin, verifyPin, enforceRole } = require('./src/services/identityCore
 const BACKUP_DIR = () => path.join(COMPANY_DATA_DIR, 'Backups');
 const BACKUP_KEEP_DAYS = 30;
 
+// Dialogs and errors raised from this process, in the language the app runs in.
+const { createMainStrings } = require('./src/services/mainStrings.cjs');
+const tm = createMainStrings(() => companies.getUiLang(USER_DATA_DIR)
+  || (String(app.getLocale() || '').toLowerCase().startsWith('fr') ? 'fr' : 'en'));
+
 // ── SECRETS AT REST ──────────────────────────────────────────────────────────
 // Credentials pass through here on every read and write of their storage keys,
 // so the renderer keeps seeing plain values while the database holds them
@@ -168,7 +173,7 @@ function protectExistingSecrets() {
 }
 
 // ── URL SAFETY ────────────────────────────────────────────────────────────────
-// Exact-match allowlist only — no suffix/wildcard matching.
+// Exact-match allowlist only - no suffix/wildcard matching.
 // To allow a new subdomain, add it explicitly.
 const ALLOWED_URL_SCHEMES = ['https:'];
 const ALLOWED_URL_DOMAINS = [
@@ -179,15 +184,15 @@ const ALLOWED_URL_DOMAINS = [
   // GitHub (releases, repo links)
   'github.com',
 
-  // Supabase — ONLY our specific project, not the whole supabase.com platform.
+  // Supabase - ONLY our specific project, not the whole supabase.com platform.
   // Suffix matching would allow any attacker-controlled *.supabase.co project.
   'etiwnesxjypdwhxqnqqq.supabase.co',
 
-  // Stripe — billing portal and checkout only (not stripe.com broadly)
+  // Stripe - billing portal and checkout only (not stripe.com broadly)
   'checkout.stripe.com',
   'billing.stripe.com',
 
-  // Anthropic — API key setup and docs
+  // Anthropic - API key setup and docs
   'console.anthropic.com',
   'docs.anthropic.com',
 
@@ -228,7 +233,7 @@ function isUrlSafe(urlString) {
   try {
     const parsed = new URL(urlString);
     if (!ALLOWED_URL_SCHEMES.includes(parsed.protocol)) return false;
-    // Exact match only — no endsWith/suffix matching.
+    // Exact match only - no endsWith/suffix matching.
     return ALLOWED_URL_DOMAINS.includes(parsed.hostname);
   } catch {
     return false;
@@ -240,7 +245,7 @@ function isUrlSafe(urlString) {
 let mainWindow = null;
 let biqTray = null;
 
-// POS secrets — main process only, never sent to renderer
+// POS secrets - main process only, never sent to renderer
 const POS_SECRETS = {
   square: {
     sandbox:    { appSecret: process.env.SQUARE_SANDBOX_APP_SECRET || '' },
@@ -367,7 +372,7 @@ async function handlePosOAuthCallback(url) {
     const expectedNonce = _pendingOAuthNonce[pos];
     delete _pendingOAuthNonce[pos]; // consume nonce regardless
     if (!expectedNonce || returnedNonce !== expectedNonce) {
-      mainWindow?.webContents.send('pos:oauth-result', { posType: pos, error: 'OAuth state mismatch — possible CSRF. Please try connecting again.' });
+      mainWindow?.webContents.send('pos:oauth-result', { posType: pos, error: 'OAuth state mismatch - possible CSRF. Please try connecting again.' });
       return;
     }
 
@@ -392,7 +397,7 @@ async function savePosToken(posType, tokenData) {
   const meta   = { connectedAt: new Date().toISOString(), hasToken: true, connected: true };
 
   if (posType === 'square') {
-    // Fetch merchant info — use list endpoint when merchantId is not yet known
+    // Fetch merchant info - use list endpoint when merchantId is not yet known
     let merchantName = 'Square Merchant';
     let resolvedMerchantId = tokenData.merchantId;
     let locations = [];
@@ -422,7 +427,7 @@ async function savePosToken(posType, tokenData) {
       locations = (locsRes.body?.locations || []).map(l => ({ id: l.id, name: l.name }));
       // Fall back to first location name if merchant name still unknown
       if (merchantName === 'Square Merchant' && locations[0]?.name) merchantName = locations[0].name;
-    } catch (_) { /* network error — save anyway with defaults */ }
+    } catch (_) { /* network error - save anyway with defaults */ }
     stored.square = { ...meta, accessToken: tokenData.accessToken, merchantId: resolvedMerchantId, merchantName, locations, connected: true };
   }
 
@@ -519,7 +524,7 @@ async function performAutoBackup() {
   } catch (_) {}
 }
 
-// IPC handlers — daily snapshots (append-only, never update/delete)
+// IPC handlers - daily snapshots (append-only, never update/delete)
 ipcMain.handle('snapshot:save', (event, date, data) => {
   return snapshotSave(date, data);
 });
@@ -553,7 +558,7 @@ ipcMain.handle('auth:setToken', (_e, tok) => {
   return true;
 });
 
-// IPC handlers — audit log (append-only, never update/delete)
+// IPC handlers - audit log (append-only, never update/delete)
 ipcMain.handle('audit:log', (event, entry) => {
   return auditInsert(entry);
 });
@@ -575,12 +580,12 @@ ipcMain.handle('storage:set', (event, key, value) => {
   return secretSet(key, value);
 });
 
-// IPC handler — restore from backup
+// IPC handler - restore from backup
 ipcMain.handle('backup:restore', async () => {
   const win = BrowserWindow.getFocusedWindow();
 
   const { canceled, filePaths } = await dialog.showOpenDialog(win, {
-    title: 'Restaurer depuis backup',
+    title: tm('restoreTitle'),
     filters: [{ name: 'BalanceIQ Backup', extensions: ['json'] }],
     properties: ['openFile'],
   });
@@ -592,14 +597,14 @@ ipcMain.handle('backup:restore', async () => {
     const content = fs.readFileSync(filePaths[0], 'utf-8');
     data = JSON.parse(content);
   } catch {
-    return { error: "Fichier invalide — vérifier que c'est un backup BalanceIQ" };
+    return { error: tm('restoreInvalid') };
   }
 
   // Support both new format (schemaVersion + sqlite) and legacy format
   const isNewFormat = data.schemaVersion !== undefined && data.sqlite !== undefined;
   const isLegacyFormat = !isNewFormat && data.liveData !== undefined;
   if (!isNewFormat && !isLegacyFormat) {
-    return { error: "Fichier invalide — vérifier que c'est un backup BalanceIQ" };
+    return { error: tm('restoreInvalid') };
   }
 
   if (isNewFormat) {
@@ -613,11 +618,11 @@ ipcMain.handle('backup:restore', async () => {
 
   const { response } = await dialog.showMessageBox(win, {
     type: 'warning',
-    buttons: ['Annuler', 'Restaurer'],
+    buttons: [tm('cancel'), tm('restore')],
     defaultId: 1,
     cancelId: 0,
-    title: 'Restaurer backup',
-    message: 'Ceci va remplacer toutes vos données actuelles. Êtes-vous sûr?',
+    title: tm('restoreConfirmTitle'),
+    message: tm('restoreConfirmMessage'),
   });
 
   if (response === 0) return { cancelled: true };
@@ -654,14 +659,14 @@ ipcMain.handle('backup:restore', async () => {
     type: 'info',
     buttons: ['OK'],
     title: 'BalanceIQ',
-    message: '✓ Données restaurées avec succès',
+    message: '✓ ' + tm('restoreDone'),
   });
 
   win.webContents.reload();
   return { success: true };
 });
 
-// IPC handlers — auto-backup info + open folder
+// IPC handlers - auto-backup info + open folder
 ipcMain.handle('backup:getInfo', () => {
   const dir = BACKUP_DIR();
   let lastBackup = null;
@@ -682,7 +687,7 @@ ipcMain.handle('backup:openDir', () => {
   shell.openPath(dir);
 });
 
-// IPC handler — render HTML to PDF bytes (base64) using Chromium's print engine
+// IPC handler - render HTML to PDF bytes (base64) using Chromium's print engine
 ipcMain.handle('pdf:toPDF', async (event, html) => {
   const tmpFile = path.join(os.tmpdir(), `balanceiq-topdf-${Date.now()}.html`);
   fs.writeFileSync(tmpFile, html, 'utf-8');
@@ -707,13 +712,13 @@ ipcMain.handle('pdf:toPDF', async (event, html) => {
   }
 });
 
-// IPC handler — open print dialog for a document HTML string
+// IPC handler - open print dialog for a document HTML string
 ipcMain.handle('pdf:print', async (event, html) => {
   const tmpFile = path.join(os.tmpdir(), `balanceiq-print-${Date.now()}.html`);
   fs.writeFileSync(tmpFile, html, 'utf-8');
   const printWin = new BrowserWindow({
     width: 900, height: 1100,
-    title: 'BalanceIQ — Impression',
+    title: 'BalanceIQ - Impression',
     webPreferences: { nodeIntegration: false, contextIsolation: true },
   });
   await printWin.loadFile(tmpFile);
@@ -723,7 +728,7 @@ ipcMain.handle('pdf:print', async (event, html) => {
   return { success: true };
 });
 
-// IPC handler — send email via Resend API
+// IPC handler - send email via Resend API
 // ── Companies ────────────────────────────────────────────────────────────────
 ipcMain.handle('companies:list', () => {
   const reg = companies.load(USER_DATA_DIR);
@@ -790,27 +795,27 @@ ipcMain.handle('email:sendResend', async (event, {apiKey, from, to, subject, htm
             resolve({ error: json.message || `Erreur ${response.statusCode}` });
           }
         } catch {
-          resolve({ error: 'Réponse invalide du serveur courriel.' });
+          resolve({ error: tm('mailBadResponse') });
         }
       });
-      response.on('error', () => resolve({ error: 'Erreur réseau — courriel.' }));
+      response.on('error', () => resolve({ error: tm('mailNetwork') }));
     });
-    req.on('error', () => resolve({ error: 'Erreur réseau — courriel.' }));
+    req.on('error', () => resolve({ error: tm('mailNetwork') }));
     req.write(body);
     req.end();
   });
 });
 
-// ── IPC handler — gas price (Régie de l'énergie du Québec, location-aware)
+// ── IPC handler - gas price (Régie de l'énergie du Québec, location-aware)
 //
 // Fallback chain:
-//   1. Régie de l'énergie — relevé quotidien PDF (updates daily, uses weather location)
-//   2. Régie de l'énergie — bulletin hebdomadaire PDF (weekly, same region targeting)
-//   3. CAA Canada HTML scraper (original source — kept as last-resort fallback)
+//   1. Régie de l'énergie - relevé quotidien PDF (updates daily, uses weather location)
+//   2. Régie de l'énergie - bulletin hebdomadaire PDF (weekly, same region targeting)
+//   3. CAA Canada HTML scraper (original source - kept as last-resort fallback)
 //
 // TODO: Régie de l'énergie announced real-time station-level prices API for
 //       April 2026 launch (regie-energie.qc.ca). Switch to that API once live
-//       — it will give per-city prices without PDF parsing and region guessing.
+//       - it will give per-city prices without PDF parsing and region guessing.
 //
 // Cache: 24h in-memory, keyed by region so different locations get different prices.
 // Rollback: to restore original CAA-only behaviour, comment out the Régie
@@ -824,31 +829,31 @@ const _gasPriceCache = {}; // { [regionKey]: { price, source, fetchedAt } }
 function coordsToRegieSearchTerms(lat, lon) {
   if (!lat || !lon) return ['Montréal'];
 
-  // Outaouais / Gatineau — west of -75.5°
+  // Outaouais / Gatineau - west of -75.5°
   if (lon <= -75.5 && lat >= 45.0 && lat <= 47.0) return ['Outaouais', 'Gatineau'];
 
-  // Abitibi-Témiscamingue — far northwest
+  // Abitibi-Témiscamingue - far northwest
   if (lon <= -76.0 && lat >= 47.0) return ['Abitibi', 'Val-d\'Or', 'Rouyn'];
 
-  // Nord-du-Québec / Côte-Nord — very northern or far northeast
+  // Nord-du-Québec / Côte-Nord - very northern or far northeast
   if (lat >= 50.0) return ['Côte-Nord', 'Nord-du-Québec', 'Sept-Îles'];
 
-  // Saguenay – Lac-Saint-Jean — lat 47.5–51, lon -69.5 to -76
+  // Saguenay – Lac-Saint-Jean - lat 47.5–51, lon -69.5 to -76
   if (lat >= 47.5 && lat <= 51.0 && lon >= -76.0 && lon <= -69.5) return ['Saguenay', 'Chicoutimi', 'Lac-Saint-Jean'];
 
-  // Bas-Saint-Laurent / Gaspésie — eastern Quebec, lon > -70.5
+  // Bas-Saint-Laurent / Gaspésie - eastern Quebec, lon > -70.5
   if (lat >= 47.0 && lon >= -70.5) return ['Gaspésie', 'Bas-Saint-Laurent', 'Rimouski', 'Matane'];
 
-  // Québec City / Chaudière-Appalaches — lat 46.3–47.5, lon -70.5 to -72.5
+  // Québec City / Chaudière-Appalaches - lat 46.3–47.5, lon -70.5 to -72.5
   if (lat >= 46.3 && lat <= 47.5 && lon >= -72.5 && lon <= -70.5) return ['Québec', 'Lévis', 'Sainte-Marie'];
 
-  // Mauricie / Centre-du-Québec — lat 45.8–47, lon -72.5 to -73.8
+  // Mauricie / Centre-du-Québec - lat 45.8–47, lon -72.5 to -73.8
   if (lat >= 45.8 && lat <= 47.0 && lon >= -73.8 && lon <= -72.5) return ['Mauricie', 'Trois-Rivières', 'Centre-du-Québec'];
 
-  // Estrie / Sherbrooke — lat 45.0–46.3, lon -71.5 to -72.5
+  // Estrie / Sherbrooke - lat 45.0–46.3, lon -71.5 to -72.5
   if (lat >= 45.0 && lat <= 46.3 && lon >= -72.5 && lon <= -71.5) return ['Estrie', 'Sherbrooke'];
 
-  // Lanaudière / Laurentides — north of Montréal, lat 45.7–47, lon -73.5 to -75
+  // Lanaudière / Laurentides - north of Montréal, lat 45.7–47, lon -73.5 to -75
   if (lat >= 45.7 && lat <= 47.5 && lon >= -75.0 && lon <= -73.5) return ['Laurentides', 'Lanaudière', 'Montréal'];
 
   // Default: Montréal / Laval / Montérégie
@@ -917,7 +922,7 @@ async function extractRegiePDFText(buffer) {
   return text;
 }
 
-// Parse Régie PDF buffer — extract "Essence ordinaire" price (¢/L) for the target region.
+// Parse Régie PDF buffer - extract "Essence ordinaire" price (¢/L) for the target region.
 // searchTerms: ordered array of strings to search near (e.g. ['Montréal','Laval']).
 // Returns price in ¢/L (integer or float), or null if parsing failed.
 //
@@ -954,7 +959,7 @@ async function parseRegiePDF(buffer, searchTerms = ['Montréal']) {
     if (prices.length === 1) return prices[0];
   }
 
-  // Strategy B: last resort — first plausible price in the whole document
+  // Strategy B: last resort - first plausible price in the whole document
   const globalRe = /\b(1[0-9]\d(?:[.,]\d{1,2})?)\b/;
   const globalMatch = norm.match(globalRe);
   if (globalMatch) {
@@ -976,7 +981,7 @@ ipcMain.handle('gas:getPrice', async (event, opts = {}) => {
     return { price: cached.price, source: cached.source, cached: true };
   }
 
-  // ── Step 1: Régie de l'énergie — relevé quotidien ────────────────────────
+  // ── Step 1: Régie de l'énergie - relevé quotidien ────────────────────────
   try {
     const buf = await fetchBuffer(
       'https://www.regie-energie.qc.ca/storage/app/media/consommateurs/informations-pratiques/prix-petrole/publications/Publications-quotidiennes/releve-quotidien/rqe.pdf'
@@ -985,7 +990,7 @@ ipcMain.handle('gas:getPrice', async (event, opts = {}) => {
     if (cents) {
       const result = {
         price: (cents / 100).toFixed(3),
-        source: `Régie de l'énergie du Québec — ${regionKey} (daily report)`,
+        source: `Régie de l'énergie du Québec - ${regionKey} (daily report)`,
         fetchedAt: Date.now(),
       };
       _gasPriceCache[regionKey] = result;
@@ -993,7 +998,7 @@ ipcMain.handle('gas:getPrice', async (event, opts = {}) => {
     }
   } catch (_) { /* fall through */ }
 
-  // ── Step 2: Régie de l'énergie — bulletin hebdomadaire ───────────────────
+  // ── Step 2: Régie de l'énergie - bulletin hebdomadaire ───────────────────
   try {
     const buf = await fetchBuffer(
       'https://www.regie-energie.qc.ca/storage/app/media/consommateurs/informations-pratiques/prix-petrole/publications/Publications-hebdomadaires/Bulletin/bulletin.pdf'
@@ -1002,7 +1007,7 @@ ipcMain.handle('gas:getPrice', async (event, opts = {}) => {
     if (cents) {
       const result = {
         price: (cents / 100).toFixed(3),
-        source: `Régie de l'énergie du Québec — ${regionKey} (weekly bulletin)`,
+        source: `Régie de l'énergie du Québec - ${regionKey} (weekly bulletin)`,
         fetchedAt: Date.now(),
       };
       _gasPriceCache[regionKey] = result;
@@ -1010,7 +1015,7 @@ ipcMain.handle('gas:getPrice', async (event, opts = {}) => {
     }
   } catch (_) { /* fall through */ }
 
-  // ── Step 3: CAA Canada fallback (original scraper — unchanged) ───────────
+  // ── Step 3: CAA Canada fallback (original scraper - unchanged) ───────────
   try {
     const cheerio = require('cheerio');
     const buf = await fetchBuffer('https://www.caa.ca/gas-prices/');
@@ -1038,7 +1043,7 @@ ipcMain.handle('gas:getPrice', async (event, opts = {}) => {
     if (priceCents && priceCents > 80 && priceCents < 350) {
       const result = {
         price: (priceCents / 100).toFixed(3),
-        source: 'CAA Canada (national average — region unknown)',
+        source: 'CAA Canada (national average - region unknown)',
         fetchedAt: Date.now(),
       };
       _gasPriceCache[regionKey] = result;
@@ -1046,11 +1051,11 @@ ipcMain.handle('gas:getPrice', async (event, opts = {}) => {
     }
   } catch (_) { /* fall through */ }
 
-  return { error: 'Price unavailable — check internet connection.' };
+  return { error: 'Price unavailable - check internet connection.' };
 });
 
 function createWindow() {
-  // Verify SQLite loads before creating the window — show a clear error if it fails
+  // Verify SQLite loads before creating the window - show a clear error if it fails
   try {
     const { storageGet, preMigrationSnapshot } = require('./src/db/database.js');
     // A copy of the database file before any migration touches it. The daily
@@ -1067,7 +1072,7 @@ function createWindow() {
   } catch (err) {
     const { dialog: d } = require('electron');
     d.showErrorBox(
-      'Erreur base de données — BalanceIQ',
+      'Erreur base de données - BalanceIQ',
       `Impossible d'initialiser la base de données SQLite.\n\n${err.message}\n\nSur Mac: exécutez dans Terminal:\n  xattr -cr /Applications/BalanceIQ.app\n\npuis relancez l'application.`
     );
     app.quit();
@@ -1131,7 +1136,7 @@ function createWindow() {
     // Double-click restores window (Windows behaviour)
     biqTray.on('double-click', () => { win.show(); win.focus(); });
   } catch (_e) {
-    // Tray is non-critical — continue without it if icon is missing
+    // Tray is non-critical - continue without it if icon is missing
   }
 }
 
@@ -1146,7 +1151,7 @@ ipcMain.handle('shell:openExternal', (_event, url) => {
 ipcMain.handle('url:validate', (_event, url) => isUrlSafe(url));
 
 ipcMain.handle('tray:updateSales', (_event, { sales, date }) => {
-  if (biqTray) biqTray.setToolTip(`BalanceIQ — ${date}: ${sales}`);
+  if (biqTray) biqTray.setToolTip(`BalanceIQ - ${date}: ${sales}`);
 });
 
 // ── POS INTEGRATION IPC ────────────────────────────────────────────────────
@@ -1155,7 +1160,7 @@ ipcMain.handle('pos:getCredentials', () => getPosCredentialsMeta());
 
 const OAUTH_CALLBACK_URL = 'https://etiwnesxjypdwhxqnqqq.supabase.co/functions/v1/pos-oauth-callback';
 
-// Pending OAuth nonces — keyed by posType. Cleared after use or on new flow start.
+// Pending OAuth nonces - keyed by posType. Cleared after use or on new flow start.
 const _pendingOAuthNonce = {};
 
 ipcMain.handle('pos:startOAuth', async (_event, posType, shopDomain) => {
@@ -1421,7 +1426,7 @@ ipcMain.handle('delivery:stopWatch', () => {
 
 ipcMain.handle('ocr:selectImage', async () => {
   const result = await dialog.showOpenDialog({
-    title: 'Sélectionner une facture',
+    title: tm('pickInvoice'),
     filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp'] }],
     properties: ['openFile'],
   });
@@ -1437,7 +1442,7 @@ ipcMain.handle('ocr:selectImage', async () => {
     img = img.resize({ width: Math.round(width * scale), height: Math.round(height * scale) });
   }
 
-  // Always output JPEG at quality 85 — consistent and compact
+  // Always output JPEG at quality 85 - consistent and compact
   const jpeg = img.toJPEG(85);
   return {
     base64: jpeg.toString('base64'),
@@ -1651,7 +1656,7 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 
-  // Auto-backup — runs on every launch, one file per day
+  // Auto-backup - runs on every launch, one file per day
   setTimeout(() => { performAutoBackup().catch(() => {}); }, 3000);
 
   // Bills recorded on v1.69.0 to v1.70.0 put their recoverable tax in 2100 / 2110.
@@ -1664,7 +1669,7 @@ app.whenReady().then(() => {
     } catch (e) { console.error('[bills] tax account repair failed:', e.message); }
   }, 8000);
 
-  // Auto-updater — GitHub API fetch (works without code signing)
+  // Auto-updater - GitHub API fetch (works without code signing)
   if (app.isPackaged) {
     const https = require('https');
     const currentVersion = app.getVersion();
@@ -1744,7 +1749,7 @@ ipcMain.handle('posScan:ocr', async (_e, base64PNG) => {
 
 ipcMain.handle('posScan:selectFile', async () => {
   const result = await dialog.showOpenDialog({
-    title: 'Sélectionner un rapport POS',
+    title: tm('pickPosReport'),
     filters: [
       { name: 'Rapports POS', extensions: ['pdf', 'png', 'jpg', 'jpeg'] },
     ],
@@ -2157,7 +2162,6 @@ ipcMain.handle('bank:subledgerBalances',    (_e, asOf) => bankSubledgerBalances(
 ipcMain.handle('bank:statement:list',      (_e, bankAccountId)         => bankStatementsList(bankAccountId));
 
 ipcMain.handle('bank:transactions:list',   (_e, bankAccountId, opts)   => bankTransactionsList(bankAccountId, opts));
-ipcMain.handle('bank:transactions:match',  (_e, txId, etype, eid)      => bankTransactionMatch(txId, etype, eid));
 ipcMain.handle('bank:transactions:unmatch',(_e, txId)                  => bankTransactionUnmatch(txId));
 ipcMain.handle('bank:transactions:categorize', (_e, txId, coaId, notes, tax) => bankTransactionCategorize(txId, coaId, notes, tax));
 
@@ -2189,7 +2193,7 @@ ipcMain.handle('royalty:exception:list',        (_e, opts)                      
 ipcMain.handle('royalty:exception:acknowledge', (_e, id, by)                            => royaltyExceptionAcknowledge(id, by || 'franchisor'));
 ipcMain.handle('royalty:exception:resolve',     (_e, id)                                => royaltyExceptionResolve(id));
 
-// ── Franchise Onboarding Packets — Sprint 8E ─────────────────────────────────
+// ── Franchise Onboarding Packets - Sprint 8E ─────────────────────────────────
 ipcMain.handle('franchise:onboarding:packet:save',    (_e, data)                              => onboardingPacketSave(data));
 ipcMain.handle('franchise:onboarding:packet:list',    ()                                      => onboardingPacketList());
 ipcMain.handle('franchise:onboarding:packet:get',     (_e, id)                                => onboardingPacketGet(id));
@@ -2197,7 +2201,7 @@ ipcMain.handle('franchise:onboarding:packet:delete',  (_e, id)                  
 ipcMain.handle('franchise:onboarding:packet:apply',   (_e, packetId, locationId, rr, ar)      => onboardingPacketApply(packetId, locationId, rr ?? null, ar ?? null));
 ipcMain.handle('franchise:onboarding:location:get',   (_e, locationId)                        => locationOnboardingGet(locationId));
 
-// ── Bilan (Balance Sheet) — Sprint 6 ─────────────────────────────────────────
+// ── Bilan (Balance Sheet) - Sprint 6 ─────────────────────────────────────────
 try {
 ipcMain.handle('bilan:compute',          (_e, asOfDate, opts)  => buildBalanceSheet(asOfDate, opts || {}));
 ipcMain.handle('bilan:blockers',         (_e, asOfDate)        => getBalanceSheetBlockers(asOfDate));
@@ -2205,7 +2209,7 @@ ipcMain.handle('bilan:snapshot:save',    (_e, data)            => balanceSheetSn
 ipcMain.handle('bilan:snapshot:list',    ()                    => balanceSheetSnapshotList());
 ipcMain.handle('bilan:snapshot:get',     (_e, id)              => balanceSheetSnapshotGet(id));
 
-// ── Supplier Bills (AP) — Sprint 6 ───────────────────────────────────────────
+// ── Supplier Bills (AP) - Sprint 6 ───────────────────────────────────────────
 ipcMain.handle('supplier:bill:list',     (_e, opts)            => supplierBillList(opts || {}));
 // A document that changes what you owe reaches the ledger the moment it is
 // recorded: Dr expense, Dr recoverable tax, Cr accounts payable (2010). Row and
@@ -2240,7 +2244,7 @@ ipcMain.handle('supplier:bill:linesForAmount', (_e, amount) => bankLinesForBillA
 ipcMain.handle('supplier:payments:list', (_e, billId)          => supplierPaymentsList(billId));
 ipcMain.handle('supplier:payments:create',(_e, data)           => supplierPaymentCreate(data));
 
-// ── Assets & CCA — Sprint 6 ───────────────────────────────────────────────────
+// ── Assets & CCA - Sprint 6 ───────────────────────────────────────────────────
 ipcMain.handle('asset:list',   (_e, opts)              => assetList(opts || {}));
 ipcMain.handle('asset:create', (_e, data)              => assetCreate(data));
 ipcMain.handle('asset:update', (_e, id, data)          => assetUpdate(id, data));
@@ -2250,14 +2254,14 @@ ipcMain.handle('cca:compute',  (_e, assetId, year)     => ccaComputeForAsset(ass
 ipcMain.handle('cca:schedule', (_e, year)              => ccaScheduleForYear(year));
 } catch(e) { /* handlers already registered in hot-reload */ }
 
-// ── Global Search — covers every data source in the app ───────────────────────
+// ── Global Search - covers every data source in the app ───────────────────────
 ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
   if (!query || query.trim().length === 0) {
     return { results: {}, history: searchHistoryGet(5) };
   }
 
   const q = query.trim().toLowerCase();
-  // Accent-normalized query — strips diacritics so "ete" matches "été", "caisse" matches "caïsse"
+  // Accent-normalized query - strips diacritics so "ete" matches "été", "caisse" matches "caïsse"
   const normalize = s => !s ? '' : String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const nq = normalize(q);
   const results = {};
@@ -2295,7 +2299,7 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
     return 0;
   };
 
-  // ── Numeric query parsing — handles French format (2 335,51) and English (2,335.51) ──
+  // ── Numeric query parsing - handles French format (2 335,51) and English (2,335.51) ──
   const parseNumericQuery = (raw) => {
     let s = raw.replace(/[$\s]/g, ''); // strip $ and spaces (thousands sep in FR)
     // French decimal: comma followed by 1-2 digits at end → convert to period
@@ -2321,7 +2325,7 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
     .slice(0, limit)
     .map(c => ({ id: c.id, entreprise: c.entreprise || '', courriel: c.courriel || '', ville: c.ville || '', code: c.code || '' }));
 
-  // ── Invoices/Factures (dicann-fac-factures) — also soumissions, commandes, credit notes ──
+  // ── Invoices/Factures (dicann-fac-factures) - also soumissions, commandes, credit notes ──
   const factures = readKV('dicann-fac-factures');
   const soumissions = readKV('dicann-fac-soumissions');
   const commandes = readKV('dicann-fac-commandes');
@@ -2380,9 +2384,9 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
     .slice(0, limit)
     .map(s => ({ key: `sup_${s.id}`, name: s.name || '', category: s.category || '' }));
 
-  // ── Daily totals (dicann-v7) — numeric search only ──
+  // ── Daily totals (dicann-v7) - numeric search only ──
   // Checks: net sales (posVentes), gross total (posVentes+TPS+TVQ), manual count
-  // (interac+finalCash+deposits) — both day-level and per-register.
+  // (interac+finalCash+deposits) - both day-level and per-register.
   // Also checks dayObj.venteNet directly (present in demo/legacy data).
   results.dailyTotals = [];
   if (isNumericSearch) {
@@ -2396,7 +2400,7 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
           // Legacy / demo data stores venteNet directly on the day object
           if (!matched && dayObj.venteNet && Math.abs(dayObj.venteNet - numQ) < 1) matched = true;
 
-          // Compute from cashes array (real data) — field is "cashes" (not "caisses")
+          // Compute from cashes array (real data) - field is "cashes" (not "caisses")
           if (!matched) {
             const cashes = Array.isArray(dayObj?.cashes) ? dayObj.cashes : [];
             let posVN = 0, grossT = 0, manT = 0;
@@ -2430,13 +2434,13 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
     } catch (_) {}
   }
 
-  // ── Ingredients (FTS5 — SQLite table) ──
+  // ── Ingredients (FTS5 - SQLite table) ──
   results.ingredients = searchIngredients(query, limit);
 
-  // ── Forecast products (FTS5 — SQLite table) ──
+  // ── Forecast products (FTS5 - SQLite table) ──
   results.forecastProducts = searchForecastProducts(query, limit);
 
-  // ── Daily text search — notes + cashier names (dicann-v7) ──
+  // ── Daily text search - notes + cashier names (dicann-v7) ──
   results.dailyEntries = [];
   try {
     const dailyRaw = storageGet('dicann-v7');
@@ -2461,7 +2465,7 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
     }
   } catch (_) {}
 
-  // ── P&L monthly bills — search all dicann-pl-* keys ──
+  // ── P&L monthly bills - search all dicann-pl-* keys ──
   // Build supplier display-name lookup: P&L key = "sup_${s.id}", names from dicann-suppliers-v2
   results.plBills = [];
   try {
@@ -2503,7 +2507,7 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
     results.plBills = plMatches.slice(0, limit);
   } catch (_) {}
 
-  // ── P&L expense categories (dicann-pl-expense-items) — search by label/name ──
+  // ── P&L expense categories (dicann-pl-expense-items) - search by label/name ──
   results.expenseItems = readKV('dicann-pl-expense-items')
     .map(item => {
       const score = Math.max(scoreMatch(item.label), scoreMatch(item.name));
@@ -2514,7 +2518,7 @@ ipcMain.handle('search:global', async (_e, { query, limit = 5 }) => {
     .slice(0, limit)
     .map(item => ({ id: item.id, label: item.label || item.name || '' }));
 
-  // ── Encaisse — sorties, autreEntrees, notes (dicann-encaisse) ──
+  // ── Encaisse - sorties, autreEntrees, notes (dicann-encaisse) ──
   // Fix: sorties use field `categorie` (French) not `category`
   results.encaisseEntries = [];
   try {
@@ -2632,7 +2636,7 @@ ipcMain.handle('vault:attach', async (_e, { entity_type, entity_id, src_path, fi
   try {
     let filePath = src_path;
     if (!filePath) {
-      const result = await dialog.showOpenDialog({ properties: ['openFile'], title: 'Sélectionner un document' });
+      const result = await dialog.showOpenDialog({ properties: ['openFile'], title: tm('pickDocument') });
       if (result.canceled || !result.filePaths.length) return { ok: false, error: 'cancelled' };
       filePath = result.filePaths[0];
     }
@@ -2819,7 +2823,7 @@ ipcMain.handle('inventory:deduct:byDate',   (_e, date)           => inventoryDed
 
 // ── Stripe Merchant Payments ───────────────────────────────────────────────
 // Uses the restaurant owner's own Stripe secret key (stored in apiConfig).
-// Desktop-safe: no inbound webhook needed — status is polled on demand.
+// Desktop-safe: no inbound webhook needed - status is polled on demand.
 
 ipcMain.handle('stripe:createCheckout', async (_e, { secretKey, invoiceId, invoiceNum, amountCents, clientEmail, currency = 'cad' }) => {
   if (!secretKey || !amountCents) throw new Error('Missing secretKey or amountCents');
@@ -3162,7 +3166,7 @@ ipcMain.handle('file:save', async (_e, { defaultPath, content }) => {
 // ── Supabase Proxy Fetch ───────────────────────────────────────────────────
 // Routes Supabase HTTP calls through Electron's net module (main process) to
 // bypass renderer window.fetch "Invalid value" validation in Electron 31.
-// Restricted to our Supabase project host — prevents SSRF via renderer XSS.
+// Restricted to our Supabase project host - prevents SSRF via renderer XSS.
 ipcMain.handle('supabase:fetch', async (_e, { url, method, headers, body }) => {
   const _supabaseUrl = getSupabaseUrl();
   if (!_supabaseUrl) throw new Error('supabase_not_configured');
@@ -3170,7 +3174,7 @@ ipcMain.handle('supabase:fetch', async (_e, { url, method, headers, body }) => {
   const parsed = new URL(url);
   if (parsed.host !== _supabaseHost) throw new Error('forbidden_host');
 
-  // Strip CR/LF from all header values — net.fetch enforces strict RFC 7230
+  // Strip CR/LF from all header values - net.fetch enforces strict RFC 7230
   // validation that rejects headers containing newline characters (which can
   // be present in long env-var tokens due to copy-paste line wrapping).
   const cleanHeaders = {};

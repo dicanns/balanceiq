@@ -1,5 +1,5 @@
 /**
- * TAX-003 — Tax-Exempt Customer Invoice
+ * TAX-003 - Tax-Exempt Customer Invoice
  *
  * Scenario: invoice for a tax-exempt customer.
  * Assert: no TPS or TVQ credit lines on the journal entry.

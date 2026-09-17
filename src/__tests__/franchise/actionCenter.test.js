@@ -1,5 +1,5 @@
 /**
- * ACTION-CENTER-001  actionCenter.js — buildActionItems pure function
+ * ACTION-CENTER-001  actionCenter.js - buildActionItems pure function
  */
 import { describe, it, expect } from 'vitest';
 import { buildActionItems, actionItemCount, ACTION_TYPES } from '../../services/actionCenter.js';
@@ -55,7 +55,7 @@ describe('ACTION-CENTER-001 ACTION_TYPES', () => {
   });
 });
 
-describe('ACTION-CENTER-001 buildActionItems — empty inputs', () => {
+describe('ACTION-CENTER-001 buildActionItems - empty inputs', () => {
   it('returns empty array when all inputs are empty', () => {
     expect(buildActionItems({ exceptions: [], networkScores: [], locations: [] })).toHaveLength(0);
   });
@@ -76,7 +76,7 @@ describe('ACTION-CENTER-001 buildActionItems — empty inputs', () => {
   });
 });
 
-describe('ACTION-CENTER-001 buildActionItems — royalty exceptions', () => {
+describe('ACTION-CENTER-001 buildActionItems - royalty exceptions', () => {
   it('maps unresolved exception to action item', () => {
     const items = buildActionItems({ exceptions: [makeException()], locations: LOCATIONS });
     expect(items).toHaveLength(1);
@@ -111,7 +111,7 @@ describe('ACTION-CENTER-001 buildActionItems — royalty exceptions', () => {
   });
 });
 
-describe('ACTION-CENTER-001 buildActionItems — network scores', () => {
+describe('ACTION-CENTER-001 buildActionItems - network scores', () => {
   it('maps score below threshold to action item', () => {
     const items = buildActionItems({ networkScores: [makeScore({ total_score: 45 })], locations: LOCATIONS });
     expect(items).toHaveLength(1);
@@ -140,7 +140,7 @@ describe('ACTION-CENTER-001 buildActionItems — network scores', () => {
   });
 });
 
-describe('ACTION-CENTER-001 buildActionItems — no_score items', () => {
+describe('ACTION-CENTER-001 buildActionItems - no_score items', () => {
   it('generates no_score item for location with no score in period', () => {
     const items = buildActionItems({ locations: LOCATIONS, period: '2026-05' });
     expect(items.some(i => i.type === ACTION_TYPES.NO_SCORE)).toBe(true);
@@ -170,7 +170,7 @@ describe('ACTION-CENTER-001 buildActionItems — no_score items', () => {
   });
 });
 
-describe('ACTION-CENTER-001 buildActionItems — sort order', () => {
+describe('ACTION-CENTER-001 buildActionItems - sort order', () => {
   it('critical items sort before warning', () => {
     const items = buildActionItems({
       exceptions: [makeException({ severity: 'warning', id: 1 })],

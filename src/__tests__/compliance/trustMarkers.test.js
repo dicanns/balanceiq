@@ -1,6 +1,6 @@
 /**
- * TRUST-MARKERS-001  SettingsAboutPanel — required sections present
- * TRUST-MARKERS-002  vaultComplianceCheck — flags bills missing vault docs
+ * TRUST-MARKERS-001  SettingsAboutPanel - required sections present
+ * TRUST-MARKERS-002  vaultComplianceCheck - flags bills missing vault docs
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';

@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Trim whitespace/newlines — env vars can have hidden line breaks if the key
+// Trim whitespace/newlines - env vars can have hidden line breaks if the key
 // was copied with wrapping, which causes net.fetch header validation to fail.
 export const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || '').trim();
 export const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').replace(/\s/g, '');

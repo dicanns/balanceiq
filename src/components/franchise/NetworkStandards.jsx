@@ -168,7 +168,7 @@ export default function NetworkStandards({ t, lang, locations = [] }) {
       {editing && (
         <div style={{ background: t.card, border: '1px solid rgba(167,139,250,0.35)', borderRadius: 10, padding: 16 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#a78bfa', marginBottom: 14 }}>
-            {T.editTitle} — {editing.locationName} ({period})
+            {T.editTitle} - {editing.locationName} ({period})
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {Object.keys(SCORE_WEIGHTS).map(key => (

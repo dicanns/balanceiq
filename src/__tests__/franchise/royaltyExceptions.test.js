@@ -1,6 +1,6 @@
 /**
- * ROYALTY-EX-001  royaltyExceptions.js — pure function correctness
- * ROYALTY-EX-002  royaltyException DB functions — round-trips
+ * ROYALTY-EX-001  royaltyExceptions.js - pure function correctness
+ * ROYALTY-EX-002  royaltyException DB functions - round-trips
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
