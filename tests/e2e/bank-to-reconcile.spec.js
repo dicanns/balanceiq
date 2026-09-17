@@ -12,10 +12,22 @@ import os from 'os';
 const APP_ROOT = path.resolve(process.cwd());
 
 async function launchApp() {
-  return await electron.launch({
+  const app = await electron.launch({
     args: [path.join(APP_ROOT, 'main.js')],
     env: { ...process.env, NODE_ENV: 'test', ELECTRON_IS_DEV: '0' },
   });
+  await settled(app);
+  return app;
+}
+
+// Chromium moves the window from its initial about:blank document into a fresh
+// renderer when the app loads over file://, which destroys the execution
+// context Playwright created for about:blank. Wait until the real page is up.
+async function settled(app) {
+  const win = await app.firstWindow();
+  await win.waitForURL(u => !/^about:blank/.test(String(u)), { timeout: 30000 }).catch(() => {});
+  await win.waitForLoadState('domcontentloaded');
+  return win;
 }
 
 async function dismissWelcomeScreen(win) {

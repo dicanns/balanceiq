@@ -1,7 +1,7 @@
 {
   "name": "balanceiq",
   "version": "1.73.0",
-  "description": "L'intelligence derrière vos chiffres.",
+  "description": "L'intelligence derri\u00e8re vos chiffres.",
   "main": "main.js",
   "scripts": {
     "prestart": "npx @electron/rebuild -f -w better-sqlite3",
@@ -30,7 +30,7 @@
   "dependencies": {
     "@sentry/electron": "^7.19.0",
     "@supabase/supabase-js": "^2.99.0",
-    "better-sqlite3": "^12.6.2",
+    "better-sqlite3": "^13.0.3",
     "cheerio": "^1.2.0",
     "exceljs": "^4.4.0",
     "pdfjs-dist": "^4.10.38",
@@ -41,14 +41,14 @@
   },
   "devDependencies": {
     "@electron/notarize": "^3.1.1",
-    "@electron/rebuild": "^4.0.3",
+    "@electron/rebuild": "^4.2.0",
     "@playwright/test": "^1.58.2",
     "@vitejs/plugin-react": "^4.3.1",
     "@vitest/coverage-v8": "^4.1.1",
     "concurrently": "^8.2.2",
     "dotenv": "^17.3.1",
-    "electron": "^31.0.0",
-    "electron-builder": "^24.13.3",
+    "electron": "^44.4.1",
+    "electron-builder": "^26.15.3",
     "eslint": "^10.2.1",
     "eslint-plugin-security": "^4.0.0",
     "playwright": "^1.58.2",
@@ -81,9 +81,7 @@
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "notarize": {
-        "teamId": "462N375L9T"
-      }
+      "notarize": true
     },
     "dmg": {
       "title": "BalanceIQ ${version}",
@@ -139,6 +137,6 @@
   "overrides": {
     "tmp": ">=0.2.6",
     "uuid": ">=11.1.1",
-    "brace-expansion@2": ">=2.1.4"
+    "node-abi": "^4.35.0"
   }
 }

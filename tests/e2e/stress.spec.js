@@ -29,8 +29,7 @@ async function launchApp() {
       ELECTRON_IS_DEV: '0',
     },
   });
-  const win = await app.firstWindow();
-  await win.waitForLoadState('domcontentloaded');
+  const win = await settled(app);
 
   // Capture JS errors globally
   win.on('pageerror', (err) => {
@@ -41,6 +40,16 @@ async function launchApp() {
   });
 
   return { app, win };
+}
+
+// Chromium moves the window from its initial about:blank document into a fresh
+// renderer when the app loads over file://, which destroys the execution
+// context Playwright created for about:blank. Wait until the real page is up.
+async function settled(app) {
+  const win = await app.firstWindow();
+  await win.waitForURL(u => !/^about:blank/.test(String(u)), { timeout: 30000 }).catch(() => {});
+  await win.waitForLoadState('domcontentloaded');
+  return win;
 }
 
 // ── Click a sidebar nav item by label text ────────────────────────────────────
