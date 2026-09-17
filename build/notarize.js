@@ -10,7 +10,7 @@ exports.default = async function notarizing(context) {
   const teamId = process.env.APPLE_TEAM_ID;
 
   if (!appleId || !appleIdPassword || !teamId) {
-    console.log("Notarization skipped — APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID not set.");
+    console.log("Notarization skipped - APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID not set.");
     return;
   }
 
