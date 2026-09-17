@@ -43,9 +43,18 @@ serve(async (req) => {
     if (!userData?.org_id) return new Response(JSON.stringify({ error: 'no_org' }), { status: 403, headers: corsHeaders });
     const callerOrgId = userData.org_id;
     const callerRole: string = userData.role || 'member';
+    // Publishing to the network - documents and announcements - is what the
+    // Franchise plan pays for. Membership and role were checked; the plan was
+    // not, so an admin of any organization could publish.
+    const { data: orgRow } = await svc.from('organizations').select('plan').eq('id', callerOrgId).single();
+    const hasFranchisePlan = orgRow?.plan === 'franchise';
+    const PUBLISHING_ACTIONS = ['upload', 'delete_doc', 'post_announcement', 'delete_announcement'];
 
     const body = await req.json();
     const { action } = body;
+    if (PUBLISHING_ACTIONS.includes(action) && !hasFranchisePlan) {
+      return new Response(JSON.stringify({ error: 'upgrade_required' }), { status: 403, headers: corsHeaders });
+    }
 
     // Helper: verify caller owns the target orgId
     function verifyOwner(orgId: string) {

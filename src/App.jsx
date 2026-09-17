@@ -38,7 +38,7 @@ import { overdueInvoices, nextFilingDeadline, cashVarianceCents, buildWorklist, 
 import TodayWorklist from "./components/TodayWorklist.jsx";
 import { normalizeBusinessTypes, businessTypesChosen, visibleDestinations, landingDestination, firstRunItems, BUSINESS_TYPE_INFO } from "./services/businessProfile.js";
 import { buildFlashReportHTML } from "./services/flashReport.js";
-import * as XLSX from "xlsx";
+import { downloadWorkbook } from "./utils/spreadsheet.js";
 import { logCreate, logUpdate, logVoid, logCorrection, isFinancialField, promptCorrectionReason } from "./services/auditLogger.js";
 import { initCloudSync, signIn as cloudSignIn, signUp as cloudSignUp, signOut as cloudSignOut, requestPasswordReset, schedulePush, onSyncStatus, onPlanChange, refreshPlan, getCloudOrgId, getCloudParentOrgId, getMyLinkedLocations, getLastSyncedAt, getAccessToken as getCloudAccessToken } from "./services/cloudSync.js";
 import { supabase as _supabaseClient } from "./services/supabase.js";
@@ -1378,19 +1378,6 @@ function ComptabiliteExport({factures,clients,produits,categories,companyInfo,on
     a.download=`${filename}-${dateFrom}-${dateTo}.csv`;a.click();URL.revokeObjectURL(url);
   };
 
-  const HEADER_STYLE={font:{bold:true},fill:{fgColor:{rgb:"EA580C"}},font:{bold:true,color:{rgb:"FFFFFF"}}};
-  const applyHeaderStyle=(ws,headers)=>{
-    headers.forEach((_,ci)=>{
-      const addr=XLSX.utils.encode_cell({r:0,c:ci});
-      if(!ws[addr])return;
-      ws[addr].s=HEADER_STYLE;
-    });
-  };
-  const autoColWidths=(ws,rows)=>{
-    if(!rows.length)return;
-    const cols=rows[0].map((_,ci)=>({wch:Math.max(...rows.map(r=>String(r[ci]==null?"":r[ci]).length),10)+2}));
-    ws['!cols']=cols;
-  };
 
   const buildFacRows=()=>{
     const hdr=["Date","# Facture","Code client","Nom client","Code produit","Catégorie","# Compte revenu","Description","Quantité","Prix unitaire","Remise %","Sous-total","TPS","TVQ","Total"];
@@ -1491,23 +1478,13 @@ function ComptabiliteExport({factures,clients,produits,categories,companyInfo,on
     return{hdr,data};
   };
 
-  const doExportExcel=()=>{
+  const doExportExcel=async()=>{
     if(!canUse("excelExport")){if(showUpgradePrompt)showUpgradePrompt("excelExport");else setUpgradeMsg(true);return;}
     setMsg("");setUpgradeMsg(false);
-    const wb=XLSX.utils.book_new();
-    const makeSheet=(hdr,data)=>{
-      const ws=XLSX.utils.aoa_to_sheet([hdr,...data]);
-      applyHeaderStyle(ws,hdr);autoColWidths(ws,[hdr,...data]);
-      return ws;
-    };
     const{hdr:hdr1,data:data1}=buildFacRows();
     const{hdr:hdr2,data:data2}=buildEncRows();
     const{hdr:hdr3,data:data3}=buildGLRows();
     if(!data1.length&&!data2.length&&!data3.length){setMsg("Aucune donnée dans cette période.");return;}
-    XLSX.utils.book_append_sheet(wb,makeSheet(hdr1,data1),"Journal de facturation");
-    XLSX.utils.book_append_sheet(wb,makeSheet(hdr2,data2),"Journal des encaissements");
-    XLSX.utils.book_append_sheet(wb,makeSheet(hdr3,data3),"Grand livre AR");
-    // Sommaire sheet
     const now=new Date().toLocaleDateString("fr-CA");
     const totFac=data1.reduce((s,r)=>s+(r[14]||0),0);
     const totEnc=data2.reduce((s,r)=>s+(r[5]||0),0);
@@ -1524,12 +1501,16 @@ function ComptabiliteExport({factures,clients,produits,categories,companyInfo,on
       ["Journal des encaissements",data2.length,parseFloat(totEnc.toFixed(2))],
       ["Grand livre AR",data3.length,parseFloat(totSold.toFixed(2))],
     ];
-    const wsSomm=XLSX.utils.aoa_to_sheet(summaryData);
-    wsSomm['!cols']=[{wch:30},{wch:20},{wch:18}];
- XLSX.utils.book_append_sheet(wb,wsSomm,"Sommaire");
- XLSX.writeFile(wb,`balanceiq-${dateFrom}-${dateTo}.xlsx`);
- setMsg(`Export Excel généré — 3 feuilles.`);
- };
+    try{
+      await downloadWorkbook([
+        {name:"Journal de facturation",rows:[hdr1,...data1],header:true},
+        {name:"Journal des encaissements",rows:[hdr2,...data2],header:true},
+        {name:"Grand livre AR",rows:[hdr3,...data3],header:true},
+        {name:"Sommaire",rows:summaryData,widths:[30,20,18]},
+      ],`balanceiq-${dateFrom}-${dateTo}.xlsx`);
+      setMsg(`Export Excel généré — 3 feuilles.`);
+    }catch(e){setMsg(String(e?.message||e));}
+  };
  const doExport=()=>{
  setMsg("");setUpgradeMsg(false);
  if(exportType==="facturation"){

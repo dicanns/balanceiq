@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import * as XLSX from 'xlsx';
+import { downloadWorkbook, readSheetRows } from '../utils/spreadsheet.js';
 import { trackEvent } from '../services/telemetry.js';
 
 // ── Tooltip component ─────────────────────────────────────────────────────────
@@ -620,9 +620,7 @@ function CSVImportView({ products, onImported, savedFormats, onSaveFormat, T, t,
     setFilename(file.name);
     try {
       const data = await file.arrayBuffer();
-      const wb = XLSX.read(data, { type:'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const json = XLSX.utils.sheet_to_json(ws, { header:1 });
+      const json = await readSheetRows(data, { csv: /\.csv$/i.test(file.name) });
       if (!json.length) return;
       const headers = json[0].map(String);
       const dataRows = json.slice(1).filter(r => r.some(c=>c!=null&&c!==''));
@@ -1159,12 +1157,10 @@ function ProductionListView({ products, allSales, weatherMap, learnedPatterns = 
 
           {/* Print/Export buttons */}<div style={{display:'flex',gap:8}}><button onClick={()=>window.dispatchEvent(new CustomEvent('biq:pdf-preview',{detail:buildHTML()}))}
               style={{padding:'7px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:12}}>{T.prevListPrint}</button><button onClick={()=>{
-              const wb = XLSX.utils.book_new();
               const data = [[T.prevColProduct,T.prevColDate,T.prevListForecast,T.prevListOnHand,T.prevListToMake],
                 ...generated.list.map(i=>[i.product.name,i.date,i.forecast,i.onHand||0,i.toMake]),
                 ...generated.batchItems.map(i=>[i.product.name,'batch',i.total,i.onHand,i.toMake])];
-              XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), 'Production');
-              XLSX.writeFile(wb, `production-list-${startDate}.xlsx`);
+              downloadWorkbook([{ name: 'Production', rows: data, header: true }], `production-list-${startDate}.xlsx`).catch(e => console.error('[export]', e));
             }} style={{padding:'7px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:12}}>{T.prevListExportCSV}</button></div></div>)}</div>);
 }
 

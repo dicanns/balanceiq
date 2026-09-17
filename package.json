@@ -22,23 +22,22 @@
     "test:chaos": "npm rebuild better-sqlite3 --quiet && vitest run src/__tests__/chaos/userBehavior.test.js",
     "test:backup-parity": "npm rebuild better-sqlite3 --quiet && vitest run src/__tests__/safety/backupSchemaParity.test.js",
     "check:edge-auth": "bash scripts/check-edge-function-auth.sh",
-    "audit": "npm audit --production --audit-level=critical",
+    "audit": "npm audit --omit=dev --audit-level=high",
     "scan:semgrep": "semgrep --config .semgrep.yml src/",
     "check:tdz": "node scripts/check-tdz.js",
     "lint:undef": "eslint --config eslint.undef.config.mjs \"src/App.jsx\" \"src/components/**/*.jsx\" \"src/services/**/*.js\" \"src/utils/**/*.js\" \"src/db/**/*.js\""
   },
   "dependencies": {
-    "@sentry/electron": "^7.10.0",
+    "@sentry/electron": "^7.19.0",
     "@supabase/supabase-js": "^2.99.0",
     "better-sqlite3": "^12.6.2",
     "cheerio": "^1.2.0",
-    "electron-updater": "^6.8.3",
+    "exceljs": "^4.4.0",
     "pdfjs-dist": "^4.10.38",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "tesseract.js": "^5.1.1",
-    "xlsx": "^0.18.5"
+    "tesseract.js": "^5.1.1"
   },
   "devDependencies": {
     "@electron/notarize": "^3.1.1",
@@ -136,5 +135,10 @@
       "owner": "dicanns",
       "repo": "balanceiq"
     }
+  },
+  "overrides": {
+    "tmp": ">=0.2.6",
+    "uuid": ">=11.1.1",
+    "brace-expansion@2": ">=2.1.4"
   }
 }

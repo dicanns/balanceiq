@@ -53,13 +53,12 @@ When two functions or modules must share a business rule (e.g.
 named constant and reference it from both sides. Never duplicate the same
 literal value in two places.
 
-### 6. Known audit exemptions (xlsx)
-The `xlsx` (SheetJS) package has 3 high-severity vulns with no upstream fix
-as of v1.37.5. The audit script uses `--audit-level=critical` to avoid
-blocking CI on an unfixable dependency. Replace xlsx with a maintained
-alternative (e.g. `exceljs`) in a future sprint. Prototype-pollution and
-ReDoS in xlsx only trigger on attacker-controlled spreadsheet input, which
-does not apply to BalanceIQ's export-only usage.
+### 6. Dependency audit
+`xlsx` (SheetJS) was replaced by `exceljs` (v1.73.0); no audit exemption
+remains. `npm run audit` runs against production dependencies at the
+level in package.json. The advisories in exceljs's Node-only helpers
+(`archiver`, `tmp`, `uuid`) are pinned to fixed versions through
+`overrides` in package.json; keep those pins when bumping exceljs.
 
 ### 7. Test isolation: always pass _db to GL functions
 `glDraftEntry`, `glPostEntry`, `bankReconcileClose`, `bankReconcilePreview`,

@@ -3,7 +3,6 @@ const QRCode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { autoUpdater } = require('electron-updater');
 const Sentry = require('@sentry/electron/main');
 // Load .env in development only (not available in packaged builds)
 if (!app.isPackaged) { try { require('dotenv').config(); } catch(_) {} }
@@ -1135,11 +1134,6 @@ function createWindow() {
     // Tray is non-critical — continue without it if icon is missing
   }
 }
-
-// IPC handler — trigger update download + install
-ipcMain.handle('updater:downloadAndInstall', () => {
-  autoUpdater.downloadUpdate().catch(() => {});
-});
 
 ipcMain.handle('shell:openExternal', (_event, url) => {
   if (!isUrlSafe(url)) {
