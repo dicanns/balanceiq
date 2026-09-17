@@ -8,9 +8,22 @@ const Sentry = require('@sentry/electron/main');
 // Load .env in development only (not available in packaged builds)
 if (!app.isPackaged) { try { require('dotenv').config(); } catch(_) {} }
 
+// A packaged app has no environment, so the DSN is written into dist/sentry.json
+// at build time; without it every crash in this process went unreported.
+// Nothing leaves without passing the scrubber.
+const { scrubEvent, scrubBreadcrumb } = require('./src/services/sentryScrub.cjs');
+function sentryDsn() {
+  if (process.env.SENTRY_DSN) return process.env.SENTRY_DSN;
+  try {
+    return JSON.parse(require('fs').readFileSync(require('path').join(__dirname, 'dist', 'sentry.json'), 'utf8')).dsn || '';
+  } catch (_) { return ''; }
+}
 Sentry.init({
-  dsn: process.env.SENTRY_DSN || '',
+  dsn: sentryDsn(),
   environment: app.isPackaged ? 'production' : 'development',
+  sendDefaultPii: false,
+  beforeSend: scrubEvent,
+  beforeBreadcrumb: scrubBreadcrumb,
 });
 const {
   storageGet, storageSet, storageGetAll,
@@ -1054,6 +1067,25 @@ function createWindow() {
   });
 
   const isDev = !app.isPackaged && process.env.NODE_ENV !== 'test';
+
+  // The window shows the app and nothing else. A link with an external target
+  // goes to the system browser through the same allowlist as shell:openExternal;
+  // navigating the window itself away from the app is refused; and no web
+  // permission is granted except the desktop notifications the app raises.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (isUrlSafe(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (event, url) => {
+    const own = isDev ? url.startsWith('http://localhost:5173') : url.startsWith('file://');
+    if (own) return;
+    event.preventDefault();
+    if (isUrlSafe(url)) shell.openExternal(url);
+  });
+  win.webContents.session.setPermissionRequestHandler((_wc, permission, callback) => {
+    callback(permission === 'notifications');
+  });
+
   if (isDev) {
     win.loadURL('http://localhost:5173');
     win.webContents.openDevTools({ mode: 'detach' });

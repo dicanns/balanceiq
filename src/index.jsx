@@ -1,10 +1,14 @@
 import { init } from '@sentry/electron/renderer';
+import scrub from './services/sentryScrub.cjs';
 import { createRoot } from 'react-dom/client';
 import React from 'react';
 import App from './App.jsx';
 
 init({
   dsn: import.meta.env.VITE_SENTRY_DSN || '',
+  sendDefaultPii: false,
+  beforeSend: scrub.scrubEvent,
+  beforeBreadcrumb: scrub.scrubBreadcrumb,
 });
 
 class ErrorBoundary extends React.Component {
