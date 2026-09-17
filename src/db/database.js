@@ -4734,8 +4734,8 @@ function supplierBillList({ monthKey = null, paid = null, supplierName = null } 
     ORDER BY sb.bill_date DESC, sb.id DESC`).all(...params);
 }
 
-function supplierBillCreate(data) {
-  const db = getDb();
+function supplierBillCreate(data, _db) {
+  const db = _db || getDb();
   const {
     month_key, supplier_name, category = null, amount, bill_date = null, note = '',
     bill_id = null, amount_before_tax = null, tps_paid = 0, tvq_paid = 0,
@@ -4753,8 +4753,8 @@ function supplierBillCreate(data) {
   return db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(lastInsertRowid);
 }
 
-function supplierBillUpdate(id, data) {
-  const db = getDb();
+function supplierBillUpdate(id, data, _db) {
+  const db = _db || getDb();
   const allowed = ['supplier_name','category','amount','bill_date','note','amount_before_tax',
     'tps_paid','tvq_paid','coa_account_id','business_use_pct','invoice_number','due_date','journal_entry_id',
     'quantity','unit_cost','vault_document_id'];
@@ -4900,6 +4900,60 @@ function supplierBillUnpost(billId, reason, _db) {
   return { ok: true };
 }
 
+// Recording a bill is one act: the row and its ledger entry both exist or
+// neither does. A bill dated in a closed period is refused before anything is
+// written, instead of being saved with no entry behind it, which is what a
+// throw halfway through used to leave.
+function supplierBillRecord(data, _db) {
+  const db = _db || getDb();
+  const date = data.bill_date || new Date().toISOString().slice(0, 10);
+  const period = _ensurePeriod(db, date);
+  if (period && period.status === 'closed') return { ok: false, error: 'period_closed', periodEnd: period.end_date };
+  try {
+    return db.transaction(() => {
+      const bill = supplierBillCreate(data, db);
+      const posted = supplierBillPost(bill.id, db);
+      if (!posted.ok) throw new Error(posted.error);
+      return { ok: true, ...bill, posted };
+    })();
+  } catch (e) {
+    return { ok: false, error: String(e.message || e) };
+  }
+}
+
+// A correction is one act too: the old figures reversed, the row updated, the
+// new figures posted, or nothing at all. Only a change to the money fields
+// touches the ledger; a note or an invoice number does not. A bill already
+// settled by a statement line keeps its money fields: the line was matched to
+// that amount, and changing it here would leave the payment pointing at a bill
+// that no longer says what was paid.
+const SUPPLIER_BILL_MONEY_FIELDS = ['amount', 'tps_paid', 'tvq_paid', 'coa_account_id', 'bill_date', 'business_use_pct'];
+function supplierBillCorrect(id, data, _db) {
+  const db = _db || getDb();
+  const bill = db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(id);
+  if (!bill) return { ok: false, error: 'bill_not_found' };
+  const moneyChanged = SUPPLIER_BILL_MONEY_FIELDS.some(
+    k => data[k] !== undefined && String(data[k]) !== String(bill[k] == null ? '' : bill[k])
+  );
+  if (moneyChanged && bill.paid && bill.bank_transaction_id) return { ok: false, error: 'bill_linked' };
+  if (moneyChanged) {
+    const period = _ensurePeriod(db, data.bill_date || bill.bill_date || new Date().toISOString().slice(0, 10));
+    if (period && period.status === 'closed') return { ok: false, error: 'period_closed', periodEnd: period.end_date };
+  }
+  try {
+    return db.transaction(() => {
+      const updated = supplierBillUpdate(id, data, db);
+      if (!moneyChanged) return { ok: true, ...updated };
+      supplierBillUnpost(id, 'Facture fournisseur corrigee', db);
+      const posted = supplierBillPost(id, db);
+      if (!posted.ok) throw new Error(posted.error);
+      return { ok: true, ...updated, posted };
+    })();
+  } catch (e) {
+    return { ok: false, error: String(e.message || e) };
+  }
+}
+
 // The bill's own document - the PDF or the photo it was read from - is what an
 // auditor asks for, so it is filed in the Vault under the bill. Setting the
 // pointer is not a financial change and must not touch the ledger.
@@ -4917,15 +4971,22 @@ function supplierBillDelete(id, _db) {
   const db = _db || getDb();
   const bill = db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(id);
   if (!bill) return { ok: false, error: 'bill_not_found' };
-  supplierBillUnpost(id, 'Facture fournisseur supprimee', db);
-  // Its filed documents go with it; the caller removes the files themselves.
-  const documents = db.prepare(
-    `SELECT file_path FROM source_documents WHERE entity_type='supplier_bill' AND entity_id=?`
-  ).all(id).map(r => r.file_path);
-  db.prepare(`DELETE FROM source_documents WHERE entity_type='supplier_bill' AND entity_id=?`).run(id);
-  db.prepare(`DELETE FROM supplier_payments WHERE supplier_bill_id=?`).run(id);
-  db.prepare(`DELETE FROM supplier_bills WHERE id=?`).run(id);
-  return { ok: true, deleted: true, documents };
+  try {
+    return db.transaction(() => {
+      supplierBillUnpost(id, 'Facture fournisseur supprimee', db);
+      // Its filed documents go with it; the caller removes the files themselves.
+      const documents = db.prepare(
+        `SELECT file_path FROM source_documents WHERE entity_type='supplier_bill' AND entity_id=?`
+      ).all(id).map(r => r.file_path);
+      db.prepare(`DELETE FROM source_documents WHERE entity_type='supplier_bill' AND entity_id=?`).run(id);
+      db.prepare(`DELETE FROM supplier_payments WHERE supplier_bill_id=?`).run(id);
+      db.prepare(`DELETE FROM supplier_bills WHERE id=?`).run(id);
+      return { ok: true, deleted: true, documents };
+    })();
+  } catch (e) {
+    // A closed period refuses the reversal; the bill stays exactly as it was.
+    return { ok: false, error: String(e.message || e) };
+  }
 }
 
 // Paying settles the payable against cash. Kept separate from the bill entry so
@@ -6726,7 +6787,7 @@ module.exports = {
   onboardingPacketSave, onboardingPacketList, onboardingPacketGet, onboardingPacketDelete,
   onboardingPacketApply, locationOnboardingGet,
   supplierBillList, supplierBillCreate, supplierBillUpdate, supplierBillMarkPaid, supplierBillMarkUnpaid, supplierBillDelete,
-  supplierBillPayByBankTransaction, supplierBillSetDocument,
+  supplierBillPayByBankTransaction, supplierBillSetDocument, supplierBillRecord, supplierBillCorrect,
   supplierPaymentsList, supplierPaymentCreate,
   assetList, assetCreate, assetUpdate, assetDelete,
   ccaClassesList, ccaComputeForAsset, ccaScheduleForYear,

@@ -39,6 +39,9 @@ const UI = {
     markPaid: 'Marquer payée',
     markUnpaid: 'Annuler le paiement',
     delete: 'Supprimer',
+    errPeriodClosed: 'Cette période comptable est fermée. Rouvrez-la dans le Grand livre, ou datez la facture dans une période ouverte.',
+    errBillLinked: 'Cette facture est réglée par une ligne de relevé. Détachez la ligne dans Banque avant de changer ses montants.',
+    errSave: (code) => `Enregistrement refusé : ${code}`,
     viewDocument: 'Voir le document',
     confirmDelete: 'Supprimer cette facture ? Toute ecriture au grand livre sera contrepassee. Cette action est definitive.',
     paidOn: 'Payée le',
@@ -107,6 +110,9 @@ const UI = {
     markPaid: 'Mark paid',
     markUnpaid: 'Undo payment',
     delete: 'Delete',
+    errPeriodClosed: 'That accounting period is closed. Reopen it in the Ledger, or date the bill in an open period.',
+    errBillLinked: 'This bill is settled by a statement line. Unlink the line in Bank before changing its amounts.',
+    errSave: (code) => `Could not save: ${code}`,
     viewDocument: 'View document',
     confirmDelete: 'Delete this bill? Any ledger entry will be reversed. This cannot be undone.',
     paidOn: 'Paid',
@@ -443,6 +449,14 @@ export default function BillsTab({ lang = 'fr' }) {
     : w.code === 'line_math' ? T.warnLineMath(w.description || '')
     : null;
 
+  // What the database refused, in words. Nothing was written in any of these.
+  const refusalText = (r) => {
+    const code = String(r?.error || '');
+    if (code === 'period_closed' || code.startsWith('ERR_PERIOD_CLOSED')) return T.errPeriodClosed;
+    if (code === 'bill_linked') return T.errBillLinked;
+    return T.errSave(code || '?');
+  };
+
   async function save() {
     const f = editing;
     if (!f.supplier_name.trim() || !(parseFloat(f.amount) > 0) || !f.coa_account_id) {
@@ -466,6 +480,7 @@ export default function BillsTab({ lang = 'fr' }) {
     try {
       const saved = f.id ? await window.api.supplierBills.update(f.id, payload)
                          : await window.api.supplierBills.create(payload);
+      if (saved?.ok === false) { setError(refusalText(saved)); return; }
       // The document is the proof an auditor asks for: file it in the Vault
       // under this bill. The bill is saved either way.
       const savedId = saved?.id || f.id;
@@ -530,7 +545,7 @@ export default function BillsTab({ lang = 'fr' }) {
     setBusy(true); setError('');
     try {
       const r = await window.api.supplierBills.delete(bill.id);
-      if (r?.ok === false) setError(T.errRead);
+      if (r?.ok === false) { setError(refusalText(r)); return; }
       if (editing?.id === bill.id) setEditing(null);
       await load();
     } catch (e) { setError(String(e?.message ?? e)); }

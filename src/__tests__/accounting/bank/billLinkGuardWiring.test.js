@@ -57,8 +57,8 @@ describe('APGUARD-003 both languages', () => {
 
 describe('APGUARD-004 the ledger wiring stays in place', () => {
   it('recording, correcting and paying a bill all reach the books', () => {
-    expect(MAIN).toMatch(/posted: bill\?\.id \? supplierBillPost\(bill\.id\)/);
-    expect(MAIN).toMatch(/supplierBillUnpost\(id, 'Facture fournisseur corrigee'\);/);
+    expect(MAIN).toMatch(/ipcMain\.handle\('supplier:bill:create',\s+\(_e, data\)\s+=> supplierBillRecord\(data\)\);/);
+    expect(MAIN).toMatch(/ipcMain\.handle\('supplier:bill:update',\s+\(_e, id, data\)\s+=> supplierBillCorrect\(id, data\)\);/);
     expect(MAIN).toMatch(/posted: supplierBillPostPayment\(id, \{ paymentDate: bill\?\.payment_date \}\)/);
     expect(MAIN).toMatch(/ipcMain\.handle\('supplier:bill:payByBankTx'/);
   });

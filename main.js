@@ -77,7 +77,7 @@ const {
   onboardingPacketSave, onboardingPacketList, onboardingPacketGet, onboardingPacketDelete,
   onboardingPacketApply, locationOnboardingGet,
   supplierBillList, supplierBillCreate, supplierBillUpdate, supplierBillMarkPaid, supplierBillMarkUnpaid, supplierBillDelete,
-  supplierBillPayByBankTransaction, supplierBillSetDocument,
+  supplierBillPayByBankTransaction, supplierBillSetDocument, supplierBillRecord, supplierBillCorrect,
   supplierPaymentsList, supplierPaymentCreate,
   assetList, assetCreate, assetUpdate, assetDelete,
   ccaClassesList, ccaComputeForAsset, ccaScheduleForYear,
@@ -2135,18 +2135,13 @@ ipcMain.handle('bilan:snapshot:get',     (_e, id)              => balanceSheetSn
 // ── Supplier Bills (AP) — Sprint 6 ───────────────────────────────────────────
 ipcMain.handle('supplier:bill:list',     (_e, opts)            => supplierBillList(opts || {}));
 // A document that changes what you owe reaches the ledger the moment it is
-// recorded: Dr expense, Dr recoverable tax, Cr accounts payable (2010).
-ipcMain.handle('supplier:bill:create',   (_e, data)            => {
-  const bill = supplierBillCreate(data);
-  return { ...bill, posted: bill?.id ? supplierBillPost(bill.id) : { ok: false, error: 'not_created' } };
-});
+// recorded: Dr expense, Dr recoverable tax, Cr accounts payable (2010). Row and
+// entry are one transaction; a closed period is refused before anything is written.
+ipcMain.handle('supplier:bill:create',   (_e, data)            => supplierBillRecord(data));
 // A correction has to reach the books too: reverse what the old figures posted,
-// then post the new ones. Reversing first, never the other way round.
-ipcMain.handle('supplier:bill:update',   (_e, id, data)        => {
-  const bill = supplierBillUpdate(id, data);
-  supplierBillUnpost(id, 'Facture fournisseur corrigee');
-  return { ...bill, posted: supplierBillPost(id) };
-});
+// then post the new ones, in one transaction. A note-only edit leaves the ledger
+// alone; a bill settled by a statement line keeps its money fields.
+ipcMain.handle('supplier:bill:update',   (_e, id, data)        => supplierBillCorrect(id, data));
 // Marking a bill paid by hand, with no statement line behind it: the payment
 // settles the payable against cash. Paying it from a statement line instead goes
 // through supplier:bill:payByBankTx, which posts against that account.
