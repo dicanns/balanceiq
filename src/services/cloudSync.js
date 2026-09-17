@@ -6,6 +6,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { supabase } from './supabase.js';
+import secretFields from './secretFields.cjs';
+const { SECRET_CONFIG_FIELDS, SECRET_KV_KEYS } = secretFields;
 import { setPlan } from '../config/features.js';
 
 // ── STATE ──────────────────────────────────────────────────────────────────
@@ -50,6 +52,7 @@ export async function initCloudSync() {
     if (!session) return null;
     _session = session;
     await _loadOrgAndPlan();
+    await _scrubSyncedSecrets();
     const pulled = await _pullNewData();
     setStatus('synced');
     return { session, plan: _plan, orgId: _orgId, locationId: _locationId, pulled };
@@ -157,11 +160,46 @@ export async function requestPasswordReset(email) {
 
 // ── PUSH DATA ──────────────────────────────────────────────────────────────
 // Queue is durable: persisted to SQLite via IPC, survives app restarts.
+// Credentials never leave the machine: the API configuration is pushed without
+// its secret fields, and credential-only keys are not pushed at all.
+export function withoutSecrets(key, value) {
+  if (SECRET_KV_KEYS.includes(key)) return null;
+  const serialized = typeof value === 'string' ? value : JSON.stringify(value);
+  if (key !== 'dicann-api-config') return serialized;
+  try {
+    const obj = JSON.parse(serialized);
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return serialized;
+    for (const f of SECRET_CONFIG_FIELDS) delete obj[f];
+    return JSON.stringify(obj);
+  } catch (_) { return serialized; }
+}
+
+// Earlier versions pushed the configuration with its secrets. Whatever is still
+// up there is rewritten without them the first time this device syncs.
+async function _scrubSyncedSecrets() {
+  if (!_orgId || !_locationId) return;
+  try {
+    const { data } = await supabase.from('synced_data').select('value')
+      .eq('location_id', _locationId).eq('key', 'dicann-api-config').maybeSingle();
+    const v = data?.value;
+    if (v && typeof v === 'object' && SECRET_CONFIG_FIELDS.some(f => f in v)) {
+      const clean = { ...v };
+      for (const f of SECRET_CONFIG_FIELDS) delete clean[f];
+      await supabase.from('synced_data')
+        .upsert({ org_id: _orgId, location_id: _locationId, key: 'dicann-api-config', value: clean }, { onConflict: 'location_id,key' });
+    }
+    for (const k of SECRET_KV_KEYS) {
+      await supabase.from('synced_data').delete().eq('location_id', _locationId).eq('key', k);
+    }
+  } catch (_) { /* best effort: the next save overwrites the row without them anyway */ }
+}
+
 export async function schedulePush(key, value) {
   if (!_session || !_orgId || !_locationId) return;
   if (_plan === 'free') return;
 
-  const serialized = typeof value === 'string' ? value : JSON.stringify(value);
+  const serialized = withoutSecrets(key, value);
+  if (serialized == null) return;
   if (window.api?.syncQueue) {
     await window.api.syncQueue.push(key, serialized);
   } else {

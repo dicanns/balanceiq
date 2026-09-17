@@ -6076,6 +6076,13 @@ function getAllTablesForBackup(_db) {
   for (const t of tables) {
     sqlite[t] = db.prepare(`SELECT * FROM ${t}`).all();
   }
+  // A backup is a file that travels: credentials never go in it. The API
+  // configuration loses its secret fields and credential-only keys are left out.
+  if (sqlite.kv_store) {
+    sqlite.kv_store = sqlite.kv_store
+      .filter(row => !SECRET_KV_KEYS.includes(row.key))
+      .map(row => (row.key === 'dicann-api-config' ? { ...row, value: stripApiConfigSecrets(row.value) } : row));
+  }
   return { schemaVersion, sqlite };
 }
 
@@ -6097,7 +6104,17 @@ function restoreAllTablesFromBackup(data, expectedSchemaVersion, _db) {
   if (wasOn) db.pragma('foreign_keys = OFF');
   try {
     db.transaction(() => {
-      for (const [table, rows] of Object.entries(data.sqlite || {})) {
+      for (const [table, rawRows] of Object.entries(data.sqlite || {})) {
+        let rows = rawRows;
+        // Credentials were never in the backup: what this machine holds stays.
+        if (table === 'kv_store' && Array.isArray(rows)) {
+          rows = rows.filter(r => !SECRET_KV_KEYS.includes(r.key)).map(r => {
+            if (r.key !== 'dicann-api-config') return r;
+            let current = {};
+            try { current = JSON.parse(db.prepare(`SELECT value FROM kv_store WHERE key=?`).get(r.key)?.value || '{}'); } catch (_) { current = {}; }
+            return { ...r, value: JSON.stringify(mergeApiConfigSecrets(r.value, current)) };
+          });
+        }
         if (!rows || rows.length === 0) continue;
         const cols = Object.keys(rows[0]);
         const colList = cols.join(', ');
@@ -6847,7 +6864,7 @@ function complianceGetLists({ dateFrom, dateTo } = {}, _db) {
 // pushed to Supabase on every save and written verbatim into every daily backup,
 // which put a working Stripe secret key into any copy of either. One list, used
 // by both boundaries (CLAUDE.md rule 5).
-const SECRET_CONFIG_FIELDS = ['stripeSecretKey', 'resendKey', 'padWebhookSecret'];
+const { SECRET_CONFIG_FIELDS, SECRET_KV_KEYS } = require('../services/secretFields.cjs');
 
 // Everything except the credentials. Accepts an object or a JSON string and
 // returns the same shape, so it can sit directly on either boundary.
@@ -6865,7 +6882,11 @@ function stripApiConfigSecrets(config) {
 // carries them, so a plain overwrite would silently log the operator out of
 // Stripe and Resend; anything the incoming config does carry still wins.
 function mergeApiConfigSecrets(incoming, current) {
-  const inc = stripApiConfigSecrets(incoming) || {};
+  // Accepts an object or a JSON string; a string used to be spread character
+  // by character into the result.
+  let inc = stripApiConfigSecrets(incoming) || {};
+  if (typeof inc === 'string') { try { inc = JSON.parse(inc) || {}; } catch (_) { inc = {}; } }
+  if (typeof inc !== 'object' || Array.isArray(inc)) inc = {};
   const cur = (current && typeof current === 'object') ? current : {};
   const out = { ...inc };
   for (const f of SECRET_CONFIG_FIELDS) {

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, net, dialog, shell, nativeImage, Tray, Menu, utilityProcess } = require('electron');
+const { app, BrowserWindow, ipcMain, net, dialog, shell, nativeImage, Tray, Menu, utilityProcess, safeStorage } = require('electron');
 const QRCode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
@@ -147,6 +147,26 @@ const { hashPin, verifyPin, enforceRole } = require('./src/services/identityCore
 
 const BACKUP_DIR = () => path.join(COMPANY_DATA_DIR, 'Backups');
 const BACKUP_KEEP_DAYS = 30;
+
+// ── SECRETS AT REST ──────────────────────────────────────────────────────────
+// Credentials pass through here on every read and write of their storage keys,
+// so the renderer keeps seeing plain values while the database holds them
+// encrypted with the OS keychain. See src/services/secretsAtRest.cjs.
+const { createSecretStore } = require('./src/services/secretsAtRest.cjs');
+const secrets = createSecretStore(safeStorage);
+const secretGet = (key) => { const r = storageGet(key); if (r && r.value != null) r.value = secrets.revealValue(key, r.value); return r; };
+const secretSet = (key, value) => storageSet(key, secrets.protectValue(key, value));
+// Existing installs wrote credentials in the clear; once the keychain is
+// available they are rewritten protected, unchanged for the renderer.
+function protectExistingSecrets() {
+  if (!secrets.available()) return 0;
+  let n = 0;
+  for (const key of secrets.keys) {
+    const raw = storageGet(key)?.value;
+    if (secrets.needsProtection(key, raw)) { secretSet(key, raw); n++; }
+  }
+  return n;
+}
 
 // ── URL SAFETY ────────────────────────────────────────────────────────────────
 // Exact-match allowlist only — no suffix/wildcard matching.
@@ -369,7 +389,7 @@ async function handlePosOAuthCallback(url) {
 
 // Save POS token to SQLite (never expose raw token to renderer)
 async function savePosToken(posType, tokenData) {
-  const stored = JSON.parse(storageGet('pos-credentials')?.value || '{}');
+  const stored = JSON.parse(secretGet('pos-credentials')?.value || '{}');
   const meta   = { connectedAt: new Date().toISOString(), hasToken: true, connected: true };
 
   if (posType === 'square') {
@@ -438,12 +458,12 @@ async function savePosToken(posType, tokenData) {
     stored.shopify = { ...meta, accessToken: tokenData.accessToken, shopDomain: tokenData.shopDomain, shopName, connected: true };
   }
 
-  storageSet('pos-credentials', JSON.stringify(stored));
+  secretSet('pos-credentials', JSON.stringify(stored));
 }
 
 // Return credentials metadata (no raw tokens) for renderer
 function getPosCredentialsMeta() {
-  const stored = JSON.parse(storageGet('pos-credentials')?.value || '{}');
+  const stored = JSON.parse(secretGet('pos-credentials')?.value || '{}');
   const safe = {};
   for (const [k, v] of Object.entries(stored)) {
     if (v?.hasToken) {
@@ -549,11 +569,11 @@ ipcMain.handle('audit:deviceId', () => {
 
 // IPC handlers for storage
 ipcMain.handle('storage:get', (event, key) => {
-  return storageGet(key);
+  return secretGet(key);
 });
 
 ipcMain.handle('storage:set', (event, key, value) => {
-  return storageSet(key, value);
+  return secretSet(key, value);
 });
 
 // IPC handler — restore from backup
@@ -1041,6 +1061,10 @@ function createWindow() {
       if (snap.taken) console.log('[db] pre-migration copy', JSON.stringify({ from: snap.onDisk, to: snap.latest }));
     } catch (e) { console.error('[db] pre-migration copy failed:', e.message); }
     storageGet('__init_check__');
+    try {
+      const n = protectExistingSecrets();
+      if (n) console.log(`[secrets] ${n} stored credential value(s) now encrypted at rest`);
+    } catch (e) { console.error('[secrets] protecting stored credentials failed:', e.message); }
   } catch (err) {
     const { dialog: d } = require('electron');
     d.showErrorBox(
@@ -1142,6 +1166,16 @@ const _pendingOAuthNonce = {};
 
 ipcMain.handle('pos:startOAuth', async (_event, posType, shopDomain) => {
   const isDev = !app.isPackaged;
+  // The code exchange needs the app secret, and only a development environment
+  // has one: a packaged build cannot finish this flow. Say so, instead of
+  // opening the provider's page and failing after the user has consented.
+  if (posType === 'square' || posType === 'clover') {
+    const secret = POS_SECRETS[posType]?.[isDev ? 'sandbox' : 'production']?.appSecret;
+    if (!secret) {
+      mainWindow?.webContents.send('pos:oauth-result', { posType, success: false, error: 'pos_oauth_unavailable' });
+      return { started: false, error: 'pos_oauth_unavailable' };
+    }
+  }
   // Generate a random nonce to bind this OAuth flow to this session
   const nonce = crypto.randomUUID();
   _pendingOAuthNonce[posType] = nonce;
@@ -1178,14 +1212,14 @@ ipcMain.handle('pos:saveManualToken', async (_event, posType, accessToken, shopD
 });
 
 ipcMain.handle('pos:disconnect', (_event, posType) => {
-  const stored = JSON.parse(storageGet('pos-credentials')?.value || '{}');
+  const stored = JSON.parse(secretGet('pos-credentials')?.value || '{}');
   delete stored[posType];
-  storageSet('pos-credentials', JSON.stringify(stored));
+  secretSet('pos-credentials', JSON.stringify(stored));
   return { success: true };
 });
 
 ipcMain.handle('pos:testConnection', async (_event, posType) => {
-  const stored = JSON.parse(storageGet('pos-credentials')?.value || '{}');
+  const stored = JSON.parse(secretGet('pos-credentials')?.value || '{}');
   const cred = stored[posType];
   if (!cred?.accessToken) return { connected: false, error: 'No token stored' };
   try {
@@ -1216,7 +1250,7 @@ ipcMain.handle('pos:testConnection', async (_event, posType) => {
 });
 
 ipcMain.handle('pos:fetchDailySales', async (_event, posType, dateStr) => {
-  const stored = JSON.parse(storageGet('pos-credentials')?.value || '{}');
+  const stored = JSON.parse(secretGet('pos-credentials')?.value || '{}');
   const cred = stored[posType];
   if (!cred?.accessToken) return { error: 'POS not connected' };
   try {
@@ -1674,7 +1708,13 @@ app.whenReady().then(() => {
           const isWin = process.platform === 'win32';
           const url = release.assets?.find(a => isWin ? a.name.endsWith('.exe') : a.name.endsWith('.dmg'))?.browser_download_url
             || release.html_url;
-          notify('update:available', { version: latest, url });
+          // Only this repository's own release pages and assets are ever offered,
+          // whatever the API answered.
+          if (typeof url === 'string' && /^https:\/\/github\.com\/dicanns\/balanceiq\/releases\//.test(url)) {
+            notify('update:available', { version: latest, url });
+          } else {
+            console.warn('[update] release url not on this repository, ignored');
+          }
         } else {
           notify('update:status', 'up-to-date');
         }

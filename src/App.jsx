@@ -5926,7 +5926,8 @@ function POSIntegrationSection({posCredentials,setPosCredentials,posAdvancedConf
     setOauthStatus(s=>({...s,[posType]:'waiting'}));
     try{
       const sd=posType==='shopify'?shopDomain[posType]||'':undefined;
-      await window.api.pos.startOAuth(posType,sd);
+      const r=await window.api.pos.startOAuth(posType,sd);
+      if(r?.error==='pos_oauth_unavailable'){setOauthStatus(s=>({...s,[posType]:'error'}));window.alert(T.posOauthUnavailable);}
     }catch(e){
       setOauthStatus(s=>({...s,[posType]:'error'}));
     }
@@ -6864,7 +6865,7 @@ function AppInner(){
   const saveExpItems=useCallback(async items=>{const v=JSON.stringify(items);try{await window.api.storage.set("dicann-pl-expense-items",v)}catch(e){}schedulePush("dicann-pl-expense-items",v);},[]);
   const saveGlAccounts=useCallback(accs=>{setGlAccounts(accs);const v=JSON.stringify(accs);window.api.storage.set("dicann-gl-accounts",v).catch(saveFailed("dicann-gl-accounts"));schedulePush("dicann-gl-accounts",v);},[]);
   const savePlatforms=useCallback(async p=>{const v=JSON.stringify(p);try{await window.api.storage.set("dicann-platforms",v)}catch(e){}schedulePush("dicann-platforms",v);},[]);
-  const saveApiCfg=useCallback(async c=>{const v=JSON.stringify(c);try{await window.api.storage.set("dicann-api-config",v)}catch(e){}schedulePush("dicann-api-config",v);},[]);
+  const saveApiCfg=useCallback(async c=>{const v=JSON.stringify(c);try{await window.api.storage.set("dicann-api-config",v)}catch(e){saveFailed("dicann-api-config")(e);}schedulePush("dicann-api-config",v);},[]);
   const persistEncaisse=useCallback(data=>{setEncaisseData(data);if(encaisseTimer.current)clearTimeout(encaisseTimer.current);encaisseTimer.current=setTimeout(async()=>{const v=JSON.stringify(data);try{await window.api.storage.set("dicann-encaisse",v)}catch(e){}schedulePush("dicann-encaisse",v);},600)},[]);
   const saveEncaisseConfig=useCallback(cfg=>{setEncaisseConfig(cfg);const v=JSON.stringify(cfg);window.api.storage.set("dicann-encaisse-config",v).catch(saveFailed("dicann-encaisse-config"));schedulePush("dicann-encaisse-config",v);},[]);
   const saveAppMode=useCallback(mode=>{setAppMode(mode);window.api.storage.set("balanceiq-mode",mode).catch(saveFailed("balanceiq-mode"))},[]);
