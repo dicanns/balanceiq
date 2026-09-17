@@ -2018,8 +2018,22 @@ function getDb() {
 
     // Run pending schema migrations (sequential, version-ordered, transactional)
     runMigrations(db);
+    // Only now: a migration may rebuild a table, and enforcement during that
+    // would refuse the very rows it is moving.
+    enableForeignKeys(db);
   }
   return db;
+}
+
+// Every REFERENCES clause in the schema was decorative: SQLite enforces foreign
+// keys only when asked, per connection, and nothing asked. Orphan rows - a
+// transaction pointing at a deleted statement, a line at a missing account -
+// were possible and silent. Enforcement is switched on after migrations, and
+// suspended only around a backup restore, which replaces rows in no particular
+// order.
+function enableForeignKeys(db) {
+  db.pragma('foreign_keys = ON');
+  return db.pragma('foreign_keys', { simple: true }) === 1;
 }
 
 // Returns the persistent device UUID, creating it on first call
@@ -2212,11 +2226,12 @@ function demoPurgeSqlite(_db) {
     del('bank_transactions',      `DELETE FROM bank_transactions`);
     del('bank_statements',        `DELETE FROM bank_statements`);
     del('bank_accounts',          `DELETE FROM bank_accounts`);
-    del('supplier_bills',         `DELETE FROM supplier_bills`);
     del('supplier_payments',      `DELETE FROM supplier_payments`);
+    del('supplier_bills',         `DELETE FROM supplier_bills`);
     del('tax_periods',            `DELETE FROM tax_periods`);
     del('balance_sheet_snapshots',`DELETE FROM balance_sheet_snapshots`);
-    del('accounting_periods',     `DELETE FROM accounting_periods`);
+    // A period still carrying real entries stays; only empty ones go.
+    del('accounting_periods',     `DELETE FROM accounting_periods WHERE id NOT IN (SELECT DISTINCT period_id FROM journal_entries)`);
 
     // Operational demo rows.
     del('waste_entries',      `DELETE FROM waste_entries`);
@@ -2224,7 +2239,11 @@ function demoPurgeSqlite(_db) {
     del('recipes',            `DELETE FROM recipes`);
     del('ingredients',        `DELETE FROM ingredients`);
     del('daily_snapshots',    `DELETE FROM daily_snapshots`);
+    del('register_count_denominations', `DELETE FROM register_count_denominations`);
+    del('safe_drop_events',   `DELETE FROM safe_drop_events`);
     del('register_closures',  `DELETE FROM register_closures`);
+    del('close_approvals',    `DELETE FROM close_approvals`);
+    del('close_exceptions',   `DELETE FROM close_exceptions`);
     del('close_sessions',     `DELETE FROM close_sessions`);
     del('tip_pool_sessions',  `DELETE FROM tip_pool_sessions`);
 
@@ -6069,18 +6088,35 @@ function restoreAllTablesFromBackup(data, expectedSchemaVersion, _db) {
     err.currentVersion = currentVersion;
     throw err;
   }
-  db.transaction(() => {
-    for (const [table, rows] of Object.entries(data.sqlite || {})) {
-      if (!rows || rows.length === 0) continue;
-      const cols = Object.keys(rows[0]);
-      const colList = cols.join(', ');
-      const placeholders = cols.map(() => '?').join(', ');
-      const stmt = db.prepare(`INSERT OR REPLACE INTO "${table}" (${colList}) VALUES (${placeholders})`);
-      for (const row of rows) {
-        stmt.run(...cols.map(c => row[c]));
+  // A backup lists tables in no particular order, so children can arrive before
+  // their parents; and INSERT OR REPLACE is a delete plus an insert, which under
+  // enforcement would cascade a journal entry's lines away. Enforcement is
+  // suspended around the restore - the pragma is a no-op inside a transaction,
+  // so it is set outside - and the result is checked before it commits.
+  const wasOn = db.pragma('foreign_keys', { simple: true }) === 1;
+  if (wasOn) db.pragma('foreign_keys = OFF');
+  try {
+    db.transaction(() => {
+      for (const [table, rows] of Object.entries(data.sqlite || {})) {
+        if (!rows || rows.length === 0) continue;
+        const cols = Object.keys(rows[0]);
+        const colList = cols.join(', ');
+        const placeholders = cols.map(() => '?').join(', ');
+        const stmt = db.prepare(`INSERT OR REPLACE INTO "${table}" (${colList}) VALUES (${placeholders})`);
+        for (const row of rows) {
+          stmt.run(...cols.map(c => row[c]));
+        }
       }
-    }
-  })();
+      const violations = db.pragma('foreign_key_check');
+      if (violations.length) {
+        const err = new Error('foreign_key_violations');
+        err.violations = violations.length;
+        throw err;
+      }
+    })();
+  } finally {
+    if (wasOn) db.pragma('foreign_keys = ON');
+  }
 }
 
 // ── Close Assurance ──────────────────────────────────────────────────────────
@@ -6839,7 +6875,7 @@ function mergeApiConfigSecrets(incoming, current) {
 }
 
 module.exports = {
-  setDataDir, getDataDir, latestSchemaVersion, preMigrationSnapshot,
+  setDataDir, getDataDir, latestSchemaVersion, preMigrationSnapshot, enableForeignKeys,
   incomeStatement, coaSetItcPct, coaRename, bankNeedsCategorizingCount, firstRunFacts,
   supplierBillPost, supplierBillUnpost, supplierBillPostPayment, supplierBillSubledger,
   supplierBillRepairTaxAccounts,

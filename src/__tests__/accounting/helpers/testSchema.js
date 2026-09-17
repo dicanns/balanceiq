@@ -88,6 +88,9 @@ export function buildAccountingDb() {
   // Set user_version to 7 so runMigrations applies only v8-v11
   db.pragma('user_version = 7');
   runMigrations(db);
+  // As the app runs: enforcement on after migrations, so a test that writes an
+  // orphan fails here rather than in someone's books.
+  db.pragma('foreign_keys = ON');
   return db;
 }
 
