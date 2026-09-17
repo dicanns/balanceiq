@@ -1518,6 +1518,19 @@ const MIGRATIONS = [
       if (!cols.includes('unit_cost')) database.prepare(`ALTER TABLE supplier_bills ADD COLUMN unit_cost REAL`).run();
     },
   },
+  {
+    version: 45,
+    description: 'Which account a bill was paid from when it is marked paid by hand. The payment '
+      + 'used to be posted against a fixed cash account whatever the bill was really paid with; '
+      + 'a card-paid bill understated the card and overstated cash.',
+    up: (database) => {
+      const cols = database.prepare(`PRAGMA table_info(supplier_bills)`).all().map(c => c.name);
+      if (!cols.length) return;
+      if (!cols.includes('paid_from_bank_account_id')) {
+        database.prepare(`ALTER TABLE supplier_bills ADD COLUMN paid_from_bank_account_id INTEGER`).run();
+      }
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.

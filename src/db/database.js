@@ -1568,6 +1568,19 @@ const MIGRATIONS = [
       if (!cols.includes('unit_cost')) database.prepare(`ALTER TABLE supplier_bills ADD COLUMN unit_cost REAL`).run();
     },
   },
+  {
+    version: 45,
+    description: 'Which account a bill was paid from when it is marked paid by hand. The payment '
+      + 'used to be posted against a fixed cash account whatever the bill was really paid with; '
+      + 'a card-paid bill understated the card and overstated cash.',
+    up: (database) => {
+      const cols = database.prepare(`PRAGMA table_info(supplier_bills)`).all().map(c => c.name);
+      if (!cols.length) return;
+      if (!cols.includes('paid_from_bank_account_id')) {
+        database.prepare(`ALTER TABLE supplier_bills ADD COLUMN paid_from_bank_account_id INTEGER`).run();
+      }
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.
@@ -4711,8 +4724,8 @@ function locationOnboardingGet(locationId, _db = null) {
 
 // ── Supplier Bills (Relational AP) ────────────────────────────────────────────
 
-function supplierBillList({ monthKey = null, paid = null, supplierName = null } = {}) {
-  const db = getDb();
+function supplierBillList({ monthKey = null, paid = null, supplierName = null } = {}, _db) {
+  const db = _db || getDb();
   const conds = [];
   const params = [];
   if (monthKey) { conds.push('sb.month_key=?'); params.push(monthKey); }
@@ -4725,11 +4738,12 @@ function supplierBillList({ monthKey = null, paid = null, supplierName = null } 
     SELECT sb.*,
            bt.transaction_date AS paid_tx_date,
            bt.description      AS paid_tx_description,
-           ba.name             AS paid_account_name,
-           ba.account_type     AS paid_account_type
+           COALESCE(ba.name, bp.name)                 AS paid_account_name,
+           COALESCE(ba.account_type, bp.account_type) AS paid_account_type
     FROM supplier_bills sb
     LEFT JOIN bank_transactions bt ON bt.id = sb.bank_transaction_id
     LEFT JOIN bank_accounts     ba ON ba.id = bt.bank_account_id
+    LEFT JOIN bank_accounts     bp ON bp.id = sb.paid_from_bank_account_id
     ${where}
     ORDER BY sb.bill_date DESC, sb.id DESC`).all(...params);
 }
@@ -4769,17 +4783,17 @@ function supplierBillUpdate(id, data, _db) {
   return db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(id);
 }
 
-function supplierBillMarkPaid(id, { payment_date, payment_method = null, bank_transaction_id = null } = {}) {
-  const db = getDb();
+function supplierBillMarkPaid(id, { payment_date, payment_method = null, bank_transaction_id = null } = {}, _db) {
+  const db = _db || getDb();
   db.prepare(
     `UPDATE supplier_bills SET paid=1, payment_date=?, payment_method=?, bank_transaction_id=? WHERE id=?`
   ).run(payment_date || new Date().toISOString().slice(0, 10), payment_method, bank_transaction_id, id);
   return db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(id);
 }
 
-function supplierBillMarkUnpaid(id) {
-  const db = getDb();
-  db.prepare(`UPDATE supplier_bills SET paid=0, payment_date=NULL, payment_method=NULL, bank_transaction_id=NULL WHERE id=?`).run(id);
+function supplierBillMarkUnpaid(id, _db) {
+  const db = _db || getDb();
+  db.prepare(`UPDATE supplier_bills SET paid=0, payment_date=NULL, payment_method=NULL, bank_transaction_id=NULL, paid_from_bank_account_id=NULL WHERE id=?`).run(id);
   return db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(id);
 }
 
@@ -4898,6 +4912,62 @@ function supplierBillUnpost(billId, reason, _db) {
   }
   db.prepare(`UPDATE supplier_bills SET journal_entry_id=NULL WHERE id=?`).run(billId);
   return { ok: true };
+}
+
+// Marking a bill paid by hand, with no statement line behind it. The payment
+// settles the payable against the account it was really paid from - the
+// chequing account or the card - never a fixed cash account, which understated
+// the card and overstated cash. Row and entry are one transaction. A bill
+// already settled by a statement line is refused: that link is undone in Bank.
+function supplierBillSettle(id, { payment_date, bank_account_id = null, payment_method = null } = {}, _db) {
+  const db = _db || getDb();
+  const bill = db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(id);
+  if (!bill) return { ok: false, error: 'bill_not_found' };
+  if (bill.paid) return { ok: false, error: 'bill_already_paid' };
+  let bankCoaNumber = '1010';
+  let method = payment_method;
+  if (bank_account_id) {
+    const acct = db.prepare(
+      `SELECT ba.*, ca.account_number FROM bank_accounts ba JOIN chart_of_accounts ca ON ca.id = ba.coa_account_id WHERE ba.id=?`
+    ).get(bank_account_id);
+    if (!acct) return { ok: false, error: 'account_not_found' };
+    bankCoaNumber = acct.account_number;
+    method = method || (acct.account_type === 'credit_card' ? 'card' : 'bank');
+  }
+  const date = payment_date || new Date().toISOString().slice(0, 10);
+  try {
+    return db.transaction(() => {
+      supplierBillMarkPaid(id, { payment_date: date, payment_method: method || 'manual' }, db);
+      db.prepare(`UPDATE supplier_bills SET paid_from_bank_account_id=? WHERE id=?`).run(bank_account_id || null, id);
+      const posted = supplierBillPostPayment(id, { paymentDate: date, bankCoaNumber }, db);
+      if (!posted.ok) throw new Error(posted.error);
+      return { ok: true, ...db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(id), posted };
+    })();
+  } catch (e) {
+    return { ok: false, error: String(e.message || e) };
+  }
+}
+
+// Undoing a hand-marked payment reverses its entry and reopens the bill, as one
+// act. A payment that came from a statement line is not undone here.
+function supplierBillUnsettle(id, _db) {
+  const db = _db || getDb();
+  const bill = db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(id);
+  if (!bill) return { ok: false, error: 'bill_not_found' };
+  if (!bill.paid) return { ok: true, ...bill };
+  if (bill.bank_transaction_id) return { ok: false, error: 'bill_linked' };
+  try {
+    return db.transaction(() => {
+      const pay = glFindEntryBySource('supplier_bill_payment', String(id), db);
+      if (pay) {
+        if (pay.status === 'draft') glDeleteDraft(pay.id, db);
+        else glReverseEntry(pay.id, 'Paiement fournisseur annule', db);
+      }
+      return { ok: true, ...supplierBillMarkUnpaid(id, db) };
+    })();
+  } catch (e) {
+    return { ok: false, error: String(e.message || e) };
+  }
 }
 
 // Recording a bill is one act: the row and its ledger entry both exist or
@@ -6788,6 +6858,7 @@ module.exports = {
   onboardingPacketApply, locationOnboardingGet,
   supplierBillList, supplierBillCreate, supplierBillUpdate, supplierBillMarkPaid, supplierBillMarkUnpaid, supplierBillDelete,
   supplierBillPayByBankTransaction, supplierBillSetDocument, supplierBillRecord, supplierBillCorrect,
+  supplierBillSettle, supplierBillUnsettle,
   supplierPaymentsList, supplierPaymentCreate,
   assetList, assetCreate, assetUpdate, assetDelete,
   ccaClassesList, ccaComputeForAsset, ccaScheduleForYear,

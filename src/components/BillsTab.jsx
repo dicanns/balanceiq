@@ -42,6 +42,12 @@ const UI = {
     errPeriodClosed: 'Cette période comptable est fermée. Rouvrez-la dans le Grand livre, ou datez la facture dans une période ouverte.',
     errBillLinked: 'Cette facture est réglée par une ligne de relevé. Détachez la ligne dans Banque avant de changer ses montants.',
     errSave: (code) => `Enregistrement refusé : ${code}`,
+    errPaidByLine: 'Ce paiement vient d\'une ligne de relevé. Détachez la ligne dans Banque pour l\'annuler.',
+    settleTitle: (name, amt) => `Marquer payée : ${name} · ${amt}`,
+    settleDate: 'Date du paiement',
+    settleFrom: 'Payé depuis',
+    settleCash: 'Encaisse (1010) : aucun compte bancaire configuré dans Banque.',
+    settleConfirm: 'Confirmer le paiement',
     viewDocument: 'Voir le document',
     confirmDelete: 'Supprimer cette facture ? Toute ecriture au grand livre sera contrepassee. Cette action est definitive.',
     paidOn: 'Payée le',
@@ -113,6 +119,12 @@ const UI = {
     errPeriodClosed: 'That accounting period is closed. Reopen it in the Ledger, or date the bill in an open period.',
     errBillLinked: 'This bill is settled by a statement line. Unlink the line in Bank before changing its amounts.',
     errSave: (code) => `Could not save: ${code}`,
+    errPaidByLine: 'This payment comes from a statement line. Unlink the line in Bank to undo it.',
+    settleTitle: (name, amt) => `Mark paid: ${name} · ${amt}`,
+    settleDate: 'Payment date',
+    settleFrom: 'Paid from',
+    settleCash: 'Cash (1010): no bank account set up in Bank yet.',
+    settleConfirm: 'Confirm payment',
     viewDocument: 'View document',
     confirmDelete: 'Delete this bill? Any ledger entry will be reversed. This cannot be undone.',
     paidOn: 'Paid',
@@ -267,12 +279,18 @@ export default function BillsTab({ lang = 'fr' }) {
   const [ownNames, setOwnNames] = useState([]);
   const [dragOver, setDragOver] = useState(false);
   const [attach, setAttach]     = useState(null);   // { billId, lines } - statement lines that may be this bill's payment
+  const [settling, setSettling] = useState(null);   // { bill, date, accountId } - marking a bill paid by hand
+  const [bankAccounts, setBankAccounts] = useState([]);
 
   const load = useCallback(async () => {
     try {
       const list = await window.api?.supplierBills?.list({});
       setBills(Array.isArray(list) ? list : []);
     } catch (_) { setBills([]); }
+    try {
+      const accts = await window.api?.bank?.accounts?.list();
+      setBankAccounts(Array.isArray(accts) ? accts.filter(a => !a.is_archived) : []);
+    } catch (_) { setBankAccounts([]); }
     try {
       const coa = await window.api?.coa?.list();
       setAccounts(Array.isArray(coa) ? coa.filter(a => ['expense', 'cogs'].includes(a.type) && !a.is_archived) : []);
@@ -512,17 +530,38 @@ export default function BillsTab({ lang = 'fr' }) {
     finally { setBusy(false); }
   }
 
+  // Paying by hand asks which account the money left, so the payment settles
+  // the payable against that account rather than a fixed cash account.
   async function togglePaid(bill) {
-    setBusy(true);
+    if (!bill.paid) {
+      const first = bankAccounts.find(a => a.account_type === 'bank') || bankAccounts[0];
+      setSettling({ bill, date: today(), accountId: first ? String(first.id) : '' });
+      return;
+    }
+    if (bill.bank_transaction_id) { setError(T.errPaidByLine); return; }
+    if (!window.confirm(T.confirmUnpaid)) return;
+    setBusy(true); setError('');
     try {
-      if (bill.paid) {
-        if (!window.confirm(T.confirmUnpaid)) { setBusy(false); return; }
-        await window.api.supplierBills.markUnpaid(bill.id);
-      } else {
-        await window.api.supplierBills.markPaid(bill.id, { payment_date: today() });
-      }
+      const r = await window.api.supplierBills.markUnpaid(bill.id);
+      if (r?.ok === false) { setError(r.error === 'bill_linked' ? T.errPaidByLine : refusalText(r)); return; }
       await load();
-    } catch (_) {} finally { setBusy(false); }
+    } catch (e) { setError(String(e?.message ?? e)); }
+    finally { setBusy(false); }
+  }
+
+  async function confirmSettle() {
+    if (!settling) return;
+    setBusy(true); setError('');
+    try {
+      const r = await window.api.supplierBills.markPaid(settling.bill.id, {
+        payment_date: settling.date || today(),
+        bank_account_id: settling.accountId ? parseInt(settling.accountId, 10) : null,
+      });
+      if (r?.ok === false) { setError(refusalText(r)); return; }
+      setSettling(null);
+      await load();
+    } catch (e) { setError(String(e?.message ?? e)); }
+    finally { setBusy(false); }
   }
 
   // Attaching re-points the statement line at accounts payable: whatever it had
@@ -631,6 +670,24 @@ export default function BillsTab({ lang = 'fr' }) {
         <input style={input} value={editing.note} onChange={e => set({ note: e.target.value })} /></div>
 
       {error && <div style={{ fontSize: 12, color: '#ef4444' }}>{error}</div>}
+      {settling && (
+        <div style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 8, padding: '10px 12px' }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: '#86efac' }}>{T.settleTitle(settling.bill.supplier_name, money(settling.bill.amount))}</div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 8 }}>
+            <div><span style={lbl}>{T.settleDate}</span>
+              <input style={{ ...input, width: 150 }} type="date" value={settling.date} onChange={e => setSettling(s => ({ ...s, date: e.target.value }))} /></div>
+            <div style={{ minWidth: 220 }}><span style={lbl}>{T.settleFrom}</span>
+              {bankAccounts.length ? (
+                <select style={input} value={settling.accountId} onChange={e => setSettling(s => ({ ...s, accountId: e.target.value }))}>
+                  {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              ) : <div style={{ fontSize: 11.5, color: C.muted, padding: '6px 0' }}>{T.settleCash}</div>}
+            </div>
+            <button onClick={confirmSettle} disabled={busy} style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: 5, color: '#22c55e', cursor: busy ? 'default' : 'pointer', fontSize: 12, fontWeight: 700, padding: '7px 12px' }}>{T.settleConfirm}</button>
+            <button onClick={() => setSettling(null)} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 11, padding: '7px 4px' }}>{T.cancel}</button>
+          </div>
+        </div>
+      )}
       {attach && (
         <div style={{ background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.35)', borderRadius: 8, padding: '10px 12px' }}>
           <div style={{ fontSize: 12.5, fontWeight: 700, color: '#fdba74' }}>{T.attachTitle}</div>

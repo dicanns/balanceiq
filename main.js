@@ -78,6 +78,7 @@ const {
   onboardingPacketApply, locationOnboardingGet,
   supplierBillList, supplierBillCreate, supplierBillUpdate, supplierBillMarkPaid, supplierBillMarkUnpaid, supplierBillDelete,
   supplierBillPayByBankTransaction, supplierBillSetDocument, supplierBillRecord, supplierBillCorrect,
+  supplierBillSettle, supplierBillUnsettle,
   supplierPaymentsList, supplierPaymentCreate,
   assetList, assetCreate, assetUpdate, assetDelete,
   ccaClassesList, ccaComputeForAsset, ccaScheduleForYear,
@@ -2143,20 +2144,10 @@ ipcMain.handle('supplier:bill:create',   (_e, data)            => supplierBillRe
 // alone; a bill settled by a statement line keeps its money fields.
 ipcMain.handle('supplier:bill:update',   (_e, id, data)        => supplierBillCorrect(id, data));
 // Marking a bill paid by hand, with no statement line behind it: the payment
-// settles the payable against cash. Paying it from a statement line instead goes
-// through supplier:bill:payByBankTx, which posts against that account.
-ipcMain.handle('supplier:bill:markPaid', (_e, id, payData)     => {
-  const bill = supplierBillMarkPaid(id, payData || {});
-  return { ...bill, posted: supplierBillPostPayment(id, { paymentDate: bill?.payment_date }) };
-});
-ipcMain.handle('supplier:bill:markUnpaid',(_e, id)             => {
-  const bill = supplierBillMarkUnpaid(id);
-  try {
-    const pay = glFindEntryBySource('supplier_bill_payment', String(id));
-    if (pay) glReverseEntry(pay.id, 'Paiement fournisseur annulé');
-  } catch (_) {}
-  return bill;
-});
+// settles the payable against the bank or card account it was paid from, as one
+// transaction. Paying it from a statement line goes through payByBankTx instead.
+ipcMain.handle('supplier:bill:markPaid', (_e, id, payData)     => supplierBillSettle(id, payData || {}));
+ipcMain.handle('supplier:bill:markUnpaid',(_e, id)             => supplierBillUnsettle(id));
 // Removing a bill that should never have been recorded here. Any ledger entry is
 // reversed first, so the books keep the record of what happened.
 ipcMain.handle('supplier:bill:delete', (_e, id)          => {
