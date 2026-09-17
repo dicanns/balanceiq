@@ -78,6 +78,9 @@ function isUrlSafe(u){try{const p=new URL(u);if(!_SAFE_URL_SCHEMES.includes(p.pr
 // Prevents stored XSS from user-entered text (names, notes, descriptions) when
 // the HTML is written to a temp file and loaded in a BrowserWindow for printing.
 function escapeHtml(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#x27;');}
+// A save that fails must never fail silently: the operator sees it, and the key
+// says which change was lost. Every storage write's catch goes through here.
+function saveFailed(key){return e=>{console.error('[save]',key,e);try{window.dispatchEvent(new CustomEvent('biq:save-failed',{detail:{key:String(key),message:String(e?.message||e)}}));}catch(_){}};}
 
 // ── THEME ──
 const DARK = {
@@ -980,7 +983,7 @@ function InvoiceOCRModal({section,suppliers,expenseItems,updPL,plData,ocrMapping
       const k=(result.supplier||'').toLowerCase().trim();
       const nm={...ocrMappings,[k]:selectedKey};
       setOcrMappings(nm);
-      window.api.storage.set('dicann-ocr-mappings',JSON.stringify(nm)).catch(()=>{});
+      window.api.storage.set('dicann-ocr-mappings',JSON.stringify(nm)).catch(saveFailed('dicann-ocr-mappings'));
     }
     // Save line items + update ingredient prices
     if(lineItemRows.length>0){
@@ -1128,7 +1131,7 @@ function MonthlyPL({computeDay,suppliers,liveData,platforms,expenseItems,glAccou
   const handleReset=()=>{
     if(!window.confirm(T.plResetConfirm))return;
     setPlData({});
-    window.api.storage.set(`dicann-pl-${month}`,JSON.stringify({})).catch(()=>{});
+    window.api.storage.set(`dicann-pl-${month}`,JSON.stringify({})).catch(saveFailed(`dicann-pl-${month}`));
   };
 
   const exportPLAcomba=(fmt)=>{
@@ -5436,7 +5439,7 @@ function DelinquencyPanel({facFactures,facClients,locations,royaltyConfig,apiCon
  },[]);
  const saveReminders=async(updated)=>{
  setRemindersSent(updated);
- await window.api.storage.set('balanceiq-royalty-reminders',JSON.stringify(updated)).catch(()=>{});
+ await window.api.storage.set('balanceiq-royalty-reminders',JSON.stringify(updated)).catch(saveFailed('balanceiq-royalty-reminders'));
  };
  // Compute overdue royalty invoices
  const overdueInvoices=useMemo(()=>{
@@ -6273,7 +6276,7 @@ function AppInner(){
     if(tab)setSectionTab(p=>({...p,[section]:tab}));
   },[]);
   const [cfgExpanded,setCfgExpanded]=useState({});
-  const toggleCfg=useCallback(id=>setCfgExpanded(prev=>{const next={...prev,[id]:!prev[id]};window.api.storage.set("balanceiq-cfg-expanded",JSON.stringify(next)).catch(()=>{});return next;}),[]);
+  const toggleCfg=useCallback(id=>setCfgExpanded(prev=>{const next={...prev,[id]:!prev[id]};window.api.storage.set("balanceiq-cfg-expanded",JSON.stringify(next)).catch(saveFailed("balanceiq-cfg-expanded"));return next;}),[]);
   const [resendTestStatus,setResendTestStatus]=useState(null);
   const [stripeTestStatus,setStripeTestStatus]=useState(null);
   const [padConfigStatus,setPadConfigStatus]=useState(null); // null|'saving'|{ok}|{err}
@@ -6284,7 +6287,7 @@ function AppInner(){
   const [appMessages,setAppMessages]=useState([]); // push messages from Supabase
   const [showEarlyAccess,setShowEarlyAccess]=useState(()=>{try{return localStorage.getItem(`balanceiq-early-access-v${appVersion}`)!=='1';}catch{return true;}});
   const dismissEarlyAccess=useCallback(()=>{try{localStorage.setItem(`balanceiq-early-access-v${appVersion}`,'1');}catch{}setShowEarlyAccess(false);},[]);
-  const dismissBanner=useCallback((tabId)=>{setDismissedBanners(prev=>{const next=new Set(prev);next.add(tabId);window.api.storage.set("balanceiq-dismissed-banners",JSON.stringify([...next])).catch(()=>{});return next;});},[]);
+  const dismissBanner=useCallback((tabId)=>{setDismissedBanners(prev=>{const next=new Set(prev);next.add(tabId);window.api.storage.set("balanceiq-dismissed-banners",JSON.stringify([...next])).catch(saveFailed("balanceiq-dismissed-banners"));return next;});},[]);
   const [themeName,setThemeName]=useState('light');
   const theme=themeName==='light'?LIGHT:DARK;
 
@@ -6333,6 +6336,8 @@ function AppInner(){
   const [shiftFloatOverride,setShiftFloatOverride]=useState(null); // cents | null
   const [shiftIsFinal,setShiftIsFinal]=useState(false);
   const [lang,setLang]=useState("fr");
+  const [saveError,setSaveError]=useState(null);
+  useEffect(()=>{const on=e=>setSaveError({...(e.detail||{}),at:Date.now()});window.addEventListener('biq:save-failed',on);return()=>window.removeEventListener('biq:save-failed',on);},[]);
   const [cloudUser,setCloudUser]=useState(null); // {email, plan} or null
   const [syncStatus,setSyncStatus]=useState(null); // 'synced'|'syncing'|'offline'|'error'|null
   const [isOnline,setIsOnline]=useState(typeof navigator!=="undefined"?navigator.onLine:true);
@@ -6513,56 +6518,42 @@ function AppInner(){
       try{await window.api.recurring.checkDue();}catch(_){}
       try{const c=await window.api.recurring.pendingCount();setRecurringPendingCount(c||0);}catch(_){}
     },3000);
-    // Check reminder ladder on startup (runs silently — sends emails for due reminders)
-    setTimeout(async()=>{
-      try{
-        const stored=await window.api.storage.get('dicann-fac-factures');
-        const facs=stored?JSON.parse(stored):[];
-        if(facs.length&&window.api.reminders){
-          await window.api.reminders.check(facs);
-        }
-      }catch(_){}
-    },5000);
+    // The old reminder ladder used to run here at startup, silently. It never
+    // did - it parsed the storage wrapper instead of its value and the catch hid
+    // it - and reminders are now sent from the Reminders screen, after a preview.
     // PAD NSF check — if any mandate is nsf and has nsf_invoice_id, mark that invoice unpaid + flag client
     setTimeout(async()=>{
       try{
         const cfgRaw=await window.api.storage.get('dicann-api-config');
-        const cfg=cfgRaw?JSON.parse(cfgRaw):null;
+        const cfg=cfgRaw?.value?JSON.parse(cfgRaw.value):null;
         if(!cfg?.orgId||!window.api?.pad?.listMandates)return;
         const mandates=await window.api.pad.listMandates({accessToken:getCloudAccessToken(),org_id:cfg.orgId});
         const nsfWithInvoice=(mandates||[]).filter(m=>m.status==='nsf'&&m.nsf_invoice_id);
         if(!nsfWithInvoice.length)return;
-        const stored=await window.api.storage.get('dicann-fac-factures');
-        const stored2=await window.api.storage.get('dicann-fac-clients');
-        let facs=stored?JSON.parse(stored):[];
-        let cls=stored2?JSON.parse(stored2):[];
+        // Worked out from the lists in memory, not from a copy read off disk:
+        // a copy taken now and written back whole would wipe anything saved in
+        // between. The refs are current, and nothing else runs meanwhile.
         let changed=false;
-        for(const m of nsfWithInvoice){
-          const idx=facs.findIndex(f=>f.id===m.nsf_invoice_id);
-          if(idx>=0&&facs[idx].statut==='Payée'){
-            facs[idx]={...facs[idx],statut:'En retard',nsfFlag:true,nsfReason:m.nsf_reason||'NSF'};
-            changed=true;
-          }
-          // Flag client
-          const ci=cls.findIndex(c=>c.id===m.client_id);
-          if(ci>=0&&!cls[ci].nsfFlag){
-            cls[ci]={...cls[ci],nsfFlag:true};
-            changed=true;
-          }
-        }
-        if(changed){
-          await window.api.storage.set('dicann-fac-factures',JSON.stringify(facs));
-          await window.api.storage.set('dicann-fac-clients',JSON.stringify(cls));
-          setFacFactures([...facs]);
-          setFacClients([...cls]);
-        }
-      }catch(_){}
+        const nextFacs=facFacturesRef.current.map(f=>{
+          const m=nsfWithInvoice.find(x=>x.nsf_invoice_id===f.id);
+          if(!m||f.statut!=='Payée')return f;
+          changed=true;
+          return{...f,statut:'En retard',nsfFlag:true,nsfReason:m.nsf_reason||'NSF'};
+        });
+        const flaggedClients=new Set(nsfWithInvoice.map(m=>m.client_id));
+        const nextCls=facClientsRef.current.map(c=>{
+          if(!flaggedClients.has(c.id)||c.nsfFlag)return c;
+          changed=true;
+          return{...c,nsfFlag:true};
+        });
+        if(changed){saveFacFactures(nextFacs);saveFacClients(nextCls);}
+      }catch(e){console.error('[nsf check]',e);}
     },8000);
     // PAD 48h followup check (once per startup, silent — only fires if followup_enabled mandates are pending > 48h)
     setTimeout(async()=>{
       try{
         const cfgRaw=await window.api.storage.get('dicann-api-config');
-        const cfg=cfgRaw?JSON.parse(cfgRaw):null;
+        const cfg=cfgRaw?.value?JSON.parse(cfgRaw.value):null;
         if(cfg?.orgId&&cfg?.resendKey&&window.api?.pad?.runFollowup){
           await window.api.pad.runFollowup({accessToken:getCloudAccessToken(),org_id:cfg.orgId,resend_api_key:cfg.resendKey,resend_from:cfg.resendFrom||'noreply@balanceiq.ca',operator_email:cfg.reportEmail||''});
         }
@@ -6768,7 +6759,7 @@ function AppInner(){
             }catch(_){}
           }
         }
-        if(changed)await window.api.storage.set('balanceiq-royalty-reminders',JSON.stringify(sent)).catch(()=>{});
+        if(changed)await window.api.storage.set('balanceiq-royalty-reminders',JSON.stringify(sent)).catch(saveFailed('balanceiq-royalty-reminders'));
       }catch(_){}
     },10000);
     return()=>clearTimeout(timer);
@@ -6848,17 +6839,17 @@ function AppInner(){
   const toggleTheme=useCallback(()=>{
     const next=themeName==='dark'?'light':'dark';
     setThemeName(next);
-    window.api.storage.set("balanceiq-theme",next).catch(()=>{});
+    window.api.storage.set("balanceiq-theme",next).catch(saveFailed("balanceiq-theme"));
   },[themeName]);
 
   const setThemeTo=useCallback(name=>{
     setThemeName(name);
-    window.api.storage.set("balanceiq-theme",name).catch(()=>{});
+    window.api.storage.set("balanceiq-theme",name).catch(saveFailed("balanceiq-theme"));
   },[]);
 
   const setLangTo=useCallback(l=>{
     setLang(l);
-    window.api.storage.set("balanceiq-lang",l).catch(()=>{});
+    window.api.storage.set("balanceiq-lang",l).catch(saveFailed("balanceiq-lang"));
     window.api?.companies?.setUiLang?.({lang:l}).catch(()=>{});
   },[]);
 
@@ -6871,20 +6862,20 @@ function AppInner(){
   const saveEmpRoster=useCallback(async r=>{const s=JSON.stringify(r);try{await window.api.storage.set("dicann-emp-roster",s)}catch(e){}schedulePush("dicann-emp-roster",s);},[]);
   const saveSup=useCallback(async s=>{const v=JSON.stringify(s);try{await window.api.storage.set("dicann-suppliers-v2",v)}catch(e){}schedulePush("dicann-suppliers-v2",v);},[]);
   const saveExpItems=useCallback(async items=>{const v=JSON.stringify(items);try{await window.api.storage.set("dicann-pl-expense-items",v)}catch(e){}schedulePush("dicann-pl-expense-items",v);},[]);
-  const saveGlAccounts=useCallback(accs=>{setGlAccounts(accs);const v=JSON.stringify(accs);window.api.storage.set("dicann-gl-accounts",v).catch(()=>{});schedulePush("dicann-gl-accounts",v);},[]);
+  const saveGlAccounts=useCallback(accs=>{setGlAccounts(accs);const v=JSON.stringify(accs);window.api.storage.set("dicann-gl-accounts",v).catch(saveFailed("dicann-gl-accounts"));schedulePush("dicann-gl-accounts",v);},[]);
   const savePlatforms=useCallback(async p=>{const v=JSON.stringify(p);try{await window.api.storage.set("dicann-platforms",v)}catch(e){}schedulePush("dicann-platforms",v);},[]);
   const saveApiCfg=useCallback(async c=>{const v=JSON.stringify(c);try{await window.api.storage.set("dicann-api-config",v)}catch(e){}schedulePush("dicann-api-config",v);},[]);
   const persistEncaisse=useCallback(data=>{setEncaisseData(data);if(encaisseTimer.current)clearTimeout(encaisseTimer.current);encaisseTimer.current=setTimeout(async()=>{const v=JSON.stringify(data);try{await window.api.storage.set("dicann-encaisse",v)}catch(e){}schedulePush("dicann-encaisse",v);},600)},[]);
-  const saveEncaisseConfig=useCallback(cfg=>{setEncaisseConfig(cfg);const v=JSON.stringify(cfg);window.api.storage.set("dicann-encaisse-config",v).catch(()=>{});schedulePush("dicann-encaisse-config",v);},[]);
-  const saveAppMode=useCallback(mode=>{setAppMode(mode);window.api.storage.set("balanceiq-mode",mode).catch(()=>{})},[]);
-  const saveLocations=useCallback(list=>{setLocations(list);window.api.storage.set("balanceiq-locations",JSON.stringify(list)).catch(()=>{})},[]);
-  const saveRoyaltyConfig=useCallback(cfg=>{setRoyaltyConfig(cfg);window.api.storage.set("balanceiq-royalty-config",JSON.stringify(cfg)).catch(()=>{})},[]);
-  const savePerfTargets=useCallback(tgt=>{setPerfTargets(tgt);window.api.storage.set("balanceiq-perf-targets",JSON.stringify(tgt)).catch(()=>{})},[]);
-  const saveAlertConfig=useCallback(cfg=>{setAlertConfig(cfg);window.api.storage.set("balanceiq-alert-config",JSON.stringify(cfg)).catch(()=>{})},[]);
-  const savePayrollConfig=useCallback(cfg=>{setPayrollConfig(cfg);window.api.storage.set("balanceiq-payroll-config",JSON.stringify(cfg)).catch(()=>{})},[]);
-  const saveWhiteLabel=useCallback(cfg=>{setWhiteLabelConfig(cfg);window.api.storage.set("balanceiq-whitelabel",JSON.stringify(cfg)).catch(()=>{})},[]);
-  const saveLockConfig=useCallback(cfg=>{setLockConfig(cfg);window.api.storage.set("balanceiq-lock",JSON.stringify(cfg)).catch(()=>{})},[]);
-  const saveInvConfig=useCallback(cfg=>{setInvConfig(cfg);const v=JSON.stringify(cfg);window.api.storage.set("dicann-inv-config",v).catch(()=>{});schedulePush("dicann-inv-config",v);},[]);
+  const saveEncaisseConfig=useCallback(cfg=>{setEncaisseConfig(cfg);const v=JSON.stringify(cfg);window.api.storage.set("dicann-encaisse-config",v).catch(saveFailed("dicann-encaisse-config"));schedulePush("dicann-encaisse-config",v);},[]);
+  const saveAppMode=useCallback(mode=>{setAppMode(mode);window.api.storage.set("balanceiq-mode",mode).catch(saveFailed("balanceiq-mode"))},[]);
+  const saveLocations=useCallback(list=>{setLocations(list);window.api.storage.set("balanceiq-locations",JSON.stringify(list)).catch(saveFailed("balanceiq-locations"))},[]);
+  const saveRoyaltyConfig=useCallback(cfg=>{setRoyaltyConfig(cfg);window.api.storage.set("balanceiq-royalty-config",JSON.stringify(cfg)).catch(saveFailed("balanceiq-royalty-config"))},[]);
+  const savePerfTargets=useCallback(tgt=>{setPerfTargets(tgt);window.api.storage.set("balanceiq-perf-targets",JSON.stringify(tgt)).catch(saveFailed("balanceiq-perf-targets"))},[]);
+  const saveAlertConfig=useCallback(cfg=>{setAlertConfig(cfg);window.api.storage.set("balanceiq-alert-config",JSON.stringify(cfg)).catch(saveFailed("balanceiq-alert-config"))},[]);
+  const savePayrollConfig=useCallback(cfg=>{setPayrollConfig(cfg);window.api.storage.set("balanceiq-payroll-config",JSON.stringify(cfg)).catch(saveFailed("balanceiq-payroll-config"))},[]);
+  const saveWhiteLabel=useCallback(cfg=>{setWhiteLabelConfig(cfg);window.api.storage.set("balanceiq-whitelabel",JSON.stringify(cfg)).catch(saveFailed("balanceiq-whitelabel"))},[]);
+  const saveLockConfig=useCallback(cfg=>{setLockConfig(cfg);window.api.storage.set("balanceiq-lock",JSON.stringify(cfg)).catch(saveFailed("balanceiq-lock"))},[]);
+  const saveInvConfig=useCallback(cfg=>{setInvConfig(cfg);const v=JSON.stringify(cfg);window.api.storage.set("dicann-inv-config",v).catch(saveFailed("dicann-inv-config"));schedulePush("dicann-inv-config",v);},[]);
   const handleCloudSignIn=useCallback(async(creds)=>{const res=await cloudSignIn(creds);setCloudUser({email:res.session.user.email,plan:res.plan});setMyLinkedLocations(getMyLinkedLocations());setPlan(res.plan);setActivePlan(res.plan);window.api?.auth?.setToken?.(res.session?.access_token||null);},[]);
   const handleCloudSignUp=useCallback(async(creds)=>{await cloudSignUp(creds);/* trigger creates org/user server-side; user must confirm email then sign in */},[]);
   const handleCloudResetPassword=useCallback(async(email)=>{await requestPasswordReset(email);},[]);
@@ -6951,8 +6942,8 @@ function AppInner(){
     setChecklistTemplates(prev=>prev.filter(t=>t.id!==id));
   },[]);
   const showUpgradePrompt=useCallback(featureName=>{if(shouldShowUpgradePrompt(featureName)){setUpgradePromptFeature(featureName);trackEvent('upgrade_prompt_shown',{feature:featureName});}},[]);
-  const saveCompanyInfo=useCallback(info=>{setCompanyInfo(info);const v=JSON.stringify(info);window.api.storage.set("dicann-company-info",v).catch(()=>{});schedulePush("dicann-company-info",v);},[]);
-  const saveInvoiceTemplate=useCallback(tpl=>{setInvoiceTemplate(tpl);const v=JSON.stringify(tpl);window.api.storage.set("dicann-invoice-template",v).catch(()=>{});schedulePush("dicann-invoice-template",v);},[]);
+  const saveCompanyInfo=useCallback(info=>{setCompanyInfo(info);const v=JSON.stringify(info);window.api.storage.set("dicann-company-info",v).catch(saveFailed("dicann-company-info"));schedulePush("dicann-company-info",v);},[]);
+  const saveInvoiceTemplate=useCallback(tpl=>{setInvoiceTemplate(tpl);const v=JSON.stringify(tpl);window.api.storage.set("dicann-invoice-template",v).catch(saveFailed("dicann-invoice-template"));schedulePush("dicann-invoice-template",v);},[]);
   // Merge white-label settings into invoiceTemplate for PDF builders
   const effectiveTemplate=useMemo(()=>{
     // Hiding "Prepared with BalanceIQ" is a template customisation: plans without it always show the line.
@@ -6960,12 +6951,22 @@ function AppInner(){
     if(!whiteLabelConfig?.enabled)return base;
     return{...base,whiteLabelEnabled:true,whiteLabelName:whiteLabelConfig.franchiseName||"",accentColor:whiteLabelConfig.accentColor||invoiceTemplate.accentColor,footerText:[whiteLabelConfig.footer,invoiceTemplate.footerText].filter(Boolean).join("·")};
   },[invoiceTemplate,whiteLabelConfig,activePlan]);
-  const saveFacCategories=useCallback(cats=>{setFacCategories(cats);const v=JSON.stringify(cats);window.api.storage.set("dicann-fac-categories",v).catch(()=>{});schedulePush("dicann-fac-categories",v);},[]);
-  const saveFacProduits=useCallback(prods=>{setFacProduits(prods);const v=JSON.stringify(prods);window.api.storage.set("dicann-fac-produits",v).catch(()=>{});schedulePush("dicann-fac-produits",v);},[]);
-  const saveFacClients=useCallback(list=>{setFacClients(list);const v=JSON.stringify(list);window.api.storage.set("dicann-fac-clients",v).catch(()=>{});schedulePush("dicann-fac-clients",v);},[]);
-  const saveDocNums=useCallback(nums=>{setDocNums(nums);const v=JSON.stringify(nums);window.api.storage.set("dicann-doc-nums",v).catch(()=>{});schedulePush("dicann-doc-nums",v);},[]);
-  const saveFacSoumissions=useCallback(list=>{setFacSoumissions(list);const v=JSON.stringify(list);window.api.storage.set("dicann-fac-soumissions",v).catch(()=>{});schedulePush("dicann-fac-soumissions",v);},[]);
-  const saveFacCommandes=useCallback(list=>{setFacCommandes(list);const v=JSON.stringify(list);window.api.storage.set("dicann-fac-commandes",v).catch(()=>{});schedulePush("dicann-fac-commandes",v);},[]);
+  const saveFacCategories=useCallback(cats=>{setFacCategories(cats);const v=JSON.stringify(cats);window.api.storage.set("dicann-fac-categories",v).catch(saveFailed("dicann-fac-categories"));schedulePush("dicann-fac-categories",v);},[]);
+  const saveFacProduits=useCallback(prods=>{setFacProduits(prods);const v=JSON.stringify(prods);window.api.storage.set("dicann-fac-produits",v).catch(saveFailed("dicann-fac-produits"));schedulePush("dicann-fac-produits",v);},[]);
+  const facClientsRef=useRef(facClients);
+  useEffect(()=>{facClientsRef.current=facClients;},[facClients]);
+  const saveFacClients=useCallback(listOrFn=>{
+    const list=typeof listOrFn==='function'?listOrFn(facClientsRef.current):listOrFn;
+    if(!Array.isArray(list))return;
+    facClientsRef.current=list;
+    setFacClients(list);
+    const v=JSON.stringify(list);
+    window.api.storage.set("dicann-fac-clients",v).catch(saveFailed("dicann-fac-clients"));
+    schedulePush("dicann-fac-clients",v);
+  },[]);
+  const saveDocNums=useCallback(nums=>{setDocNums(nums);const v=JSON.stringify(nums);window.api.storage.set("dicann-doc-nums",v).catch(saveFailed("dicann-doc-nums"));schedulePush("dicann-doc-nums",v);},[]);
+  const saveFacSoumissions=useCallback(list=>{setFacSoumissions(list);const v=JSON.stringify(list);window.api.storage.set("dicann-fac-soumissions",v).catch(saveFailed("dicann-fac-soumissions"));schedulePush("dicann-fac-soumissions",v);},[]);
+  const saveFacCommandes=useCallback(list=>{setFacCommandes(list);const v=JSON.stringify(list);window.api.storage.set("dicann-fac-commandes",v).catch(saveFailed("dicann-fac-commandes"));schedulePush("dicann-fac-commandes",v);},[]);
   // These savers are called both with a plain list and with an updater function
   // (the async glEntryId write-backs after invoicePost / paymentPost use the
   // updater form). Passing a function straight to JSON.stringify yields
@@ -6981,7 +6982,7 @@ function AppInner(){
     facFacturesRef.current=list;
     setFacFactures(list);
     const v=JSON.stringify(list);
-    window.api.storage.set("dicann-fac-factures",v).catch(()=>{});
+    window.api.storage.set("dicann-fac-factures",v).catch(saveFailed("dicann-fac-factures"));
     schedulePush("dicann-fac-factures",v);
     trackEvent('feature_used:invoice_created');
   },[]);
@@ -6993,10 +6994,10 @@ function AppInner(){
     facCreditNotesRef.current=list;
     setFacCreditNotes(list);
     const v=JSON.stringify(list);
-    window.api.storage.set("dicann-fac-creditnotes",v).catch(()=>{});
+    window.api.storage.set("dicann-fac-creditnotes",v).catch(saveFailed("dicann-fac-creditnotes"));
     schedulePush("dicann-fac-creditnotes",v);
   },[]);
-  const saveFacRecurrents=useCallback(list=>{setFacRecurrents(list);const v=JSON.stringify(list);window.api.storage.set("dicann-fac-recurrents",v).catch(()=>{});schedulePush("dicann-fac-recurrents",v);},[]);
+  const saveFacRecurrents=useCallback(list=>{setFacRecurrents(list);const v=JSON.stringify(list);window.api.storage.set("dicann-fac-recurrents",v).catch(saveFailed("dicann-fac-recurrents"));schedulePush("dicann-fac-recurrents",v);},[]);
 
   // ── raw state updaters (no audit) ──
   const _updRaw=useCallback((dt,f,v)=>{setLiveData(p=>{const u={...p,[dt]:{...(p[dt]||{}),[f]:v}};persist(u);return u})},[persist]);
@@ -7182,7 +7183,7 @@ function AppInner(){
   const showGlance=apiConfig.glanceEnabled!==false&&glanceDismissedDate!==todayKey&&!loading&&onboardingDone&&!!appMode&&Object.keys(liveData).length>0;
   const dismissGlance=useCallback(()=>{
     setGlanceDismissedDate(todayKey);
-    window.api.storage.set("balanceiq-glance-date",todayKey).catch(()=>{});
+    window.api.storage.set("balanceiq-glance-date",todayKey).catch(saveFailed("balanceiq-glance-date"));
   },[todayKey]);
 
   // List unclosed past days this week that have data
@@ -7279,7 +7280,7 @@ function AppInner(){
     if(!closePolicy?.shift_mode_enabled||shiftIsFinal||currentShiftKey==='final'){
       const next={...closedDays,[key]:{closedAt,allBal:cd.allBal,closeStatus}};
       setClosedDays(next);
-      window.api.storage.set("balanceiq-closed-days",JSON.stringify(next)).catch(()=>{});
+      window.api.storage.set("balanceiq-closed-days",JSON.stringify(next)).catch(saveFailed("balanceiq-closed-days"));
     }
     logUpdate('daily','jour',key,'fermeture',null,closedAt);
     setShowCloseReview(false);
@@ -7373,7 +7374,7 @@ function AppInner(){
           setClosedDays(prev=>{
             if(prev[selectedDate])return prev; // already have an entry, don't overwrite
             const next={...prev,[selectedDate]:{closedAt:finalised.updated_at||finalised.created_at||new Date().toISOString(),allBal:true,closeStatus:'closed_clean'}};
-            window.api.storage.set('balanceiq-closed-days',JSON.stringify(next)).catch(()=>{});
+            window.api.storage.set('balanceiq-closed-days',JSON.stringify(next)).catch(saveFailed('balanceiq-closed-days'));
             return next;
           });
         }
@@ -7696,7 +7697,7 @@ function AppInner(){
     if(!cloudUser||!PAID_PLANS.includes(activePlan))return;
     const stamp=new Date().toISOString();
     setCompanyPlanVerifiedAt(stamp);
-    window.api?.storage?.set(COMPANY_PLAN_VERIFIED_KEY,stamp).catch(()=>{});
+    window.api?.storage?.set(COMPANY_PLAN_VERIFIED_KEY,stamp).catch(saveFailed(COMPANY_PLAN_VERIFIED_KEY));
   },[cloudUser,activePlan]);
   // One BalanceIQ account per company: two companies signed in to the same account
   // would mix their books in the cloud, so the second sign-in is refused.
@@ -7824,7 +7825,7 @@ function AppInner(){
   if(companyGate&&companyGate.state==='checking')return(<div style={{minHeight:"100vh",background:t.bg}}/>);
   if(!onboardingDone){
     const OnboardingWizard=React.lazy(()=>import('./components/OnboardingWizard.jsx'));
-    return(<React.Suspense fallback={<div style={{minHeight:"100vh",background:LIGHT.bg}}/>}><OnboardingWizard lang={lang} onLangChange={setLangTo} roster={roster} saveRoster={saveRoster} companyInfo={companyInfo} saveCompanyInfo={info=>{setCompanyInfo(info);window.api.storage.set("dicann-company-info",JSON.stringify(info)).catch(()=>{});}} expenseItems={expenseItems} saveExpItems={items=>{setExpenseItems(items);window.api.storage.set("dicann-pl-expense-items",JSON.stringify(items)).catch(()=>{});}} onComplete={async()=>{const v=JSON.stringify({completedAt:new Date().toISOString()});await window.api.storage.set("balanceiq-onboarding",v).catch(()=>{});await window.api.storage.set("balanceiq-tour-complete","1").catch(()=>{});setTourActive(false);setOnboardingDone(true);}}/></React.Suspense>);
+    return(<React.Suspense fallback={<div style={{minHeight:"100vh",background:LIGHT.bg}}/>}><OnboardingWizard lang={lang} onLangChange={setLangTo} roster={roster} saveRoster={saveRoster} companyInfo={companyInfo} saveCompanyInfo={info=>{setCompanyInfo(info);window.api.storage.set("dicann-company-info",JSON.stringify(info)).catch(saveFailed("dicann-company-info"));}} expenseItems={expenseItems} saveExpItems={items=>{setExpenseItems(items);window.api.storage.set("dicann-pl-expense-items",JSON.stringify(items)).catch(saveFailed("dicann-pl-expense-items"));}} onComplete={async()=>{const v=JSON.stringify({completedAt:new Date().toISOString()});await window.api.storage.set("balanceiq-onboarding",v).catch(saveFailed("balanceiq-onboarding"));await window.api.storage.set("balanceiq-tour-complete","1").catch(saveFailed("balanceiq-tour-complete"));setTourActive(false);setOnboardingDone(true);}}/></React.Suspense>);
   }
   if(!appMode)return(<WelcomeScreen onSelect={saveAppMode} T={T}/>);
 
@@ -7837,14 +7838,15 @@ function AppInner(){
         step={tourStep}
         onNext={()=>setTourStep(s=>Math.min(s+1,TOUR_STEPS.length-1))}
         onPrev={()=>setTourStep(s=>Math.max(s-1,0))}
-        onFinish={()=>{setTourActive(false);window.api.storage.set("balanceiq-tour-complete","1").catch(()=>{});}}
+        onFinish={()=>{setTourActive(false);window.api.storage.set("balanceiq-tour-complete","1").catch(saveFailed("balanceiq-tour-complete"));}}
         setActiveTab={setActiveTab}
       />}
       {pdfPreview&&<PDFPreviewModal html={pdfPreview} onClose={()=>setPdfPreview(null)}/>}
       {demoPicker&&(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:9998,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setDemoPicker(false)}><div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:14,padding:"24px 28px",maxWidth:400,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.35)",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}} onClick={e=>e.stopPropagation()}><div style={{fontSize:14,fontWeight:700,color:t.text,marginBottom:4}}>{lang==='en'?'Choose a demo business':'Choisissez un commerce démo'}</div><div style={{fontSize:11,color:t.textMuted,marginBottom:16}}>{lang==='en'?'This will overwrite all existing data.':'Cela va écraser toutes les données existantes.'}</div><div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:20}}>{[{key:'qsr',emoji:'🍔',name:'Chez Grilladier',desc:lang==='en'?'QSR · 2 registers · Laval':'Restauration rapide · 2 caisses · Laval'},{key:'bakery',emoji:'🥐',name:'Boulangerie Saint-Laurent',desc:lang==='en'?'Café & Bakery · 1 register · Montréal':'Café & Boulangerie · 1 caisse · Montréal'},{key:'retail',emoji:'🛒',name:'Marché Frais Verdun',desc:lang==='en'?'Grocery · 2 registers · Verdun':'Épicerie · 2 caisses · Verdun'}].map(p=>(<button key={p.key} onClick={async()=>{setDemoPicker(false);try{const {loadDemoData}=await import('./utils/demoDataGenerator.js');const result=await loadDemoData(lang,p.key);if(result.success){window.location.reload();}else{alert(''+(result.message||'Error'));}}catch(e){console.error('[DemoData]',e);alert(''+(e?.message||String(e)));}}} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:10,border:`1px solid ${t.cardBorder}`,background:t.section,cursor:"pointer",textAlign:"left",transition:"background 0.12s"}}><span style={{fontSize:20,flexShrink:0}}>{p.emoji}</span><div><div style={{fontSize:13,fontWeight:700,color:t.text}}>{p.name}</div><div style={{fontSize:11,color:t.textMuted,marginTop:1}}>{p.desc}</div></div></button>))}</div><button onClick={()=>setDemoPicker(false)} style={{width:"100%",padding:"7px 0",borderRadius:8,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textMuted,cursor:"pointer",fontSize:12,fontWeight:600}}>{lang==='en'?'Cancel':'Annuler'}</button></div></div>)}
       {flashReport&&<FlashReportPopup data={flashReport} lang={lang} t={t} onClose={()=>setFlashReport(null)}/>}
       {showGlance&&<GlanceCard liveData={liveData} computeDay={computeDay} closedDays={closedDays} getCloseStatus={getCloseStatus} encaisseData={encaisseData} encaisseConfig={encaisseConfig} lang={lang} T={T} t={t} onDismiss={dismissGlance} setActiveTab={setActiveTab}/>}
-      {showObChecklist&&<OnboardingChecklist firstRun={obItems} goSection={goSection} progress={obProgress} setProgress={setObProgress} lang={lang} T={T} t={t} companyInfo={companyInfo} liveData={liveData} suppliers={suppliers} onComplete={()=>setShowObChecklist(false)} onClose={()=>setShowObChecklist(false)} onDismissPermanently={()=>{setObDismissed(true);setShowObChecklist(false);window.api.storage.set("balanceiq-ob-dismissed","1").catch(()=>{});}} setActiveTab={setActiveTab} setConfigSubTab={setConfigSubTab}/>}
+      {showObChecklist&&<OnboardingChecklist firstRun={obItems} goSection={goSection} progress={obProgress} setProgress={setObProgress} lang={lang} T={T} t={t} companyInfo={companyInfo} liveData={liveData} suppliers={suppliers} onComplete={()=>setShowObChecklist(false)} onClose={()=>setShowObChecklist(false)} onDismissPermanently={()=>{setObDismissed(true);setShowObChecklist(false);window.api.storage.set("balanceiq-ob-dismissed","1").catch(saveFailed("balanceiq-ob-dismissed"));}} setActiveTab={setActiveTab} setConfigSubTab={setConfigSubTab}/>}
+      {saveError&&(<div role="alert" style={{position:"fixed",top:0,left:0,right:0,zIndex:10000,background:"#7f1d1d",color:"#fff",padding:"8px 14px",fontSize:12.5,display:"flex",alignItems:"center",gap:10,boxShadow:"0 2px 10px rgba(0,0,0,0.35)"}}><span style={{flex:1}}>{T.saveFailedBanner(saveError.key,saveError.message)}</span><button onClick={()=>setSaveError(null)} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:5,color:"#fff",padding:"4px 10px",cursor:"pointer",fontWeight:700,fontSize:12}}>{T.saveFailedDismiss}</button></div>)}
       {showTelemetryPrompt&&(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:9998,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}><div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:14,padding:"24px 28px",maxWidth:420,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}><div style={{width:32,height:28,borderRadius:6,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:"#fff",letterSpacing:-0.5,flexShrink:0}}>BIQ</div><div style={{fontSize:14,fontWeight:700,color:t.text}}>{T.telemetryTitle}</div></div><p style={{fontSize:12,lineHeight:1.65,color:t.textSub,margin:"0 0 20px"}}>{T.telemetryBody}</p><div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><button onClick={async()=>{await setTelemetryConsent('opted_out');setShowTelemetryPrompt(false);}} style={{padding:"7px 16px",borderRadius:7,border:`1px solid ${t.cardBorder}`,background:"none",color:t.textMuted,cursor:"pointer",fontWeight:600,fontSize:12}}>{T.telemetryDecline}</button><button onClick={async()=>{await setTelemetryConsent('opted_in');setShowTelemetryPrompt(false);trackEvent('app_opened',{mode:appMode||'unknown'});try{const deviceId=await window.api.audit.deviceId();const {supabase}=await import('./services/supabase.js');await supabase.from('installs').upsert({device_id:deviceId,platform:navigator.platform||'unknown',version:appVersion,last_seen_at:new Date().toISOString()},{onConflict:'device_id'});}catch(_){}}} style={{padding:"7px 16px",borderRadius:7,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12}}>{T.telemetryAccept}</button></div></div></div>)}
       {showEarlyAccess&&(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={dismissEarlyAccess}><div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:14,padding:"28px 32px",maxWidth:460,width:"100%",boxShadow:"0 24px 64px rgba(0,0,0,0.5)"}} onClick={e=>e.stopPropagation()}><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}><div style={{width:36,height:32,borderRadius:7,background:"linear-gradient(135deg,#f97316,#ea580c)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:"#fff",letterSpacing:-0.5,flexShrink:0}}>BIQ</div><div><div style={{fontSize:15,fontWeight:700,color:t.text}}>{lang==="en"?"BalanceIQ — Early Access":"BalanceIQ — Accès anticipé"}</div><div style={{fontSize:10,color:"#22c55e",fontWeight:700,letterSpacing:0.5,marginTop:1}}>v{appVersion}</div></div></div><p style={{fontSize:12.5,lineHeight:1.75,color:t.textSub,margin:"0 0 20px"}}>{lang==="en"
                 ?"Thanks for using BalanceIQ! This software is in active development — new features are added every week. Your data is safe (automatic backup included), but we recommend validating important figures against your source documents during this period."
@@ -7998,7 +8000,7 @@ function AppInner(){
                 closePolicy={closePolicy}
                 t={t} T={T} lang={lang}
                 cloudUser={cloudUser}
-                onSessionChange={s=>{setSessionsForDay(prev=>s?prev.map(p=>p.id===s.id?s:p):prev);setClosePacket(null);if(s?.status==='reopened'){const next={...closedDays};delete next[selectedDate];setClosedDays(next);window.api.storage.set("balanceiq-closed-days",JSON.stringify(next)).catch(()=>{});}}}
+                onSessionChange={s=>{setSessionsForDay(prev=>s?prev.map(p=>p.id===s.id?s:p):prev);setClosePacket(null);if(s?.status==='reopened'){const next={...closedDays};delete next[selectedDate];setClosedDays(next);window.api.storage.set("balanceiq-closed-days",JSON.stringify(next)).catch(saveFailed("balanceiq-closed-days"));}}}
               />
             )}
             {activeCloseSession?.status==='finalized'&&(
@@ -8450,7 +8452,7 @@ function AppInner(){
             {!canUse('cloudSync')&&!cloudUser&&<UpgradeHint promptKey="config_cloud_sync" message={T.upgPromptCloudSync} icon="" t={t}/>}<CloudAccountSection cloudUser={cloudUser} syncStatus={syncStatus} onSignIn={handleCloudSignIn} onSignUp={handleCloudSignUp} onSignOut={handleCloudSignOut} onResetPassword={handleCloudResetPassword} onRefreshPlan={handleRefreshPlan} t={t} T={T}/><SubscriptionSection cloudUser={cloudUser} activePlan={activePlan} orgId={getCloudOrgId()} onPlanRefreshed={p=>{setPlan(p);setActivePlan(p);}} t={t} T={T}/>
             {/* ── JOIN FRANCHISE NETWORK (restaurant/franchisee mode only) ── */}
             {appMode!=="franchiseur"&&<JoinNetworkCard cloudUser={cloudUser} franchiseeOrgId={getCloudOrgId()} t={t} T={T}/>}
-            {/* ── PRÉVISIONS MODULE TOGGLE ── */}<CfgCard id="previsions" title={T.prevTitle} cfgExpanded={cfgExpanded} onToggle={toggleCfg}><div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{T.prevDesc}</div><div style={{display:"flex",alignItems:"center",gap:10}}><button onClick={async()=>{const v=!previsionsEnabled;setPrevisionsEnabled(v);await window.api.storage.set("balanceiq-previsions-enabled",v?"1":"0");if(v&&activeTab!=="previsions"){}}} style={{padding:"5px 18px",borderRadius:20,border:`1px solid ${previsionsEnabled?"#f97316":t.cardBorder}`,background:previsionsEnabled?"rgba(249,115,22,0.15)":t.section,color:previsionsEnabled?"#f97316":t.textSub,cursor:"pointer",fontWeight:700,fontSize:12,transition:"all 0.15s"}}>{previsionsEnabled?T.prevToggleOn:T.prevToggleOff}</button>{previsionsEnabled&&<span style={{fontSize:11,color:"#22c55e"}}>{lang==="en"?"Tab active in main navigation":"Onglet actif dans la navigation principale"}</span>}</div></CfgCard>{/* ── SECTION TOOLTIPS TOGGLE ── */}<CfgCard id="sectionTooltips" title={T.showTooltipsLabel} cfgExpanded={cfgExpanded} onToggle={toggleCfg}><div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{T.showTooltipsDesc}</div><button onClick={async()=>{const v=!showSectionTooltips;setShowSectionTooltips(v);await window.api.storage.set("balanceiq-section-tooltips",v?"1":"0");}} style={{padding:"5px 18px",borderRadius:20,border:`1px solid ${showSectionTooltips?"#f97316":t.cardBorder}`,background:showSectionTooltips?"rgba(249,115,22,0.15)":t.section,color:showSectionTooltips?"#f97316":t.textSub,cursor:"pointer",fontWeight:700,fontSize:12,transition:"all 0.15s"}}>{showSectionTooltips?T.showTooltipsOn:T.showTooltipsOff}</button></CfgCard>{/* ── TODAY-AT-A-GLANCE TOGGLE ── */}<CfgCard id="glanceCard" title={T.glanceConfigLabel} cfgExpanded={cfgExpanded} onToggle={toggleCfg}><div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{T.glanceConfigHint}</div><div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}><button onClick={()=>{const v=apiConfig.glanceEnabled===false;const nc={...apiConfig,glanceEnabled:v};setApiConfig(nc);saveApiCfg(nc);}} style={{padding:"5px 18px",borderRadius:20,border:`1px solid ${apiConfig.glanceEnabled!==false?"#f97316":t.cardBorder}`,background:apiConfig.glanceEnabled!==false?"rgba(249,115,22,0.15)":t.section,color:apiConfig.glanceEnabled!==false?"#f97316":t.textSub,cursor:"pointer",fontWeight:700,fontSize:12,transition:"all 0.15s"}}>{apiConfig.glanceEnabled!==false?T.prevToggleOn:T.prevToggleOff}</button>{apiConfig.glanceEnabled!==false&&glanceDismissedDate===todayKey&&<button onClick={()=>{setGlanceDismissedDate(null);window.api.storage.set("balanceiq-glance-date","").catch(()=>{});}} style={{padding:"5px 14px",borderRadius:20,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>{lang==='fr'?'Afficher maintenant':'Show now'}</button>}</div></CfgCard>{/* ── ONBOARDING GUIDE ── */}<CfgCard id="onboardingCard" title={lang==='fr'?'Guide de démarrage':'Getting Started Guide'} cfgExpanded={cfgExpanded} onToggle={toggleCfg}><div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{lang==='fr'?`Progression: ${obDone}/${obItems.length} étapes complétées.`:`Progress: ${obDone}/${obItems.length} steps completed.`}</div><div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}><button onClick={()=>setShowObChecklist(true)} style={{padding:"5px 14px",borderRadius:20,border:"1px solid rgba(249,115,22,0.35)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontSize:11,fontWeight:700}}>
+            {/* ── PRÉVISIONS MODULE TOGGLE ── */}<CfgCard id="previsions" title={T.prevTitle} cfgExpanded={cfgExpanded} onToggle={toggleCfg}><div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{T.prevDesc}</div><div style={{display:"flex",alignItems:"center",gap:10}}><button onClick={async()=>{const v=!previsionsEnabled;setPrevisionsEnabled(v);await window.api.storage.set("balanceiq-previsions-enabled",v?"1":"0");if(v&&activeTab!=="previsions"){}}} style={{padding:"5px 18px",borderRadius:20,border:`1px solid ${previsionsEnabled?"#f97316":t.cardBorder}`,background:previsionsEnabled?"rgba(249,115,22,0.15)":t.section,color:previsionsEnabled?"#f97316":t.textSub,cursor:"pointer",fontWeight:700,fontSize:12,transition:"all 0.15s"}}>{previsionsEnabled?T.prevToggleOn:T.prevToggleOff}</button>{previsionsEnabled&&<span style={{fontSize:11,color:"#22c55e"}}>{lang==="en"?"Tab active in main navigation":"Onglet actif dans la navigation principale"}</span>}</div></CfgCard>{/* ── SECTION TOOLTIPS TOGGLE ── */}<CfgCard id="sectionTooltips" title={T.showTooltipsLabel} cfgExpanded={cfgExpanded} onToggle={toggleCfg}><div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{T.showTooltipsDesc}</div><button onClick={async()=>{const v=!showSectionTooltips;setShowSectionTooltips(v);await window.api.storage.set("balanceiq-section-tooltips",v?"1":"0");}} style={{padding:"5px 18px",borderRadius:20,border:`1px solid ${showSectionTooltips?"#f97316":t.cardBorder}`,background:showSectionTooltips?"rgba(249,115,22,0.15)":t.section,color:showSectionTooltips?"#f97316":t.textSub,cursor:"pointer",fontWeight:700,fontSize:12,transition:"all 0.15s"}}>{showSectionTooltips?T.showTooltipsOn:T.showTooltipsOff}</button></CfgCard>{/* ── TODAY-AT-A-GLANCE TOGGLE ── */}<CfgCard id="glanceCard" title={T.glanceConfigLabel} cfgExpanded={cfgExpanded} onToggle={toggleCfg}><div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{T.glanceConfigHint}</div><div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}><button onClick={()=>{const v=apiConfig.glanceEnabled===false;const nc={...apiConfig,glanceEnabled:v};setApiConfig(nc);saveApiCfg(nc);}} style={{padding:"5px 18px",borderRadius:20,border:`1px solid ${apiConfig.glanceEnabled!==false?"#f97316":t.cardBorder}`,background:apiConfig.glanceEnabled!==false?"rgba(249,115,22,0.15)":t.section,color:apiConfig.glanceEnabled!==false?"#f97316":t.textSub,cursor:"pointer",fontWeight:700,fontSize:12,transition:"all 0.15s"}}>{apiConfig.glanceEnabled!==false?T.prevToggleOn:T.prevToggleOff}</button>{apiConfig.glanceEnabled!==false&&glanceDismissedDate===todayKey&&<button onClick={()=>{setGlanceDismissedDate(null);window.api.storage.set("balanceiq-glance-date","").catch(saveFailed("balanceiq-glance-date"));}} style={{padding:"5px 14px",borderRadius:20,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>{lang==='fr'?'Afficher maintenant':'Show now'}</button>}</div></CfgCard>{/* ── ONBOARDING GUIDE ── */}<CfgCard id="onboardingCard" title={lang==='fr'?'Guide de démarrage':'Getting Started Guide'} cfgExpanded={cfgExpanded} onToggle={toggleCfg}><div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{lang==='fr'?`Progression: ${obDone}/${obItems.length} étapes complétées.`:`Progress: ${obDone}/${obItems.length} steps completed.`}</div><div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}><button onClick={()=>setShowObChecklist(true)} style={{padding:"5px 14px",borderRadius:20,border:"1px solid rgba(249,115,22,0.35)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontSize:11,fontWeight:700}}>
                   {lang==='fr'?'Reprendre le guide':'Resume guide'}</button>{obAllDone&&<span style={{fontSize:11,color:"#22c55e",fontWeight:700}}>{lang==='fr'?'Terminé!':'Done!'}</span>}<button onClick={async()=>{await window.api.onboarding.reset();setObProgress({});}} style={{padding:"5px 14px",borderRadius:20,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textMuted,cursor:"pointer",fontSize:11}}>
                   {T.obResetBtn}</button></div></CfgCard>{/* ── KPI SETTINGS ── */}<CfgCard id="kpiSettings" title={`${T.kpiPanelTitle}`} cfgExpanded={cfgExpanded} onToggle={toggleCfg}>{/* $/dozen toggle */}<div style={{marginBottom:12}}><div style={{fontSize:11.5,fontWeight:600,color:t.text,marginBottom:3}}>{T.showDzKpiLabel}</div><div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{T.showDzKpiHint}</div><button onClick={()=>{const nc={...apiConfig,showDzKpi:!apiConfig.showDzKpi};setApiConfig(nc);saveApiCfg(nc);}} style={{padding:"5px 18px",borderRadius:20,border:`1px solid ${apiConfig.showDzKpi?"#f97316":t.cardBorder}`,background:apiConfig.showDzKpi?"rgba(249,115,22,0.15)":t.section,color:apiConfig.showDzKpi?"#f97316":t.textSub,cursor:"pointer",fontWeight:700,fontSize:12,transition:"all 0.15s"}}>{apiConfig.showDzKpi?T.prevToggleOn:T.prevToggleOff}</button></div>{/* Sqft */}<div style={{borderTop:`1px solid ${t.cardBorder}`,paddingTop:10,marginBottom:12}}><div style={{fontSize:11.5,fontWeight:600,color:t.text,marginBottom:3}}>{T.sqftLabel}</div><div style={{fontSize:11,color:t.textMuted,marginBottom:6}}>{T.sqftHint}</div><input type="number" value={apiConfig.sqft||""} onChange={e=>{const nc={...apiConfig,sqft:e.target.value?Number(e.target.value):null};setApiConfig(nc);saveApiCfg(nc);}} placeholder="ex: 1200" style={{...inputStyle,width:110}}/></div>{/* Custom KPIs */}<div style={{borderTop:`1px solid ${t.cardBorder}`,paddingTop:10}}><div style={{fontSize:11.5,fontWeight:600,color:t.text,marginBottom:8}}>{T.customKpisTitle}</div>{(apiConfig.customKpis||[]).map((kpi,i)=>(<div key={kpi.id} style={{display:'flex',gap:8,alignItems:'center',padding:'5px 8px',background:t.section,borderRadius:6,marginBottom:4}}><span style={{flex:1,fontSize:11,color:t.text}}>{lang==='en'?(kpi.nameEn||kpi.nameFr):kpi.nameFr}</span><span style={{fontSize:10,color:t.textMuted,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{kpi.formula}</span>{kpi.target&&<span style={{fontSize:10,color:t.textMuted}}>{kpi.direction==='low'?'<':'>'} {kpi.target}</span>}<button onClick={()=>{const kpis=(apiConfig.customKpis||[]).filter((_,j)=>j!==i);const nc={...apiConfig,customKpis:kpis};setApiConfig(nc);saveApiCfg(nc);}} style={{padding:'2px 7px',borderRadius:4,border:'1px solid rgba(239,68,68,0.3)',background:'rgba(239,68,68,0.06)',color:'#ef4444',cursor:'pointer',fontSize:10}}>{T.kpiDeleteKpi}</button></div>))}<KpiAddForm apiConfig={apiConfig} setApiConfig={setApiConfig} saveApiCfg={saveApiCfg} lang={lang} T={T} t={t} inputStyle={inputStyle}/></div></CfgCard>{/* ── APPARENCE (absorbed from old tab) ── */}<CfgCard id="appearance" title={T.cfgAppearanceAndMore} cfgExpanded={cfgExpanded} onToggle={toggleCfg}><div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{lang==="en"?"Theme":"Thème"}</div><div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:12}}>{["dark","light"].map(n=>(<button key={n} onClick={()=>setThemeTo(n)} style={{padding:"5px 16px",borderRadius:20,border:themeName===n?"none":`1px solid ${t.cardBorder}`,background:themeName===n?"linear-gradient(135deg,#f97316,#ea580c)":t.section,color:themeName===n?"#fff":t.textSub,cursor:"pointer",fontWeight:700,fontSize:11}}>
                     {n==="dark"?` ${T.dark}`:` ${T.light}`}</button>))}</div><div style={{fontSize:11,color:t.textMuted,marginBottom:8}}>{lang==="en"?"Language":"Langue"}</div><div style={{display:"flex",alignItems:"center",gap:8}}>{["fr","en"].map(l=>(<button key={l} onClick={()=>setLangTo(l)} style={{padding:"5px 16px",borderRadius:20,border:lang===l?"none":`1px solid ${t.cardBorder}`,background:lang===l?"linear-gradient(135deg,#f97316,#ea580c)":t.section,color:lang===l?"#fff":t.textSub,cursor:"pointer",fontWeight:700,fontSize:11}}>
