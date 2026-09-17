@@ -4757,7 +4757,7 @@ function supplierBillUpdate(id, data) {
   const db = getDb();
   const allowed = ['supplier_name','category','amount','bill_date','note','amount_before_tax',
     'tps_paid','tvq_paid','coa_account_id','business_use_pct','invoice_number','due_date','journal_entry_id',
-    'quantity','unit_cost'];
+    'quantity','unit_cost','vault_document_id'];
   const sets = [];
   const params = [];
   for (const k of allowed) {
@@ -4900,6 +4900,15 @@ function supplierBillUnpost(billId, reason, _db) {
   return { ok: true };
 }
 
+// The bill's own document - the PDF or the photo it was read from - is what an
+// auditor asks for, so it is filed in the Vault under the bill. Setting the
+// pointer is not a financial change and must not touch the ledger.
+function supplierBillSetDocument(id, docId, _db) {
+  const db = _db || getDb();
+  db.prepare(`UPDATE supplier_bills SET vault_document_id=? WHERE id=?`).run(docId || null, id);
+  return db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(id);
+}
+
 // A bill entered by mistake - wrong company, duplicate, supplier that was never
 // ours - has to be removable. The ledger comes first: a posted bill is reversed,
 // never quietly dropped, so the books still show that it was recorded and undone.
@@ -4909,9 +4918,14 @@ function supplierBillDelete(id, _db) {
   const bill = db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(id);
   if (!bill) return { ok: false, error: 'bill_not_found' };
   supplierBillUnpost(id, 'Facture fournisseur supprimee', db);
+  // Its filed documents go with it; the caller removes the files themselves.
+  const documents = db.prepare(
+    `SELECT file_path FROM source_documents WHERE entity_type='supplier_bill' AND entity_id=?`
+  ).all(id).map(r => r.file_path);
+  db.prepare(`DELETE FROM source_documents WHERE entity_type='supplier_bill' AND entity_id=?`).run(id);
   db.prepare(`DELETE FROM supplier_payments WHERE supplier_bill_id=?`).run(id);
   db.prepare(`DELETE FROM supplier_bills WHERE id=?`).run(id);
-  return { ok: true, deleted: true };
+  return { ok: true, deleted: true, documents };
 }
 
 // Paying settles the payable against cash. Kept separate from the bill entry so
@@ -6712,7 +6726,7 @@ module.exports = {
   onboardingPacketSave, onboardingPacketList, onboardingPacketGet, onboardingPacketDelete,
   onboardingPacketApply, locationOnboardingGet,
   supplierBillList, supplierBillCreate, supplierBillUpdate, supplierBillMarkPaid, supplierBillMarkUnpaid, supplierBillDelete,
-  supplierBillPayByBankTransaction,
+  supplierBillPayByBankTransaction, supplierBillSetDocument,
   supplierPaymentsList, supplierPaymentCreate,
   assetList, assetCreate, assetUpdate, assetDelete,
   ccaClassesList, ccaComputeForAsset, ccaScheduleForYear,

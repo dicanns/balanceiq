@@ -77,7 +77,7 @@ const {
   onboardingPacketSave, onboardingPacketList, onboardingPacketGet, onboardingPacketDelete,
   onboardingPacketApply, locationOnboardingGet,
   supplierBillList, supplierBillCreate, supplierBillUpdate, supplierBillMarkPaid, supplierBillMarkUnpaid, supplierBillDelete,
-  supplierBillPayByBankTransaction,
+  supplierBillPayByBankTransaction, supplierBillSetDocument,
   supplierPaymentsList, supplierPaymentCreate,
   assetList, assetCreate, assetUpdate, assetDelete,
   ccaClassesList, ccaComputeForAsset, ccaScheduleForYear,
@@ -2164,7 +2164,17 @@ ipcMain.handle('supplier:bill:markUnpaid',(_e, id)             => {
 });
 // Removing a bill that should never have been recorded here. Any ledger entry is
 // reversed first, so the books keep the record of what happened.
-ipcMain.handle('supplier:bill:delete', (_e, id)          => supplierBillDelete(id));
+ipcMain.handle('supplier:bill:delete', (_e, id)          => {
+  const r = supplierBillDelete(id);
+  for (const rel of r.documents || []) {
+    try {
+      const abs = resolveVaultPath(rel);
+      if (abs && fs.existsSync(abs)) fs.unlinkSync(abs);
+    } catch (_) { /* the row is gone; a stray file is harmless */ }
+  }
+  return r;
+});
+ipcMain.handle('supplier:bill:setDocument', (_e, id, docId) => supplierBillSetDocument(id, docId));
 // Linking a statement line to the bill it paid: proof of payment on both sides.
 ipcMain.handle('supplier:bill:payByBankTx', (_e, txId, billIds) => supplierBillPayByBankTransaction(txId, billIds));
 // Statement lines that could be a bill's payment, for the statement-first order.

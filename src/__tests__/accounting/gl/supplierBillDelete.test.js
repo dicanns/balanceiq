@@ -3,6 +3,7 @@
  * APDEL-002  a posted bill is reversed, not quietly dropped
  * APDEL-003  payment rows never outlive the bill they belong to
  * APDEL-004  deleting a bill that is not there says so
+ * APDEL-005  the bill's filed documents go with it
  *
  * A bill recorded against the wrong company had no way out: the Bills screen
  * offered edit and mark paid / unpaid, and no delete existed anywhere - not in
@@ -16,7 +17,7 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const {
   supplierBillPost, supplierBillPostPayment, supplierBillDelete, supplierBillSubledger,
-  glFindEntryBySource,
+  supplierBillSetDocument, glFindEntryBySource,
 } = require('../../../db/database.js');
 
 let db;
@@ -70,7 +71,7 @@ function addBill({ amount = 114.98, account = '6100', date = '2026-08-04', paid 
 describe('APDEL-001 a bill entered by mistake can be removed', () => {
   it('leaves nothing behind and nothing owing', () => {
     const id = addBill();
-    expect(supplierBillDelete(id, db)).toEqual({ ok: true, deleted: true });
+    expect(supplierBillDelete(id, db)).toMatchObject({ ok: true, deleted: true, documents: [] });
     expect(db.prepare(`SELECT COUNT(*) AS n FROM supplier_bills WHERE id=?`).get(id).n).toBe(0);
     expect(supplierBillSubledger('2026-12-31', db)).toBe(0);
   });
@@ -111,5 +112,19 @@ describe('APDEL-003 payment rows never outlive the bill', () => {
 describe('APDEL-004 deleting a bill that is not there', () => {
   it('says so instead of pretending it worked', () => {
     expect(supplierBillDelete(999999, db)).toEqual({ ok: false, error: 'bill_not_found' });
+  });
+});
+
+describe('APDEL-005 the filed document goes with the bill', () => {
+  it('removes the Vault rows and hands back their file paths for the caller to unlink', () => {
+    const id = addBill();
+    const { lastInsertRowid: docId } = db.prepare(
+      `INSERT INTO source_documents (entity_type, entity_id, file_name, file_path, sha256) VALUES ('supplier_bill', ?, 'bill.pdf', '2026/08/abc-bill.pdf', 'abc')`
+    ).run(id);
+    expect(supplierBillSetDocument(id, docId, db).vault_document_id).toBe(docId);
+
+    const r = supplierBillDelete(id, db);
+    expect(r).toMatchObject({ ok: true, documents: ['2026/08/abc-bill.pdf'] });
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM source_documents WHERE entity_type='supplier_bill' AND entity_id=?`).get(id).n).toBe(0);
   });
 });

@@ -39,6 +39,7 @@ const UI = {
     markPaid: 'Marquer payée',
     markUnpaid: 'Annuler le paiement',
     delete: 'Supprimer',
+    viewDocument: 'Voir le document',
     confirmDelete: 'Supprimer cette facture ? Toute ecriture au grand livre sera contrepassee. Cette action est definitive.',
     paidOn: 'Payée le',
     paidVia: (n) => `· par ${n}`,
@@ -106,6 +107,7 @@ const UI = {
     markPaid: 'Mark paid',
     markUnpaid: 'Undo payment',
     delete: 'Delete',
+    viewDocument: 'View document',
     confirmDelete: 'Delete this bill? Any ledger entry will be reversed. This cannot be undone.',
     paidOn: 'Paid',
     paidVia: (n) => `· via ${n}`,
@@ -372,6 +374,8 @@ export default function BillsTab({ lang = 'fr' }) {
       const parsed = template ? parseBillDocument(source, { template, ownNames }) : firstPass;
       setDoc({ lines: parsed.lines, pages: r.pages || null, positioned: typeof source === 'object' });
       if (applyParsed(parsed, r.fileName, template) === 0) setError(T.readNothing);
+      // The file itself is kept in hand so it can be filed under the bill on save.
+      setRead(prev => (prev ? { ...prev, filePath: r.filePath || null } : prev));
     } catch (e) { setError(String(e?.message ?? e)); }
     finally { setBusy(false); }
   }
@@ -462,6 +466,15 @@ export default function BillsTab({ lang = 'fr' }) {
     try {
       const saved = f.id ? await window.api.supplierBills.update(f.id, payload)
                          : await window.api.supplierBills.create(payload);
+      // The document is the proof an auditor asks for: file it in the Vault
+      // under this bill. The bill is saved either way.
+      const savedId = saved?.id || f.id;
+      if (savedId && read?.filePath) {
+        try {
+          const att = await window.api.vault.attach({ entity_type: 'supplier_bill', entity_id: savedId, src_path: read.filePath, file_name: read.fileName });
+          if (att?.ok && att.doc?.id) await window.api.supplierBills.setDocument(savedId, att.doc.id);
+        } catch (_) { /* it can be attached later from the Vault */ }
+      }
       if (read) {
         try {
           const next = rememberBill(templates, { read: read.fields, saved: payload, picks });
@@ -800,6 +813,10 @@ export default function BillsTab({ lang = 'fr' }) {
                         borderRadius: 5, color: b.paid ? C.muted : '#22c55e', cursor: busy ? 'default' : 'pointer',
                         fontSize: 11, fontWeight: 600, padding: '3px 9px',
                       }}>{b.paid ? T.markUnpaid : T.markPaid}</button>
+                      {b.vault_document_id && (
+                        <button onClick={() => window.api.vault.openById(b.vault_document_id)} title={T.viewDocument}
+                          style={{ background: 'none', border: 'none', color: C.sub, cursor: 'pointer', fontSize: 12, marginRight: 6 }}>&#128206;</button>
+                      )}
                       <button onClick={() => deleteBill(b)} disabled={busy} style={{
                         background: 'none', border: '1px solid rgba(239,68,68,0.35)',
                         borderRadius: 5, color: '#ef4444', cursor: busy ? 'default' : 'pointer',
