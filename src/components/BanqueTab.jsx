@@ -18,6 +18,8 @@ const UI = {
     accountType:      'Type *',
     coaAccount:       'Compte GL (COA) *',
     openingBalance:   'Solde d\'ouverture ($) *',
+    openingBalanceOwed:'Solde d\'ouverture dû ($) *',
+    openingHintOwed:  'Ce que vous deviez sur cette carte la veille de la première transaction importée.',
     openingDate:      'Date d\'ouverture *',
     save:             'Enregistrer',
     cancel:           'Annuler',
@@ -197,6 +199,8 @@ const UI = {
     accountType:      'Type *',
     coaAccount:       'GL Account (COA) *',
     openingBalance:   'Opening Balance ($) *',
+    openingBalanceOwed:'Opening balance owed ($) *',
+    openingHintOwed:  'What you owed on this card the day before the first imported transaction.',
     openingDate:      'Opening Date *',
     save:             'Save',
     cancel:           'Cancel',
@@ -571,7 +575,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
 
   const openEditAccount = (acc) => {
     setEditingAccount(acc);
-    setAccountForm({ name: acc.name, account_type: acc.account_type, coa_account_id: String(acc.coa_account_id), opening_balance: String(acc.opening_balance), opening_date: acc.opening_date });
+    setAccountForm({ name: acc.name, account_type: acc.account_type, coa_account_id: String(acc.coa_account_id), opening_balance: String(toShown(acc.opening_balance, acc)), opening_date: acc.opening_date });
     setShowAccountModal(true);
   };
 
@@ -580,7 +584,8 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
       name: accountForm.name.trim(),
       account_type: accountForm.account_type,
       coa_account_id: parseInt(accountForm.coa_account_id, 10),
-      opening_balance: parseFloat(accountForm.opening_balance) || 0,
+      // A card's opening balance is entered as what was owed; stored signed.
+      opening_balance: toStored(parseFloat(accountForm.opening_balance) || 0, { account_type: accountForm.account_type }) || 0,
       opening_date: accountForm.opening_date,
     };
     if (!fields.name || !fields.coa_account_id || !fields.opening_date) return;
@@ -828,10 +833,15 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   const toStored = (entered, acc) => (owedAccount(acc) ? -Math.abs(Number(entered)) : Number(entered));
   const toShown = (stored, acc) => (owedAccount(acc) ? -Number(stored || 0) : Number(stored || 0));
 
+  // A statement from before this was tracked reads zero with no source; that is
+  // the same as unset, and saying so is what gets it corrected.
+  const balanceUnset = (stmt) => stmt.ending_balance_source === 'none'
+    || (!stmt.ending_balance_source && Number(stmt.ending_balance) === 0);
+
   const startEditBalance = (stmt) => {
     setEditingBalanceId(stmt.id);
     const shown = toShown(stmt.ending_balance, selectedAccount);
-    setBalanceDraft(stmt.ending_balance_source === 'none' ? '' : String(shown));
+    setBalanceDraft(balanceUnset(stmt) ? '' : String(shown));
   };
   const saveBalance = async (stmt) => {
     const entered = parseFloat(balanceDraft);
@@ -847,7 +857,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   const closeBlockers = (stmt) => {
     const out = [];
     if (!recPreview) return out;
-    if (stmt.ending_balance_source === 'none') out.push(T.recBlockedBalance);
+    if (balanceUnset(stmt)) out.push(T.recBlockedBalance);
     if (recPreview.unreconciledCount > 0) out.push(T.recBlockedLines(recPreview.unreconciledCount));
     if (Math.abs(recPreview.ecart) > 0.02) out.push(T.recBlockedVar(fmt(Math.abs(recPreview.ecart))));
     return out;
@@ -1115,7 +1125,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
                   <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: C.text }}>{T.previewTitle(selectedAccount.name)}</div>
                   <div style={{ display: 'flex', gap: 24 }}>
                     <div><div style={kpiLabel}>{recPreview.owedView ? T.stmtBalanceOwed : T.stmtBalance}</div>
-                      <div style={kpiVal}>{recPreview.balanceSource === 'none' ? T.balanceNotSet : fmt(toShown(recPreview.statementBalance, selectedAccount))}</div></div>
+                      <div style={kpiVal}>{recPreview.balanceUnset ? T.balanceNotSet : fmt(toShown(recPreview.statementBalance, selectedAccount))}</div></div>
                     <div><div style={kpiLabel}>{recPreview.owedView ? T.biqBalanceOwed : T.biqBalance}</div>
                       <div style={kpiVal}>{fmt(toShown(recPreview.biqBalance, selectedAccount))}</div></div>
                     <div>
@@ -1130,7 +1140,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
                       </div>
                     )}
                   </div>
-                  {recPreview.balanceSource === 'none' && (
+                  {recPreview.balanceUnset && (
                     <div style={{ marginTop: 10, fontSize: 11.5, color: '#f59e0b', lineHeight: 1.5 }}>{T.balanceNotSetHint}</div>
                   )}
                   {recPreview.openingDateAfterFirstLine && (
@@ -1171,8 +1181,8 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
                             fmt(toShown(stmt.ending_balance, selectedAccount))
                           ) : (
                             <button onClick={() => startEditBalance(stmt)} title={T.setBalance}
-                              style={{ background: 'none', border: 'none', color: stmt.ending_balance_source === 'none' ? '#f59e0b' : C.text, cursor: 'pointer', fontSize: 13, fontWeight: 600, padding: 0 }}>
-                              {stmt.ending_balance_source === 'none' ? T.balanceNotSet : fmt(toShown(stmt.ending_balance, selectedAccount))} &#9998;
+                              style={{ background: 'none', border: 'none', color: balanceUnset(stmt) ? '#f59e0b' : C.text, cursor: 'pointer', fontSize: 13, fontWeight: 600, padding: 0 }}>
+                              {balanceUnset(stmt) ? T.balanceNotSet : fmt(toShown(stmt.ending_balance, selectedAccount))} &#9998;
                             </button>
                           )}
                         </td>
@@ -1307,8 +1317,11 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
             nameOf={coaName}
             styles={pickerStyles}
           />
-          <label style={labelStyle}>{T.openingBalance}</label>
+          <label style={labelStyle}>{owedAccount({ account_type: accountForm.account_type }) ? T.openingBalanceOwed : T.openingBalance}</label>
           <input style={inputFull} type='number' step='0.01' value={accountForm.opening_balance} onChange={e => setAccountForm(f => ({ ...f, opening_balance: e.target.value }))} />
+          {owedAccount({ account_type: accountForm.account_type }) && (
+            <div style={{ fontSize: 10.5, color: C.muted, marginTop: 3 }}>{T.openingHintOwed}</div>
+          )}
           <label style={labelStyle}>{T.openingDate}</label>
           <input style={inputFull} type='date' value={accountForm.opening_date} onChange={e => setAccountForm(f => ({ ...f, opening_date: e.target.value }))} />
           <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>

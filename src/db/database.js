@@ -3993,6 +3993,11 @@ function bankReconcilePreview(bankAccountId, asOfDate, _db) {
   // hold it as a negative balance. The screen and the entry field speak the
   // statement's language; what is stored stays signed.
   const owedView = account.account_type === 'credit_card' || account.account_type === 'line_of_credit';
+  // A statement imported before this was tracked carries no source. Zero with no
+  // source is indistinguishable from nobody having set it, so it counts as unset:
+  // better to ask again than to compare against a figure nobody supplied.
+  const src = lastStmt ? (lastStmt.ending_balance_source || null) : null;
+  const balanceUnset = !!lastStmt && (src === 'none' || (!src && Number(lastStmt.ending_balance) === 0));
   const firstLine = db.prepare(
     `SELECT MIN(transaction_date) AS d FROM bank_transactions WHERE bank_account_id=?`
   ).get(bankAccountId)?.d || null;
@@ -4004,6 +4009,7 @@ function bankReconcilePreview(bankAccountId, asOfDate, _db) {
     accountType: account.account_type,
     owedView,
     balanceSource: lastStmt ? (lastStmt.ending_balance_source || 'unknown') : null,
+    balanceUnset,
     statementId: lastStmt ? lastStmt.id : null,
     // An opening date after the first imported line means the opening balance
     // does not cover the period being reconciled.
@@ -4033,17 +4039,18 @@ function bankReconciliationStatus(_db) {
        WHERE bank_account_id=? AND coa_account_id IS NULL
          AND COALESCE(match_status,'unmatched') <> 'matched' AND COALESCE(is_transfer,0) = 0`
     ).get(acc.id).n;
-    let ecart = null, balanceSource = null, notCounted = 0;
+    let ecart = null, balanceSource = null, notCounted = 0, balanceUnset = false;
     if (next) {
       const p = bankReconcilePreview(acc.id, next.period_end, db);
       ecart = p.ecart;
       balanceSource = next.ending_balance_source || 'unknown';
       notCounted = p.unreconciledCount;
+      balanceUnset = p.balanceUnset;
     }
     // Everything standing between this statement and a close, named.
     const blockers = [];
     if (next) {
-      if (balanceSource === 'none') blockers.push('balance_not_set');
+      if (balanceUnset) blockers.push('balance_not_set');
       if (notCounted > 0) blockers.push('lines_not_counted');
       if (ecart != null && Math.abs(ecart) > 0.02) blockers.push('variance');
     }
@@ -4053,7 +4060,7 @@ function bankReconciliationStatus(_db) {
       lastReconciledEnd: lastClosed,
       openCount: open.length,
       next: next ? { id: next.id, periodStart: next.period_start, periodEnd: next.period_end, endingBalance: next.ending_balance } : null,
-      ecart, balanceSource, notCounted, uncategorized,
+      ecart, balanceSource, balanceUnset, notCounted, uncategorized,
       canClose: !!next && blockers.length === 0,
       blockers,
     };

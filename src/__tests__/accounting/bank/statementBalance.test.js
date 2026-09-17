@@ -118,7 +118,7 @@ describe('BALSET-006 the screen', () => {
     expect(BANQUE).toMatch(/const toStored = \(entered, acc\) => \(owedAccount\(acc\) \? -Math\.abs\(Number\(entered\)\) : Number\(entered\)\)/);
     expect(BANQUE).toMatch(/const toShown = \(stored, acc\) =>/);
     expect(BANQUE).toMatch(/bank\.statement\.update\(stmt\.id, \{ ending_balance: toStored\(entered, selectedAccount\) \}\)/);
-    expect(BANQUE).toMatch(/recPreview\.balanceSource === 'none' &&/);
+    expect(BANQUE).toMatch(/recPreview\.balanceUnset &&/);
     expect(BANQUE).toMatch(/recPreview\.openingDateAfterFirstLine &&/);
     expect(BANQUE).toMatch(/owedView \? T\.stmtBalanceOwed : T\.stmtBalance/);
   });
@@ -135,5 +135,42 @@ describe('BALSET-007 to the cent', () => {
     const p2 = bankReconcilePreview(id, '2026-08-05', db);
     expect(p2.ecart).toBe(0);
     expect(Object.is(p2.ecart, -0)).toBe(false);
+  });
+});
+
+describe('BALSET-008 a statement imported before this was tracked', () => {
+  it('reads as unset, not as a real zero, and blocks the close until set', () => {
+    const id = account();
+    importCard(id);
+    markCounted(id);
+    // As an older install left it: a zero with no source recorded.
+    db.prepare(`UPDATE bank_statements SET ending_balance_source=NULL WHERE bank_account_id=?`).run(id);
+    const p = bankReconcilePreview(id, '2026-08-05', db);
+    expect(p).toMatchObject({ balanceUnset: true, balanceSource: 'unknown' });
+    const [st] = require('../../../db/database.js').bankReconciliationStatus(db);
+    expect(st.blockers).toContain('balance_not_set');
+    expect(st.canClose).toBe(false);
+
+    bankStatementUpdate(p.statementId, { ending_balance: -179.18 }, db);
+    expect(bankReconcilePreview(id, '2026-08-05', db)).toMatchObject({ balanceUnset: false, ecart: 0 });
+  });
+
+  it('a genuine zero that someone set is respected', () => {
+    const id = account();
+    importCard(id);
+    markCounted(id);
+    const p = bankReconcilePreview(id, '2026-08-05', db);
+    bankStatementUpdate(p.statementId, { ending_balance: 0 }, db);
+    expect(bankReconcilePreview(id, '2026-08-05', db)).toMatchObject({ balanceUnset: false, balanceSource: 'user' });
+  });
+});
+
+describe('BALSET-009 a card opening balance is entered as what was owed', () => {
+  it('the screen converts both ways', () => {
+    const BANQUE = fs.readFileSync(path.join(ROOT, 'src/components/BanqueTab.jsx'), 'utf8');
+    expect(BANQUE).toMatch(/opening_balance: String\(toShown\(acc\.opening_balance, acc\)\)/);
+    expect(BANQUE).toMatch(/opening_balance: toStored\(parseFloat\(accountForm\.opening_balance\) \|\| 0, \{ account_type: accountForm\.account_type \}\)/);
+    expect(BANQUE).toMatch(/owedAccount\(\{ account_type: accountForm\.account_type \}\) \? T\.openingBalanceOwed : T\.openingBalance/);
+    expect(BANQUE).toMatch(/\{T\.openingHintOwed\}/);
   });
 });
