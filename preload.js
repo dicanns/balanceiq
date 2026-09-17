@@ -295,6 +295,7 @@ contextBridge.exposeInMainWorld('api', {
     },
     reconcile: {
       preview: (bankAccountId, asOf)           => ipcRenderer.invoke('bank:reconcile:preview', bankAccountId, asOf),
+      status:  ()                              => ipcRenderer.invoke('bank:reconcile:status'),
       close:   (bankAccountId, stmtId)         => ipcRenderer.invoke('bank:reconcile:close', bankAccountId, stmtId),
       reopen:  (bankAccountId, stmtId, reason) => ipcRenderer.invoke('bank:reconcile:reopen', bankAccountId, stmtId, reason),
     },

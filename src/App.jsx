@@ -7720,8 +7720,9 @@ function AppInner(){
     const run=async()=>{
       const today=dk(new Date());
       const safe=async(fn,fallback)=>{try{const v=await fn();return v??fallback;}catch(_){return fallback;}};
-      const [needsCategorizing,blockers,registration,taxPeriods,trialRows,subledgerRows,facts]=await Promise.all([
+      const [needsCategorizing,reconcileStatus,blockers,registration,taxPeriods,trialRows,subledgerRows,facts]=await Promise.all([
         safe(()=>window.api?.bank?.accounts?.needsCategorizing?.(),0),
+        safe(()=>window.api?.bank?.reconcile?.status?.(),[]),
         safe(()=>window.api?.bilan?.blockers?.(today),[]),
         safe(()=>window.api?.tax?.registration?.get?.(null),null),
         safe(()=>window.api?.tax?.period?.list?.(),[]),
@@ -7732,7 +7733,7 @@ function AppInner(){
       const overdue=overdueInvoices(facFactures,facClients,today);
       const deadline=nextFilingDeadline(registration,taxPeriods,today);
       const variance=(subledgerRows||[]).length?cashVarianceCents(trialRows,subledgerRows):null;
-      const items=buildWorklist({needsCategorizing,overdue,blockers:Array.isArray(blockers)?blockers:[],registration,deadline,variance,lang,emailItems:emailWorklistItems(facFactures,{now:Date.now(),lang})});
+      const items=buildWorklist({needsCategorizing,reconcile:Array.isArray(reconcileStatus)?reconcileStatus:[],overdue,blockers:Array.isArray(blockers)?blockers:[],registration,deadline,variance,lang,emailItems:emailWorklistItems(facFactures,{now:Date.now(),lang})});
       if(alive)setFirstRunFacts(facts||{});
       if(alive)setWorklist({items,counts:worklistCounts({needsCategorizing,overdue,items}),loading:false});
     };

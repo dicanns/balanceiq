@@ -52,6 +52,18 @@ const UI = {
     periodStart:      'Début de période',
     importedStatements: 'Relevés importés :',
     viewingAccount:   'Compte affiché',
+    recOverview:      'État des rapprochements',
+    recNever:         'Jamais rapproché',
+    recLastClosed:    (d) => `Dernier rapprochement : ${d}`,
+    recNothingOpen:   'Aucun relevé en attente',
+    recOpenPeriod:    (a, b) => `${a} au ${b}`,
+    recReady:         'Prêt à clôturer',
+    recBlockedBalance:'Solde du relevé non défini',
+    recBlockedLines:  (n) => `${n} ligne${n === 1 ? '' : 's'} à catégoriser`,
+    recBlockedVar:    (v) => `Écart de ${v}`,
+    recOpen:          'Ouvrir',
+    recAllDone:       'Tous les comptes sont à jour.',
+    closeBlockedWhy:  'Pourquoi ce bouton est inactif',
     lineCount:        (n) => `${n} transaction${n === 1 ? '' : 's'}`,
     periodEnd:        'Fin de période',
     endingBalance:    'Solde final ($)',
@@ -219,6 +231,18 @@ const UI = {
     periodStart:      'Period Start',
     importedStatements: 'Imported statements:',
     viewingAccount:   'Showing',
+    recOverview:      'Reconciliation status',
+    recNever:         'Never reconciled',
+    recLastClosed:    (d) => `Last reconciled: ${d}`,
+    recNothingOpen:   'No statement waiting',
+    recOpenPeriod:    (a, b) => `${a} to ${b}`,
+    recReady:         'Ready to close',
+    recBlockedBalance:'Statement balance not set',
+    recBlockedLines:  (n) => `${n} line${n === 1 ? '' : 's'} to categorize`,
+    recBlockedVar:    (v) => `Variance of ${v}`,
+    recOpen:          'Open',
+    recAllDone:       'Every account is up to date.',
+    closeBlockedWhy:  'Why this button is inactive',
     lineCount:        (n) => `${n} transaction${n === 1 ? '' : 's'}`,
     periodEnd:        'Period End',
     endingBalance:    'Ending Balance ($)',
@@ -448,6 +472,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   const [catTvq, setCatTvq]                       = useState('');
 
   const [statements, setStatements]               = useState([]);
+  const [recStatus, setRecStatus]                 = useState([]);
   const [recPreview, setRecPreview]               = useState(null);
   const [recLoading, setRecLoading]               = useState(false);
 
@@ -487,6 +512,13 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
     } catch (_) {}
   }, [selectedAccount, txFilter, txDateFrom, txDateTo]);
 
+  // Every account's standing, so a forgotten account is visible without picking
+  // it from a dropdown first.
+  const loadRecStatus = useCallback(async () => {
+    try { setRecStatus(await window.api?.bank?.reconcile?.status?.() || []); }
+    catch (_) { setRecStatus([]); }
+  }, []);
+
   const loadStatements = useCallback(async () => {
     if (!window.api?.bank || !selectedAccount) return;
     try {
@@ -518,7 +550,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
 
   useEffect(() => { loadAccounts(); loadCoa(); loadLearnedRules(); }, []);
   useEffect(() => { if (subTab === 'transactions') { loadTransactions(); loadStatements(); loadRecPreview(); } }, [subTab, selectedAccount, txFilter, txDateFrom, txDateTo]);
-  useEffect(() => { if (subTab === 'rapprochements') { loadStatements(); loadRecPreview(); } }, [subTab, selectedAccount]);
+  useEffect(() => { if (subTab === 'rapprochements') { loadStatements(); loadRecPreview(); loadRecStatus(); } }, [subTab, selectedAccount]);
   useEffect(() => { if (subTab === 'regles') loadLearnedRules(); }, [subTab]);
 
   // Guard AFTER all hooks - React Rules of Hooks require hooks before any early return
@@ -718,7 +750,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
     if (!selectedAccount) return;
     try {
       const result = await window.api.bank.reconcile.close(selectedAccount.id, stmtId);
-      if (result.success) { loadStatements(); loadRecPreview(); }
+      if (result.success) { loadStatements(); loadRecPreview(); loadRecStatus(); }
       else alert(result.errorCode ? tErr(result.errorCode, result.ecart) : (result.message || T.errors.GENERIC));
     } catch (_) {}
   };
@@ -807,8 +839,18 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
     try {
       await window.api.bank.statement.update(stmt.id, { ending_balance: toStored(entered, selectedAccount) });
       setEditingBalanceId(null); setBalanceDraft('');
-      loadStatements(); loadRecPreview();
+      loadStatements(); loadRecPreview(); loadRecStatus();
     } catch (e) { alert(tErr(e)); }
+  };
+
+  // What stands between a statement and a close, in the operator's words.
+  const closeBlockers = (stmt) => {
+    const out = [];
+    if (!recPreview) return out;
+    if (stmt.ending_balance_source === 'none') out.push(T.recBlockedBalance);
+    if (recPreview.unreconciledCount > 0) out.push(T.recBlockedLines(recPreview.unreconciledCount));
+    if (Math.abs(recPreview.ecart) > 0.02) out.push(T.recBlockedVar(fmt(Math.abs(recPreview.ecart))));
+    return out;
   };
 
   const deleteStatement = async (stmt) => {
@@ -1021,6 +1063,35 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
       {/* ── RAPPROCHEMENTS ────────────────────────────────────────────────────── */}
       {subTab === 'rapprochements' && (
         <div>
+          {/* Where every account stands, before anything is chosen. */}
+          <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: '12px 16px', marginBottom: 16 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>{T.recOverview}</div>
+            {recStatus.length === 0 ? (
+              <div style={{ fontSize: 12, color: C.muted }}>{T.noAccounts}</div>
+            ) : recStatus.every(a => !a.next) ? (
+              <div style={{ fontSize: 12, color: '#22c55e' }}>{T.recAllDone}</div>
+            ) : recStatus.map(a => {
+              const why = a.blockers.includes('balance_not_set') ? T.recBlockedBalance
+                : a.blockers.includes('lines_not_counted') ? T.recBlockedLines(a.notCounted)
+                : a.blockers.includes('variance') ? T.recBlockedVar(fmt(Math.abs(a.ecart)))
+                : T.recReady;
+              return (
+                <div key={a.accountId} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '5px 0', borderTop: `1px solid ${C.divider}` }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 600, color: C.text, minWidth: 120 }}>{a.name}</span>
+                  <span style={{ fontSize: 11, color: C.muted }}>{a.lastReconciledEnd ? T.recLastClosed(fmtDate(a.lastReconciledEnd)) : T.recNever}</span>
+                  <span style={{ fontSize: 11.5, color: a.next ? C.text : C.muted }}>
+                    {a.next ? T.recOpenPeriod(fmtDate(a.next.periodStart), fmtDate(a.next.periodEnd)) : T.recNothingOpen}
+                  </span>
+                  {a.next && <span style={{ fontSize: 11, color: a.canClose ? '#22c55e' : '#f59e0b' }}>{why}</span>}
+                  {a.next && (
+                    <button onClick={() => { const acc = accounts.find(x => x.id === a.accountId); if (acc) setSelectedAccount(acc); }}
+                      style={{ ...btnSmall, marginLeft: 'auto' }}>{T.recOpen}</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
           <div style={{ display: 'flex', gap: 10, marginBottom: 14, alignItems: 'center' }}>
             <h3 style={{ margin: 0, fontSize: 15, color: C.text, flex: 1 }}>✅ {T.tabRapprochements}</h3>
             <select value={selectedAccount?.id || ''} onChange={e => {
@@ -1111,9 +1182,18 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
                             : <span style={{ color: '#f59e0b' }}>{T.open}</span>}
                         </td>
                         <td style={td}>
-                          {!stmt.reconciled && recPreview && Math.abs(recPreview.ecart) <= 0.02 && (
-                            <button onClick={() => closeReconciliation(stmt.id)} style={btnStyle('#22c55e', 12)}>{T.closeRec}</button>
-                          )}
+                          {!stmt.reconciled && (() => {
+                            const why = closeBlockers(stmt);
+                            return why.length === 0 ? (
+                              <button onClick={() => closeReconciliation(stmt.id)} style={btnStyle('#22c55e', 12)}>{T.closeRec}</button>
+                            ) : (
+                              // Shown, not hidden: a missing button explains nothing.
+                              <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
+                                <button disabled title={T.closeBlockedWhy} style={{ ...btnStyle('#22c55e', 12), opacity: 0.4, cursor: 'default' }}>{T.closeRec}</button>
+                                <span style={{ fontSize: 10.5, color: '#f59e0b' }}>{why.join(' · ')}</span>
+                              </span>
+                            );
+                          })()}
                           {!!stmt.reconciled && (
                             <button onClick={() => { setShowReopenModal(stmt); setReopenReason(''); }} style={btnSmall}>{T.reopenRec}</button>
                           )}

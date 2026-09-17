@@ -123,7 +123,7 @@ const TONE_RANK = { alert: 0, warn: 1, info: 2 };
 
 export function buildWorklist({
   needsCategorizing = 0, overdue = [], blockers = [], registration = null,
-  deadline = null, variance = null, lang = 'fr', emailItems = [],
+  deadline = null, variance = null, lang = 'fr', emailItems = [], reconcile = [], now = new Date(),
 } = {}) {
   const en = lang === 'en';
   const items = [];
@@ -162,6 +162,30 @@ export function buildWorklist({
         : `Période du ${deadline.periodStart} au ${deadline.periodEnd}, due le ${deadline.dueDate}. Si c'est déjà produit, marquez-la produite.`,
       cta: en ? 'Open GST/QST' : 'Ouvrir TPS/TVQ',
       target: { kind: 'section', section: 'taxes', tab: 'taxperiod' },
+    });
+  }
+
+  // A month whose statement is imported but never reconciled: the books say one
+  // thing and the bank says another, and nobody is told. Only a period that has
+  // already ended counts, so the month in progress is not nagged about.
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  for (const acc of reconcile) {
+    if (!acc?.next?.periodEnd || acc.next.periodEnd >= monthStart) continue;
+    const why = acc.blockers?.includes('balance_not_set')
+      ? (en ? 'The statement closing balance is not set yet.' : 'Le solde final du relevé n\'est pas défini.')
+      : acc.blockers?.includes('lines_not_counted')
+        ? (en ? `${acc.notCounted} line${acc.notCounted === 1 ? '' : 's'} still to categorize.` : `${acc.notCounted} ligne${acc.notCounted === 1 ? '' : 's'} encore à catégoriser.`)
+        : acc.blockers?.includes('variance')
+          ? (en ? `Variance of ${money(Math.abs(acc.ecart), lang)} to explain.` : `Écart de ${money(Math.abs(acc.ecart), lang)} à expliquer.`)
+          : (en ? 'Ready to close.' : 'Prêt à clôturer.');
+    items.push({
+      id: `reconcile-${acc.accountId}-${acc.next.periodEnd}`,
+      tone: acc.canClose ? 'warn' : 'alert',
+      title: en
+        ? `Reconcile ${acc.name}: ${acc.next.periodStart} to ${acc.next.periodEnd}`
+        : `Rapprocher ${acc.name} : ${acc.next.periodStart} au ${acc.next.periodEnd}`,
+      detail: why,
+      target: { kind: 'section', section: 'bank', tab: 'rapprochements' },
     });
   }
 

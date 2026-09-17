@@ -4013,6 +4013,53 @@ function bankReconcilePreview(bankAccountId, asOfDate, _db) {
   };
 }
 
+// Where every account stands on reconciliation, so nothing waits unnoticed
+// behind a dropdown: what was last closed, what is open, what is in the way.
+function bankReconciliationStatus(_db) {
+  const db = _db || getDb();
+  const accounts = db.prepare(
+    `SELECT * FROM bank_accounts WHERE COALESCE(is_archived, 0) = 0 ORDER BY name`
+  ).all();
+  return accounts.map((acc) => {
+    const lastClosed = db.prepare(
+      `SELECT period_end FROM bank_statements WHERE bank_account_id=? AND reconciled=1 ORDER BY period_end DESC LIMIT 1`
+    ).get(acc.id)?.period_end || null;
+    const open = db.prepare(
+      `SELECT * FROM bank_statements WHERE bank_account_id=? AND COALESCE(reconciled,0)=0 ORDER BY period_end ASC`
+    ).all(acc.id);
+    const next = open[0] || null;
+    const uncategorized = db.prepare(
+      `SELECT COUNT(*) AS n FROM bank_transactions
+       WHERE bank_account_id=? AND coa_account_id IS NULL
+         AND COALESCE(match_status,'unmatched') <> 'matched' AND COALESCE(is_transfer,0) = 0`
+    ).get(acc.id).n;
+    let ecart = null, balanceSource = null, notCounted = 0;
+    if (next) {
+      const p = bankReconcilePreview(acc.id, next.period_end, db);
+      ecart = p.ecart;
+      balanceSource = next.ending_balance_source || 'unknown';
+      notCounted = p.unreconciledCount;
+    }
+    // Everything standing between this statement and a close, named.
+    const blockers = [];
+    if (next) {
+      if (balanceSource === 'none') blockers.push('balance_not_set');
+      if (notCounted > 0) blockers.push('lines_not_counted');
+      if (ecart != null && Math.abs(ecart) > 0.02) blockers.push('variance');
+    }
+    return {
+      accountId: acc.id, name: acc.name, accountType: acc.account_type,
+      owedView: acc.account_type === 'credit_card' || acc.account_type === 'line_of_credit',
+      lastReconciledEnd: lastClosed,
+      openCount: open.length,
+      next: next ? { id: next.id, periodStart: next.period_start, periodEnd: next.period_end, endingBalance: next.ending_balance } : null,
+      ecart, balanceSource, notCounted, uncategorized,
+      canClose: !!next && blockers.length === 0,
+      blockers,
+    };
+  });
+}
+
 function bankReconcileClose(bankAccountId, statementId, _db) {
   const db = _db || getDb();
   const stmt = db.prepare(`SELECT * FROM bank_statements WHERE id=? AND bank_account_id=?`).get(statementId, bankAccountId);
@@ -7055,7 +7102,7 @@ module.exports = {
   bankAccountPostOpeningBalance, bankPostMissingEntries, bankFindOrphanEntries, bankSubledgerBalances,
   bankTransactionsList, bankTransactionUnmatch, bankTransactionCategorize,
   bankLinesForBillAmount,
-  bankReconcilePreview, bankReconcileClose, bankReconcileReopen,
+  bankReconcilePreview, bankReconcileClose, bankReconciliationStatus, bankReconcileReopen,
   bankLearnedRulesList, bankLearnedRuleDelete,
   taxPeriodCompute, taxPeriodSave, taxPeriodMarkFiled, taxPeriodList,
   taxSuspenseList, taxSuspenseClassifyAsCashExpense, taxSuspenseReverseCategorization,
