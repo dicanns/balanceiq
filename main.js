@@ -1020,7 +1020,13 @@ ipcMain.handle('gas:getPrice', async (event, opts = {}) => {
 function createWindow() {
   // Verify SQLite loads before creating the window — show a clear error if it fails
   try {
-    const { storageGet } = require('./src/db/database.js');
+    const { storageGet, preMigrationSnapshot } = require('./src/db/database.js');
+    // A copy of the database file before any migration touches it. The daily
+    // export runs later, through the open database, so it cannot be this copy.
+    try {
+      const snap = preMigrationSnapshot(COMPANY_DATA_DIR, BACKUP_DIR());
+      if (snap.taken) console.log('[db] pre-migration copy', JSON.stringify({ from: snap.onDisk, to: snap.latest }));
+    } catch (e) { console.error('[db] pre-migration copy failed:', e.message); }
     storageGet('__init_check__');
   } catch (err) {
     const { dialog: d } = require('electron');

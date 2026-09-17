@@ -1,5 +1,6 @@
 const Database = require('better-sqlite3');
 const path = require('path');
+const fs = require('fs');
 const { app } = require('electron');
 const crypto = require('crypto');
 
@@ -1582,6 +1583,52 @@ const MIGRATIONS = [
     },
   },
 ];
+
+// The newest schema this build knows. Anything on disk below it has migrations
+// waiting; a backup restore above it cannot be read by this build.
+function latestSchemaVersion() {
+  return MIGRATIONS.reduce((m, x) => Math.max(m, x.version), 0);
+}
+
+// Migrations change the schema before anything else runs, and the daily backup
+// is an export taken through the open database - after them. A migration that
+// went wrong therefore had no same-day copy to fall back on. Before the first
+// open, if the file on disk is behind this build, the file itself is copied
+// aside: the database and its write-ahead log, exactly as they are. Only the
+// last few are kept; each one is a full copy.
+function preMigrationSnapshot(dataDir, backupDir, keep = 5) {
+  const file = path.join(dataDir, 'balanceiq.db');
+  if (!fs.existsSync(file)) return { taken: false, reason: 'no_database' };
+  let onDisk;
+  try {
+    const probe = new Database(file, { readonly: true, fileMustExist: true });
+    onDisk = probe.pragma('user_version', { simple: true });
+    probe.close();
+  } catch (e) {
+    return { taken: false, reason: 'unreadable', error: e.message };
+  }
+  const latest = latestSchemaVersion();
+  if (onDisk >= latest) return { taken: false, reason: 'up_to_date', onDisk, latest };
+
+  fs.mkdirSync(backupDir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const base = `pre-migration-v${onDisk}-to-v${latest}-${stamp}`;
+  const files = [];
+  for (const suffix of ['', '-wal', '-shm']) {
+    const src = file + suffix;
+    if (!fs.existsSync(src)) continue;
+    const dest = path.join(backupDir, `${base}.db${suffix}`);
+    fs.copyFileSync(src, dest);
+    files.push(dest);
+  }
+  const olds = fs.readdirSync(backupDir).filter(f => /^pre-migration-v.*\.db$/.test(f)).sort();
+  for (const f of olds.slice(0, Math.max(0, olds.length - keep))) {
+    for (const suffix of ['', '-wal', '-shm']) {
+      try { fs.unlinkSync(path.join(backupDir, f + suffix)); } catch (_) { /* already gone */ }
+    }
+  }
+  return { taken: true, onDisk, latest, files };
+}
 
 // Runs all pending migrations in ascending version order.
 // If any migration fails the error is re-thrown — the app must not start
@@ -6792,7 +6839,7 @@ function mergeApiConfigSecrets(incoming, current) {
 }
 
 module.exports = {
-  setDataDir, getDataDir,
+  setDataDir, getDataDir, latestSchemaVersion, preMigrationSnapshot,
   incomeStatement, coaSetItcPct, coaRename, bankNeedsCategorizingCount, firstRunFacts,
   supplierBillPost, supplierBillUnpost, supplierBillPostPayment, supplierBillSubledger,
   supplierBillRepairTaxAccounts,
