@@ -3,6 +3,11 @@ const path = require('path');
 const fs = require('fs');
 const { app } = require('electron');
 const crypto = require('crypto');
+// One set of readers for every file the app imports; ESM, loaded with require().
+const {
+  splitCsvLine: _splitCsvLine, detectDelimiter, normalizeStatementDate, detectNumericDateOrder,
+  parseStatementAmount: _parseStatementAmount, decodeXmlEntities,
+} = require('../utils/importParse.mjs');
 
 let db;
 // The folder holding this company's database. The main process sets it before the
@@ -2892,23 +2897,38 @@ function coaUnarchive(id) {
   return true;
 }
 
-function coaImportCSV(csvString) {
-  const lines = csvString.split('\n').map(l => l.trim()).filter(Boolean);
+const COA_TYPES = ['asset', 'liability', 'equity', 'revenue', 'cogs', 'expense'];
+
+// A chart of accounts from CSV: account_number, name_fr, name_en, type, tax_hint.
+// Splitting on every comma shifted the columns of any name holding one ("Repas,
+// représentation"), and an unknown type went straight into the chart.
+function coaImportCSV(csvString, _db) {
+  const db = _db || getDb();
+  const { rows: records, headers } = (() => {
+    const lines = String(csvString || '').replace(/^﻿/, '').split(/\r?\n/).filter(l => l.trim());
+    if (!lines.length) return { rows: [], headers: [] };
+    const delim = detectDelimiter(lines[0]);
+    const first = _splitCsvLine(lines[0], delim);
+    const isHeader = first.some(c => /account_number|numero|numéro|type/i.test(c));
+    return { headers: isHeader ? first : [], rows: (isHeader ? lines.slice(1) : lines).map(l => ({ line: l, cols: _splitCsvLine(l, delim) })) };
+  })();
   let created = 0, skipped = 0;
   const errors = [];
-  const db = getDb();
   const upsert = db.prepare(
     `INSERT OR IGNORE INTO chart_of_accounts (account_number, name_fr, name_en, type, tax_hint, is_system)
      VALUES (?, ?, ?, ?, ?, 0)`
   );
-  // Skip header row if present
-  const start = (lines[0] || '').toLowerCase().includes('account_number') ? 1 : 0;
-  const importMany = db.transaction((rows) => {
-    for (const line of rows) {
-      const cols = line.split(',').map(c => c.replace(/^"|"$/g, '').trim());
-      const [account_number, name_fr, name_en, type, tax_hint] = cols;
+  db.transaction(() => {
+    for (const { line, cols } of records) {
+      const [account_number, name_fr, name_en, rawType, tax_hint] = cols;
+      const type = String(rawType || '').trim().toLowerCase();
       if (!account_number || !name_fr || !type) {
         errors.push(`Ligne ignorée (données manquantes): ${line}`);
+        skipped++;
+        continue;
+      }
+      if (!COA_TYPES.includes(type)) {
+        errors.push(`${account_number}: type inconnu "${rawType}" (${COA_TYPES.join(', ')})`);
         skipped++;
         continue;
       }
@@ -2920,9 +2940,8 @@ function coaImportCSV(csvString) {
         skipped++;
       }
     }
-  });
-  importMany(lines.slice(start));
-  return { created, skipped, errors };
+  })();
+  return { created, skipped, errors, headerRow: headers.length > 0 };
 }
 
 function coaExportCSV() {
@@ -3518,89 +3537,12 @@ function _normDescription(desc) {
 
 // Parse bank CSV: returns [{date, description, amount, running_balance}]
 // ── BANK CSV ─────────────────────────────────────────────────────────────────
-// Split one CSV line into fields: quoted fields may hold the separator and
-// doubled quotes. The regex this replaces matched an empty string after every
-// field, shifting every column after the first by one: an unquoted file came in
-// with the second column as its description and an empty amount.
-function _splitCsvLine(line, delim) {
-  const out = []; let field = ''; let quoted = false;
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i];
-    if (quoted) {
-      if (c === '"') { if (line[i + 1] === '"') { field += '"'; i++; } else quoted = false; }
-      else field += c;
-    } else if (c === '"') quoted = true;
-    else if (c === delim) { out.push(field.trim()); field = ''; }
-    else field += c;
-  }
-  out.push(field.trim());
-  return out;
-}
-
-const _STATEMENT_MONTHS = {
-  jan: 1, janv: 1, janvier: 1, january: 1,
-  feb: 2, fev: 2, fevr: 2, fevrier: 2, february: 2,
-  mar: 3, mars: 3, march: 3,
-  apr: 4, avr: 4, avril: 4, april: 4,
-  may: 5, mai: 5,
-  jun: 6, juin: 6, june: 6,
-  jul: 7, juil: 7, juillet: 7, july: 7,
-  aug: 8, aou: 8, aout: 8, august: 8,
-  sep: 9, sept: 9, septembre: 9, september: 9,
-  oct: 10, octobre: 10, october: 10,
-  nov: 11, novembre: 11, november: 11,
-  dec: 12, decembre: 12, december: 12,
-};
-const _pad2 = (n) => String(n).padStart(2, '0');
-function _isoIfValid(y, m, d) {
-  const yy = y < 100 ? 2000 + y : y;
-  if (!(m >= 1 && m <= 12 && d >= 1 && d <= 31)) return null;
-  const dt = new Date(Date.UTC(yy, m - 1, d));
-  return dt.getUTCMonth() === m - 1 ? `${yy}-${_pad2(m)}-${_pad2(d)}` : null;
-}
-
-// A statement date in whatever shape the bank wrote it, as YYYY-MM-DD, or null.
-// numericOrder decides 03/04/2026: 'mdy' (the default for North American bank
-// exports) or 'dmy', worked out for the whole file by the caller.
-function normalizeStatementDate(raw, numericOrder = 'mdy') {
-  const v = String(raw || '').trim();
-  if (!v) return null;
-  let m;
-  if ((m = v.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/))) return _isoIfValid(+m[1], +m[2], +m[3]);
-  if ((m = v.match(/^(\d{4})(\d{2})(\d{2})$/))) return _isoIfValid(+m[1], +m[2], +m[3]);
-  const monthOf = (word) => _STATEMENT_MONTHS[word.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\.$/, '')];
-  if ((m = v.match(/^(\d{1,2})[\s\-.\/]+([A-Za-zÀ-ÿ]+\.?)[\s\-.\/,]+(\d{2,4})$/))) {
-    const mo = monthOf(m[2]); return mo ? _isoIfValid(+m[3], mo, +m[1]) : null;
-  }
-  if ((m = v.match(/^([A-Za-zÀ-ÿ]+\.?)[\s\-.\/]+(\d{1,2}),?[\s\-.\/]+(\d{2,4})$/))) {
-    const mo = monthOf(m[1]); return mo ? _isoIfValid(+m[3], mo, +m[2]) : null;
-  }
-  if ((m = v.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/))) {
-    const [a, b2, y] = [+m[1], +m[2], +m[3]];
-    return numericOrder === 'dmy' ? _isoIfValid(y, b2, a) : _isoIfValid(y, a, b2);
-  }
-  return null;
-}
-
-// 1,234.56 / 1 234,56 / $55.00 / (55.00) / -55.00 as a number, or null.
-function _parseStatementAmount(raw) {
-  let v = String(raw || '').trim();
-  if (!v) return null;
-  const negative = /^\(.*\)$/.test(v) || /^-|-$/.test(v.replace(/[\s$€£]/g, ''));
-  v = v.replace(/[()\s$€£  ]/g, '').replace(/^-|-$/g, '');
-  if (/,\d{1,2}$/.test(v) && !/\.\d{1,2}$/.test(v)) v = v.replace(/\./g, '').replace(',', '.');
-  else v = v.replace(/,/g, '');
-  const n = parseFloat(v);
-  if (!Number.isFinite(n)) return null;
-  return negative ? -n : n;
-}
-
+// Splitting, dates and amounts come from src/utils/importParse.mjs.
 function _parseBankCSV(csvText, columnMap) {
   const lines = String(csvText || '').replace(/^﻿/, '').split(/\r?\n/).filter(l => l.trim());
   if (!lines.length) return [];
-  const first = lines[0];
-  const delim = ['\t', ';', ','].reduce((best, d) => (first.split(d).length > first.split(best).length ? d : best), ',');
-  const headers = _splitCsvLine(first, delim).map(h => h.toLowerCase());
+  const delim = detectDelimiter(lines[0]);
+  const headers = _splitCsvLine(lines[0], delim).map(h => h.toLowerCase());
 
   // Auto-detect or use saved mapping
   const map = columnMap || {};
@@ -3619,15 +3561,7 @@ function _parseBankCSV(csvText, columnMap) {
   const balIdx    = map.balance     !== undefined ? map.balance     : detect(['balance','solde','running balance','closing balance']);
 
   const records = lines.slice(1).map(l => _splitCsvLine(l, delim)).filter(c => (c[dateIdx] || '').trim());
-  // 03/04/2026 cannot be read on its own: the file decides. A first part above
-  // 12 anywhere means day first; a second part above 12 means month first.
-  let numericOrder = 'mdy';
-  for (const c of records) {
-    const m = String(c[dateIdx]).trim().match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.]\d{2,4}$/);
-    if (!m) continue;
-    if (+m[1] > 12) { numericOrder = 'dmy'; break; }
-    if (+m[2] > 12) { numericOrder = 'mdy'; break; }
-  }
+  const numericOrder = detectNumericDateOrder(records.map(c => c[dateIdx]));
 
   const rows = [];
   for (const clean of records) {
@@ -3674,14 +3608,21 @@ function _parseBankOFX(text) {
     const get = (tag) => { const m = block.match(new RegExp(`<${tag}>([^<\r\n]+)`, 'i')); return m ? m[1].trim() : ''; };
     const dtRaw = get('DTPOSTED') || get('DTUSER');
     if (!dtRaw) continue;
-    // OFX dates: YYYYMMDD[HHMMSS[...]]
-    const dateStr = dtRaw.length >= 8 ? `${dtRaw.slice(0,4)}-${dtRaw.slice(4,6)}-${dtRaw.slice(6,8)}` : dtRaw;
-    const amount = parseFloat(get('TRNAMT')) || 0;
+    // OFX dates: YYYYMMDD[HHMMSS[.XXX][[TZ]]]. One that is not a real date is
+    // refused, never stored as written.
+    const dateStr = normalizeStatementDate(dtRaw.slice(0, 8));
+    if (!dateStr) {
+      const err = new Error(`ERR_CSV_DATE: ${String(dtRaw).slice(0, 30)}`);
+      err.code = 'ERR_CSV_DATE';
+      throw err;
+    }
+    // Some banks write TRNAMT with a comma decimal; parseFloat read -12,50 as -12.
+    const amount = _parseStatementAmount(get('TRNAMT')) || 0;
     // Banks truncate <NAME> (often 32 chars) and put the rest - payee names,
     // e-transfer counterparties - in <MEMO>. Taking NAME alone silently lost that
     // detail, so merge both unless one already contains the other.
-    const name = get('NAME');
-    const memo = get('MEMO');
+    const name = decodeXmlEntities(get('NAME'));
+    const memo = decodeXmlEntities(get('MEMO'));
     let description;
     if (name && memo) {
       const n = name.toUpperCase(), m = memo.toUpperCase();
@@ -3760,9 +3701,9 @@ function bankStatementImport({ bankAccountId, fileText, fileName, fileType, peri
       ? savedMap.amountSign
       : (account.account_type === 'credit_card' ? -1 : 1);
     if (sign === -1) rows = rows.map(r => ({ ...r, amount: r.amount === 0 ? 0 : -r.amount }));
-    // A file whose amounts all read as zero was misread, not a month of nothing.
-    if (rows.length && rows.every(r => !r.amount)) throw new Error('ERR_CSV_NO_AMOUNTS');
   }
+  // A file whose amounts all read as zero was misread, not a month of nothing.
+  if (rows.length && rows.every(r => !r.amount)) throw new Error('ERR_CSV_NO_AMOUNTS');
 
   if (!rows.length) throw new Error('ERR_NO_TRANSACTIONS');
 
@@ -3783,12 +3724,21 @@ function bankStatementImport({ bankAccountId, fileText, fileName, fileType, peri
     let autoMatched = 0, suggested = 0, unmatched = 0, duplicateRows = 0;
     const newTxIds = [];
 
+    // Statements overlap, so a row the books already hold is skipped. Identical
+    // rows inside one file are not duplicates, though: two coffees for the same
+    // amount at the same place on the same day are two coffees. A row is skipped
+    // only while the books already hold at least as many copies of it as this
+    // file has reached - the count includes the copies inserted just above.
+    const seenInFile = new Map();
+    const countSame = db.prepare(
+      `SELECT COUNT(*) AS n FROM bank_transactions WHERE bank_account_id=? AND transaction_date=? AND amount=? AND description=?`
+    );
     for (const row of rows) {
-      // Per-row dedupe: same account + date + amount + description
-      const dupe = db.prepare(
-        `SELECT id FROM bank_transactions WHERE bank_account_id=? AND transaction_date=? AND amount=? AND description=?`
-      ).get(bankAccountId, row.transaction_date, row.amount, row.description);
-      if (dupe) { duplicateRows++; continue; }
+      const key = `${row.transaction_date}|${row.amount}|${row.description}`;
+      const nth = (seenInFile.get(key) || 0) + 1;
+      seenInFile.set(key, nth);
+      const already = countSame.get(bankAccountId, row.transaction_date, row.amount, row.description).n;
+      if (already >= nth) { duplicateRows++; continue; }
 
       const { lastInsertRowid: txId } = db.prepare(
         `INSERT INTO bank_transactions (bank_account_id, bank_statement_id, transaction_date, description, amount, running_balance)
@@ -6961,7 +6911,7 @@ function complianceGetLists({ dateFrom, dateTo } = {}, _db) {
 // pushed to Supabase on every save and written verbatim into every daily backup,
 // which put a working Stripe secret key into any copy of either. One list, used
 // by both boundaries (CLAUDE.md rule 5).
-const { SECRET_CONFIG_FIELDS, SECRET_KV_KEYS } = require('../services/secretFields.cjs');
+const { SECRET_CONFIG_FIELDS, SECRET_KV_KEYS } = require('../services/secretFields.mjs');
 
 // Everything except the credentials. Accepts an object or a JSON string and
 // returns the same shape, so it can sit directly on either boundary.
@@ -7043,7 +6993,7 @@ module.exports = {
   glAuditLogList,
   bankAccountsList, bankAccountCreate, bankAccountUpdate, bankAccountArchive,
   bankStatementImport, bankStatementsList, bankStatementDelete,
-  parseBankCSV: _parseBankCSV, normalizeStatementDate,
+  parseBankCSV: _parseBankCSV, normalizeStatementDate, COA_TYPES,
   bankAccountPostOpeningBalance, bankPostMissingEntries, bankFindOrphanEntries, bankSubledgerBalances,
   bankTransactionsList, bankTransactionUnmatch, bankTransactionCategorize,
   bankLinesForBillAmount,

@@ -6,7 +6,8 @@ const fs = require('fs');
 const TEXT = /\.(js|jsx|cjs|mjs|ts|tsx|md|html|css|json|yml|yaml|sql|txt|sh|toml)$/i;
 const files = execSync('git ls-files -z', { encoding: 'utf8' })
   .split('\0')
-  .filter(f => f && TEXT.test(f) && f !== 'package-lock.json');
+  // A file deleted in the working tree is still listed until the deletion is staged.
+  .filter(f => f && TEXT.test(f) && f !== 'package-lock.json' && fs.existsSync(f));
 
 let bad = 0;
 for (const f of files) {

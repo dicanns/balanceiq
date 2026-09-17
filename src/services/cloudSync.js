@@ -6,8 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { supabase } from './supabase.js';
-import secretFields from './secretFields.cjs';
-const { SECRET_CONFIG_FIELDS, SECRET_KV_KEYS } = secretFields;
+import { SECRET_CONFIG_FIELDS, SECRET_KV_KEYS } from './secretFields.mjs';
 import { setPlan } from '../config/features.js';
 
 // ── STATE ──────────────────────────────────────────────────────────────────

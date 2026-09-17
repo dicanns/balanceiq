@@ -11,7 +11,7 @@ import { createRequire } from 'module';
 import { csp } from '../../../vite.config.js';
 
 const require = createRequire(import.meta.url);
-const { scrubString, scrubEvent } = require('../../services/sentryScrub.cjs');
+const { scrubString, scrubEvent } = require('../../services/sentryScrub.mjs');
 const ROOT = path.resolve(__dirname, '../../..');
 const MAIN = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8');
 const INDEX = fs.readFileSync(path.join(ROOT, 'src/index.jsx'), 'utf8');

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { downloadWorkbook, readSheetRows } from '../utils/spreadsheet.js';
+import { normalizeStatementDate, detectNumericDateOrder, parseStatementAmount } from '../utils/importParse.mjs';
 import { trackEvent } from '../services/telemetry.js';
 
 // ── Tooltip component ─────────────────────────────────────────────────────────
@@ -664,24 +665,41 @@ function CSVImportView({ products, onImported, savedFormats, onSaveFormat, T, t,
     const prodByName = {};
     allProducts.forEach(p => { prodByName[p.name.toLowerCase()] = p; });
     const toImport = [];
+    const badDates = [];
+    // Dates are read, never cut to ten characters: "02 Aug 2026" used to be
+    // stored as "02 Aug 202". Quantities are read as numbers: parseInt("1,234")
+    // was 1.
+    const dateCol = mapping.date ? columns.indexOf(mapping.date) : -1;
+    const order = detectNumericDateOrder(dateCol >= 0 ? rows.map(r => r[dateCol]) : []);
+    const qty = (v) => { const n = parseStatementAmount(v); return n == null ? null : Math.round(n); };
     rows.forEach(row => {
       const name = String(row[columns.indexOf(mapping.prod)]||'').trim();
       const prod = prodByName[name.toLowerCase()];
       if (!prod) return;
-      const sold = parseInt(row[columns.indexOf(mapping.sold)]);
-      if (isNaN(sold)) return;
-      const date = mapping.date ? String(row[columns.indexOf(mapping.date)]||'').trim() : importDate;
-      const parsedDate = date && date.length >= 8 ? date.substring(0,10) : importDate;
-      const made = mapping.made ? parseInt(row[columns.indexOf(mapping.made)]) : null;
-      const remaining = mapping.remaining ? parseInt(row[columns.indexOf(mapping.remaining)]) : null;
-      toImport.push({ id:uuid(), product_id:prod.id, date:parsedDate, quantity_sold:sold, quantity_made:isNaN(made)?null:made, quantity_remaining:isNaN(remaining)?null:remaining, stockout:0, source:'csv' });
+      const sold = qty(row[columns.indexOf(mapping.sold)]);
+      if (sold == null) return;
+      let parsedDate = importDate;
+      if (dateCol >= 0) {
+        const raw = row[dateCol];
+        parsedDate = normalizeStatementDate(raw, order);
+        if (!parsedDate) { if (badDates.length < 3) badDates.push(String(raw ?? '')); return; }
+      }
+      const made = mapping.made ? qty(row[columns.indexOf(mapping.made)]) : null;
+      const remaining = mapping.remaining ? qty(row[columns.indexOf(mapping.remaining)]) : null;
+      toImport.push({ id:uuid(), product_id:prod.id, date:parsedDate, quantity_sold:sold, quantity_made:made, quantity_remaining:remaining, stockout:0, source:'csv' });
     });
-    return { toImport, newProds };
+    return { toImport, newProds, badDates };
   };
 
   const handleImportClick = async () => {
     setImportError(null);
-    const { toImport, newProds } = buildImportData();
+    const { toImport, newProds, badDates } = buildImportData();
+    if (badDates.length) {
+      setImportError(lang === 'en'
+        ? `Some dates could not be read (${badDates.join(', ')}). Nothing was imported.`
+        : `Certaines dates sont illisibles (${badDates.join(', ')}). Rien n'a été importé.`);
+      return;
+    }
     if (toImport.length === 0 && newProds.length === 0) {
       setImportError(lang === 'en' ? 'Nothing to import - check column mapping.' : 'Rien à importer - vérifiez le mappage des colonnes.');
       return;

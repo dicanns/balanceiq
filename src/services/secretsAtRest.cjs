@@ -4,7 +4,7 @@
 // codec); on the way out they are decrypted, so the renderer never notices. A
 // value that cannot be decrypted - a backup restored on another Mac - reads as
 // absent rather than as garbage.
-const { SECRET_CONFIG_FIELDS, SECRET_KV_KEYS } = require('./secretFields.cjs');
+const { SECRET_CONFIG_FIELDS, SECRET_KV_KEYS } = require('./secretFields.mjs');
 
 const ENC_PREFIX = 'enc:v1:';
 

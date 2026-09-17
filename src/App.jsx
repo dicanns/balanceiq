@@ -39,6 +39,7 @@ import TodayWorklist from "./components/TodayWorklist.jsx";
 import { normalizeBusinessTypes, businessTypesChosen, visibleDestinations, landingDestination, firstRunItems, BUSINESS_TYPE_INFO } from "./services/businessProfile.js";
 import { buildFlashReportHTML } from "./services/flashReport.js";
 import { downloadWorkbook } from "./utils/spreadsheet.js";
+import { parseCsvRecords, normalizeStatementDate, detectNumericDateOrder, parseStatementAmount } from "./utils/importParse.mjs";
 import { logCreate, logUpdate, logVoid, logCorrection, isFinancialField, promptCorrectionReason } from "./services/auditLogger.js";
 import { initCloudSync, signIn as cloudSignIn, signUp as cloudSignUp, signOut as cloudSignOut, requestPasswordReset, schedulePush, onSyncStatus, onPlanChange, refreshPlan, getCloudOrgId, getCloudParentOrgId, getMyLinkedLocations, getLastSyncedAt, getAccessToken as getCloudAccessToken } from "./services/cloudSync.js";
 import { supabase as _supabaseClient } from "./services/supabase.js";
@@ -415,15 +416,12 @@ const PLATFORM_COLUMN_HINTS={
  ubereats:{dateHints:['date','payment date','payout date'],amountHints:['payout','total','net payout','amount']},
  skip:{dateHints:['date','payment date','payout date'],amountHints:['net payout','payout','amount','total']},
 };
-const CSV_FORMULA_RE=/^[=+\-@\t\r]/;
-function sanitizeCSVCell(v){return CSV_FORMULA_RE.test(v)?`'${v}`:v;}
+// Delivery payout files. The formula guard that prefixed "-" and "+" with a quote
+// belongs on export; on import it made every signed amount unreadable.
 function parseCSVText(text){
- const lines=text.split(/\r?\n/).filter(l=>l.trim());
- if(lines.length<2)return{headers:[],rows:[]};
- const parseRow=line=>{const r=[];let cur='',inQ=false;for(const ch of line){if(ch==='"'){inQ=!inQ;}else if(ch===','&&!inQ){r.push(sanitizeCSVCell(cur.trim()));cur='';}else cur+=ch;}r.push(sanitizeCSVCell(cur.trim()));return r;};
-  const headers=parseRow(lines[0]).map(h=>h.replace(/^"|"$/g,'').trim());
-  const rows=lines.slice(1).map(l=>{const vals=parseRow(l);const obj={};headers.forEach((h,i)=>{obj[h]=(vals[i]??'').replace(/^"|"$/g,'').trim();});return obj;});
-  return{headers,rows};
+  const {headers,rows}=parseCsvRecords(text);
+  if(!headers.length||!rows.length)return{headers:[],rows:[]};
+  return{headers,rows:rows.map(vals=>{const obj={};headers.forEach((h,i)=>{obj[h]=vals[i]??'';});return obj;})};
 }
 function autoDetectCols(headers,pid){
   const hints=PLATFORM_COLUMN_HINTS[pid]||PLATFORM_COLUMN_HINTS.doordash;
@@ -431,25 +429,13 @@ function autoDetectCols(headers,pid){
   const find=hs=>{for(const h of hs){const i=lh.findIndex(x=>x.includes(h));if(i!==-1)return headers[i];}return null;};
   return{dateCol:find(hints.dateHints),amountCol:find(hints.amountHints)};
 }
-function parseDateStr(s){
-  if(!s)return null;
-  if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);
-  const m1=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m1)return`${m1[3]}-${m1[1].padStart(2,'0')}-${m1[2].padStart(2,'0')}`;
-  const m2=s.match(/^(\d{4})\/(\d{2})\/(\d{2})/);if(m2)return`${m2[1]}-${m2[2]}-${m2[3]}`;
-  const MONS={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12,janv:1,mars:3,avri:4,mai:5,juin:6,juil:7,sept:9,octo:10,nove:11};
-  const m3=s.match(/([a-záàâéèêëîïôùûüç]+)[.\s-]+(\d{1,2})[,.\s-]*(\d{4})/i);
-  if(m3){const mn=MONS[m3[1].toLowerCase().slice(0,4)];if(mn)return`${m3[3]}-${String(mn).padStart(2,'0')}-${m3[2].padStart(2,'0')}`;}
-  const m4=s.match(/(\d{1,2})[.\s-]+([a-záàâéèêëîïôùûüç]+)[.\s-]+(\d{4})/i);
-  if(m4){const mn=MONS[m4[2].toLowerCase().slice(0,4)];if(mn)return`${m4[3]}-${String(mn).padStart(2,'0')}-${m4[1].padStart(2,'0')}`;}
-  return null;
-}
+function parseDateStr(s,order='mdy'){return normalizeStatementDate(s,order);}
+// Payouts are summed per day, so only a positive amount counts; zero and
+// unreadable read as nothing.
 function parseAmountStr(s){
-  if(!s)return null;
-  const neg=/^\(/.test(s.trim());
-  const n=parseFloat(s.replace(/[$€£,\s]/g,'').replace(/[()]/g,''));
-  if(isNaN(n)||n===0)return null;
-  const v=Math.round(Math.abs(n)*100)/100;
-  return neg?-v:v;
+  const n=parseStatementAmount(s);
+  if(n==null||n===0)return null;
+  return Math.round(n*100)/100;
 }
 
 // ── LIVRAISONS SECTION ──
@@ -511,7 +497,7 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
   };
   const doBuildPreview=(data,dc,ac)=>{
     const src=data||csvData;const byDate={};
-    src.rows.forEach(row=>{const date=parseDateStr(row[dc]);const amount=parseAmountStr(row[ac]);if(date&&amount&&amount>0)byDate[date]=Math.round(((byDate[date]||0)+amount)*100)/100;});
+    const order=detectNumericDateOrder(src.rows.map(r=>r[dc]));src.rows.forEach(row=>{const date=parseDateStr(row[dc],order);const amount=parseAmountStr(row[ac]);if(date&&amount&&amount>0)byDate[date]=Math.round(((byDate[date]||0)+amount)*100)/100;});
     const list=Object.entries(byDate).map(([date,amount])=>({date,amount})).sort((a,b)=>a.date.localeCompare(b.date));
     setPreview(list);setImportStep('preview');
   };

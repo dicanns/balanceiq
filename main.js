@@ -10,7 +10,7 @@ if (!app.isPackaged) { try { require('dotenv').config(); } catch(_) {} }
 // A packaged app has no environment, so the DSN is written into dist/sentry.json
 // at build time; without it every crash in this process went unreported.
 // Nothing leaves without passing the scrubber.
-const { scrubEvent, scrubBreadcrumb } = require('./src/services/sentryScrub.cjs');
+const { scrubEvent, scrubBreadcrumb } = require('./src/services/sentryScrub.mjs');
 function sentryDsn() {
   if (process.env.SENTRY_DSN) return process.env.SENTRY_DSN;
   try {

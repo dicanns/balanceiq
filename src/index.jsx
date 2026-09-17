@@ -1,5 +1,5 @@
 import { init } from '@sentry/electron/renderer';
-import scrub from './services/sentryScrub.cjs';
+import * as scrub from './services/sentryScrub.mjs';
 import { createRoot } from 'react-dom/client';
 import React from 'react';
 import App from './App.jsx';
