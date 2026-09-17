@@ -1,7 +1,7 @@
 {
   "name": "balanceiq",
   "version": "1.75.0",
-  "description": "L'intelligence derrière vos chiffres.",
+  "description": "L'intelligence derri\u00e8re vos chiffres.",
   "main": "main.js",
   "scripts": {
     "prestart": "npx @electron/rebuild -f -w better-sqlite3",
@@ -70,7 +70,8 @@
     ],
     "files": [
       "**/*",
-      "!node_modules/**/better-sqlite3/build/Release/.deps/**"
+      "!node_modules/**/better-sqlite3/build/Release/.deps/**",
+      "!node_modules/@napi-rs/**"
     ],
     "extraResources": [],
     "mac": {
@@ -82,7 +83,8 @@
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "notarize": true
+      "notarize": true,
+      "x64ArchFiles": "**/node_modules/better-sqlite3/prebuilds/*.node"
     },
     "dmg": {
       "title": "BalanceIQ ${version}",
