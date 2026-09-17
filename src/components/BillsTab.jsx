@@ -308,6 +308,21 @@ export default function BillsTab({ lang = 'fr' }) {
     setRead(null); setDoc(null); setActiveField(null); setPicked({}); setPicks({}); setPickError('');
   };
 
+  // A bill read elsewhere (the receipt scanner) arrives as a prefill, so it is
+  // recorded once, in the one place that reaches the ledger and the return.
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await window.api?.storage?.get('balanceiq-bill-prefill');
+        if (!r?.value) return;
+        await window.api.storage.set('balanceiq-bill-prefill', '');
+        const p = JSON.parse(r.value);
+        setEditing({ ...blank(), supplier_name: p.supplier_name || '', bill_date: p.bill_date || today(),
+          amount: p.amount || '', tps_paid: p.tps_paid || '', tvq_paid: p.tvq_paid || '', note: p.note || '' });
+      } catch (_) { /* nothing to prefill */ }
+    })();
+  }, []);
+
   // Every value lands in an ordinary editable field, marked with where it came
   // from, and nothing is saved until Save. The expense account comes only from
   // this supplier's previous bill, never from the document.
