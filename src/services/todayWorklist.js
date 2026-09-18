@@ -189,6 +189,25 @@ export function buildWorklist({
     });
   }
 
+  // A statement period that ended and was never imported: nothing on screen
+  // said so, and the account looked up to date because nothing was open.
+  for (const acc of reconcile) {
+    if (acc?.state !== 'to_import' || !acc.due?.length) continue;
+    const first = acc.due[0];
+    const more = acc.due.length - 1;
+    items.push({
+      id: `import-${acc.accountId}-${first.periodEnd}`,
+      tone: 'warn',
+      title: en
+        ? `Import ${acc.name}: ${first.periodStart} to ${first.periodEnd}`
+        : `Importer ${acc.name} : ${first.periodStart} au ${first.periodEnd}`,
+      detail: en
+        ? `That statement period has ended and is not in the books yet.${more ? ` ${more} more after it.` : ''}`
+        : `Cette période de relevé est terminée et n'est pas encore dans les livres.${more ? ` ${more} autre${more > 1 ? 's' : ''} après.` : ''}`,
+      target: { kind: 'section', section: 'bank', tab: 'comptes' },
+    });
+  }
+
   if (needsCategorizing > 0) {
     items.push({
       id: 'bank-categorize', tone: 'warn',

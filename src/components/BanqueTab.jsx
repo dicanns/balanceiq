@@ -228,6 +228,13 @@ const UI = {
     stmtOlder:        (n) => `+ ${n} relevé(s) plus ancien(s)`,
     stmtFewer:        'Masquer les anciens',
     stmtClosed:       'Clôturé',
+    acctUpToDate:     (d) => `\u2713 À jour jusqu'au ${d}`,
+    acctToImport:     (a, b, more) => `Relevé à importer : ${a} \u2192 ${b}${more ? ` (+ ${more} autre${more > 1 ? 's' : ''})` : ''}`,
+    acctInProgress:   (a, b, why) => `${a} \u2192 ${b} en cours : ${why}`,
+    acctReady:        (a, b) => `${a} \u2192 ${b} prêt à clôturer`,
+    acctNoStatements: 'Aucun relevé importé',
+    acctSummary:      (n, t) => `${n} compte${n > 1 ? 's' : ''} sur ${t} à jour`,
+    acctGoReconcile:  'Rapprocher',
     openingOwed:      'dû',
     openingDateFix:   (d) => `Mettre la date d'ouverture au ${d}`,
     openingBalanceLbl:'Solde d\'ouverture',
@@ -453,6 +460,13 @@ const UI = {
     stmtOlder:        (n) => `+ ${n} older statement${n > 1 ? 's' : ''}`,
     stmtFewer:        'Hide older',
     stmtClosed:       'Closed',
+    acctUpToDate:     (d) => `\u2713 Up to date through ${d}`,
+    acctToImport:     (a, b, more) => `Statement to import: ${a} \u2192 ${b}${more ? ` (+ ${more} more)` : ''}`,
+    acctInProgress:   (a, b, why) => `${a} \u2192 ${b} in progress: ${why}`,
+    acctReady:        (a, b) => `${a} \u2192 ${b} ready to close`,
+    acctNoStatements: 'No statement imported yet',
+    acctSummary:      (n, t) => `${n} of ${t} account${t > 1 ? 's' : ''} up to date`,
+    acctGoReconcile:  'Reconcile',
     openingOwed:      'owed',
     openingDateFix:   (d) => `Set the opening date to ${d}`,
     openingBalanceLbl:'Opening balance',
@@ -657,6 +671,8 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   useEffect(() => { loadAccounts(); loadCoa(); loadLearnedRules(); }, []);
   useEffect(() => { if (subTab === 'transactions') { loadTransactions(); loadStatements(); loadRecPreview(); } }, [subTab, selectedAccount, txFilter, txDateFrom, txDateTo]);
   useEffect(() => { if (subTab === 'rapprochements') { loadStatements(); loadRecPreview(); loadRecStatus(); } }, [subTab, selectedAccount]);
+  // The Accounts tab says where each account stands, so it needs the same status.
+  useEffect(() => { if (subTab === 'comptes') loadRecStatus(); }, [subTab, accounts]);
   useEffect(() => { if (subTab === 'regles') loadLearnedRules(); }, [subTab]);
 
   // Guard AFTER all hooks - React Rules of Hooks require hooks before any early return
@@ -1165,7 +1181,17 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
       {subTab === 'comptes' && (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <h3 style={{ margin: 0, fontSize: 15, color: C.text }}>🏦 {T.tabComptes}</h3>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 15, color: C.text }}>🏦 {T.tabComptes}</h3>
+              {recStatus.length > 0 && (() => {
+                const done = recStatus.filter(r => r.state === 'up_to_date').length;
+                return (
+                  <div style={{ fontSize: 12, marginTop: 3, color: done === recStatus.length ? '#22c55e' : C.sub }}>
+                    {T.acctSummary(done, recStatus.length)}
+                  </div>
+                );
+              })()}
+            </div>
             <button onClick={openNewAccount} style={btnStyle('#f97316')}>{T.addAccount}</button>
           </div>
 
@@ -1180,6 +1206,29 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
                     <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
                       {typeLabel(acc.account_type)} · {acc.account_number} {coaName(acc, 'coa_')}
                     </div>
+                    {(() => {
+                      // Where this account stands on its statements, without a trip
+                      // to Reconciliations.
+                      const st = recStatus.find(r => r.accountId === acc.id);
+                      if (!st) return null;
+                      const why = st.blockers?.includes('balance_not_set') ? T.recBlockedBalance
+                        : st.blockers?.includes('lines_not_counted') ? T.recBlockedLines(st.notCounted)
+                        : st.blockers?.includes('variance') ? T.recBlockedVar(fmt(Math.abs(st.ecart))) : '';
+                      const line = st.state === 'up_to_date' ? { text: T.acctUpToDate(fmtDate(st.lastReconciledEnd || st.lastStatementEnd)), color: '#22c55e' }
+                        : st.state === 'to_import' ? { text: T.acctToImport(fmtDate(st.due[0].periodStart), fmtDate(st.due[0].periodEnd), st.due.length - 1), color: '#f59e0b' }
+                        : st.state === 'ready' ? { text: T.acctReady(fmtDate(st.next.periodStart), fmtDate(st.next.periodEnd)), color: '#22c55e', go: true }
+                        : st.state === 'in_progress' ? { text: T.acctInProgress(fmtDate(st.next.periodStart), fmtDate(st.next.periodEnd), why), color: '#f59e0b', go: true }
+                        : { text: T.acctNoStatements, color: C.muted };
+                      return (
+                        <div style={{ fontSize: 12, fontWeight: 600, color: line.color, marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <span>{line.text}</span>
+                          {line.go && (
+                            <button onClick={() => { setSelectedAccount(acc); setSubTab('rapprochements'); }}
+                              style={{ ...btnSmall, fontSize: 11, padding: '2px 8px' }}>{T.acctGoReconcile}</button>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: 13, color: C.sub }}>{T.openingBalanceLbl}: {fmt(toShown(Number(acc.opening_balance) || 0, acc))}{owedAccount(acc) ? ` ${T.openingOwed}` : ''} · {fmtDate(acc.opening_date)}</div>

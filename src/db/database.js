@@ -4319,8 +4319,33 @@ function bankReconcilePreview(bankAccountId, asOfDate, _db) {
 
 // Where every account stands on reconciliation, so nothing waits unnoticed
 // behind a dropdown: what was last closed, what is open, what is in the way.
-function bankReconciliationStatus(_db) {
+// The statement periods that have ended since an account's last statement and
+// were never imported. Each account keeps its own cycle: a card closing on the
+// 5th runs the 6th to the 5th, a bank statement ending on the last day of the
+// month runs month to month. Up to twelve, oldest first.
+function _periodsDue(lastEnd, today) {
+  if (!lastEnd || !/^\d{4}-\d{2}-\d{2}$/.test(lastEnd)) return [];
+  const [y0, m0, d0] = lastEnd.split('-').map(Number);
+  const monthEnd = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();       // m is 1-12
+  const endOfMonth = d0 === monthEnd(y0, m0);
+  const iso = (y, m, d) => `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  const nextDay = (s) => new Date(Date.parse(s + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10);
+  const out = [];
+  let prevEnd = lastEnd;
+  for (let k = 1; k <= 12; k++) {
+    const total = (m0 - 1) + k;
+    const y = y0 + Math.floor(total / 12), m = (total % 12) + 1;
+    const end = iso(y, m, endOfMonth ? monthEnd(y, m) : Math.min(d0, monthEnd(y, m)));
+    if (end >= today) break;
+    out.push({ periodStart: nextDay(prevEnd), periodEnd: end });
+    prevEnd = end;
+  }
+  return out;
+}
+
+function bankReconciliationStatus(_db, today) {
   const db = _db || getDb();
+  const asOf = today || new Date().toISOString().slice(0, 10);
   const accounts = db.prepare(
     `SELECT * FROM bank_accounts WHERE COALESCE(is_archived, 0) = 0 ORDER BY name`
   ).all();
@@ -4352,9 +4377,20 @@ function bankReconciliationStatus(_db) {
       if (notCounted > 0) blockers.push('lines_not_counted');
       if (ecart != null && Math.abs(ecart) > 0.02) blockers.push('variance');
     }
+    // What is waiting to be imported: periods ended since the newest statement.
+    const lastStatementEnd = db.prepare(
+      `SELECT MAX(period_end) AS d FROM bank_statements WHERE bank_account_id=?`
+    ).get(acc.id)?.d || null;
+    const due = _periodsDue(lastStatementEnd, asOf);
+    // One word for where the account stands, most pressing first.
+    const state = !lastStatementEnd ? 'no_statements'
+      : next ? (blockers.length ? 'in_progress' : 'ready')
+      : due.length ? 'to_import'
+      : 'up_to_date';
     return {
       accountId: acc.id, name: acc.name, accountType: acc.account_type,
       owedView: acc.account_type === 'credit_card' || acc.account_type === 'line_of_credit',
+      state, due, lastStatementEnd,
       lastReconciledEnd: lastClosed,
       openCount: open.length,
       next: next ? { id: next.id, periodStart: next.period_start, periodEnd: next.period_end, endingBalance: next.ending_balance } : null,
@@ -7413,7 +7449,7 @@ module.exports = {
   periodList, periodOpen, periodClose, periodReopen,
   glAuditLogList,
   bankAccountsList, bankAccountCreate, bankAccountUpdate, bankAccountArchive,
-  bankStatementImport, bankStatementPdfCheck, bankResyncOpeningEntries, bankStatementsList, bankStatementDelete, bankStatementUpdate,
+  bankStatementImport, bankStatementPdfCheck, bankResyncOpeningEntries, _periodsDue, bankStatementsList, bankStatementDelete, bankStatementUpdate,
   parseBankCSV: _parseBankCSV, parseBankCsvFile, normalizeStatementDate, COA_TYPES,
   bankAccountPostOpeningBalance, bankPostMissingEntries, bankFindOrphanEntries, bankSubledgerBalances,
   bankTransactionsList, bankTransactionUnmatch, bankTransactionCategorize,
