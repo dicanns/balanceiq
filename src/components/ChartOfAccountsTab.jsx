@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ColumnMapper, { rolesFromMap, mapFromRoles } from './ColumnMapper.jsx';
+import { parseCsvLines, inferCoaColumns } from '../utils/importParse.mjs';
 
 const TYPE_LABELS = {
   asset:     { fr: 'Actifs',          en: 'Assets' },
@@ -21,6 +23,20 @@ const UI = {
     showArchived:  'Afficher archivés',
     hideArchived:  'Masquer archivés',
     import:        'Importer CSV',
+    mapTitle:      'Vérifiez les colonnes',
+    mapHint:       "Chaque colonne du fichier est lue selon ce que vous choisissez ici. Si l'app s'est trompée, corrigez-la avant d'importer.",
+    mapHasHeader:  'La première ligne contient les titres de colonnes',
+    mapReadsAs:    'Première ligne lue comme',
+    mapNeedCols:   'Il faut au minimum un numéro de compte, un nom et un type.',
+    mapImport:     'Importer ces colonnes',
+    mapCancel:     'Annuler',
+    roleColumn:    'Colonne',
+    roleIgnore:    '(ignorer)',
+    roleNumber:    'N° de compte',
+    roleNameFr:    'Nom (FR)',
+    roleNameEn:    'Nom (EN)',
+    roleType:      'Type',
+    roleTaxHint:   'Indice fiscal',
     importing:     'Importation…',
     export:        'Exporter CSV',
     addAccount:    '+ Ajouter un compte',
@@ -60,6 +76,20 @@ const UI = {
     showArchived:  'Show archived',
     hideArchived:  'Hide archived',
     import:        'Import CSV',
+    mapTitle:      'Check the columns',
+    mapHint:       'Every column in the file is read as whatever you pick here. If the app guessed wrongly, correct it before importing.',
+    mapHasHeader:  'The first line holds column titles',
+    mapReadsAs:    'First line reads as',
+    mapNeedCols:   'An account number, a name and a type are the minimum.',
+    mapImport:     'Import these columns',
+    mapCancel:     'Cancel',
+    roleColumn:    'Column',
+    roleIgnore:    '(ignore)',
+    roleNumber:    'Account number',
+    roleNameFr:    'Name (FR)',
+    roleNameEn:    'Name (EN)',
+    roleType:      'Type',
+    roleTaxHint:   'Tax hint',
     importing:     'Importing…',
     export:        'Export CSV',
     addAccount:    '+ Add account',
@@ -232,6 +262,12 @@ export default function ChartOfAccountsTab({ lang = 'fr', t: theme }) {
   const [modal, setModal] = useState(null); // null | 'create' | account object
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  // The failsafe: a file whose columns are in another order is corrected here
+  // rather than imported wrongly. Same grid as the bank statement import.
+  const [importText, setImportText] = useState(null);
+  const [mapLines, setMapLines] = useState([]);
+  const [mapRoles, setMapRoles] = useState([]);
+  const [mapHasHeader, setMapHasHeader] = useState(false);
   const fileRef = useRef();
   const t = UI[lang] || UI.fr;
 
@@ -290,17 +326,54 @@ export default function ChartOfAccountsTab({ lang = 'fr', t: theme }) {
     URL.revokeObjectURL(url);
   }
 
+  const COA_ROLE_KEYS = ['account_number', 'name_fr', 'name_en', 'type', 'tax_hint'];
+  const coaRoleOptions = [
+    { key: 'ignore', label: t.roleIgnore }, { key: 'account_number', label: t.roleNumber },
+    { key: 'name_fr', label: t.roleNameFr }, { key: 'name_en', label: t.roleNameEn },
+    { key: 'type', label: t.roleType }, { key: 'tax_hint', label: t.roleTaxHint },
+  ];
+
   async function handleImportFile(e) {
     const file = e.target.files[0];
     if (!file) return;
-    setImporting(true);
+    if (fileRef.current) fileRef.current.value = '';
+    setImportResult(null);
     const text = await file.text();
-    const result = await window.api.coa.importCSV(text);
+    const { rows } = parseCsvLines(text);
+    if (!rows.length) { setImportResult({ created: 0, skipped: 0, errors: [t.mapNeedCols] }); return; }
+    const width = rows.reduce((w, r) => Math.max(w, r.length), 0);
+    // No column of a chart of accounts holds a date, so the statement test for
+    // a header says nothing here. Column titles are what a title row looks like.
+    const header = rows[0].some(c => /account_?number|numero|numéro|^type$|name|nom|tax/i.test(String(c || '').trim()));
+    const data = header ? rows.slice(1) : rows;
+    const guess = inferCoaColumns(data.length ? data : rows, header ? rows[0] : null);
+    setImportText(text);
+    setMapHasHeader(header);
+    setMapLines(rows.slice(0, header ? 6 : 5));
+    setMapRoles(rolesFromMap(guess, width, COA_ROLE_KEYS));
+  }
+
+  const mapReady = () => mapRoles.includes('account_number') && mapRoles.includes('name_fr') && mapRoles.includes('type');
+  const cancelImport = () => { setImportText(null); setMapLines([]); setMapRoles([]); setMapHasHeader(false); };
+
+  async function runImport() {
+    if (!importText || !mapReady()) return;
+    setImporting(true);
+    const result = await window.api.coa.importCSV(importText, mapFromRoles(mapRoles, mapHasHeader, COA_ROLE_KEYS));
     setImportResult(result);
     setImporting(false);
+    cancelImport();
     load();
-    if (fileRef.current) fileRef.current.value = '';
   }
+
+  // The first data row as the importer will read it, so a wrong column shows
+  // before any account is created.
+  const mapPreview = () => {
+    const data = mapHasHeader ? mapLines.slice(1) : mapLines;
+    if (!data.length || !mapRoles.length) return null;
+    const val = (role) => { const i = mapRoles.indexOf(role); return i >= 0 ? String(data[0][i] ?? '').trim() : ''; };
+    return { number: val('account_number'), name: val('name_fr'), type: val('type').toLowerCase() };
+  };
 
   return (
     <div style={{ padding:'16px 20px 40px', fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif", background:C.card, borderRadius:12, color:C.text, minHeight:400 }}>
@@ -329,6 +402,35 @@ export default function ChartOfAccountsTab({ lang = 'fr', t: theme }) {
         <button onClick={handleExport} style={btnSecStyle}>{t.export}</button>
         <button onClick={() => setModal('create')} style={btnPrimStyle}>{t.addAccount}</button>
       </div>
+
+      {mapLines.length > 0 && (() => {
+        const p = mapPreview();
+        const known = ['asset','liability','equity','revenue','cogs','expense'];
+        return (
+          <div style={{ marginBottom: 16 }}>
+            <ColumnMapper
+              lines={mapLines} roles={mapRoles} hasHeader={mapHasHeader}
+              options={coaRoleOptions} onRoles={setMapRoles} onHasHeader={setMapHasHeader}
+              labels={{ title: t.mapTitle, hint: t.mapHint, hasHeader: t.mapHasHeader, readsAs: t.mapReadsAs, columnLabel: t.roleColumn }}
+              warnings={[!mapReady() ? t.mapNeedCols : null]}
+              C={C}
+              preview={p && (
+                <>
+                  <strong style={{ color: p.number ? C.text : '#f87171' }}>{p.number || '?'}</strong>
+                  {' \u00b7 '}<span style={{ color: C.text }}>{p.name || '?'}</span>
+                  {' \u00b7 '}<strong style={{ color: known.includes(p.type) ? '#86efac' : '#f87171' }}>{p.type || '?'}</strong>
+                </>
+              )}
+            />
+            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+              <button onClick={runImport} disabled={importing || !mapReady()} style={{ ...btnPrimStyle, opacity: (importing || !mapReady()) ? 0.5 : 1 }}>
+                {importing ? t.importing : t.mapImport}
+              </button>
+              <button onClick={cancelImport} style={btnSecStyle}>{t.mapCancel}</button>
+            </div>
+          </div>
+        );
+      })()}
 
       {importResult && (
         <div style={{ background:'#0f2a1a',border:'1px solid #166534',borderRadius:8,padding:'10px 16px',marginBottom:16,fontSize:13,color:'#86efac' }}>

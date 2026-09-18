@@ -2916,15 +2916,29 @@ const COA_TYPES = ['asset', 'liability', 'equity', 'revenue', 'cogs', 'expense']
 // A chart of accounts from CSV: account_number, name_fr, name_en, type, tax_hint.
 // Splitting on every comma shifted the columns of any name holding one ("Repas,
 // représentation"), and an unknown type went straight into the chart.
-function coaImportCSV(csvString, _db) {
+// The column order is the one this app exports, and a file from anywhere else
+// will not match it. columnMap lets the operator say which column is which,
+// exactly as the bank statement import does.
+const COA_COLUMN_ROLES = ['account_number', 'name_fr', 'name_en', 'type', 'tax_hint'];
+
+function coaImportCSV(csvString, _db, columnMap) {
   const db = _db || getDb();
   const { rows: records, headers } = (() => {
-    const lines = String(csvString || '').replace(/^﻿/, '').split(/\r?\n/).filter(l => l.trim());
-    if (!lines.length) return { rows: [], headers: [] };
-    const delim = detectDelimiter(lines[0]);
-    const first = _splitCsvLine(lines[0], delim);
-    const isHeader = first.some(c => /account_number|numero|numéro|type/i.test(c));
-    return { headers: isHeader ? first : [], rows: (isHeader ? lines.slice(1) : lines).map(l => ({ line: l, cols: _splitCsvLine(l, delim) })) };
+    const { rows: all } = parseCsvLines(csvString);
+    if (!all.length) return { rows: [], headers: [] };
+    const guessedHeader = all[0].some(c => /account_number|numero|numéro|type/i.test(c));
+    const isHeader = (columnMap && typeof columnMap.hasHeader === 'boolean') ? columnMap.hasHeader : guessedHeader;
+    const at = (cols, role, fallback) => {
+      const idx = columnMap && Number.isInteger(columnMap[role]) ? columnMap[role] : fallback;
+      return idx >= 0 ? cols[idx] : undefined;
+    };
+    return {
+      headers: isHeader ? all[0] : [],
+      rows: (isHeader ? all.slice(1) : all).map(cols => ({
+        line: cols.join(','),
+        cols: COA_COLUMN_ROLES.map((role, i) => at(cols, role, columnMap ? -1 : i)),
+      })),
+    };
   })();
   let created = 0, skipped = 0;
   const errors = [];
@@ -3561,7 +3575,10 @@ function parseBankCsvFile(csvText, columnMap) {
   const { rows: allLines } = parseCsvLines(csvText);
   if (!allLines.length) return { rows: [], meta: { amountsFrom: 'none', hadHeader: false, closingBalance: null } };
 
-  const hadHeader = looksLikeHeader(allLines[0]);
+  // The operator's own answer about the header wins over the guess.
+  const hadHeader = (columnMap && typeof columnMap.hasHeader === 'boolean')
+    ? columnMap.hasHeader
+    : looksLikeHeader(allLines[0]);
   const records = (hadHeader ? allLines.slice(1) : allLines).filter(r => r.some(c => (c || '').trim()));
   if (!records.length) return { rows: [], meta: { amountsFrom: 'none', hadHeader, closingBalance: null } };
 
@@ -3753,7 +3770,7 @@ function _runMatchingEngine(db, bankAccountId, txIds) {
   }
 }
 
-function bankStatementImport({ bankAccountId, fileText, fileName, fileType, periodStart, periodEnd, endingBalance }, _db) {
+function bankStatementImport({ bankAccountId, fileText, fileName, fileType, periodStart, periodEnd, endingBalance, columnMap }, _db) {
   const db = _db || getDb();
   const fileHash = _sha256(fileText);
 
@@ -3764,7 +3781,11 @@ function bankStatementImport({ bankAccountId, fileText, fileName, fileType, peri
   // Parse
   const account = db.prepare(`SELECT * FROM bank_accounts WHERE id=?`).get(bankAccountId);
   if (!account) throw new Error('ERR_BANK_ACCOUNT_NOT_FOUND');
-  const savedMap = account.csv_column_map ? JSON.parse(account.csv_column_map) : null;
+  // A mapping the operator set by hand for this file wins, and is remembered for
+  // the next statement from the same institution.
+  let savedMap = null;
+  try { savedMap = account.csv_column_map ? JSON.parse(account.csv_column_map) : null; } catch (_) { savedMap = null; }
+  const usingMap = columnMap && typeof columnMap === 'object' ? columnMap : savedMap;
 
   let rows = [];
   let parsedEndingBalance = null;
@@ -3775,15 +3796,15 @@ function bankStatementImport({ bankAccountId, fileText, fileName, fileType, peri
     rows = _parseBankOFX(fileText);
     parsedEndingBalance = _parseOFXLedgerBalance(fileText);
   } else {
-    const parsed = parseBankCsvFile(fileText, savedMap);
+    const parsed = parseBankCsvFile(fileText, usingMap);
     rows = parsed.rows;
     // A card export with one amount column writes a purchase as a positive
     // number, and in the books a purchase on the card is money out. A file with
     // separate charge and payment columns already carries the direction, and a
     // file whose amounts are mostly negative is already signed: turning either
     // around would reverse every line. A saved mapping overrides all of it.
-    const sign = savedMap && (savedMap.amountSign === 1 || savedMap.amountSign === -1)
-      ? savedMap.amountSign
+    const sign = usingMap && (usingMap.amountSign === 1 || usingMap.amountSign === -1)
+      ? usingMap.amountSign
       : (isOwedAccount && parsed.meta.amountsFrom === 'single' && parsed.meta.mostlyPositive ? -1 : 1);
     if (sign === -1) rows = rows.map(r => ({ ...r, amount: r.amount === 0 ? 0 : -r.amount }));
     // A running balance in the file is the closing balance, so nobody has to
@@ -3866,6 +3887,12 @@ function bankStatementImport({ bankAccountId, fileText, fileName, fileType, peri
           .run(impliedOpening, dayBefore, bankAccountId);
         openingSet = { balance: impliedOpening, date: dayBefore };
       }
+    }
+
+    // Remember a mapping set by hand, so the next file from the same place needs
+    // no answering again.
+    if (columnMap && typeof columnMap === 'object') {
+      db.prepare(`UPDATE bank_accounts SET csv_column_map=? WHERE id=?`).run(JSON.stringify(columnMap), bankAccountId);
     }
 
     // Run matching engine

@@ -194,3 +194,80 @@ export function decodeXmlEntities(s) {
     .replace(/&quot;/gi, '"').replace(/&apos;|&#39;/gi, "'")
     .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(+n));
 }
+
+/**
+ * Which column of a chart-of-accounts file holds what. Same idea as
+ * inferColumns for statements: a guess good enough that most files need no
+ * correcting, and a starting point for the operator when it is wrong.
+ *
+ * `rows` are data rows (no header line). `headers`, when the file has titles,
+ * is matched first, because a title is better evidence than the values.
+ */
+export function inferCoaColumns(rows, headers = null) {
+  const width = (rows || []).reduce((w, r) => Math.max(w, r.length), 0);
+  const out = { account_number: -1, name_fr: -1, name_en: -1, type: -1, tax_hint: -1 };
+  const taken = new Set();
+  const claim = (role, idx) => {
+    if (idx < 0 || taken.has(idx) || out[role] >= 0) return;
+    out[role] = idx; taken.add(idx);
+  };
+  const col = (i) => (rows || []).map(r => String(r[i] ?? '').trim());
+  const hits = (i, re) => { const c = col(i).filter(Boolean); return c.length ? c.filter(v => re.test(v)).length / c.length : 0; };
+
+  if (headers) {
+    const byTitle = [
+      ['account_number', /account_?number|num(e|é)ro|^no\b|^num\b|compte/i],
+      ['name_fr', /name_?fr|nom/i],
+      ['name_en', /name_?en|name$|^name/i],
+      ['type', /^type$|cat(e|é)gorie|classe/i],
+      ['tax_hint', /tax|tps|tvq|gst|qst/i],
+    ];
+    for (const [role, re] of byTitle) {
+      const idx = headers.findIndex((h, i) => !taken.has(i) && re.test(String(h || '')));
+      claim(role, idx);
+    }
+  }
+
+  // Values, for anything a title did not settle.
+  const types = /^(asset|liability|equity|revenue|cogs|expense)$/i;
+  for (let i = 0; i < width; i++) if (hits(i, types) >= 0.6) { claim('type', i); break; }
+  for (let i = 0; i < width; i++) if (hits(i, /^\d{3,6}(\.\d+)?$/) >= 0.8) { claim('account_number', i); break; }
+  for (let i = 0; i < width; i++) if (hits(i, /^(tps|tvq|both|none|gst|qst|tps\+tvq)$/i) >= 0.6) { claim('tax_hint', i); break; }
+
+  // The remaining text columns, widest first, are the names.
+  const textCols = [];
+  for (let i = 0; i < width; i++) {
+    if (taken.has(i)) continue;
+    const c = col(i).filter(Boolean);
+    if (!c.length || c.every(v => /^-?[\d\s.,$%]+$/.test(v))) continue;
+    textCols.push({ i, len: c.reduce((a, v) => a + v.length, 0) / c.length });
+  }
+  textCols.sort((a, b) => b.len - a.len || a.i - b.i);
+  if (textCols[0]) claim('name_fr', textCols[0].i);
+  if (textCols[1]) claim('name_en', textCols[1].i);
+  return out;
+}
+
+/**
+ * Whether a spreadsheet's first row is column titles rather than data.
+ *
+ * The test that actually works on exports: a title row is text where the rows
+ * below it are numbers. A product-name column is text all the way down, so
+ * "the first row is text" alone proves nothing.
+ */
+export function looksLikeSheetHeader(rows) {
+  if (!rows || rows.length < 2) return false;
+  const numeric = (v) => {
+    const s = String(v ?? '').trim();
+    return s !== '' && !Number.isNaN(Number(s.replace(/[\s,$]/g, '')));
+  };
+  const width = rows.reduce((w, r) => Math.max(w, r.length), 0);
+  const body = rows.slice(1);
+  for (let i = 0; i < width; i++) {
+    const below = body.map(r => r[i]).filter(v => String(v ?? '').trim() !== '');
+    if (!below.length) continue;
+    const mostlyNumbers = below.filter(numeric).length / below.length >= 0.8;
+    if (mostlyNumbers && !numeric(rows[0][i]) && String(rows[0][i] ?? '').trim() !== '') return true;
+  }
+  return false;
+}

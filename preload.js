@@ -233,7 +233,7 @@ contextBridge.exposeInMainWorld('api', {
     update:               (id, fields)   => ipcRenderer.invoke('coa:update', id, fields),
     archive:              (id)           => ipcRenderer.invoke('coa:archive', id),
     unarchive:            (id)           => ipcRenderer.invoke('coa:unarchive', id),
-    importCSV:            (csv)          => ipcRenderer.invoke('coa:importCSV', csv),
+    importCSV:            (csv, map)     => ipcRenderer.invoke('coa:importCSV', csv, map),
     exportCSV:            ()             => ipcRenderer.invoke('coa:exportCSV'),
     getMappingSuggestions:(names)        => ipcRenderer.invoke('coa:getMappingSuggestions', names),
     setItcPct:            (id, pct)      => ipcRenderer.invoke('coa:setItcPct', id, pct),

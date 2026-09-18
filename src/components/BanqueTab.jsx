@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import ColumnMapper, { rolesFromMap, mapFromRoles } from './ColumnMapper.jsx';
+import { parseCsvLines, looksLikeHeader, inferColumns, normalizeStatementDate, detectNumericDateOrder, parseStatementAmount } from '../utils/importParse.mjs';
 import { looksLikeCapitalPurchase } from '../utils/calculations.js';
 import CapexGuide from './CapexGuide.jsx';
 
@@ -72,6 +74,21 @@ const UI = {
     periodEnd:        'Fin de période',
     endingBalance:    'Solde final ($)',
     endingBalanceOwed:'Solde dû sur le relevé ($)',
+    mapTitle:         'Colonnes du fichier',
+    mapHint:          'Si une colonne est mal lue, changez-la ici. Votre choix est retenu pour ce compte.',
+    mapHasHeader:     'La première ligne contient les titres de colonnes',
+    roleColumn:       'Colonne',
+    mapReadsAs:       'Première ligne lue comme',
+    mapNeedDate:      'Indiquez quelle colonne contient la date.',
+    mapNeedAmount:    'Indiquez la colonne des montants (ou Débit et Crédit).',
+    mapAuto:          'Fichier lu automatiquement (OFX/QFX): aucun réglage nécessaire.',
+    roleIgnore:       'Ignorer',
+    roleDate:         'Date',
+    roleDesc:         'Description',
+    roleAmount:       'Montant (signé)',
+    roleDebit:        'Débit / achat',
+    roleCredit:       'Crédit / paiement',
+    roleBalance:      'Solde',
     balanceNotSet:    'Non défini',
     setBalance:       'Définir le solde du relevé',
     balanceNotSetHint:'Ce relevé n\'a pas de solde final: un fichier CSV n\'en contient pas. Saisissez celui inscrit sur le relevé pour pouvoir rapprocher.',
@@ -255,6 +272,21 @@ const UI = {
     periodEnd:        'Period End',
     endingBalance:    'Ending Balance ($)',
     endingBalanceOwed:'Balance owed on the statement ($)',
+    mapTitle:         'Columns in this file',
+    mapHint:          'If a column is read wrongly, change it here. Your choice is remembered for this account.',
+    mapHasHeader:     'The first line holds column titles',
+    roleColumn:       'Column',
+    mapReadsAs:       'First line reads as',
+    mapNeedDate:      'Say which column holds the date.',
+    mapNeedAmount:    'Say which column holds the amounts (or Charge and Payment).',
+    mapAuto:          'This file is read automatically (OFX/QFX): nothing to set.',
+    roleIgnore:       'Ignore',
+    roleDate:         'Date',
+    roleDesc:         'Description',
+    roleAmount:       'Amount (signed)',
+    roleDebit:        'Charge / debit',
+    roleCredit:       'Payment / credit',
+    roleBalance:      'Balance',
     balanceNotSet:    'Not set',
     setBalance:       'Set the statement balance',
     balanceNotSetHint:'This statement has no closing balance: a CSV file does not carry one. Enter the one printed on the statement so it can be reconciled.',
@@ -450,6 +482,9 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   const [showImportModal, setShowImportModal]     = useState(false);
   const [importAccountId, setImportAccountId]     = useState(null);
   const [importFile, setImportFile]               = useState(null);
+  const [mapLines, setMapLines]                   = useState([]);      // first lines of the chosen file, as fields
+  const [mapRoles, setMapRoles]                   = useState([]);      // one role per column
+  const [mapHasHeader, setMapHasHeader]           = useState(false);
   const [importPeriodStart, setImportPeriodStart] = useState('');
   const [importPeriodEnd, setImportPeriodEnd]     = useState('');
   const [importEndBal, setImportEndBal]           = useState('');
@@ -621,6 +656,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
     setImportPeriodEnd('');
     setImportEndBal('');
     setImportMsg('');
+    setMapLines([]); setMapRoles([]); setMapHasHeader(false);
     setShowImportModal(true);
   };
 
@@ -628,6 +664,64 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
     setShowImportModal(false);
     setImportMsg(''); setImportOk(null); setImportFile(null);
   };
+
+  // The failsafe: whatever the file looks like, the operator can say which
+  // column is which. The app's guess fills it in first, and a saved answer for
+  // this account fills it in instead when there is one.
+  const ROLE_KEYS = ['date', 'description', 'amount', 'debit', 'credit', 'balance'];
+  const roleOptions = [
+    { key: 'ignore', label: T.roleIgnore }, { key: 'date', label: T.roleDate },
+    { key: 'description', label: T.roleDesc }, { key: 'amount', label: T.roleAmount },
+    { key: 'debit', label: T.roleDebit }, { key: 'credit', label: T.roleCredit },
+    { key: 'balance', label: T.roleBalance },
+  ];
+
+  const prepareMapping = async (file, accountId) => {
+    setMapLines([]); setMapRoles([]); setMapHasHeader(false);
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    if (['ofx', 'qfx', 'qbo'].includes(ext)) return;
+    try {
+      const text = await file.text();
+      const { rows } = parseCsvLines(text);
+      if (!rows.length) return;
+      const width = rows.reduce((w, r) => Math.max(w, r.length), 0);
+      const acc = accounts.find(a => a.id === accountId);
+      let saved = null;
+      try { saved = acc?.csv_column_map ? JSON.parse(acc.csv_column_map) : null; } catch (_) { saved = null; }
+      const header = saved && typeof saved.hasHeader === 'boolean' ? saved.hasHeader : looksLikeHeader(rows[0]);
+      const data = header ? rows.slice(1) : rows;
+      const guess = saved ? null : inferColumns(data.length ? data : rows);
+      setMapLines(rows.slice(0, header ? 6 : 5));
+      setMapHasHeader(header);
+      setMapRoles(saved ? rolesFromMap(saved, width, ROLE_KEYS) : rolesFromMap({
+        date: guess.dateIdx, description: guess.descIdx, amount: guess.amtIdx,
+        debit: guess.debitIdx, credit: guess.creditIdx, balance: guess.balIdx,
+      }, width, ROLE_KEYS));
+    } catch (_) { /* the import itself will report anything unreadable */ }
+  };
+
+  // The first data row as the app will store it, so a wrong column is obvious
+  // before anything is imported.
+  const mapPreview = () => {
+    if (!mapLines.length || !mapRoles.length) return null;
+    const data = mapHasHeader ? mapLines.slice(1) : mapLines;
+    if (!data.length) return null;
+    const idx = (role) => mapRoles.indexOf(role);
+    const row = data[0];
+    const order = detectNumericDateOrder(data.map(r => r[idx('date')]));
+    const date = idx('date') >= 0 ? normalizeStatementDate(row[idx('date')], order) : null;
+    const desc = idx('description') >= 0 ? (row[idx('description')] || '') : '';
+    let amount = null;
+    if (idx('amount') >= 0) amount = parseStatementAmount(row[idx('amount')]);
+    else if (idx('debit') >= 0 || idx('credit') >= 0) {
+      const d = idx('debit') >= 0 ? Math.abs(parseStatementAmount(row[idx('debit')]) || 0) : 0;
+      const c = idx('credit') >= 0 ? Math.abs(parseStatementAmount(row[idx('credit')]) || 0) : 0;
+      amount = c - d;
+    }
+    return { date, desc, amount };
+  };
+  const mapReady = () => mapLines.length === 0
+    || (mapRoles.includes('date') && (mapRoles.includes('amount') || mapRoles.includes('debit') || mapRoles.includes('credit')));
 
   const handleImport = async () => {
     if (!importFile) return;
@@ -645,6 +739,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
         periodStart: importPeriodStart || undefined,
         periodEnd:   importPeriodEnd   || undefined,
         endingBalance: importEndBal ? toStored(parseFloat(importEndBal), accounts.find(a => a.id === importAccountId)) : undefined,
+        columnMap: mapLines.length ? mapFromRoles(mapRoles, mapHasHeader, ROLE_KEYS) : undefined,
       });
       const acc = accounts.find(a => a.id === importAccountId);
       setImportMsg(T.importResult(result) + T.importResultExtra(result, result.openingSet ? fmt(toShown(result.openingSet.balance, acc)) : ''));
@@ -1341,8 +1436,34 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
         <ModalOverlay surface={C.card} edge={C.border} onClose={() => setShowImportModal(false)}>
           <h3 style={{ margin: '0 0 16px', color: C.text }}>{T.importTitle}</h3>
           <label style={labelStyle}>{T.fileLabel}</label>
-          <input ref={fileInputRef} type='file' accept='.csv,.ofx,.qfx,.qbo' onChange={e => setImportFile(e.target.files?.[0] || null)}
+          <input ref={fileInputRef} type='file' accept='.csv,.ofx,.qfx,.qbo'
+            onChange={e => { const f = e.target.files?.[0] || null; setImportFile(f); if (f) prepareMapping(f, importAccountId); }}
             style={{ ...inputFull, padding: '6px 0', color: C.sub, background: 'none', border: 'none' }} />
+          {importFile && mapLines.length === 0 && (
+            <div style={{ fontSize: 11, color: C.muted, margin: '6px 0 2px' }}>{T.mapAuto}</div>
+          )}
+          {(() => {
+            const p = mapPreview();
+            return (
+              <ColumnMapper
+                lines={mapLines} roles={mapRoles} hasHeader={mapHasHeader}
+                options={roleOptions} onRoles={setMapRoles} onHasHeader={setMapHasHeader}
+                labels={{ title: T.mapTitle, hint: T.mapHint, hasHeader: T.mapHasHeader, readsAs: T.mapReadsAs, columnLabel: T.roleColumn }}
+                warnings={[
+                  !mapRoles.includes('date') ? T.mapNeedDate : null,
+                  mapRoles.includes('date') && !mapReady() ? T.mapNeedAmount : null,
+                ]}
+                C={{ text: C.text, sub: C.sub, muted: C.muted, border: C.border, divider: C.divider, inputBg: C.inputBg }}
+                preview={p && (
+                  <>
+                    <strong style={{ color: p.date ? C.text : '#f87171' }}>{p.date || '?'}</strong>
+                    {' \u00b7 '}<span style={{ color: C.text }}>{p.desc || '-'}</span>
+                    {' \u00b7 '}<strong style={{ color: p.amount == null ? '#f87171' : (p.amount < 0 ? '#f87171' : '#86efac') }}>{p.amount == null ? '?' : fmt(p.amount)}</strong>
+                  </>
+                )}
+              />
+            );
+          })()}
           <label style={labelStyle}>{T.periodStart} ({T.optional})</label>
           <input style={inputFull} type='date' value={importPeriodStart} onChange={e => setImportPeriodStart(e.target.value)} />
           <label style={labelStyle}>{T.periodEnd} ({T.optional})</label>
@@ -1359,7 +1480,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
               <button onClick={closeImportModal} style={btnStyle('#22c55e')}>{T.done}</button>
             ) : (
               <>
-                <button onClick={handleImport} disabled={!importFile || importing} style={btnStyle('#f97316')}>{importing ? T.importing : T.importBtn}</button>
+                <button onClick={handleImport} disabled={!importFile || importing || !mapReady()} style={btnStyle('#f97316')}>{importing ? T.importing : T.importBtn}</button>
                 <button onClick={closeImportModal} style={btnStyle('#374151')}>{T.cancel}</button>
               </>
             )}

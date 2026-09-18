@@ -1794,7 +1794,7 @@ ipcMain.handle('coa:create',             (_e, fields)         => coaCreate(field
 ipcMain.handle('coa:update',             (_e, id, fields)     => coaUpdate(id, fields));
 ipcMain.handle('coa:archive',            (_e, id)             => coaArchive(id));
 ipcMain.handle('coa:unarchive',          (_e, id)             => coaUnarchive(id));
-ipcMain.handle('coa:importCSV',          (_e, csv)            => coaImportCSV(csv));
+ipcMain.handle('coa:importCSV',          (_e, csv, columnMap) => coaImportCSV(csv, undefined, columnMap));
 ipcMain.handle('coa:exportCSV',          ()                   => coaExportCSV());
 ipcMain.handle('coa:getMappingSuggestions', (_e, names)       => coaMappingSuggestions(names));
 

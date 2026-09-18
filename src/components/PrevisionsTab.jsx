@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { downloadWorkbook, readSheetRows } from '../utils/spreadsheet.js';
-import { normalizeStatementDate, detectNumericDateOrder, parseStatementAmount } from '../utils/importParse.mjs';
+import { normalizeStatementDate, detectNumericDateOrder, parseStatementAmount, looksLikeSheetHeader } from '../utils/importParse.mjs';
 import { trackEvent } from '../services/telemetry.js';
 
 // ── Tooltip component ─────────────────────────────────────────────────────────
@@ -594,6 +594,8 @@ function CSVImportView({ products, onImported, savedFormats, onSaveFormat, T, t,
   const [step, setStep] = useState('upload'); // upload | map | unknown | preview | done
   const [rows, setRows] = useState([]);
   const [columns, setColumns] = useState([]);
+  const [sheet, setSheet] = useState([]);          // the file exactly as read
+  const [hasHeader, setHasHeader] = useState(true); // answerable: some exports have no titles
   const [mapping, setMapping] = useState({ prod:'', sold:'', date:'', made:'', remaining:'' });
   const [importDate, setImportDate] = useState(toDateStr(new Date()));
   const [unknownProds, setUnknownProds] = useState([]); // [{name, action:'add'|'ignore'}]
@@ -615,6 +617,26 @@ function CSVImportView({ products, onImported, savedFormats, onSaveFormat, T, t,
   };
   useEffect(() => { loadHistory(); }, []);
 
+  // A file with no titles used to lose its first row to a header that was not
+  // there. The operator can now say, and the columns are named by position.
+  const applyHeader = (raw, header, prevCols) => {
+    const width = raw.reduce((w, r) => Math.max(w, r.length), 0);
+    const word = lang === 'en' ? 'Column' : 'Colonne';
+    const cols = header ? raw[0].map((c, i) => String(c ?? '').trim() || `${word} ${i + 1}`)
+                        : Array.from({ length: width }, (_, i) => `${word} ${i + 1}`);
+    setColumns(cols);
+    setRows((header ? raw.slice(1) : raw).filter(r => r.some(c => c != null && c !== '')));
+    // Keep each choice on the column it was pointing at, by position.
+    if (prevCols) setMapping(m => {
+      const moved = {};
+      for (const k of Object.keys(m)) {
+        const i = prevCols.indexOf(m[k]);
+        moved[k] = i >= 0 && cols[i] ? cols[i] : '';
+      }
+      return moved;
+    });
+  };
+
   const handleFile = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -623,10 +645,10 @@ function CSVImportView({ products, onImported, savedFormats, onSaveFormat, T, t,
       const data = await file.arrayBuffer();
       const json = await readSheetRows(data, { csv: /\.csv$/i.test(file.name) });
       if (!json.length) return;
-      const headers = json[0].map(String);
-      const dataRows = json.slice(1).filter(r => r.some(c=>c!=null&&c!==''));
-      setColumns(headers);
-      setRows(dataRows);
+      const header = looksLikeSheetHeader(json);
+      setSheet(json);
+      setHasHeader(header);
+      applyHeader(json, header);
       // Auto-apply saved format
       if (loadedFormat) {
         try {
@@ -780,7 +802,11 @@ function CSVImportView({ products, onImported, savedFormats, onSaveFormat, T, t,
   return (<div><div style={{fontSize:13,fontWeight:700,marginBottom:12,display:'flex',alignItems:'center',gap:2}}>{T.prevImportTitle}<TipIcon text={lang==='en'?'Upload a CSV or Excel export from your POS (or any spreadsheet). Map columns once and save the format - future imports will use it automatically. Connect your POS in Config → Integrations to automate daily imports.':'Téléversez un CSV ou Excel exporté de votre POS (ou tout tableur). Mappez les colonnes une fois et sauvegardez le format - les imports futurs l\'utiliseront automatiquement. Connectez votre POS dans Config → Intégrations pour automatiser les imports.'} align="left"/></div>{/* POS Import section */}<div style={{marginBottom:14,padding:'10px 12px',background:t.section,borderRadius:7,border:`1px solid ${t.cardBorder}`}}><div style={{fontSize:11,fontWeight:700,marginBottom:6,opacity:0.8}}>POS</div>{!canUse('posIntegration') ? (<div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}><span style={{fontSize:11,opacity:0.6}}>{T.prevPOSProRequired}</span><button onClick={()=>showUpgradePrompt&&showUpgradePrompt('posIntegration')}
               style={{padding:'3px 10px',borderRadius:12,border:'1px solid #f97316',color:'#f97316',background:'rgba(249,115,22,0.1)',cursor:'pointer',fontSize:10,fontWeight:600,whiteSpace:'nowrap'}}>Pro ↑</button></div>) : connectedPosName ? (<div style={{display:'flex',alignItems:'center',gap:8}}><span style={{fontSize:11,opacity:0.7}}>{connectedPosName}</span><button style={{padding:'5px 14px',borderRadius:6,border:'1px solid #3b82f6',background:'rgba(59,130,246,0.1)',color:'#3b82f6',cursor:'not-allowed',fontSize:11,fontWeight:600,opacity:0.7}}>{T.prevPOSImportBtn(connectedPosName)}</button><span style={{fontSize:10,opacity:0.5,fontStyle:'italic'}}>(item-level import - coming soon)</span></div>) : (<span style={{fontSize:11,opacity:0.5,fontStyle:'italic'}}>{T.prevPOSNoConn}</span>)}</div>{step === 'upload' && (<div>{savedFormats.length > 0 && (<div style={{marginBottom:10}}><label style={{fontSize:11,opacity:0.6,display:'block',marginBottom:4}}>{T.prevImportLoadFmt}</label><select style={{...inp,width:'100%',boxSizing:'border-box'}} value={loadedFormat} onChange={e=>setLoadedFormat(e.target.value)}><option value="">{T.prevImportNoFmt}</option>{savedFormats.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}</select></div>)}<label style={{display:'inline-block',padding:'9px 18px',borderRadius:7,background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:12,fontWeight:600}}>{T.prevImportBtn}<input type="file" accept=".csv,.xlsx,.xls" onChange={handleFile} style={{display:'none'}}/></label>{importHistory.length > 0 && (<div style={{marginTop:16}}><div style={{fontSize:11,fontWeight:700,opacity:0.6,marginBottom:8,textTransform:'uppercase',letterSpacing:0.5}}>{T.prevImportHistory}</div><div style={{border:`1px solid ${t.cardBorder}`,borderRadius:7,overflow:'hidden'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}><thead><tr style={{background:t.section}}>{[T.prevImportColFilename,T.prevImportColTargetDate,T.prevImportColTimestamp,T.prevImportColRecords,''].map((h,i)=>(<th key={i} style={{padding:'6px 10px',textAlign:'left',fontWeight:600,opacity:0.7,borderBottom:`1px solid ${t.cardBorder}`}}>{h}</th>))}</tr></thead><tbody>{importHistory.map((row,i)=>(<tr key={row.id} style={{borderBottom:i<importHistory.length-1?`1px solid ${t.cardBorder}`:'none',opacity:row.replaced?0.45:1}}><td style={{padding:'6px 10px',maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={row.filename}>{row.filename}</td><td style={{padding:'6px 10px',whiteSpace:'nowrap'}}>{row.target_date}</td><td style={{padding:'6px 10px',whiteSpace:'nowrap',opacity:0.7}}>{row.imported_at ? row.imported_at.substring(0,16).replace('T',' ') : ''}</td><td style={{padding:'6px 10px',textAlign:'center'}}>{row.record_count ?? '-'}</td><td style={{padding:'6px 10px',textAlign:'right'}}><button onClick={()=>handleDeleteImport(row.id)} style={{padding:'2px 7px',borderRadius:4,border:`1px solid ${t.cardBorder}`,background:'transparent',color:'#ef4444',cursor:'pointer',fontSize:11,lineHeight:1}}>×</button></td></tr>))}</tbody></table></div></div>)}</div>)}
 
-      {step === 'map' && (<div><div style={{fontSize:12,opacity:0.6,marginBottom:10}}>{T.prevImportMapDesc}</div>{[['prod',T.prevImportColProd,true],['sold',T.prevImportColSold,true],['date',T.prevImportColDate,false],['made',T.prevImportColMade,false],['remaining',T.prevImportColRem,false]].map(([key,label,required])=>(<div key={key} style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}><span style={{fontSize:11,width:180,flexShrink:0,opacity:0.8}}>{label}{required&&' *'}</span><select style={{...inp,flex:1}} value={mapping[key]} onChange={e=>setMapping(m=>({...m,[key]:e.target.value}))}>
+      {step === 'map' && (<div><div style={{fontSize:12,opacity:0.6,marginBottom:10}}>{T.prevImportMapDesc}</div>
+          <label style={{display:'flex',alignItems:'center',gap:6,marginBottom:10,fontSize:11.5,opacity:0.85,cursor:'pointer'}}>
+            <input type="checkbox" checked={hasHeader} onChange={e=>{const h=e.target.checked;setHasHeader(h);applyHeader(sheet,h,columns);}} style={{accentColor:'#f97316'}}/>
+            {T.prevImportHasHeader}
+          </label>{[['prod',T.prevImportColProd,true],['sold',T.prevImportColSold,true],['date',T.prevImportColDate,false],['made',T.prevImportColMade,false],['remaining',T.prevImportColRem,false]].map(([key,label,required])=>(<div key={key} style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}><span style={{fontSize:11,width:180,flexShrink:0,opacity:0.8}}>{label}{required&&' *'}</span><select style={{...inp,flex:1}} value={mapping[key]} onChange={e=>setMapping(m=>({...m,[key]:e.target.value}))}>
                 {colOpts.map(c=><option key={c} value={c}>{c||'-'}</option>)}</select></div>))}
           {!mapping.date && (<div style={{display:'flex',alignItems:'center',gap:8,marginTop:6,marginBottom:8}}><span style={{fontSize:11,width:180,opacity:0.8}}>{T.prevImportDatePrompt}</span><input type="date" value={importDate} onChange={e=>setImportDate(e.target.value)} style={{...inp,flex:1}}/></div>)}<div style={{borderTop:`1px solid ${t.cardBorder}`,marginTop:12,paddingTop:12}}><div style={{fontSize:11,opacity:0.6,marginBottom:6}}>{T.prevImportFormatName}</div><div style={{display:'flex',gap:6,marginBottom:10}}><input style={{...inp,flex:1}} value={formatName} onChange={e=>setFormatName(e.target.value)} placeholder="Mon format..."/><button onClick={handleSaveFormat} style={{padding:'5px 12px',borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:11,whiteSpace:'nowrap'}}>{T.prevImportSaveFormat}</button>{savedMsg&&<span style={{fontSize:11,color:'#22c55e',alignSelf:'center'}}>{savedMsg}</span>}</div></div><div style={{display:'flex',gap:8}}><button onClick={()=>setStep('upload')} style={{padding:'7px 14px',borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:'inherit',cursor:'pointer',fontSize:12}}>{T.prevImportCancel}</button><button onClick={handleConfirmMap} disabled={!mapping.prod||!mapping.sold} style={{padding:'7px 14px',borderRadius:6,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',cursor:'pointer',fontSize:12,fontWeight:600,opacity:(!mapping.prod||!mapping.sold)?0.5:1}}>{T.prevImportPreview}</button></div></div>)}
 

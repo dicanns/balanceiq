@@ -39,7 +39,7 @@ import TodayWorklist from "./components/TodayWorklist.jsx";
 import { normalizeBusinessTypes, businessTypesChosen, visibleDestinations, landingDestination, firstRunItems, BUSINESS_TYPE_INFO } from "./services/businessProfile.js";
 import { buildFlashReportHTML } from "./services/flashReport.js";
 import { downloadWorkbook } from "./utils/spreadsheet.js";
-import { parseCsvRecords, normalizeStatementDate, detectNumericDateOrder, parseStatementAmount } from "./utils/importParse.mjs";
+import { parseCsvLines, looksLikeHeader, normalizeStatementDate, detectNumericDateOrder, parseStatementAmount } from "./utils/importParse.mjs";
 import { logCreate, logUpdate, logVoid, logCorrection, isFinancialField, promptCorrectionReason } from "./services/auditLogger.js";
 import { initCloudSync, signIn as cloudSignIn, signUp as cloudSignUp, signOut as cloudSignOut, requestPasswordReset, schedulePush, onSyncStatus, onPlanChange, refreshPlan, getCloudOrgId, getCloudParentOrgId, getMyLinkedLocations, getLastSyncedAt, getAccessToken as getCloudAccessToken } from "./services/cloudSync.js";
 import { supabase as _supabaseClient } from "./services/supabase.js";
@@ -418,10 +418,23 @@ const PLATFORM_COLUMN_HINTS={
 };
 // Delivery payout files. The formula guard that prefixed "-" and "+" with a quote
 // belongs on export; on import it made every signed amount unreadable.
-function parseCSVText(text){
-  const {headers,rows}=parseCsvRecords(text);
-  if(!headers.length||!rows.length)return{headers:[],rows:[]};
-  return{headers,rows:rows.map(vals=>{const obj={};headers.forEach((h,i)=>{obj[h]=vals[i]??'';});return obj;})};
+// A payout export does not have to carry column titles, and two columns can
+// carry the same title. Both used to lose data quietly: the first row read as
+// titles, or one column overwriting another.
+function parseCSVText(text,hasHeader){
+  const {rows:raw}=parseCsvLines(text);
+  if(!raw.length)return{headers:[],rows:[],raw:[],hasHeader:false};
+  const header=typeof hasHeader==='boolean'?hasHeader:looksLikeHeader(raw[0]);
+  const width=raw.reduce((w,r)=>Math.max(w,r.length),0);
+  const seen={};
+  const headers=Array.from({length:width},(_,i)=>{
+    const base=header?(String(raw[0][i]??'').trim()||`Colonne ${i+1}`):`Colonne ${i+1}`;
+    seen[base]=(seen[base]||0)+1;
+    return seen[base]>1?`${base} (${seen[base]})`:base;
+  });
+  const body=header?raw.slice(1):raw;
+  return{headers,hasHeader:header,raw,
+    rows:body.map(vals=>{const obj={};headers.forEach((h,i)=>{obj[h]=vals[i]??'';});return obj;})};
 }
 function autoDetectCols(headers,pid){
   const hints=PLATFORM_COLUMN_HINTS[pid]||PLATFORM_COLUMN_HINTS.doordash;
@@ -447,6 +460,8 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
   const [importStep,setImportStep]=useState('idle'); // idle|mapping|preview|conflict|done
   const [csvData,setCsvData]=useState(null);
   const [colMap,setColMap]=useState({dateCol:null,amountCol:null});
+  const [csvHasHeader,setCsvHasHeader]=useState(true);
+  const [csvText,setCsvText]=useState('');
   const [preview,setPreview]=useState([]);
   const [conflictItems,setConflictItems]=useState([]);
   const [importMsg,setImportMsg]=useState(null);
@@ -484,8 +499,10 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
     const pid=pidRef.current;
     const reader=new FileReader();
     reader.onload=ev=>{
-      const {headers,rows}=parseCSVText(ev.target.result);
-      if(!headers.length){setImportMsg('Fichier CSV invalide ou vide.');return;}
+      const text=ev.target.result;
+      const {headers,rows,hasHeader}=parseCSVText(text);
+      if(!headers.length){setImportMsg(T.csvInvalid);return;}
+      setCsvText(text);setCsvHasHeader(hasHeader);
       setCsvData({headers,rows});
       const saved=csvMaps[pid];const auto=autoDetectCols(headers,pid);
       const dc=saved?.dateCol&&headers.includes(saved.dateCol)?saved.dateCol:auto.dateCol;
@@ -495,6 +512,21 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
     };
     reader.readAsText(file);
   };
+  // Answering the title-row question re-reads the file: with no titles the
+  // first line is data, and the columns are named by position.
+  const applyCsvHeader=(has)=>{
+    if(!csvText)return;
+    const {headers,rows}=parseCSVText(csvText,has);
+    if(!headers.length)return;
+    setCsvHasHeader(has);
+    setColMap(m=>{
+      const old=csvData?.headers||[];
+      const move=v=>{const i=old.indexOf(v);return i>=0&&headers[i]?headers[i]:null;};
+      return{dateCol:move(m.dateCol),amountCol:move(m.amountCol)};
+    });
+    setCsvData({headers,rows});
+  };
+
   const doBuildPreview=(data,dc,ac)=>{
     const src=data||csvData;const byDate={};
     const order=detectNumericDateOrder(src.rows.map(r=>r[dc]));src.rows.forEach(row=>{const date=parseDateStr(row[dc],order);const amount=parseAmountStr(row[ac]);if(date&&amount&&amount>0)byDate[date]=Math.round(((byDate[date]||0)+amount)*100)/100;});
@@ -526,7 +558,7 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
     const conflictDates=new Set(conflictItems.map(c=>c.date));
     doFinish(override?preview:preview.filter(({date})=>!conflictDates.has(date)));
   };
-  const cancelImport=()=>{setImportStep('idle');setImportPid(null);setCsvData(null);setPreview([]);setConflictItems([]);setImportMsg(null);};
+  const cancelImport=()=>{setImportStep('idle');setImportPid(null);setCsvData(null);setCsvText('');setPreview([]);setConflictItems([]);setImportMsg(null);};
   const importPlatform=platforms.find(p=>p.id===importPid);
   const showPanel=importStep!=='idle'&&importStep!=='done'&&importPlatform;
   const selStyle={width:'100%',background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:4,color:t.text,fontSize:11,padding:'4px 6px',outline:'none'};
@@ -537,8 +569,9 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
  pidRef.current=detectedFile.platform;
  setImportPid(detectedFile.platform);
  setCsvData(null);setPreview([]);setConflictItems([]);setImportMsg(null);setImportStep('idle');
-            const {headers,rows}=parseCSVText(detectedFile.content);
+            const {headers,rows,hasHeader}=parseCSVText(detectedFile.content);
             if(!headers.length){setDetectedFile(null);return;}
+            setCsvText(detectedFile.content);setCsvHasHeader(hasHeader);
             setCsvData({headers,rows});
             const pid=detectedFile.platform;
             const saved=csvMaps[pid];const auto=autoDetectCols(headers,pid);
@@ -554,7 +587,7 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
 
       {/* Import panel */}
       {showPanel&&(<div style={{marginBottom:10,padding:10,borderRadius:7,background:'rgba(56,189,248,0.05)',border:'1px solid rgba(56,189,248,0.18)'}}><div style={{fontSize:11,fontWeight:700,color:'#38bdf8',marginBottom:8}}>{importPlatform.emoji} {importPlatform.name} - Import CSV</div>{/* Step: column mapping */}
-        {importStep==='mapping'&&csvData&&(<div><div style={{fontSize:11,color:t.textSub,marginBottom:6}}>{T.csvSelectColumns}</div><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:8}}><div><div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Colonne date</div><select value={colMap.dateCol||''} onChange={e=>setColMap(m=>({...m,dateCol:e.target.value||null}))} style={selStyle}><option value="">- Choisir -</option>{csvData.headers.map(h=>(<option key={h} value={h}>{h}</option>))}</select></div><div><div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>Colonne montant</div><select value={colMap.amountCol||''} onChange={e=>setColMap(m=>({...m,amountCol:e.target.value||null}))} style={selStyle}><option value="">- Choisir -</option>{csvData.headers.map(h=>(<option key={h} value={h}>{h}</option>))}</select></div></div>{colMap.dateCol&&colMap.amountCol&&<div style={{fontSize:10,color:t.textMuted,marginBottom:6}}>Ce mappage sera mémorisé pour {importPlatform.name}.</div>}<div style={{display:'flex',gap:6}}><button onClick={confirmMapping} disabled={!colMap.dateCol||!colMap.amountCol} style={{...btnP,opacity:(!colMap.dateCol||!colMap.amountCol)?0.4:1}}>Continuer</button><button onClick={cancelImport} style={btnS}>{T.cancel}</button></div></div>)}
+        {importStep==='mapping'&&csvData&&(<div><div style={{fontSize:11,color:t.textSub,marginBottom:6}}>{T.csvSelectColumns}</div><label style={{display:'flex',alignItems:'center',gap:6,marginBottom:8,fontSize:10.5,color:t.textSub,cursor:'pointer'}}><input type="checkbox" checked={csvHasHeader} onChange={e=>applyCsvHeader(e.target.checked)} style={{accentColor:'#f97316'}}/>{T.csvHasHeader}</label><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:8}}><div><div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.csvDateCol}</div><select value={colMap.dateCol||''} onChange={e=>setColMap(m=>({...m,dateCol:e.target.value||null}))} style={selStyle}><option value="">- Choisir -</option>{csvData.headers.map(h=>(<option key={h} value={h}>{h}</option>))}</select></div><div><div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.csvAmountCol}</div><select value={colMap.amountCol||''} onChange={e=>setColMap(m=>({...m,amountCol:e.target.value||null}))} style={selStyle}><option value="">- Choisir -</option>{csvData.headers.map(h=>(<option key={h} value={h}>{h}</option>))}</select></div></div>{colMap.dateCol&&colMap.amountCol&&<div style={{fontSize:10,color:t.textMuted,marginBottom:6}}>{T.csvRemembered(importPlatform.name)}</div>}<div style={{display:'flex',gap:6}}><button onClick={confirmMapping} disabled={!colMap.dateCol||!colMap.amountCol} style={{...btnP,opacity:(!colMap.dateCol||!colMap.amountCol)?0.4:1}}>{T.csvContinue}</button><button onClick={cancelImport} style={btnS}>{T.cancel}</button></div></div>)}
 
         {/* Step: preview */}
         {importStep==='preview'&&(<div><div style={{fontSize:11,color:t.textSub,marginBottom:6}}>{importPlatform.name} - {preview.length} dépôt{preview.length!==1?'s':''} trouvé{preview.length!==1?'s':''} :</div>{preview.length===0
@@ -563,7 +596,7 @@ function LivraisonsSection({platforms,selectedDate,raw,upd,liveData,apiConfig,sa
                   const dd=new Date(date+'T12:00:00');const lbl=`${dd.getDate()} ${T.months[dd.getMonth()]}`;
                   const existing=(liveData[date]?.platformLivraisons||{})[importPid]?.depot;
                   return(<div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'2px 0',borderBottom:`1px solid ${t.divider}`,fontSize:11}}><span style={{color:t.textSub}}>{lbl}</span><div style={{display:'flex',gap:8,alignItems:'center'}}>{existing!=null&&<span style={{fontSize:9.5,color:'#f97316'}}>existant</span>}<span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:t.text,fontWeight:600}}>{fmt(amount)}</span></div></div>);
-                })}</div><div style={{display:'flex',justifyContent:'flex-end',padding:'3px 0',marginBottom:8,borderTop:`1px solid rgba(249,115,22,0.2)`}}><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontSize:12,fontWeight:700,color:'#f97316'}}>Total: {fmt(preview.reduce((s,x)=>s+x.amount,0))}</span></div></div>)}<div style={{display:'flex',gap:6}}>{preview.length>0&&<button onClick={startImport} style={btnP}>Importer {preview.length} dépôt{preview.length!==1?'s':''}</button>}<button onClick={cancelImport} style={btnS}>{T.cancel}</button></div></div>)}
+                })}</div><div style={{display:'flex',justifyContent:'flex-end',padding:'3px 0',marginBottom:8,borderTop:`1px solid rgba(249,115,22,0.2)`}}><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontSize:12,fontWeight:700,color:'#f97316'}}>Total: {fmt(preview.reduce((s,x)=>s+x.amount,0))}</span></div></div>)}<div style={{display:'flex',gap:6,flexWrap:'wrap'}}>{preview.length>0&&<button onClick={startImport} style={btnP}>{T.csvImportN(preview.length)}</button>}{csvData&&<button onClick={()=>setImportStep('mapping')} style={btnS}>{T.csvWrongColumns}</button>}<button onClick={cancelImport} style={btnS}>{T.cancel}</button></div></div>)}
 
         {/* Step: conflict */}
         {importStep==='conflict'&&(<div><div style={{fontSize:11,color:'#f97316',marginBottom:6}}>{T.livConflictMsg(conflictItems.length)}</div><div style={{marginBottom:8}}>{conflictItems.map(({date,amount},i)=>{
