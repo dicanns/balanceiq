@@ -3548,8 +3548,8 @@ function bankAccountCreate(fields) {
   return db.prepare(`SELECT * FROM bank_accounts WHERE id=?`).get(lastInsertRowid);
 }
 
-function bankAccountUpdate(id, fields) {
-  const db = getDb();
+function bankAccountUpdate(id, fields, _db) {
+  const db = _db || getDb();
   const cols = ['name','account_type','coa_account_id','opening_balance','opening_date','currency','csv_column_map','is_archived'];
   const sets = []; const vals = [];
   for (const c of cols) {
@@ -3557,8 +3557,46 @@ function bankAccountUpdate(id, fields) {
   }
   if (!sets.length) return;
   vals.push(id);
-  db.prepare(`UPDATE bank_accounts SET ${sets.join(',')} WHERE id=?`).run(...vals);
-  return db.prepare(`SELECT * FROM bank_accounts WHERE id=?`).get(id);
+  return db.transaction(() => {
+    db.prepare(`UPDATE bank_accounts SET ${sets.join(',')} WHERE id=?`).run(...vals);
+    // The opening entry was posted from the old figures and stayed that way:
+    // correcting an opening balance fixed the reconciliation, which reads the
+    // account, and left the ledger on the wrong number or the wrong date.
+    const touched = ['opening_balance', 'opening_date', 'coa_account_id'].some(c => fields[c] !== undefined);
+    const reposted = touched ? _resyncOpeningEntry(db, id) : false;
+    return { ...db.prepare(`SELECT * FROM bank_accounts WHERE id=?`).get(id), openingReposted: reposted };
+  })();
+}
+
+// Bring an account's posted opening entry in line with the account: reverse it
+// and post it again when its amount, date or account no longer match. An
+// opening never posted is left for the operator to post. True when re-posted.
+function _resyncOpeningEntry(db, bankAccountId) {
+  const account = db.prepare(`SELECT * FROM bank_accounts WHERE id=?`).get(bankAccountId);
+  if (!account) return false;
+  const entry = glFindEntryBySource('bank_opening', `bank:${bankAccountId}`, db);
+  if (!entry || entry.status !== 'posted') return false;
+  const lines = db.prepare(`SELECT account_id, debit_cents, credit_cents FROM journal_lines WHERE entry_id=?`).all(entry.id);
+  const onAccount = lines.find(l => l.account_id === account.coa_account_id);
+  const postedCents = onAccount ? (onAccount.debit_cents - onAccount.credit_cents) : null;
+  const wantCents = Math.round((Number(account.opening_balance) || 0) * 100);
+  const wantDate = account.opening_date || entry.entry_date;
+  if (postedCents === wantCents && entry.entry_date === wantDate) return false;
+  glReverseEntry(entry.id, 'Solde d\'ouverture corrig\u00e9', db);
+  if (wantCents) bankAccountPostOpeningBalance(bankAccountId, db);
+  return true;
+}
+
+// Openings corrected before the entry followed the account. Run once at start,
+// idempotent: nothing to do once every entry matches its account.
+function bankResyncOpeningEntries(_db) {
+  const db = _db || getDb();
+  const fixed = [];
+  for (const { id } of db.prepare(`SELECT id FROM bank_accounts`).all()) {
+    try { if (db.transaction(() => _resyncOpeningEntry(db, id))()) fixed.push(id); }
+    catch (e) { /* a closed period keeps its entry; the account screen still shows the figure */ }
+  }
+  return { fixed };
 }
 
 function bankAccountArchive(id) {
@@ -3991,6 +4029,23 @@ function bankStatementImport({ bankAccountId, fileText, fileName, fileType, peri
       }
     }
 
+    // An opening date after the first line puts the opening balance after
+    // transactions it comes before. On the account's first import, with no
+    // history to disturb, the date moves back to the day before the first line.
+    // The amount is never touched here.
+    let openingDateMoved = null;
+    if (!openingSet && rows.length) {
+      const acc = db.prepare(`SELECT opening_date FROM bank_accounts WHERE id=?`).get(bankAccountId);
+      const firstLine = rows.reduce((mn, r) => (!mn || r.transaction_date < mn ? r.transaction_date : mn), null);
+      const others = db.prepare(`SELECT COUNT(*) AS n FROM bank_statements WHERE bank_account_id=? AND id<>?`).get(bankAccountId, stmtId).n;
+      if (!others && firstLine && acc?.opening_date && acc.opening_date >= firstLine) {
+        const dayBefore = new Date(Date.parse(firstLine + 'T00:00:00Z') - 86400000).toISOString().slice(0, 10);
+        db.prepare(`UPDATE bank_accounts SET opening_date=? WHERE id=?`).run(dayBefore, bankAccountId);
+        _resyncOpeningEntry(db, bankAccountId);
+        openingDateMoved = { from: acc.opening_date, to: dayBefore };
+      }
+    }
+
     // Remember a mapping set by hand, so the next file from the same place needs
     // no answering again.
     if (columnMap && typeof columnMap === 'object') {
@@ -4008,7 +4063,7 @@ function bankStatementImport({ bankAccountId, fileText, fileName, fileType, peri
       else unmatched++;
     }
 
-    return { statementId: stmtId, rowCount: newTxIds.length, autoMatched, suggested, unmatched, duplicateRows, openingSet, closingFromFile: parsedEndingBalance != null && !userGave };
+    return { statementId: stmtId, rowCount: newTxIds.length, autoMatched, suggested, unmatched, duplicateRows, openingSet, openingDateMoved, closingFromFile: parsedEndingBalance != null && !userGave };
   })();
 }
 
@@ -4404,13 +4459,24 @@ function bankStatementDelete(statementId, _db) {
   if (locked > 0) throw new Error('ERR_STATEMENT_HAS_MATCHED_TX');
 
   return db.transaction(() => {
+    // A categorized line posted an entry, and a line that paid a bill marked
+    // the bill paid. Deleting the lines alone left both behind: expenses in the
+    // ledger with no statement under them, bills paid by nothing. Each line is
+    // undone the way unmatching it would, then removed.
+    let reversed = 0;
+    for (const { id } of db.prepare(`SELECT id FROM bank_transactions WHERE bank_statement_id=?`).all(statementId)) {
+      if (_reverseBankTransactionEntry(db, id)) reversed++;
+      db.prepare(
+        `UPDATE supplier_bills SET paid=0, payment_date=NULL, payment_method=NULL, bank_transaction_id=NULL WHERE bank_transaction_id=?`
+      ).run(id);
+    }
     const removed = db.prepare(`DELETE FROM bank_transactions WHERE bank_statement_id=?`).run(statementId).changes;
     db.prepare(`DELETE FROM bank_statements WHERE id=?`).run(statementId);
     db.prepare(
       `INSERT INTO audit_log (device_id, module, action, record_type, record_id, reason)
        VALUES (?, 'bank', 'delete_statement', 'bank_statement', ?, ?)`
-    ).run(_getDeviceUuid(db), String(statementId), `period ${stmt.period_start}..${stmt.period_end}, ${removed} tx`);
-    return { ok: true, removedTransactions: removed };
+    ).run(_getDeviceUuid(db), String(statementId), `period ${stmt.period_start}..${stmt.period_end}, ${removed} tx, ${reversed} entries reversed`);
+    return { ok: true, removedTransactions: removed, reversedEntries: reversed };
   })();
 }
 
@@ -7347,7 +7413,7 @@ module.exports = {
   periodList, periodOpen, periodClose, periodReopen,
   glAuditLogList,
   bankAccountsList, bankAccountCreate, bankAccountUpdate, bankAccountArchive,
-  bankStatementImport, bankStatementPdfCheck, bankStatementsList, bankStatementDelete, bankStatementUpdate,
+  bankStatementImport, bankStatementPdfCheck, bankResyncOpeningEntries, bankStatementsList, bankStatementDelete, bankStatementUpdate,
   parseBankCSV: _parseBankCSV, parseBankCsvFile, normalizeStatementDate, COA_TYPES,
   bankAccountPostOpeningBalance, bankPostMissingEntries, bankFindOrphanEntries, bankSubledgerBalances,
   bankTransactionsList, bankTransactionUnmatch, bankTransactionCategorize,

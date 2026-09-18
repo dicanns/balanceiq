@@ -34,12 +34,13 @@ const UI = {
     importTitle:      'Importer un relevé bancaire',
     importBtn:        'Importer',
     importing:        'Importation…',
-    importResultExtra:(r, money) => `${r.closingFromFile ? ' Solde final lu dans le fichier.' : ''}${r.openingSet ? ` Solde d'ouverture défini à ${money} au ${r.openingSet.date}, d'après le fichier.` : ''}`,
+    importResultExtra:(r, money) => `${r.closingFromFile ? ' Solde final lu dans le fichier.' : ''}${r.openingSet ? ` Solde d'ouverture défini à ${money} au ${r.openingSet.date}, d'après le fichier.` : ''}${r.openingDateMoved ? ` Date d'ouverture ramenée au ${r.openingDateMoved.to}, la veille de la première transaction.` : ''}`,
     importResult:     (r) => `${r.rowCount} transactions importées - ${r.autoMatched} auto, ${r.suggested} suggestions, ${r.unmatched} non appariées${r.duplicateRows ? `, ${r.duplicateRows} doublons ignorés` : ''}.`,
     importDupe:       'Ce relevé a déjà été importé (fichier identique).',
     errors: {
       ERR_STATEMENT_DUPLICATE:          'Ce relevé a déjà été importé (fichier identique).',
       ERR_STATEMENT_PERIOD_EXISTS:      'Un relevé couvrant cette période est déjà importé pour ce compte. Importer celui-ci doublerait le mois.',
+      ERR_PERIOD_CLOSED_REVERSE:        "La période comptable du solde d'ouverture est fermée: son écriture ne peut plus être corrigée. Rouvrez la période, puis réessayez.",
       ERR_BANK_ACCOUNT_NOT_FOUND:       'Compte bancaire introuvable.',
       ERR_NO_TRANSACTIONS:              'Aucune transaction trouvée dans le fichier.',
       ERR_CSV_DATE:                     'Une date du fichier est illisible. Vérifiez que c\'est bien le relevé exporté par la banque, sans modification.',
@@ -221,9 +222,14 @@ const UI = {
     backfillTitle:    'Créer les écritures pour les transactions catégorisées sans écriture',
     backfillDone:     (p, sk, o, rd) => `${p} écriture(s) créée(s). ${sk} ignorée(s) (comptes de contrôle).${o ? ` ${o} orpheline(s) annulée(s).` : ''}${rd ? ` ${rd} annulation(s) redatée(s).` : ''}`,
     done:             'Terminé',
-    deleteStmt:       'Supprimer',
-    confirmDeleteStmt:(a, b) => `Supprimer le relevé du ${a} au ${b} et toutes ses transactions importées? Le fichier pourra ensuite être réimporté.`,
-    deleteStmtDone:   (n) => `Relevé supprimé - ${n} transaction(s) retirée(s).`,
+    deleteStmt:       "Supprimer l'import",
+    confirmDeleteStmt:(a, b, n) => `Supprimer l'import du ${a} au ${b}?\n\nSes ${n} lignes sont retirées des livres, et tout ce que vous avez fait avec elles est annulé (catégories, factures payées).\n\nÀ utiliser seulement pour refaire un import raté. Pour terminer un mois, utilisez Clôturer dans Rapprochements.`,
+    deleteStmtDone:   (n, e) => `Import supprimé - ${n} transaction(s) retirée(s)${e ? `, ${e} écriture(s) annulée(s)` : ''}.`,
+    stmtOlder:        (n) => `+ ${n} relevé(s) plus ancien(s)`,
+    stmtFewer:        'Masquer les anciens',
+    stmtClosed:       'Clôturé',
+    openingOwed:      'dû',
+    openingDateFix:   (d) => `Mettre la date d'ouverture au ${d}`,
     openingBalanceLbl:'Solde d\'ouverture',
   },
   en: {
@@ -253,12 +259,13 @@ const UI = {
     importTitle:      'Import Bank Statement',
     importBtn:        'Import',
     importing:        'Importing…',
-    importResultExtra:(r, money) => `${r.closingFromFile ? ' Closing balance read from the file.' : ''}${r.openingSet ? ` Opening balance set to ${money} as of ${r.openingSet.date}, from the file.` : ''}`,
+    importResultExtra:(r, money) => `${r.closingFromFile ? ' Closing balance read from the file.' : ''}${r.openingSet ? ` Opening balance set to ${money} as of ${r.openingSet.date}, from the file.` : ''}${r.openingDateMoved ? ` Opening date moved to ${r.openingDateMoved.to}, the day before the first transaction.` : ''}`,
     importResult:     (r) => `${r.rowCount} transactions imported - ${r.autoMatched} auto-matched, ${r.suggested} suggested, ${r.unmatched} unmatched${r.duplicateRows ? `, ${r.duplicateRows} duplicates skipped` : ''}.`,
     importDupe:       'This statement appears to be already imported (identical file).',
     errors: {
       ERR_STATEMENT_DUPLICATE:          'This statement has already been imported (identical file).',
       ERR_STATEMENT_PERIOD_EXISTS:      'A statement covering this period is already imported for this account. Importing this one would double the month.',
+      ERR_PERIOD_CLOSED_REVERSE:        "The accounting period of the opening balance is closed, so its entry can no longer be corrected. Reopen the period, then try again.",
       ERR_BANK_ACCOUNT_NOT_FOUND:       'Bank account not found.',
       ERR_NO_TRANSACTIONS:              'No transactions found in the file.',
       ERR_CSV_DATE:                     'A date in the file could not be read. Check that it is the statement exactly as the bank exported it.',
@@ -440,9 +447,14 @@ const UI = {
     backfillTitle:    'Create ledger entries for categorized transactions that have none',
     backfillDone:     (p, sk, o, rd) => `${p} entr${p === 1 ? 'y' : 'ies'} created. ${sk} skipped (control accounts).${o ? ` ${o} orphaned reversed.` : ''}${rd ? ` ${rd} reversal(s) re-dated.` : ''}`,
     done:             'Done',
-    deleteStmt:       'Delete',
-    confirmDeleteStmt:(a, b) => `Delete the statement from ${a} to ${b} and all transactions it imported? The file can then be re-imported.`,
-    deleteStmtDone:   (n) => `Statement deleted - ${n} transaction(s) removed.`,
+    deleteStmt:       'Delete import',
+    confirmDeleteStmt:(a, b, n) => `Delete the import from ${a} to ${b}?\n\nIts ${n} lines are taken out of the books, and everything done with them is undone (categories, bills paid).\n\nOnly for redoing an import that went wrong. To finish a month, use Close under Reconciliations.`,
+    deleteStmtDone:   (n, e) => `Import deleted - ${n} transaction(s) removed${e ? `, ${e} ledger entr${e > 1 ? 'ies' : 'y'} reversed` : ''}.`,
+    stmtOlder:        (n) => `+ ${n} older statement${n > 1 ? 's' : ''}`,
+    stmtFewer:        'Hide older',
+    stmtClosed:       'Closed',
+    openingOwed:      'owed',
+    openingDateFix:   (d) => `Set the opening date to ${d}`,
     openingBalanceLbl:'Opening balance',
   },
 };
@@ -565,6 +577,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   const [catTvq, setCatTvq]                       = useState('');
 
   const [statements, setStatements]               = useState([]);
+  const [showOlderStmts, setShowOlderStmts]       = useState(false);
   const [recStatus, setRecStatus]                 = useState([]);
   const [recPreview, setRecPreview]               = useState(null);
   const [recLoading, setRecLoading]               = useState(false);
@@ -686,7 +699,8 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
       }
       setShowAccountModal(false);
       loadAccounts();
-    } catch (_) {}
+      loadRecPreview();
+    } catch (e) { alert(tErr(e)); }
   };
 
   const archiveAccount = async (id) => {
@@ -1094,12 +1108,13 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   };
 
   const deleteStatement = async (stmt) => {
-    if (!window.confirm(T.confirmDeleteStmt(fmtDate(stmt.period_start), fmtDate(stmt.period_end)))) return;
+    if (!window.confirm(T.confirmDeleteStmt(fmtDate(stmt.period_start), fmtDate(stmt.period_end), stmt.line_count ?? '?'))) return;
     try {
       const r = await window.api.bank.statement.delete(stmt.id);
-      alert(T.deleteStmtDone(r?.removedTransactions ?? 0));
+      alert(T.deleteStmtDone(r?.removedTransactions ?? 0, r?.reversedEntries ?? 0));
       loadStatements();
       loadTransactions();
+      loadRecPreview();
     } catch (e) { alert(tErr(e)); }
   };
 
@@ -1167,7 +1182,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 13, color: C.sub }}>{T.openingBalanceLbl}: {fmt(acc.opening_balance)} · {fmtDate(acc.opening_date)}</div>
+                    <div style={{ fontSize: 13, color: C.sub }}>{T.openingBalanceLbl}: {fmt(toShown(Number(acc.opening_balance) || 0, acc))}{owedAccount(acc) ? ` ${T.openingOwed}` : ''} · {fmtDate(acc.opening_date)}</div>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button onClick={() => postOpening(acc)} style={{ ...btnSmall, marginRight: 6 }} title={T.openingTitle}>{T.openingBtn}</button>
@@ -1226,15 +1241,35 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
             {selectedAccount && statements.length > 0 && (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', fontSize: 11.5, color: C.muted }}>
                 <span>{T.importedStatements}</span>
-                {statements.map(st => (
-                  <span key={st.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '2px 8px', border: `1px solid ${C.border}`, borderRadius: 12 }}>
-                    {fmtDate(st.period_start)} → {fmtDate(st.period_end)}{st.line_count != null ? ` · ${st.line_count}` : ''}
-                    {!st.reconciled && (
-                      <button onClick={() => deleteStatement(st)} title={T.deleteStmt}
-                        style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 13, padding: 0, lineHeight: 1 }}>×</button>
-                    )}
-                  </span>
-                ))}
+                {(() => {
+                  // Every open statement, and the last one closed for context.
+                  // A year of closed months would otherwise fill the page.
+                  const byEnd = [...statements].sort((a, b) => String(b.period_end).localeCompare(String(a.period_end)));
+                  const lastClosed = byEnd.find(st => st.reconciled);
+                  const shown = showOlderStmts ? byEnd : byEnd.filter(st => !st.reconciled || st === lastClosed);
+                  const foldable = byEnd.filter(st => st.reconciled && st !== lastClosed).length;
+                  return (
+                    <>
+                      {shown.map(st => (
+                        <span key={st.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '2px 8px', border: `1px solid ${st.reconciled ? C.border : 'rgba(245,158,11,0.5)'}`, borderRadius: 12 }}>
+                          {fmtDate(st.period_start)} {'\u2192'} {fmtDate(st.period_end)}{st.line_count != null ? ` \u00b7 ${st.line_count}` : ''}
+                          {st.reconciled
+                            ? <span style={{ color: '#22c55e' }}>{'\u2713'} {T.stmtClosed}</span>
+                            : (
+                              <button onClick={() => deleteStatement(st)} title={T.deleteStmt}
+                                style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 11, padding: 0, textDecoration: 'underline' }}>{T.deleteStmt}</button>
+                            )}
+                        </span>
+                      ))}
+                      {foldable > 0 && (
+                        <button onClick={() => setShowOlderStmts(v => !v)}
+                          style={{ background: 'none', border: 'none', color: C.sub, cursor: 'pointer', fontSize: 11.5, padding: 0, textDecoration: 'underline' }}>
+                          {showOlderStmts ? T.stmtFewer : T.stmtOlder(foldable)}
+                        </button>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             )}
           </div>
@@ -1389,11 +1424,25 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
                       </button>
                     </div>
                   )}
-                  {recPreview.openingDateAfterFirstLine && (
-                    <div style={{ marginTop: 6, fontSize: 11.5, color: '#f59e0b', lineHeight: 1.5 }}>
-                      {T.openingAfterFirst(fmtDate(recPreview.openingDate), fmtDate(recPreview.firstLineDate))}
-                    </div>
-                  )}
+                  {recPreview.openingDateAfterFirstLine && selectedAccount && (() => {
+                    const dayBefore = new Date(Date.parse(recPreview.firstLineDate + 'T00:00:00Z') - 86400000).toISOString().slice(0, 10);
+                    return (
+                      <div style={{ marginTop: 6, fontSize: 11.5, color: '#f59e0b', lineHeight: 1.5, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        <span>{T.openingAfterFirst(fmtDate(recPreview.openingDate), fmtDate(recPreview.firstLineDate))}</span>
+                        <button
+                          onClick={async () => {
+                            try {
+                              await window.api.bank.accounts.update(selectedAccount.id, { opening_date: dayBefore });
+                              await loadAccounts();
+                              loadRecPreview();
+                            } catch (e) { alert(tErr(e)); }
+                          }}
+                          style={{ ...btnStyle('#f97316'), padding: '3px 10px', fontSize: 11.5 }}>
+                          {T.openingDateFix(fmtDate(dayBefore))}
+                        </button>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 

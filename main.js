@@ -74,7 +74,7 @@ const {
   glAuditLogList,
   bankAccountsList, bankAccountCreate, bankAccountUpdate, bankAccountArchive,
   bankStatementImport, bankStatementPdfCheck, bankStatementsList, bankStatementDelete, bankStatementUpdate,
-  bankAccountPostOpeningBalance, bankPostMissingEntries, bankSubledgerBalances,
+  bankAccountPostOpeningBalance, bankPostMissingEntries, bankSubledgerBalances, bankResyncOpeningEntries,
   bankTransactionsList, bankTransactionUnmatch, bankTransactionCategorize,
   bankLinesForBillAmount,
   bankReconcilePreview, bankReconcileClose, bankReconciliationStatus, bankReconcileReopen,
@@ -1667,6 +1667,12 @@ app.whenReady().then(() => {
       const r = supplierBillRepairTaxAccounts();
       if (r.found) console.log('[bills] tax accounts repaired', JSON.stringify(r));
     } catch (e) { console.error('[bills] tax account repair failed:', e.message); }
+    // Opening balances corrected before v1.81.0 left their ledger entry on the
+    // old amount or date. Same timing as above: after today's backup.
+    try {
+      const r = bankResyncOpeningEntries();
+      if (r.fixed.length) console.log('[bank] opening entries re-posted', JSON.stringify(r));
+    } catch (e) { console.error('[bank] opening entry resync failed:', e.message); }
   }, 8000);
 
   // Auto-updater - GitHub API fetch (works without code signing)

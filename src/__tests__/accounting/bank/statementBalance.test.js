@@ -101,8 +101,11 @@ describe('BALSET-004 a card is judged as the amount owed', () => {
 
 describe('BALSET-005 an opening balance dated too late', () => {
   it('is reported with both dates', () => {
-    const id = account({ openingDate: '2026-09-17' });
+    // A first import now moves a late date back by itself (OPENDATE-001), so
+    // the warning is for a date set too late afterwards.
+    const id = account({ openingDate: '2026-07-01' });
     importCard(id);
+    db.prepare(`UPDATE bank_accounts SET opening_date='2026-09-17' WHERE id=?`).run(id);
     expect(bankReconcilePreview(id, '2026-08-05', db)).toMatchObject({
       openingDateAfterFirstLine: true, openingDate: '2026-09-17', firstLineDate: '2026-07-10',
     });
