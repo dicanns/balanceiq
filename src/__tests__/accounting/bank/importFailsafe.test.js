@@ -96,7 +96,7 @@ describe('FAILSAFE-005 one grid, every import screen', () => {
     const s = read('src/components/BanqueTab.jsx');
     expect(s).toMatch(/import ColumnMapper, \{ rolesFromMap, mapFromRoles \} from '\.\/ColumnMapper\.jsx'/);
     expect(s).toMatch(/<ColumnMapper/);
-    expect(s).toMatch(/disabled=\{!importFile \|\| importing \|\| !mapReady\(\)\}/);
+    expect(s).toMatch(/disabled=\{!importFile \|\| importing \|\| !mapReady\(\)/);
     expect(s).not.toMatch(/const ROLES = \[/);   // the local copy is gone
   });
   it('is what the chart of accounts import uses', () => {

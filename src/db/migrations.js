@@ -1544,6 +1544,19 @@ const MIGRATIONS = [
       }
     },
   },
+  {
+    version: 47,
+    description: 'The balance a statement file says the account opened on, in cents. A first import '
+      + 'fills an empty opening balance from it, but never overwrites one somebody typed, so an '
+      + 'opening entered wrongly left a variance with nothing on screen to say why.',
+    up: (database) => {
+      const cols = database.prepare(`PRAGMA table_info(bank_statements)`).all().map(c => c.name);
+      if (!cols.length) return;
+      if (!cols.includes('file_opening_cents')) {
+        database.prepare(`ALTER TABLE bank_statements ADD COLUMN file_opening_cents INTEGER`).run();
+      }
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.

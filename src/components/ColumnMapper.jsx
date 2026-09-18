@@ -25,6 +25,9 @@ export default function ColumnMapper({
   warnings = [],
   C = {},
   accent = '#f97316',
+  included = null,      // one flag per line: lines a PDF read that should not be imported get unticked
+  onIncluded = null,
+  maxHeight = null,     // a statement is longer than a CSV's first five lines
 }) {
   if (!lines.length || !roles.length) return null;
 
@@ -47,10 +50,11 @@ export default function ColumnMapper({
         </label>
       )}
 
-      <div style={{ overflowX: 'auto' }}>
+      <div style={{ overflowX: 'auto', ...(maxHeight ? { maxHeight, overflowY: 'auto' } : {}) }}>
         <table style={{ borderCollapse: 'collapse', fontSize: 11 }}>
           <thead>
             <tr>
+              {included && <th />}
               {roles.map((role, i) => (
                 <th key={i} style={{ padding: '2px 4px', textAlign: 'left' }}>
                   <select
@@ -72,7 +76,14 @@ export default function ColumnMapper({
             {lines.map((row, ri) => {
               const isHeaderRow = hasHeader && ri === 0;
               return (
-                <tr key={ri} style={{ color: isHeaderRow ? muted : text, fontStyle: isHeaderRow ? 'italic' : 'normal' }}>
+                <tr key={ri} style={{ color: isHeaderRow ? muted : text, fontStyle: isHeaderRow ? 'italic' : 'normal', opacity: included && !included[ri] ? 0.4 : 1 }}>
+                  {included && (
+                    <td style={{ padding: '2px 4px', borderTop: `1px solid ${divider}` }}>
+                      <input type='checkbox' checked={!!included[ri]} aria-label={`${labels.includeLabel || 'Include'} ${ri + 1}`}
+                        onChange={e => onIncluded && onIncluded(included.map((v, j) => (j === ri ? e.target.checked : v)))}
+                        style={{ accentColor: accent }} />
+                    </td>
+                  )}
                   {roles.map((_, ci) => (
                     <td key={ci} style={{ padding: '2px 6px', borderTop: `1px solid ${divider}`, whiteSpace: 'nowrap', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {row[ci] ?? ''}

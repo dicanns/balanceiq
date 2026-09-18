@@ -284,6 +284,8 @@ contextBridge.exposeInMainWorld('api', {
     },
     statement: {
       import: (opts)          => ipcRenderer.invoke('bank:statement:import', opts),
+      readPdf: (bytes, bankAccountId) => ipcRenderer.invoke('bank:statement:readPdf', bytes, bankAccountId),
+      pdfCheck: (bankAccountId, info) => ipcRenderer.invoke('bank:statement:pdfCheck', bankAccountId, info),
       list:   (bankAccountId) => ipcRenderer.invoke('bank:statement:list', bankAccountId),
       delete: (statementId)   => ipcRenderer.invoke('bank:statement:delete', statementId),
       update: (statementId, fields) => ipcRenderer.invoke('bank:statement:update', statementId, fields),

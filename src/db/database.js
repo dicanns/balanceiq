@@ -1601,6 +1601,19 @@ const MIGRATIONS = [
       }
     },
   },
+  {
+    version: 47,
+    description: 'The balance a statement file says the account opened on, in cents. A first import '
+      + 'fills an empty opening balance from it, but never overwrites one somebody typed, so an '
+      + 'opening entered wrongly left a variance with nothing on screen to say why.',
+    up: (database) => {
+      const cols = database.prepare(`PRAGMA table_info(bank_statements)`).all().map(c => c.name);
+      if (!cols.length) return;
+      if (!cols.includes('file_opening_cents')) {
+        database.prepare(`ALTER TABLE bank_statements ADD COLUMN file_opening_cents INTEGER`).run();
+      }
+    },
+  },
 ];
 
 // The newest schema this build knows. Anything on disk below it has migrations
@@ -3770,9 +3783,65 @@ function _runMatchingEngine(db, bankAccountId, txIds) {
   }
 }
 
-function bankStatementImport({ bankAccountId, fileText, fileName, fileType, periodStart, periodEnd, endingBalance, columnMap }, _db) {
+// Statements from a PDF cover a fixed period each, so one whose period is mostly
+// covered by a statement already imported is the same month again, by another
+// route (a CSV last time, the PDF now): importing it would double the month.
+function _overlappingStatement(db, bankAccountId, start, end) {
+  if (!start || !end) return null;
+  const len = Math.max(1, (Date.parse(end) - Date.parse(start)) / 86400000 + 1);
+  const others = db.prepare(
+    `SELECT id, period_start, period_end, reconciled FROM bank_statements
+      WHERE bank_account_id=? AND period_start<=? AND period_end>=?`
+  ).all(bankAccountId, end, start);
+  for (const o of others) {
+    const from = o.period_start > start ? o.period_start : start;
+    const to = o.period_end < end ? o.period_end : end;
+    const shared = (Date.parse(to) - Date.parse(from)) / 86400000 + 1;
+    if (shared / len >= 0.5) return { statementId: o.id, periodStart: o.period_start, periodEnd: o.period_end, reconciled: !!o.reconciled };
+  }
+  return null;
+}
+
+// What the books already hold of a statement read from a PDF, for the review
+// screen: a statement covering the same period, and how many of its lines are
+// already there by date and amount (descriptions differ between a bank's CSV
+// and its PDF, so they cannot be compared).
+function bankStatementPdfCheck(bankAccountId, { periodStart, periodEnd, rows } = {}, _db) {
   const db = _db || getDb();
-  const fileHash = _sha256(fileText);
+  const account = db.prepare(`SELECT * FROM bank_accounts WHERE id=?`).get(bankAccountId);
+  if (!account) throw new Error('ERR_BANK_ACCOUNT_NOT_FOUND');
+  const owed = account.account_type === 'credit_card' || account.account_type === 'line_of_credit';
+  const list = Array.isArray(rows) ? rows : [];
+  const dates = list.map(r => r.date).filter(Boolean).sort();
+  let alreadyInBooks = 0;
+  if (dates.length) {
+    const held = new Map();
+    for (const t of db.prepare(
+      `SELECT transaction_date d, amount a FROM bank_transactions WHERE bank_account_id=? AND transaction_date BETWEEN ? AND ?`
+    ).all(bankAccountId, dates[0], dates[dates.length - 1])) {
+      const k = t.d + '|' + Math.round(t.a * 100);
+      held.set(k, (held.get(k) || 0) + 1);
+    }
+    for (const r of list) {
+      const stored = owed ? -Number(r.amount) : Number(r.amount);
+      const k = r.date + '|' + Math.round(stored * 100);
+      if (held.get(k)) { alreadyInBooks++; held.set(k, held.get(k) - 1); }
+    }
+  }
+  return {
+    overlap: _overlappingStatement(db, bankAccountId, periodStart || dates[0], periodEnd || dates[dates.length - 1]),
+    alreadyInBooks,
+    owed,
+  };
+}
+
+function bankStatementImport({ bankAccountId, fileText, fileName, fileType, periodStart, periodEnd, endingBalance, columnMap, pdfStatement, allowOverlap }, _db) {
+  const db = _db || getDb();
+  const isPdf = String(fileType || '').toLowerCase() === 'pdf';
+  if (isPdf && (!pdfStatement || !Array.isArray(pdfStatement.rows))) throw new Error('ERR_NO_TRANSACTIONS');
+  const fileHash = isPdf
+    ? (/^[0-9a-f]{64}$/.test(String(pdfStatement.sourceHash || '')) ? pdfStatement.sourceHash : _sha256(JSON.stringify(pdfStatement.rows)))
+    : _sha256(fileText);
 
   // Duplicate file check
   const existing = db.prepare(`SELECT id FROM bank_statements WHERE source_file_hash=? AND bank_account_id=?`).get(fileHash, bankAccountId);
@@ -3792,7 +3861,40 @@ function bankStatementImport({ bankAccountId, fileText, fileName, fileType, peri
   let impliedOpening = null, impliedOpeningDate = null;
   const ft = (fileType || '').toLowerCase();
   const isOwedAccount = account.account_type === 'credit_card' || account.account_type === 'line_of_credit';
-  if (ft === 'ofx' || ft === 'qfx' || ft === 'qbo') {
+  if (isPdf) {
+    // Read and checked already (statementPdf.mjs), then looked over by the
+    // operator. Amounts arrive as the statement prints them: on a card, what
+    // is owed goes up with a charge, and the books hold what is owed negative.
+    const flip = isOwedAccount ? -1 : 1;
+    const iso = /^\d{4}-\d{2}-\d{2}$/;
+    rows = pdfStatement.rows
+      .filter(r => r && iso.test(String(r.date || '')) && Number.isFinite(Number(r.amount)))
+      .map(r => ({
+        transaction_date: r.date,
+        description: String(r.description || '').slice(0, 500),
+        amount: parseFloat((flip * Number(r.amount)).toFixed(2)) || 0,
+        notes: r.note ? String(r.note).slice(0, 500) : null,
+      }));
+    if (pdfStatement.closing != null && Number.isFinite(Number(pdfStatement.closing))) {
+      parsedEndingBalance = parseFloat((flip * Number(pdfStatement.closing)).toFixed(2));
+    }
+    if (pdfStatement.opening != null && Number.isFinite(Number(pdfStatement.opening))) {
+      impliedOpening = parseFloat((flip * Number(pdfStatement.opening)).toFixed(2));
+      // The opening stands before the first line, which on a card with a second
+      // cardholder can fall a day before the period itself.
+      const firstLine = rows.reduce((mn, r) => (!mn || r.transaction_date < mn ? r.transaction_date : mn), null);
+      const start = pdfStatement.periodStart || null;
+      impliedOpeningDate = (start && firstLine && start < firstLine) ? start : (firstLine || start);
+    }
+    if (!allowOverlap) {
+      const firstLine = rows.reduce((mn, r) => (!mn || r.transaction_date < mn ? r.transaction_date : mn), null);
+      const lastLine = rows.reduce((mx, r) => (!mx || r.transaction_date > mx ? r.transaction_date : mx), null);
+      const clash = _overlappingStatement(db, bankAccountId, periodStart || pdfStatement.periodStart || firstLine, periodEnd || pdfStatement.periodEnd || lastLine);
+      if (clash) throw new Error('ERR_STATEMENT_PERIOD_EXISTS');
+    }
+    if (!periodStart && pdfStatement.periodStart) periodStart = pdfStatement.periodStart;
+    if (!periodEnd && pdfStatement.periodEnd) periodEnd = pdfStatement.periodEnd;
+  } else if (ft === 'ofx' || ft === 'qfx' || ft === 'qbo') {
     rows = _parseBankOFX(fileText);
     parsedEndingBalance = _parseOFXLedgerBalance(fileText);
   } else {
@@ -3837,9 +3939,9 @@ function bankStatementImport({ bankAccountId, fileText, fileName, fileType, peri
 
   return db.transaction(() => {
     const { lastInsertRowid: stmtId } = db.prepare(
-      `INSERT INTO bank_statements (bank_account_id, period_start, period_end, ending_balance, source_file_hash, ending_balance_source)
-       VALUES (?, ?, ?, ?, ?, ?)`
-    ).run(bankAccountId, start, end, endBal, fileHash, endBalSource);
+      `INSERT INTO bank_statements (bank_account_id, period_start, period_end, ending_balance, source_file_hash, ending_balance_source, file_opening_cents)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(bankAccountId, start, end, endBal, fileHash, endBalSource, impliedOpening != null ? Math.round(impliedOpening * 100) : null);
 
     let autoMatched = 0, suggested = 0, unmatched = 0, duplicateRows = 0;
     const newTxIds = [];
@@ -3861,9 +3963,9 @@ function bankStatementImport({ bankAccountId, fileText, fileName, fileType, peri
       if (already >= nth) { duplicateRows++; continue; }
 
       const { lastInsertRowid: txId } = db.prepare(
-        `INSERT INTO bank_transactions (bank_account_id, bank_statement_id, transaction_date, description, amount, running_balance)
-         VALUES (?, ?, ?, ?, ?, ?)`
-      ).run(bankAccountId, stmtId, row.transaction_date, row.description, row.amount, row.running_balance || null);
+        `INSERT INTO bank_transactions (bank_account_id, bank_statement_id, transaction_date, description, amount, running_balance, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      ).run(bankAccountId, stmtId, row.transaction_date, row.description, row.amount, row.running_balance || null, row.notes || null);
       newTxIds.push(txId);
     }
 
@@ -4130,7 +4232,19 @@ function bankReconcilePreview(bankAccountId, asOfDate, _db) {
   const firstLine = db.prepare(
     `SELECT MIN(transaction_date) AS d FROM bank_transactions WHERE bank_account_id=?`
   ).get(bankAccountId)?.d || null;
+  // The first statement's file says what the account opened on. A typed
+  // opening balance that disagrees is the likeliest cause of a variance, and
+  // one nobody can see: every line looks right. Only while that first statement
+  // is still open; once it closed, the opening was right.
+  const firstStmt = db.prepare(
+    `SELECT id, file_opening_cents, reconciled FROM bank_statements WHERE bank_account_id=? ORDER BY period_start ASC, id ASC LIMIT 1`
+  ).get(bankAccountId);
+  const fileOpening = firstStmt && firstStmt.file_opening_cents != null && !firstStmt.reconciled
+    ? firstStmt.file_opening_cents / 100 : null;
+  const openingMismatch = fileOpening != null && Math.round((Number(account.opening_balance) || 0) * 100) !== firstStmt.file_opening_cents;
   return {
+    fileOpening,
+    openingMismatch,
     statementBalance,
     biqBalance,
     ecart: parseFloat((statementBalance - biqBalance).toFixed(2)) || 0,
@@ -7233,7 +7347,7 @@ module.exports = {
   periodList, periodOpen, periodClose, periodReopen,
   glAuditLogList,
   bankAccountsList, bankAccountCreate, bankAccountUpdate, bankAccountArchive,
-  bankStatementImport, bankStatementsList, bankStatementDelete, bankStatementUpdate,
+  bankStatementImport, bankStatementPdfCheck, bankStatementsList, bankStatementDelete, bankStatementUpdate,
   parseBankCSV: _parseBankCSV, parseBankCsvFile, normalizeStatementDate, COA_TYPES,
   bankAccountPostOpeningBalance, bankPostMissingEntries, bankFindOrphanEntries, bankSubledgerBalances,
   bankTransactionsList, bankTransactionUnmatch, bankTransactionCategorize,

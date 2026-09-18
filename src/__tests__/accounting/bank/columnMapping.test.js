@@ -91,7 +91,7 @@ describe('MAPCOL-005 the import screen', () => {
     const BANQUE = fs.readFileSync(path.join(ROOT, 'src/components/BanqueTab.jsx'), 'utf8');
     expect(BANQUE).toMatch(/title: T\.mapTitle/);
     expect(BANQUE).toMatch(/const mapReady = \(\) =>/);
-    expect(BANQUE).toMatch(/disabled=\{!importFile \|\| importing \|\| !mapReady\(\)\}/);
+    expect(BANQUE).toMatch(/disabled=\{!importFile \|\| importing \|\| !mapReady\(\)/);
     expect(BANQUE).toMatch(/readsAs: T\.mapReadsAs/);
     expect(BANQUE).toMatch(/columnMap: mapLines\.length \? mapFromRoles\(mapRoles, mapHasHeader, ROLE_KEYS\) : undefined/);
     expect(BANQUE).toMatch(/prepareMapping\(f, importAccountId\)/);

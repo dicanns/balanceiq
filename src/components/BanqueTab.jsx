@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ColumnMapper, { rolesFromMap, mapFromRoles } from './ColumnMapper.jsx';
+import { balanceCheck } from '../utils/statementPdf.mjs';
 import { parseCsvLines, looksLikeHeader, inferColumns, normalizeStatementDate, detectNumericDateOrder, parseStatementAmount } from '../utils/importParse.mjs';
 import { looksLikeCapitalPurchase } from '../utils/calculations.js';
 import CapexGuide from './CapexGuide.jsx';
@@ -38,6 +39,7 @@ const UI = {
     importDupe:       'Ce relevé a déjà été importé (fichier identique).',
     errors: {
       ERR_STATEMENT_DUPLICATE:          'Ce relevé a déjà été importé (fichier identique).',
+      ERR_STATEMENT_PERIOD_EXISTS:      'Un relevé couvrant cette période est déjà importé pour ce compte. Importer celui-ci doublerait le mois.',
       ERR_BANK_ACCOUNT_NOT_FOUND:       'Compte bancaire introuvable.',
       ERR_NO_TRANSACTIONS:              'Aucune transaction trouvée dans le fichier.',
       ERR_CSV_DATE:                     'Une date du fichier est illisible. Vérifiez que c\'est bien le relevé exporté par la banque, sans modification.',
@@ -78,6 +80,26 @@ const UI = {
     mapHint:          'Si une colonne est mal lue, changez-la ici. Votre choix est retenu pour ce compte.',
     mapHasHeader:     'La première ligne contient les titres de colonnes',
     roleColumn:       'Colonne',
+    pdfReading:       'Lecture du relevé PDF…',
+    pdfTitle:         'Relevé lu depuis le PDF',
+    pdfPeriod:        'Période',
+    pdfOpening:       'Solde précédent',
+    pdfClosing:       'Nouveau solde',
+    pdfLines:         (n) => `${n} ligne${n > 1 ? 's' : ''}`,
+    pdfHint:          "Chaque ligne du relevé, telle que lue. Décochez une ligne qui n'est pas une transaction; corrigez une colonne mal lue avec le menu au-dessus.",
+    pdfCheckOk:       'Le solde précédent plus les lignes donne exactement le nouveau solde.',
+    pdfCheckOff:      (gap) => `Les lignes ne donnent pas le nouveau solde: il manque ${gap}. Une ligne a probablement été mal lue ou décochée.`,
+    pdfCheckSides:    (fc, pc, fp, pp) => `Achats trouvés ${fc} (le relevé indique ${pc}) · paiements trouvés ${fp} (le relevé indique ${pp}).`,
+    pdfCheckNone:     "Ce PDF n'indique pas ses soldes, la vérification n'est pas possible. Vérifiez les lignes vous-même.",
+    pdfOverlap:       (a, b, rec) => `Un relevé du ${a} au ${b} est déjà importé${rec ? ' et rapproché' : ''} pour ce compte. Importer celui-ci doublerait ce mois.`,
+    pdfAlready:       (n) => `${n} de ces lignes sont déjà dans les livres (même date, même montant).`,
+    pdfForce:         "Importer quand même",
+    pdfInclude:       'Importer la ligne',
+    pdfNoText:        "Ce PDF est une image numérisée, sans texte à lire. Téléchargez le relevé depuis le site de votre institution, ou exportez-le en CSV.",
+    pdfNoLines:       "Aucune ligne de transaction trouvée dans ce PDF. Si c'est bien un relevé, exportez-le en CSV depuis votre institution.",
+    pdfFailed:        (e) => `Le PDF n'a pas pu être lu (${e}).`,
+    openingFromFile:  (file, typed) => `Le premier relevé indique ${file} avant sa première ligne; le solde d'ouverture du compte indique ${typed}. C'est la cause la plus probable de l'écart.`,
+    openingUseFile:   (v) => `Utiliser ${v}`,
     mapReadsAs:       'Première ligne lue comme',
     mapNeedDate:      'Indiquez quelle colonne contient la date.',
     mapNeedAmount:    'Indiquez la colonne des montants (ou Débit et Crédit).',
@@ -236,6 +258,7 @@ const UI = {
     importDupe:       'This statement appears to be already imported (identical file).',
     errors: {
       ERR_STATEMENT_DUPLICATE:          'This statement has already been imported (identical file).',
+      ERR_STATEMENT_PERIOD_EXISTS:      'A statement covering this period is already imported for this account. Importing this one would double the month.',
       ERR_BANK_ACCOUNT_NOT_FOUND:       'Bank account not found.',
       ERR_NO_TRANSACTIONS:              'No transactions found in the file.',
       ERR_CSV_DATE:                     'A date in the file could not be read. Check that it is the statement exactly as the bank exported it.',
@@ -276,6 +299,26 @@ const UI = {
     mapHint:          'If a column is read wrongly, change it here. Your choice is remembered for this account.',
     mapHasHeader:     'The first line holds column titles',
     roleColumn:       'Column',
+    pdfReading:       'Reading the statement PDF…',
+    pdfTitle:         'Statement read from the PDF',
+    pdfPeriod:        'Period',
+    pdfOpening:       'Previous balance',
+    pdfClosing:       'New balance',
+    pdfLines:         (n) => `${n} line${n > 1 ? 's' : ''}`,
+    pdfHint:          'Every line of the statement as it was read. Untick a line that is not a transaction; correct a misread column with the menu above it.',
+    pdfCheckOk:       'The previous balance plus the lines comes to exactly the new balance.',
+    pdfCheckOff:      (gap) => `The lines do not reach the new balance: ${gap} is missing. A line was probably misread or unticked.`,
+    pdfCheckSides:    (fc, pc, fp, pp) => `Purchases found ${fc} (statement says ${pc}) · payments found ${fp} (statement says ${pp}).`,
+    pdfCheckNone:     'This PDF does not print its balances, so it cannot be checked. Look the lines over yourself.',
+    pdfOverlap:       (a, b, rec) => `A statement for ${a} to ${b} is already imported${rec ? ' and reconciled' : ''} for this account. Importing this one would double that month.`,
+    pdfAlready:       (n) => `${n} of these lines are already in the books (same date, same amount).`,
+    pdfForce:         'Import anyway',
+    pdfInclude:       'Import line',
+    pdfNoText:        'This PDF is a scanned image with no text to read. Download the statement from your institution\'s website, or export it as CSV.',
+    pdfNoLines:       'No transaction lines were found in this PDF. If it is a statement, export it as CSV from your institution.',
+    pdfFailed:        (e) => `The PDF could not be read (${e}).`,
+    openingFromFile:  (file, typed) => `The first statement shows ${file} before its first line; this account's opening balance says ${typed}. That is the likeliest cause of the difference.`,
+    openingUseFile:   (v) => `Use ${v}`,
     mapReadsAs:       'First line reads as',
     mapNeedDate:      'Say which column holds the date.',
     mapNeedAmount:    'Say which column holds the amounts (or Charge and Payment).',
@@ -485,6 +528,13 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   const [mapLines, setMapLines]                   = useState([]);      // first lines of the chosen file, as fields
   const [mapRoles, setMapRoles]                   = useState([]);      // one role per column
   const [mapHasHeader, setMapHasHeader]           = useState(false);
+  // A statement PDF, read and waiting to be looked over.
+  const [pdfInfo, setPdfInfo]                     = useState(null);   // { statement, sourceHash, check }
+  const [pdfRoles, setPdfRoles]                   = useState([]);
+  const [pdfIncluded, setPdfIncluded]             = useState([]);
+  const [pdfBusy, setPdfBusy]                     = useState(false);
+  const [pdfError, setPdfError]                   = useState('');
+  const [pdfForce, setPdfForce]                   = useState(false);
   const [importPeriodStart, setImportPeriodStart] = useState('');
   const [importPeriodEnd, setImportPeriodEnd]     = useState('');
   const [importEndBal, setImportEndBal]           = useState('');
@@ -657,6 +707,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
     setImportEndBal('');
     setImportMsg('');
     setMapLines([]); setMapRoles([]); setMapHasHeader(false);
+    setPdfInfo(null); setPdfError(''); setPdfForce(false);
     setShowImportModal(true);
   };
 
@@ -723,15 +774,93 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   const mapReady = () => mapLines.length === 0
     || (mapRoles.includes('date') && (mapRoles.includes('amount') || mapRoles.includes('debit') || mapRoles.includes('credit')));
 
+  const isPdfFile = (f) => !!f && /\.pdf$/i.test(f.name || '');
+
+  const readPdfFile = async (file, accountId) => {
+    setPdfInfo(null); setPdfError(''); setPdfForce(false); setPdfBusy(true);
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const r = await window.api.bank.statement.readPdf(bytes, accountId);
+      if (!r?.ok) {
+        const e = String(r?.error || '');
+        setPdfError(e === 'pdf_has_no_text' ? T.pdfNoText : e === 'pdf_no_lines' ? T.pdfNoLines : T.pdfFailed(e));
+        return;
+      }
+      setPdfInfo(r);
+      setPdfIncluded(r.statement.rows.map(() => true));
+      setPdfRoles(r.statement.columns.map(c => (c === 'postDate' ? 'ignore' : c)));
+    } catch (e) {
+      setPdfError(T.pdfFailed(String(e?.message || e)));
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
+  // The lines as they will be imported: what the grid says each column is,
+  // only the ticked lines, amounts as the statement prints them.
+  const pdfRows = () => {
+    if (!pdfInfo) return [];
+    const st = pdfInfo.statement;
+    const at = (cells, role) => { const i = pdfRoles.indexOf(role); return i >= 0 ? cells[i] : ''; };
+    const num = (v) => (v === '' || v == null ? null : Number(v));
+    return st.table.map((cells, i) => {
+      if (!pdfIncluded[i]) return null;
+      const date = at(cells, 'date');
+      let amount = num(at(cells, 'amount'));
+      if (amount == null && (pdfRoles.includes('debit') || pdfRoles.includes('credit'))) {
+        const d = num(at(cells, 'debit')), c = num(at(cells, 'credit'));
+        if (d != null || c != null) amount = (c || 0) - (d || 0);
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || amount == null || !Number.isFinite(amount)) return null;
+      const row = st.rows[i] || {};
+      const note = [row.note, st.cardholders.length > 1 ? row.cardholder : ''].filter(Boolean).join(' \u00b7 ');
+      return { date, description: at(cells, 'description'), amount, note };
+    }).filter(Boolean);
+  };
+  const pdfCheckNow = () => {
+    if (!pdfInfo) return null;
+    const st = pdfInfo.statement;
+    return balanceCheck(st.opening, st.closing, pdfRows().map(r => r.amount));
+  };
+  const pdfReady = () => {
+    if (!pdfInfo) return false;
+    const rows = pdfRows();
+    if (!rows.length) return false;
+    const chk = pdfCheckNow();
+    const blocked = chk?.ok === false || !!pdfInfo.check?.overlap;
+    return !blocked || pdfForce;
+  };
+
   const handleImport = async () => {
     if (!importFile) return;
     setImporting(true);
     setImportMsg('');
     setImportOk(null);
     try {
+      let result;
+      if (isPdfFile(importFile)) {
+        const st = pdfInfo.statement;
+        const rows = pdfRows();
+        const dir = balanceCheck(st.opening, st.closing, rows.map(r => r.amount)).direction;
+        result = await window.api.bank.statement.import({
+          bankAccountId: importAccountId,
+          fileName: importFile.name,
+          fileType: 'pdf',
+          periodStart: importPeriodStart || undefined,
+          periodEnd:   importPeriodEnd   || undefined,
+          endingBalance: importEndBal ? toStored(parseFloat(importEndBal), accounts.find(a => a.id === importAccountId)) : undefined,
+          pdfStatement: {
+            rows: rows.map(r => ({ ...r, amount: r.amount * dir })),
+            opening: st.opening, closing: st.closing,
+            periodStart: st.period.start, periodEnd: st.period.end,
+            sourceHash: pdfInfo.sourceHash,
+          },
+          allowOverlap: pdfForce,
+        });
+      } else {
       const text = await importFile.text();
       const ext  = importFile.name.split('.').pop().toLowerCase();
-      const result = await window.api.bank.statement.import({
+      result = await window.api.bank.statement.import({
         bankAccountId: importAccountId,
         fileText: text,
         fileName: importFile.name,
@@ -741,6 +870,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
         endingBalance: importEndBal ? toStored(parseFloat(importEndBal), accounts.find(a => a.id === importAccountId)) : undefined,
         columnMap: mapLines.length ? mapFromRoles(mapRoles, mapHasHeader, ROLE_KEYS) : undefined,
       });
+      }
       const acc = accounts.find(a => a.id === importAccountId);
       setImportMsg(T.importResult(result) + T.importResultExtra(result, result.openingSet ? fmt(toShown(result.openingSet.balance, acc)) : ''));
       setImportOk(true);
@@ -1243,6 +1373,22 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
                   {recPreview.balanceUnset && (
                     <div style={{ marginTop: 10, fontSize: 11.5, color: '#f59e0b', lineHeight: 1.5 }}>{T.balanceNotSetHint}</div>
                   )}
+                  {recPreview.openingMismatch && selectedAccount && (
+                    <div style={{ marginTop: 6, fontSize: 11.5, color: '#f59e0b', lineHeight: 1.5, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <span>{T.openingFromFile(fmt(toShown(recPreview.fileOpening, selectedAccount)), fmt(toShown(Number(selectedAccount.opening_balance) || 0, selectedAccount)))}</span>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await window.api.bank.accounts.update(selectedAccount.id, { opening_balance: recPreview.fileOpening });
+                            await loadAccounts();
+                            loadRecPreview();
+                          } catch (_) {}
+                        }}
+                        style={{ ...btnStyle('#f97316'), padding: '3px 10px', fontSize: 11.5 }}>
+                        {T.openingUseFile(fmt(toShown(recPreview.fileOpening, selectedAccount)))}
+                      </button>
+                    </div>
+                  )}
                   {recPreview.openingDateAfterFirstLine && (
                     <div style={{ marginTop: 6, fontSize: 11.5, color: '#f59e0b', lineHeight: 1.5 }}>
                       {T.openingAfterFirst(fmtDate(recPreview.openingDate), fmtDate(recPreview.firstLineDate))}
@@ -1436,10 +1582,16 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
         <ModalOverlay surface={C.card} edge={C.border} onClose={() => setShowImportModal(false)}>
           <h3 style={{ margin: '0 0 16px', color: C.text }}>{T.importTitle}</h3>
           <label style={labelStyle}>{T.fileLabel}</label>
-          <input ref={fileInputRef} type='file' accept='.csv,.ofx,.qfx,.qbo'
-            onChange={e => { const f = e.target.files?.[0] || null; setImportFile(f); if (f) prepareMapping(f, importAccountId); }}
+          <input ref={fileInputRef} type='file' accept='.csv,.ofx,.qfx,.qbo,.pdf'
+            onChange={e => {
+              const f = e.target.files?.[0] || null;
+              setImportFile(f);
+              setMapLines([]); setMapRoles([]); setPdfInfo(null); setPdfError('');
+              if (f && isPdfFile(f)) readPdfFile(f, importAccountId);
+              else if (f) prepareMapping(f, importAccountId);
+            }}
             style={{ ...inputFull, padding: '6px 0', color: C.sub, background: 'none', border: 'none' }} />
-          {importFile && mapLines.length === 0 && (
+          {importFile && mapLines.length === 0 && !isPdfFile(importFile) && (
             <div style={{ fontSize: 11, color: C.muted, margin: '6px 0 2px' }}>{T.mapAuto}</div>
           )}
           {(() => {
@@ -1464,6 +1616,56 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
               />
             );
           })()}
+          {pdfBusy && <div style={{ fontSize: 12, color: C.sub, margin: '8px 0' }}>{T.pdfReading}</div>}
+          {pdfError && <div style={{ fontSize: 12, color: '#fca5a5', margin: '8px 0', lineHeight: 1.5 }}>{pdfError}</div>}
+          {pdfInfo && (() => {
+            const st = pdfInfo.statement;
+            const chk = pdfCheckNow();
+            const money = (v) => (v == null ? '-' : fmt(v));
+            const rowsNow = pdfRows();
+            return (
+              <div style={{ margin: '10px 0 4px' }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text }}>{T.pdfTitle}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 16px', fontSize: 11.5, color: C.sub, margin: '4px 0 2px' }}>
+                  <span>{T.pdfPeriod}: <strong style={{ color: C.text }}>{st.period.start ? fmtDate(st.period.start) : '?'} {'\u2192'} {st.period.end ? fmtDate(st.period.end) : '?'}</strong></span>
+                  <span>{T.pdfOpening}: <strong style={{ color: C.text }}>{money(st.opening)}</strong></span>
+                  <span>{T.pdfClosing}: <strong style={{ color: C.text }}>{money(st.closing)}</strong></span>
+                  <span>{T.pdfLines(rowsNow.length)}</span>
+                </div>
+                <div style={{ fontSize: 11.5, marginTop: 4, lineHeight: 1.5, color: chk?.ok ? '#86efac' : chk?.ok === false ? '#f87171' : '#f59e0b' }}>
+                  {chk?.ok ? T.pdfCheckOk : chk?.ok === false ? T.pdfCheckOff(fmt(Math.abs(chk.gap))) : T.pdfCheckNone}
+                </div>
+                {chk?.ok === false && st.printed.purchases != null && st.printed.payments != null && (
+                  <div style={{ fontSize: 11, color: C.sub, marginTop: 2 }}>
+                    {T.pdfCheckSides(fmt(st.found.purchases), fmt(st.printed.purchases), fmt(st.found.payments), fmt(st.printed.payments))}
+                  </div>
+                )}
+                {pdfInfo.check?.overlap && (
+                  <div style={{ fontSize: 11.5, color: '#f87171', marginTop: 6, lineHeight: 1.5 }}>
+                    {T.pdfOverlap(fmtDate(pdfInfo.check.overlap.periodStart), fmtDate(pdfInfo.check.overlap.periodEnd), pdfInfo.check.overlap.reconciled)}
+                  </div>
+                )}
+                {pdfInfo.check?.alreadyInBooks > 0 && (
+                  <div style={{ fontSize: 11.5, color: '#f59e0b', marginTop: 4 }}>{T.pdfAlready(pdfInfo.check.alreadyInBooks)}</div>
+                )}
+                <ColumnMapper
+                  lines={st.table} roles={pdfRoles} hasHeader={false}
+                  options={roleOptions} onRoles={setPdfRoles}
+                  included={pdfIncluded} onIncluded={setPdfIncluded} maxHeight={260}
+                  labels={{ title: null, hint: T.pdfHint, columnLabel: T.roleColumn, includeLabel: T.pdfInclude }}
+                  C={{ text: C.text, sub: C.sub, muted: C.muted, border: C.border, divider: C.divider, inputBg: C.inputBg }}
+                  warnings={[!pdfRoles.includes('date') ? T.mapNeedDate : null,
+                    pdfRoles.includes('date') && !(pdfRoles.includes('amount') || pdfRoles.includes('debit') || pdfRoles.includes('credit')) ? T.mapNeedAmount : null]}
+                />
+                {(chk?.ok === false || pdfInfo.check?.overlap) && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11.5, color: C.sub, cursor: 'pointer' }}>
+                    <input type='checkbox' checked={pdfForce} onChange={e => setPdfForce(e.target.checked)} style={{ accentColor: '#f97316' }} />
+                    {T.pdfForce}
+                  </label>
+                )}
+              </div>
+            );
+          })()}
           <label style={labelStyle}>{T.periodStart} ({T.optional})</label>
           <input style={inputFull} type='date' value={importPeriodStart} onChange={e => setImportPeriodStart(e.target.value)} />
           <label style={labelStyle}>{T.periodEnd} ({T.optional})</label>
@@ -1480,7 +1682,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
               <button onClick={closeImportModal} style={btnStyle('#22c55e')}>{T.done}</button>
             ) : (
               <>
-                <button onClick={handleImport} disabled={!importFile || importing || !mapReady()} style={btnStyle('#f97316')}>{importing ? T.importing : T.importBtn}</button>
+                <button onClick={handleImport} disabled={!importFile || importing || !mapReady() || (isPdfFile(importFile) && !pdfReady())} style={btnStyle('#f97316')}>{importing ? T.importing : T.importBtn}</button>
                 <button onClick={closeImportModal} style={btnStyle('#374151')}>{T.cancel}</button>
               </>
             )}

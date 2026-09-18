@@ -73,7 +73,7 @@ const {
   periodList, periodOpen, periodClose, periodReopen,
   glAuditLogList,
   bankAccountsList, bankAccountCreate, bankAccountUpdate, bankAccountArchive,
-  bankStatementImport, bankStatementsList, bankStatementDelete, bankStatementUpdate,
+  bankStatementImport, bankStatementPdfCheck, bankStatementsList, bankStatementDelete, bankStatementUpdate,
   bankAccountPostOpeningBalance, bankPostMissingEntries, bankSubledgerBalances,
   bankTransactionsList, bankTransactionUnmatch, bankTransactionCategorize,
   bankLinesForBillAmount,
@@ -2155,6 +2155,29 @@ ipcMain.handle('bank:accounts:update',     (_e, id, fields)            => bankAc
 ipcMain.handle('bank:accounts:archive',    (_e, id)                    => bankAccountArchive(id));
 
 ipcMain.handle('bank:statement:import',    (_e, opts)                  => bankStatementImport(opts));
+
+// A statement PDF: read in the isolated PDF process like every other PDF, then
+// turned into a statement (src/utils/statementPdf.mjs), then compared with what
+// the books already hold. Nothing is imported here; the operator looks it over
+// first. The card number, name and address on the page are never kept.
+ipcMain.handle('bank:statement:readPdf', async (_e, bytes, bankAccountId) => {
+  try {
+    const buffer = Buffer.from(bytes || []);
+    const { items } = await readPdfIsolated(buffer, { maxPages: 20 });
+    const { parseStatementPdf } = require('./src/utils/statementPdf.mjs');
+    const statement = parseStatementPdf(items || []);
+    if (!statement.hasText) return { ok: false, error: 'pdf_has_no_text' };
+    if (!statement.rows.length) return { ok: false, error: 'pdf_no_lines', statement: { bank: statement.bank } };
+    const sourceHash = require('crypto').createHash('sha256').update(buffer).digest('hex');
+    const check = bankAccountId
+      ? bankStatementPdfCheck(bankAccountId, { periodStart: statement.period.start, periodEnd: statement.period.end, rows: statement.rows.map(r => ({ date: r.date, amount: r.delta })) })
+      : null;
+    return { ok: true, statement, sourceHash, check };
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err) };
+  }
+});
+ipcMain.handle('bank:statement:pdfCheck', (_e, bankAccountId, info) => bankStatementPdfCheck(bankAccountId, info));
 ipcMain.handle('bank:statement:delete', (_e, id) => bankStatementDelete(id));
 ipcMain.handle('bank:statement:update', (_e, id, fields) => bankStatementUpdate(id, fields || {}));
 ipcMain.handle('bank:reconcile:status', () => bankReconciliationStatus());
