@@ -31,6 +31,7 @@ const UI = {
     importTitle:      'Importer un relevé bancaire',
     importBtn:        'Importer',
     importing:        'Importation…',
+    importResultExtra:(r, money) => `${r.closingFromFile ? ' Solde final lu dans le fichier.' : ''}${r.openingSet ? ` Solde d'ouverture défini à ${money} au ${r.openingSet.date}, d'après le fichier.` : ''}`,
     importResult:     (r) => `${r.rowCount} transactions importées - ${r.autoMatched} auto, ${r.suggested} suggestions, ${r.unmatched} non appariées${r.duplicateRows ? `, ${r.duplicateRows} doublons ignorés` : ''}.`,
     importDupe:       'Ce relevé a déjà été importé (fichier identique).',
     errors: {
@@ -39,6 +40,7 @@ const UI = {
       ERR_NO_TRANSACTIONS:              'Aucune transaction trouvée dans le fichier.',
       ERR_CSV_DATE:                     'Une date du fichier est illisible. Vérifiez que c\'est bien le relevé exporté par la banque, sans modification.',
       ERR_CSV_NO_AMOUNTS:               'Aucun montant n\'a pu être lu dans ce fichier. Rien n\'a été importé.',
+      ERR_CSV_NO_COLUMNS:               'Impossible de reconnaître les colonnes de ce fichier: aucune date trouvée. Exportez le relevé en CSV depuis votre institution, sans le modifier.',
       ERR_STATEMENT_NOT_FOUND:          'Relevé introuvable.',
       ERR_STATEMENT_ALREADY_RECONCILED: 'Ce relevé est déjà réconcilié.',
       ERR_RECONCILE_VARIANCE:           (ecart) => `Écart de ${Number(ecart).toFixed(2)} $ - réconciliez toutes les transactions avant de clôturer.`,
@@ -212,6 +214,7 @@ const UI = {
     importTitle:      'Import Bank Statement',
     importBtn:        'Import',
     importing:        'Importing…',
+    importResultExtra:(r, money) => `${r.closingFromFile ? ' Closing balance read from the file.' : ''}${r.openingSet ? ` Opening balance set to ${money} as of ${r.openingSet.date}, from the file.` : ''}`,
     importResult:     (r) => `${r.rowCount} transactions imported - ${r.autoMatched} auto-matched, ${r.suggested} suggested, ${r.unmatched} unmatched${r.duplicateRows ? `, ${r.duplicateRows} duplicates skipped` : ''}.`,
     importDupe:       'This statement appears to be already imported (identical file).',
     errors: {
@@ -220,6 +223,7 @@ const UI = {
       ERR_NO_TRANSACTIONS:              'No transactions found in the file.',
       ERR_CSV_DATE:                     'A date in the file could not be read. Check that it is the statement exactly as the bank exported it.',
       ERR_CSV_NO_AMOUNTS:               'No amount could be read from this file. Nothing was imported.',
+      ERR_CSV_NO_COLUMNS:               'The columns in this file could not be recognized: no date found. Export the statement as CSV from your institution without editing it.',
       ERR_STATEMENT_NOT_FOUND:          'Statement not found.',
       ERR_STATEMENT_ALREADY_RECONCILED: 'This statement is already reconciled.',
       ERR_RECONCILE_VARIANCE:           (ecart) => `Variance of $${Number(ecart).toFixed(2)} - reconcile all transactions before closing.`,
@@ -642,7 +646,8 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
         periodEnd:   importPeriodEnd   || undefined,
         endingBalance: importEndBal ? toStored(parseFloat(importEndBal), accounts.find(a => a.id === importAccountId)) : undefined,
       });
-      setImportMsg(T.importResult(result));
+      const acc = accounts.find(a => a.id === importAccountId);
+      setImportMsg(T.importResult(result) + T.importResultExtra(result, result.openingSet ? fmt(toShown(result.openingSet.balance, acc)) : ''));
       setImportOk(true);
       loadAccounts();
       if (selectedAccount?.id === importAccountId) { loadTransactions(); loadStatements(); loadRecPreview(); }

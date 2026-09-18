@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const {
   splitCsvLine: _splitCsvLine, detectDelimiter, normalizeStatementDate, detectNumericDateOrder,
   parseStatementAmount: _parseStatementAmount, decodeXmlEntities,
+  parseCsvLines, looksLikeHeader, inferColumns,
 } = require('../utils/importParse.mjs');
 
 let db;
@@ -3551,34 +3552,67 @@ function _normDescription(desc) {
 // Parse bank CSV: returns [{date, description, amount, running_balance}]
 // ── BANK CSV ─────────────────────────────────────────────────────────────────
 // Splitting, dates and amounts come from src/utils/importParse.mjs.
-function _parseBankCSV(csvText, columnMap) {
-  const lines = String(csvText || '').replace(/^﻿/, '').split(/\r?\n/).filter(l => l.trim());
-  if (!lines.length) return [];
-  const delim = detectDelimiter(lines[0]);
-  const headers = _splitCsvLine(lines[0], delim).map(h => h.toLowerCase());
+// A statement file's rows, and what shape the file turned out to be. Some banks
+// name their columns; plenty export none at all, one transaction per line. A
+// header row never carries a date and a transaction always does, which is how
+// the two are told apart - reading line one as a header ate a transaction and
+// left nothing to import.
+function parseBankCsvFile(csvText, columnMap) {
+  const { rows: allLines } = parseCsvLines(csvText);
+  if (!allLines.length) return { rows: [], meta: { amountsFrom: 'none', hadHeader: false, closingBalance: null } };
 
-  // Auto-detect or use saved mapping
+  const hadHeader = looksLikeHeader(allLines[0]);
+  const records = (hadHeader ? allLines.slice(1) : allLines).filter(r => r.some(c => (c || '').trim()));
+  if (!records.length) return { rows: [], meta: { amountsFrom: 'none', hadHeader, closingBalance: null } };
+
   const map = columnMap || {};
-  const detect = (candidates) => {
-    for (const c of candidates) {
-      const idx = headers.findIndex(h => h.includes(c));
-      if (idx >= 0) return idx;
+  let dateIdx = -1, descIdx = -1, amtIdx = -1, debitIdx = -1, creditIdx = -1, balIdx = -1;
+  if (hadHeader) {
+    const headers = allLines[0].map(h => h.toLowerCase());
+    const detect = (candidates) => {
+      for (const c of candidates) {
+        const idx = headers.findIndex(h => h.includes(c));
+        if (idx >= 0) return idx;
+      }
+      return -1;
+    };
+    dateIdx   = detect(['date', 'dat']);
+    descIdx   = detect(['description', 'libellé', 'libelle', 'memo', 'details', 'narrativ']);
+    amtIdx    = detect(['amount', 'montant', 'debit/credit', 'transaction amount']);
+    debitIdx  = detect(['debit', 'débit', 'withdrawals', 'sortie']);
+    creditIdx = detect(['credit', 'crédit', 'deposits', 'entrée']);
+    balIdx    = detect(['balance', 'solde', 'running balance', 'closing balance']);
+  }
+  // No header, or a header that named nothing useful: read the values instead.
+  if (dateIdx < 0 || (amtIdx < 0 && debitIdx < 0 && creditIdx < 0)) {
+    const guess = inferColumns(records);
+    if (dateIdx < 0) dateIdx = guess.dateIdx;
+    if (descIdx < 0) descIdx = guess.descIdx;
+    if (amtIdx < 0 && debitIdx < 0 && creditIdx < 0) {
+      amtIdx = guess.amtIdx; debitIdx = guess.debitIdx; creditIdx = guess.creditIdx;
     }
-    return -1;
-  };
-  const dateIdx   = map.date        !== undefined ? map.date        : detect(['date','dat']);
-  const descIdx   = map.description !== undefined ? map.description : detect(['description','libellé','libelle','memo','details','narrativ']);
-  const amtIdx    = map.amount      !== undefined ? map.amount      : detect(['amount','montant','debit/credit','transaction amount']);
-  const debitIdx  = map.debit       !== undefined ? map.debit       : detect(['debit','débit','withdrawals','sortie']);
-  const creditIdx = map.credit      !== undefined ? map.credit      : detect(['credit','crédit','deposits','entrée']);
-  const balIdx    = map.balance     !== undefined ? map.balance     : detect(['balance','solde','running balance','closing balance']);
+    if (balIdx < 0) balIdx = guess.balIdx;
+  }
+  // A saved mapping always wins.
+  if (map.date !== undefined) dateIdx = map.date;
+  if (map.description !== undefined) descIdx = map.description;
+  if (map.amount !== undefined) amtIdx = map.amount;
+  if (map.debit !== undefined) debitIdx = map.debit;
+  if (map.credit !== undefined) creditIdx = map.credit;
+  if (map.balance !== undefined) balIdx = map.balance;
 
-  const records = lines.slice(1).map(l => _splitCsvLine(l, delim)).filter(c => (c[dateIdx] || '').trim());
+  if (dateIdx < 0) {
+    const err = new Error('ERR_CSV_NO_COLUMNS: no date column');
+    err.code = 'ERR_CSV_NO_COLUMNS';
+    throw err;
+  }
+
   const numericOrder = detectNumericDateOrder(records.map(c => c[dateIdx]));
-
+  const amountsFrom = amtIdx >= 0 ? 'single' : (debitIdx >= 0 || creditIdx >= 0) ? 'debit_credit' : 'none';
   const rows = [];
   for (const clean of records) {
     const rawDate = clean[dateIdx];
+    if (!String(rawDate ?? '').trim()) continue;
     const date = normalizeStatementDate(rawDate, numericOrder);
     if (!date) {
       const err = new Error(`ERR_CSV_DATE: ${String(rawDate).slice(0, 30)}`);
@@ -3586,9 +3620,10 @@ function _parseBankCSV(csvText, columnMap) {
       throw err;
     }
     let amount = 0;
-    if (amtIdx >= 0 && clean[amtIdx]) {
+    if (amountsFrom === 'single') {
       amount = _parseStatementAmount(clean[amtIdx]) || 0;
-    } else if (debitIdx >= 0 || creditIdx >= 0) {
+    } else if (amountsFrom === 'debit_credit') {
+      // Separate columns are already a direction: money out less money in.
       const debit  = debitIdx  >= 0 ? Math.abs(_parseStatementAmount(clean[debitIdx])  || 0) : 0;
       const credit = creditIdx >= 0 ? Math.abs(_parseStatementAmount(clean[creditIdx]) || 0) : 0;
       amount = credit - debit;
@@ -3600,7 +3635,39 @@ function _parseBankCSV(csvText, columnMap) {
       running_balance: balIdx >= 0 ? _parseStatementAmount(clean[balIdx]) : null,
     });
   }
-  return rows;
+
+  // The balance carried by the latest-dated row is the closing balance, whether
+  // the file runs oldest-first or newest-first. The oldest row gives the other
+  // end: its balance less its own amount is what was owed before the file began,
+  // which is exactly the opening balance nobody enjoys digging out of a PDF.
+  let closingBalance = null, openingBalance = null, openingBefore = null;
+  if (balIdx >= 0 && rows.length) {
+    const latest = rows.reduce((best, r) => (r.transaction_date >= best.transaction_date ? r : best), rows[0]);
+    const oldest = rows.reduce((best, r) => (r.transaction_date <= best.transaction_date ? r : best), rows[0]);
+    closingBalance = latest.running_balance;
+    if (oldest.running_balance != null) {
+      openingBalance = oldest.running_balance;   // file's own convention, before sign handling
+      openingBefore = oldest;
+    }
+  }
+  // Charges outnumber payments on a statement, so the sign most rows carry says
+  // which way this file writes them. A tie counts as charges-positive: that is
+  // how a card export with a single amount column is written.
+  const positives = rows.filter(r => r.amount > 0).length;
+  const negatives = rows.filter(r => r.amount < 0).length;
+  return {
+    rows,
+    meta: {
+      amountsFrom, hadHeader, closingBalance, openingBalance,
+      openingRowAmount: openingBefore ? openingBefore.amount : null,
+      oldestDate: openingBefore ? openingBefore.transaction_date : (rows.length ? rows.reduce((m, r) => (r.transaction_date < m ? r.transaction_date : m), rows[0].transaction_date) : null),
+      mostlyPositive: positives >= negatives,
+    },
+  };
+}
+
+function _parseBankCSV(csvText, columnMap) {
+  return parseBankCsvFile(csvText, columnMap).rows;
 }
 
 // Parse OFX/QFX/QBO - lightweight regex (no full XML parser needed for stable OFX 1.x)
@@ -3701,19 +3768,36 @@ function bankStatementImport({ bankAccountId, fileText, fileName, fileType, peri
 
   let rows = [];
   let parsedEndingBalance = null;
+  let impliedOpening = null, impliedOpeningDate = null;
   const ft = (fileType || '').toLowerCase();
+  const isOwedAccount = account.account_type === 'credit_card' || account.account_type === 'line_of_credit';
   if (ft === 'ofx' || ft === 'qfx' || ft === 'qbo') {
     rows = _parseBankOFX(fileText);
     parsedEndingBalance = _parseOFXLedgerBalance(fileText);
   } else {
-    rows = _parseBankCSV(fileText, savedMap);
-    // A card's own export writes a purchase as a positive number; in the books a
-    // purchase on the card is money out. OFX carries the sign already, so only a
-    // CSV is turned around, and a saved mapping can say otherwise (amountSign).
+    const parsed = parseBankCsvFile(fileText, savedMap);
+    rows = parsed.rows;
+    // A card export with one amount column writes a purchase as a positive
+    // number, and in the books a purchase on the card is money out. A file with
+    // separate charge and payment columns already carries the direction, and a
+    // file whose amounts are mostly negative is already signed: turning either
+    // around would reverse every line. A saved mapping overrides all of it.
     const sign = savedMap && (savedMap.amountSign === 1 || savedMap.amountSign === -1)
       ? savedMap.amountSign
-      : (account.account_type === 'credit_card' ? -1 : 1);
+      : (isOwedAccount && parsed.meta.amountsFrom === 'single' && parsed.meta.mostlyPositive ? -1 : 1);
     if (sign === -1) rows = rows.map(r => ({ ...r, amount: r.amount === 0 ? 0 : -r.amount }));
+    // A running balance in the file is the closing balance, so nobody has to
+    // type it. A card statement quotes what is owed as a positive number, while
+    // the books hold that as a negative balance.
+    if (parsed.meta.closingBalance != null) {
+      parsedEndingBalance = isOwedAccount ? -Math.abs(parsed.meta.closingBalance) : parsed.meta.closingBalance;
+    }
+    if (parsed.meta.openingBalance != null) {
+      const storedOldest = isOwedAccount ? -Math.abs(parsed.meta.openingBalance) : parsed.meta.openingBalance;
+      const rowAmount = sign === -1 ? -(parsed.meta.openingRowAmount || 0) : (parsed.meta.openingRowAmount || 0);
+      impliedOpening = parseFloat((storedOldest - rowAmount).toFixed(2));
+      impliedOpeningDate = parsed.meta.oldestDate;
+    }
   }
   // A file whose amounts all read as zero was misread, not a month of nothing.
   if (rows.length && rows.every(r => !r.amount)) throw new Error('ERR_CSV_NO_AMOUNTS');
@@ -3726,12 +3810,8 @@ function bankStatementImport({ bankAccountId, fileText, fileName, fileType, peri
   // supplied are the same number. Without this, a CSV imported with the optional
   // field blank stored 0 and the reconciliation could never clear.
   const userGave = endingBalance !== undefined && endingBalance !== null && endingBalance !== '';
-  const fileGave = !userGave && (parsedEndingBalance != null || rows[rows.length - 1].running_balance != null);
-  const endBal = userGave
-    ? endingBalance
-    : (parsedEndingBalance != null
-        ? parsedEndingBalance
-        : (rows[rows.length - 1].running_balance ?? 0));
+  const fileGave = !userGave && parsedEndingBalance != null;
+  const endBal = userGave ? endingBalance : (parsedEndingBalance != null ? parsedEndingBalance : 0);
   const endBalSource = userGave ? 'user' : (fileGave ? 'file' : 'none');
 
   return db.transaction(() => {
@@ -3766,6 +3846,28 @@ function bankStatementImport({ bankAccountId, fileText, fileName, fileType, peri
       newTxIds.push(txId);
     }
 
+    // A first import into an account nobody has set an opening balance for can
+    // say what it was: the file's own running balance before its oldest line.
+    // Only then - never over a figure somebody entered, and never once the
+    // account already holds history.
+    let openingSet = null;
+    if (impliedOpening != null && !Number(account.opening_balance)) {
+      const hadHistory = db.prepare(
+        `SELECT COUNT(*) AS n FROM bank_transactions WHERE bank_account_id=? AND id NOT IN (SELECT value FROM json_each(?))`
+      ).get(bankAccountId, JSON.stringify(newTxIds)).n;
+      const otherStatements = db.prepare(
+        `SELECT COUNT(*) AS n FROM bank_statements WHERE bank_account_id=? AND id<>?`
+      ).get(bankAccountId, stmtId).n;
+      if (!hadHistory && !otherStatements) {
+        const dayBefore = impliedOpeningDate
+          ? new Date(Date.parse(impliedOpeningDate + 'T00:00:00Z') - 86400000).toISOString().slice(0, 10)
+          : null;
+        db.prepare(`UPDATE bank_accounts SET opening_balance=?, opening_date=COALESCE(?, opening_date) WHERE id=?`)
+          .run(impliedOpening, dayBefore, bankAccountId);
+        openingSet = { balance: impliedOpening, date: dayBefore };
+      }
+    }
+
     // Run matching engine
     _runMatchingEngine(db, bankAccountId, newTxIds);
 
@@ -3777,7 +3879,7 @@ function bankStatementImport({ bankAccountId, fileText, fileName, fileType, peri
       else unmatched++;
     }
 
-    return { statementId: stmtId, rowCount: newTxIds.length, autoMatched, suggested, unmatched, duplicateRows };
+    return { statementId: stmtId, rowCount: newTxIds.length, autoMatched, suggested, unmatched, duplicateRows, openingSet, closingFromFile: parsedEndingBalance != null && !userGave };
   })();
 }
 
@@ -7105,7 +7207,7 @@ module.exports = {
   glAuditLogList,
   bankAccountsList, bankAccountCreate, bankAccountUpdate, bankAccountArchive,
   bankStatementImport, bankStatementsList, bankStatementDelete, bankStatementUpdate,
-  parseBankCSV: _parseBankCSV, normalizeStatementDate, COA_TYPES,
+  parseBankCSV: _parseBankCSV, parseBankCsvFile, normalizeStatementDate, COA_TYPES,
   bankAccountPostOpeningBalance, bankPostMissingEntries, bankFindOrphanEntries, bankSubledgerBalances,
   bankTransactionsList, bankTransactionUnmatch, bankTransactionCategorize,
   bankLinesForBillAmount,
