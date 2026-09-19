@@ -4253,9 +4253,21 @@ function bankReconcilePreview(bankAccountId, asOfDate, _db) {
   const account = db.prepare(`SELECT * FROM bank_accounts WHERE id=?`).get(bankAccountId);
   if (!account) throw new Error('ERR_BANK_ACCOUNT_NOT_FOUND');
 
-  const lastStmt = db.prepare(
-    `SELECT * FROM bank_statements WHERE bank_account_id=? ORDER BY period_end DESC LIMIT 1`
-  ).get(bankAccountId);
+  // The statement being reconciled: the one ending on the date asked about, or,
+  // with no date, the oldest still open (the one to close next), else the
+  // newest. Always taking the newest compared an older, reopened month against
+  // the next month's closing balance, and it could never close.
+  const lastStmt = (asOfDate && db.prepare(
+    `SELECT * FROM bank_statements WHERE bank_account_id=? AND period_end=? ORDER BY COALESCE(reconciled,0) ASC, id DESC LIMIT 1`
+  ).get(bankAccountId, asOfDate))
+    || (!asOfDate && db.prepare(
+      `SELECT * FROM bank_statements WHERE bank_account_id=? AND COALESCE(reconciled,0)=0 ORDER BY period_end ASC LIMIT 1`
+    ).get(bankAccountId))
+    || db.prepare(
+      `SELECT * FROM bank_statements WHERE bank_account_id=? ORDER BY period_end DESC LIMIT 1`
+    ).get(bankAccountId);
+  // Lines are counted to the end of that statement, not to today.
+  const countTo = asOfDate || (lastStmt ? lastStmt.period_end : null) || new Date().toISOString().slice(0, 10);
 
   const statementBalance = lastStmt ? lastStmt.ending_balance : account.opening_balance;
 
@@ -4264,7 +4276,7 @@ function bankReconcilePreview(bankAccountId, asOfDate, _db) {
     `SELECT COALESCE(SUM(amount),0) AS total FROM bank_transactions
      WHERE bank_account_id=? AND (reconciled=1 OR match_status IN (${reconPlaceholders}))
      AND transaction_date <= ?`
-  ).get(bankAccountId, ...RECONCILABLE_STATUSES, asOfDate || new Date().toISOString().slice(0,10));
+  ).get(bankAccountId, ...RECONCILABLE_STATUSES, countTo);
   // To the cent: adding floats left 179.17999999999995 in the figure the screen
   // and the variance are judged on.
   const biqBalance = parseFloat((account.opening_balance + (sumRow ? sumRow.total : 0)).toFixed(2));
