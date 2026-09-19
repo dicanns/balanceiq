@@ -132,9 +132,15 @@ export function buildLines(items) {
   for (const [page, list] of [...byPage.entries()].sort((a, b) => a[0] - b[0])) {
     list.sort((a, b) => a.cy - b.cy || a.x - b.x);
     const lines = [];
+    // A word joins the line holding the word nearest to it in height, not the
+    // line's first word. A box of text beside the table (TD prints its interest
+    // rates there, in a larger font) sits a few points off the transaction
+    // beside it; measured against that box, a description in a smaller font fell
+    // onto a line of its own and was read as a note.
     for (const it of list) {
       const last = lines[lines.length - 1];
-      if (!last || Math.abs(it.cy - last.cy) > Math.max(2.5, it.h * 0.4)) lines.push({ page, cy: it.cy, cells: [it] });
+      const near = last && last.cells.some(c => Math.abs(it.cy - c.cy) <= Math.max(2.5, Math.min(it.h, c.h) * 0.45));
+      if (!near) lines.push({ page, cy: it.cy, cells: [it] });
       else last.cells.push(it);
     }
     for (const l of lines) {
@@ -350,6 +356,12 @@ export function parseStatementPdf(items) {
       }
       last = null;
     }
+  }
+
+  // A line read with no description but with a note has had its description
+  // pushed below it: the note is the better name for it than nothing.
+  for (const r of rows) {
+    if (!r.description && r.note) { r.description = r.note; r.note = ''; }
   }
 
   // A dated line that never found an amount was not a transaction.

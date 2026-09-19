@@ -4145,10 +4145,12 @@ function _postBankTransactionEntry(db, txId) {
   const qstAcc = db.prepare(`SELECT * FROM chart_of_accounts WHERE account_number='1410'`).get();
   let tpsCents = Math.round((Number(tx.tps_paid) || 0) * 100);
   let tvqCents = Math.round((Number(tx.tvq_paid) || 0) * 100);
-  // Input tax credits are tax PAID, so they only apply to money going out.
-  // Sales tax on money coming in was already recorded when the invoice was
-  // raised; splitting it again here would claim or reverse it a second time.
-  if (inflow) { tpsCents = 0; tvqCents = 0; }
+  // Money coming in is usually a customer paying, and the sales tax on that was
+  // recorded when the invoice was raised: splitting it again would count it
+  // twice. A refund of a purchase is different: it comes in against an expense,
+  // and the tax claimed on the purchase has to come back out of the claim.
+  const refund = inflow && (target.type === 'expense' || target.type === 'cogs');
+  if (inflow && !refund) { tpsCents = 0; tvqCents = 0; }
   if (!gstAcc) tpsCents = 0;
   if (!qstAcc) tvqCents = 0;
   // Tax can never exceed the transaction itself.
