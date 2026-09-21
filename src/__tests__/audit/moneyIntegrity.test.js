@@ -90,6 +90,35 @@ describe('AUDIT-LEDGER-002 the handlers and the ledger', () => {
   });
   function entryIdSeed(t) { return String(Math.round(t.total * 1000)); }
 
+  it('a draft the ledger refused is replaced and posted, not taken for done', () => {
+    // What v1.83 and earlier left behind: a draft a cent out of balance.
+    const { entryId: stale } = glDraftEntry({ entry_date: '2026-08-31', description: 'sample', source_type: 'invoice', source_id: 'inv-stale', lines: [
+      { account_id: coa('1100'), debit_cents: 10000, credit_cents: 0 },
+      { account_id: coa('4000'), debit_cents: 0, credit_cents: 8500 },
+      { account_id: coa('2100'), debit_cents: 0, credit_cents: 500 },
+      { account_id: coa('2110'), debit_cents: 0, credit_cents: 1001 },
+    ] }, db);
+    expect(() => glPostEntry(stale, db)).toThrow(/ERR_ENTRY_UNBALANCED/);
+    // The handler's path: an existing draft is deleted, a balanced entry posted.
+    const { glFindEntryBySource, glDeleteDraft } = require('../../db/database.js');
+    const found = glFindEntryBySource('invoice', 'inv-stale', db);
+    expect(found.status).toBe('draft');
+    glDeleteDraft(found.id, db);
+    const s = ledgerSplit({ totalCents: 10000, tpsCents: 500, tvqCents: 1001, taxExempt: false });
+    const { entryId } = glDraftEntry({ entry_date: '2026-08-31', description: 'sample', source_type: 'invoice', source_id: 'inv-stale', lines: [
+      { account_id: coa('1100'), debit_cents: s.totalCents, credit_cents: 0 },
+      { account_id: coa('4000'), debit_cents: 0, credit_cents: s.revenueCents },
+      { account_id: coa('2100'), debit_cents: 0, credit_cents: s.tpsCents },
+      { account_id: coa('2110'), debit_cents: 0, credit_cents: s.tvqCents },
+    ] }, db);
+    expect(() => glPostEntry(entryId, db)).not.toThrow();
+    expect(glFindEntryBySource('invoice', 'inv-stale', db)).toMatchObject({ id: entryId, status: 'posted' });
+    expect(db.prepare(`SELECT COUNT(*) n FROM journal_entries WHERE source_id='inv-stale'`).get().n).toBe(1);
+    const main = read('main.js');
+    expect((main.match(/if \(already && already\.status === 'draft'\) glDeleteDraft\(already\.id\);/g) || []).length).toBe(2);
+    expect(main).not.toMatch(/if \(already\) return \{ ok: true, entryId: already\.id, alreadyPosted: true \};/);
+  });
+
   it('both handlers use the split, refusals are logged, and unposted invoices are backfilled', () => {
     const main = read('main.js');
     expect((main.match(/ledgerSplit\(\{ totalCents, tpsCents, tvqCents, taxExempt/g) || []).length).toBe(2);

@@ -1993,7 +1993,11 @@ ipcMain.handle('ledger:invoice:post', async (_e, {
   // Idempotent: the renderer's glEntryId can be lost, and re-posting would
   // double the revenue and the receivable.
   const already = glFindEntryBySource('invoice', invoiceId);
-  if (already) return { ok: true, entryId: already.id, alreadyPosted: true };
+  if (already && already.status === 'posted') return { ok: true, entryId: already.id, alreadyPosted: true };
+  // A draft left behind is a posting the ledger refused (a cent out of balance,
+  // before v1.84.0). Treating it as done linked the invoice to an entry that
+  // never counted. It is replaced by a balanced one and posted.
+  if (already && already.status === 'draft') glDeleteDraft(already.id);
 
   const { coaList } = require('./src/db/database.js');
   const accounts = coaList();
@@ -2039,7 +2043,8 @@ ipcMain.handle('ledger:creditnote:post', async (_e, {
   creditNoteId, creditNoteDate, subtotalCents, tpsCents, tvqCents, totalCents, taxExempt,
 }) => {
   const already = glFindEntryBySource('credit_note', creditNoteId);
-  if (already) return { ok: true, entryId: already.id, alreadyPosted: true };
+  if (already && already.status === 'posted') return { ok: true, entryId: already.id, alreadyPosted: true };
+  if (already && already.status === 'draft') glDeleteDraft(already.id);
 
   const { coaList } = require('./src/db/database.js');
   const accounts = coaList();
