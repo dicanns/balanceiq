@@ -80,6 +80,7 @@ const UI = {
     accountRemembered: 'Compte repris de la dernière facture de ce fournisseur.',
     dropHere: 'Déposez un PDF ou une photo ici',
     errPdfNoText: 'Ce PDF est une image sans texte. Enregistrez-le en PNG ou JPG et réessayez : la reconnaissance de texte prendra le relais.',
+    errDropNoPath: "Ce fichier n'a pas pu être ouvert par glisser-déposer. Utilisez le bouton Lire une facture et choisissez-le.",
     errUnsupported: 'Type de fichier non pris en charge. Utilisez un PDF, PNG ou JPG.',
     errRead: 'Le fichier n\'a pas pu être lu.',
     warnTotal: (e, f) => `Le total lu (${f}) ne correspond pas au sous-total plus les taxes (${e}). Vérifiez les montants.`,
@@ -157,6 +158,7 @@ const UI = {
     accountRemembered: 'Account taken from this supplier\'s last bill.',
     dropHere: 'Drop a PDF or a photo here',
     errPdfNoText: 'That PDF is an image with no text layer. Save it as PNG or JPG and try again - text recognition will take over.',
+    errDropNoPath: 'That file could not be opened from the drop. Use the Read a bill button and pick it instead.',
     errUnsupported: 'Unsupported file type. Use a PDF, PNG or JPG.',
     errRead: 'The file could not be read.',
     warnTotal: (e, f) => `The total read (${f}) does not match subtotal plus taxes (${e}). Check the amounts.`,
@@ -407,8 +409,12 @@ export default function BillsTab({ lang = 'fr' }) {
   const onDrop = (e) => {
     e.preventDefault(); setDragOver(false);
     const file = e.dataTransfer?.files?.[0];
-    const filePath = file?.path;
+    if (!file) return;
+    // File.path no longer exists in the renderer (Electron 44); the preload asks
+    // for it. The old property is kept as a fallback for older builds.
+    const filePath = window.api?.supplierBills?.pathOfFile?.(file) || file.path || null;
     if (filePath) readFrom(window.api.supplierBills.readDocumentAt(filePath));
+    else setError(T.errDropNoPath);
   };
 
   // Clicking a word while a field is chosen puts that value in the field and

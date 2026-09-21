@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   storage: {
@@ -385,6 +385,9 @@ contextBridge.exposeInMainWorld('api', {
     subledger: (asOf)          => ipcRenderer.invoke('supplier:bill:subledger', asOf),
     readDocument:   ()         => ipcRenderer.invoke('bill:readDocument'),
     readDocumentAt: (filePath) => ipcRenderer.invoke('bill:readDocumentAt', filePath),
+    // A dropped file's path. Electron removed File.path (gone by 44); the
+    // preload is the only place that can still ask for it.
+    pathOfFile:     (file)     => { try { return webUtils.getPathForFile(file) || null; } catch (_) { return null; } },
   },
   supplierPayments: {
     list:   (billId) => ipcRenderer.invoke('supplier:payments:list', billId),
