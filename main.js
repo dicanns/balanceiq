@@ -1985,6 +1985,8 @@ ipcMain.handle('ledger:deposit:reverse', async (_e, { depositId, reason } = {}) 
   }
 });
 
+const { ledgerSplit } = require('./src/services/ledgerSplit.js');
+
 ipcMain.handle('ledger:invoice:post', async (_e, {
   invoiceId, invoiceDate, subtotalCents, tpsCents, tvqCents, totalCents, taxExempt,
 }) => {
@@ -2005,14 +2007,21 @@ ipcMain.handle('ledger:invoice:post', async (_e, {
     return { ok: false, error: 'missing_coa_accounts', detail: 'Comptes 1100 ou 4000 introuvables' };
   }
 
+  // The renderer rounds subtotal, each tax and the total to cents separately,
+  // and on about a third of invoices the parts miss the total by a cent. The
+  // receivable is what the customer is billed, the taxes are what is owed to
+  // the government, so the rounding cent lands in revenue: the entry always
+  // balances instead of being refused and the invoice never reaching the books.
+  const split = ledgerSplit({ totalCents, tpsCents, tvqCents, taxExempt, hasTps: !!tpsAcc, hasTvq: !!tvqAcc });
+  if (!split.ok) return { ok: false, error: split.error };
   const lines = [];
-  lines.push({ account_id: ar.id, debit_cents: totalCents, credit_cents: 0, memo: `Facture ${invoiceId}` });
+  lines.push({ account_id: ar.id, debit_cents: split.totalCents, credit_cents: 0, memo: `Facture ${invoiceId}` });
   if (taxExempt) {
-    lines.push({ account_id: revenue.id, debit_cents: 0, credit_cents: totalCents, memo: `Revenus (exonéré)` });
+    lines.push({ account_id: revenue.id, debit_cents: 0, credit_cents: split.revenueCents, memo: `Revenus (exonéré)` });
   } else {
-    lines.push({ account_id: revenue.id, debit_cents: 0, credit_cents: subtotalCents, memo: 'Revenus' });
-    if (tpsCents && tpsAcc) lines.push({ account_id: tpsAcc.id, debit_cents: 0, credit_cents: tpsCents, memo: 'TPS à payer' });
-    if (tvqCents && tvqAcc) lines.push({ account_id: tvqAcc.id, debit_cents: 0, credit_cents: tvqCents, memo: 'TVQ à payer' });
+    lines.push({ account_id: revenue.id, debit_cents: 0, credit_cents: split.revenueCents, memo: 'Revenus' });
+    if (split.tpsCents) lines.push({ account_id: tpsAcc.id, debit_cents: 0, credit_cents: split.tpsCents, memo: 'TPS à payer' });
+    if (split.tvqCents) lines.push({ account_id: tvqAcc.id, debit_cents: 0, credit_cents: split.tvqCents, memo: 'TVQ à payer' });
   }
 
   const { entryId } = glDraftEntry({
@@ -2044,14 +2053,17 @@ ipcMain.handle('ledger:creditnote:post', async (_e, {
     return { ok: false, error: 'missing_coa_accounts' };
   }
 
+  // Same split as an invoice, mirrored, so a credit note is the exact reverse.
+  const split = ledgerSplit({ totalCents, tpsCents, tvqCents, taxExempt, hasTps: !!tpsAcc, hasTvq: !!tvqAcc });
+  if (!split.ok) return { ok: false, error: split.error };
   const lines = [];
-  lines.push({ account_id: ar.id, debit_cents: 0, credit_cents: totalCents, memo: `Note de crédit ${creditNoteId}` });
+  lines.push({ account_id: ar.id, debit_cents: 0, credit_cents: split.totalCents, memo: `Note de crédit ${creditNoteId}` });
   if (taxExempt) {
-    lines.push({ account_id: revenue.id, debit_cents: totalCents, credit_cents: 0, memo: 'Contra-revenus (exonéré)' });
+    lines.push({ account_id: revenue.id, debit_cents: split.revenueCents, credit_cents: 0, memo: 'Contra-revenus (exonéré)' });
   } else {
-    lines.push({ account_id: revenue.id, debit_cents: subtotalCents, credit_cents: 0, memo: 'Contra-revenus' });
-    if (tpsCents && tpsAcc) lines.push({ account_id: tpsAcc.id, debit_cents: tpsCents, credit_cents: 0, memo: 'TPS – note de crédit' });
-    if (tvqCents && tvqAcc) lines.push({ account_id: tvqAcc.id, debit_cents: tvqCents, credit_cents: 0, memo: 'TVQ – note de crédit' });
+    lines.push({ account_id: revenue.id, debit_cents: split.revenueCents, credit_cents: 0, memo: 'Contra-revenus' });
+    if (split.tpsCents) lines.push({ account_id: tpsAcc.id, debit_cents: split.tpsCents, credit_cents: 0, memo: 'TPS – note de crédit' });
+    if (split.tvqCents) lines.push({ account_id: tvqAcc.id, debit_cents: split.tvqCents, credit_cents: 0, memo: 'TVQ – note de crédit' });
   }
 
   const { entryId } = glDraftEntry({

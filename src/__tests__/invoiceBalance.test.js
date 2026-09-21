@@ -5,7 +5,7 @@
  * Covers: partial pay, full pay, overpay, no payments, credit notes, multiple invoices
  */
 import { describe, it, expect } from 'vitest';
-import { calcInvoiceBalance, calcTotalOutstanding, calcInvoiceTotals } from '../utils/calculations.js';
+import { calcInvoiceBalance, calcTotalOutstanding, computeInvoiceTotals } from '../utils/calculations.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const pmt = (montant, date = '2026-03-01') => ({ montant, date });
@@ -55,7 +55,7 @@ describe('Invoice balance - from computed totals', () => {
   it('balance computed from invoice lines', () => {
     // 2 × $200 + TPS + TVQ → invoice total
     const lignes = [{ quantite: 2, prixUnitaire: 200, remise: 0, tps: true, tvq: true }];
-    const { total } = calcInvoiceTotals(lignes);
+    const { total } = computeInvoiceTotals(lignes);   // the one the app uses
     expect(total).toBeCloseTo(459.90, 2);  // 400 + 20 + 39.90
 
     // Paid $200, remaining balance

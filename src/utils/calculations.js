@@ -41,10 +41,6 @@ export function calcVariance(manualTotal, expectedInRegister) {
   return r2(manualTotal - expectedInRegister);
 }
 
-export function isBalanced(variance) {
-  return Math.abs(variance) <= 1;
-}
-
 // ── NET SALES ────────────────────────────────────────────────────────────────
 export function calcNetSalesPOS(posVentes, posDiscounts, posRefunds) {
   return r2((posVentes || 0) - (posDiscounts || 0) - (posRefunds || 0));
@@ -97,24 +93,6 @@ export function calcNetProfitPct(netProfit, revenue) {
 }
 
 // ── INVOICE LINE TOTALS ───────────────────────────────────────────────────────
-export function calcInvoiceLine(quantite, prixUnitaire, remise = 0) {
-  return r2(n(quantite) * n(prixUnitaire) * (1 - n(remise) / 100));
-}
-
-export function calcInvoiceTotals(lignes) {
-  let sousTotal = 0, tpsTotal = 0, tvqTotal = 0;
-  (lignes || []).forEach((l) => {
-    const lt = calcInvoiceLine(l.quantite || l.qty, l.prixUnitaire || l.unitPrice, l.remise || l.discount);
-    sousTotal += lt;
-    if (l.tps) tpsTotal += lt * 0.05;
-    if (l.tvq) tvqTotal += lt * 0.09975;
-  });
-  sousTotal = r2(sousTotal);
-  tpsTotal  = r2(tpsTotal);
-  tvqTotal  = r2(tvqTotal);
-  return { sousTotal, tpsTotal, tvqTotal, total: r2(sousTotal + tpsTotal + tvqTotal) };
-}
-
 // ── TIP POOL ─────────────────────────────────────────────────────────────────
 export function calcTipPool(method, totalTips, employees) {
   if (!totalTips || totalTips <= 0 || !employees || employees.length === 0) return [];
@@ -247,30 +225,8 @@ export function calcEncaisseVariance(physicalCount, soldeCalcule) {
   return r2((physicalCount || 0) - soldeCalcule);
 }
 
-export function isEncaisseBalanced(variance) {
-  return Math.abs(variance) <= 2;
-}
 
 // ── ENCAISSE RUNNING CHAIN ────────────────────────────────────────────────────
-// Processes an ordered array of daily encaisse entries, carrying closing → opening.
-// Each entry: { cashVentes, autresEntrees, depots, sorties, physicalCount, openingOverride }
-export function computeEncaisseChain(days) {
-  let prevClosing = null;
-  return days.map((day) => {
-    const opening = day.openingOverride != null ? day.openingOverride : (prevClosing ?? 0);
-    const calculated = r2(
-      opening +
-      (day.cashVentes || 0) +
-      (day.autresEntrees || 0) -
-      (day.depots || 0) -
-      (day.sorties || 0)
-    );
-    const closing = day.physicalCount != null ? day.physicalCount : calculated;
-    prevClosing = closing;
-    return { ...day, opening, calculated, closing };
-  });
-}
-
 // ── INVOICE BALANCE (AR) ──────────────────────────────────────────────────────
 export function calcInvoiceBalance(invoiceTotal, payments) {
   const totalPaid = r2((payments || []).reduce((s, p) => s + (p.montant || 0), 0));

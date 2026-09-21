@@ -100,16 +100,26 @@ export default function RegisterCloseCard({
   const showReasonPicker = thresholdExceeded && varianceRule !== 'inform' && !hideVariance && !reasonConfirmed;
   const reasonRequired = varianceRule === 'block';
 
-  // Sync cash.deposits with safe drop total whenever drops change
+  // A safe drop must reach the variance in exactly one place. In simple mode
+  // the formula knows nothing of drops, so the drop total is carried into
+  // cash.deposits (money that left the drawer for the safe). In advanced mode
+  // the formula subtracts the drops itself; carrying them into deposits as well
+  // counted every drop twice, and a perfect day with one $50 drop read +$50.
   const dropSyncRef = useRef(null);
   useEffect(() => {
     if (!onSaveDrops || !onChange || myDrops.length === 0) return;
     const total = myDrops.reduce((s, d) => s + (d.amount_cents ?? 0), 0) / 100;
+    if (advancedMode) {
+      // A deposit figure carried over from simple mode is the drops again.
+      if ((cash?.deposits ?? 0) !== 0 && Math.abs((cash?.deposits ?? 0) - total) < 0.005) onChange({ ...cash, deposits: 0 });
+      dropSyncRef.current = null;
+      return;
+    }
     if (dropSyncRef.current === total) return;
     dropSyncRef.current = total;
     onChange({ ...cash, deposits: total });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myDrops]);
+  }, [myDrops, advancedMode]);
 
   function handleDenomChange(totalDollars, rows) {
     denomRowsRef.current = rows;

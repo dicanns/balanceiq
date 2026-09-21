@@ -6,13 +6,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   calcTPS, calcTVQ, calcTaxTotal,
-  calcManualTotal, calcPOSGross, calcExpectedInRegister, calcVariance, isBalanced,
+  calcManualTotal, calcPOSGross, calcExpectedInRegister, calcVariance,
   calcNetSalesPOS,
   calcMoyenneParDouzaine,
   calcInventoryUsed,
   calcLabourCost, calcLabourPct,
   calcFoodCostPct, calcPrimeCost, calcPrimeCostPct, calcNetProfit, calcNetProfitPct,
-  calcInvoiceLine, calcInvoiceTotals,
   calcTipPool,
   calcEcoItem, calcEcoFee,
   calcRoyalty,
@@ -20,7 +19,7 @@ import {
   calcRecipeCost, calcRecipeCostPerServing,
   calcAgingDays, calcAgingBucket, calcAgingTotals,
   calcPasseParHeure, calcProjectionFinDeJour,
-  calcSoldeCalcule, calcEncaisseVariance, isEncaisseBalanced,
+  calcSoldeCalcule, calcEncaisseVariance,
 } from '../utils/calculations.js';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -102,19 +101,6 @@ describe('Cash register reconciliation', () => {
     const variance = calcVariance(manual, expected);
     // Just check the formula - value depends on inputs
     expect(typeof variance).toBe('number');
-  });
-
-  it('flags balanced register (variance ≤ $1)', () => {
-    expect(isBalanced(0)).toBe(true);
-    expect(isBalanced(0.50)).toBe(true);
-    expect(isBalanced(-0.99)).toBe(true);
-    expect(isBalanced(1.00)).toBe(true);
-  });
-
-  it('flags unbalanced register (variance > $1)', () => {
-    expect(isBalanced(1.01)).toBe(false);
-    expect(isBalanced(-2.50)).toBe(false);
-    expect(isBalanced(38.44)).toBe(false);
   });
 
   it('handles missing fields as zero', () => {
@@ -212,66 +198,6 @@ describe('P&L calculations', () => {
     expect(loss).toBe(-8000);
     expect(calcNetProfitPct(loss, 40000)).toBeCloseTo(-20, 1);
   });
-});
-
-// ────────────────────────────────────────────────────────────────────────────
-// INVOICE LINE TOTALS
-// ────────────────────────────────────────────────────────────────────────────
-describe('Invoice line totals', () => {
-  it('calculates a single taxable line', () => {
-    // 5 units × $10 = $50, TPS $2.50, TVQ $4.99 → total $57.49
-    const result = calcInvoiceTotals([
-      { quantite: 5, prixUnitaire: 10, remise: 0, tps: true, tvq: true }
-    ]);
-    expect(result.sousTotal).toBe(50);
-    expect(result.tpsTotal).toBe(2.50);
-    expect(result.tvqTotal).toBe(4.99); // 50 × 0.09975 = 4.9875 → 4.99
-    expect(result.total).toBe(57.49);
-  });
-
-  it('applies discount before tax', () => {
-    // 10 × $100, 20% discount → $800 taxable
-    const result = calcInvoiceTotals([
-      { quantite: 10, prixUnitaire: 100, remise: 20, tps: true, tvq: true }
-    ]);
-    expect(result.sousTotal).toBe(800);
-    expect(result.tpsTotal).toBe(40);
-    expect(result.tvqTotal).toBe(79.80); // 800 × 0.09975 = 79.80
-    expect(result.total).toBe(919.80);
-  });
-
-  it('respects per-line TPS/TVQ flags', () => {
-    // Mixed: line 1 taxable, line 2 tax-exempt
-    const result = calcInvoiceTotals([
-      { quantite: 1, prixUnitaire: 100, remise: 0, tps: true,  tvq: true  },
-      { quantite: 1, prixUnitaire: 200, remise: 0, tps: false, tvq: false },
-    ]);
-    expect(result.sousTotal).toBe(300);
-    expect(result.tpsTotal).toBe(5);        // only on $100
-    expect(result.tvqTotal).toBe(9.98);     // only on $100
-    expect(result.total).toBe(314.98);
-  });
-
-  it('handles empty invoice', () => {
-    const result = calcInvoiceTotals([]);
-    expect(result.sousTotal).toBe(0);
-    expect(result.total).toBe(0);
-  });
-
-  it('handles multiple lines correctly', () => {
-    // Typical supplier invoice: produce + packaging + service
-    const result = calcInvoiceTotals([
-      { quantite: 50, prixUnitaire: 2.40, remise: 0,  tps: false, tvq: false }, // produce $120
-      { quantite: 5,  prixUnitaire: 18,   remise: 10, tps: true,  tvq: true  }, // packaging $81
-      { quantite: 1,  prixUnitaire: 150,  remise: 0,  tps: true,  tvq: true  }, // service $150
-    ]);
-    expect(result.sousTotal).toBe(351);  // 120 + 81 + 150
-    expect(result.tpsTotal).toBe(r2Verify(231 * 0.05));  // 81+150 taxable
-    expect(result.tvqTotal).toBe(r2Verify(231 * 0.09975));
-    expect(result.total).toBeCloseTo(351 + 231 * 0.05 + 231 * 0.09975, 1);
-  });
-
-  function r2Verify(n) { return Math.round(n * 100) / 100; }
 });
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -666,17 +592,6 @@ describe('Encaisse (daily cash position)', () => {
     expect(calcEncaisseVariance(510, 500)).toBe(10);
     expect(calcEncaisseVariance(490, 500)).toBe(-10); // short
     expect(calcEncaisseVariance(500, 500)).toBe(0);    // exact
-  });
-
-  it('flags balanced encaisse (variance ≤ $2)', () => {
-    expect(isEncaisseBalanced(0)).toBe(true);
-    expect(isEncaisseBalanced(2)).toBe(true);
-    expect(isEncaisseBalanced(-2)).toBe(true);
-  });
-
-  it('flags unbalanced encaisse (variance > $2)', () => {
-    expect(isEncaisseBalanced(2.01)).toBe(false);
-    expect(isEncaisseBalanced(-5)).toBe(false);
   });
 
   it('opening balance chains from previous day closing', () => {

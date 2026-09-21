@@ -154,6 +154,11 @@ export default function CloseReviewModal({
                       </span>
                     )}
                   </div>
+                  {incomplete && (
+                    <div style={{ marginTop: 4, paddingLeft: 20, fontSize: 11, color: '#f59e0b' }}>
+                      {T?.crCountMissing ?? (fr ? 'Décompte manquant : la clôture ne peut pas être confirmée tant que cette caisse n\'est pas comptée.' : 'Count missing: the close cannot be confirmed until this register is counted.')}
+                    </div>
+                  )}
                   {needsReason && !capturedCode && (
                     <div style={{ marginTop: 5, paddingLeft: 20 }}>
                       <select

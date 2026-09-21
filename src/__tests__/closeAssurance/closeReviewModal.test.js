@@ -43,8 +43,8 @@ describe('MODAL-002 canConfirmClose - variance reason gating', () => {
     expect(canConfirmClose({ blockers: [], variances: [varOver], varianceRule: 'inform', localReasons: {} })).toBe(true);
   });
 
-  it('returns true with inform rule even when count is incomplete (null variance)', () => {
-    expect(canConfirmClose({ blockers: [], variances: [nullVariance], varianceRule: 'inform', localReasons: {} })).toBe(true);
+  it('returns false with inform rule when count is incomplete (null variance): a count is not a variance to inform about', () => {
+    expect(canConfirmClose({ blockers: [], variances: [nullVariance], varianceRule: 'inform', localReasons: {}, warnings: [], signoffRequired: false })).toBe(false);
   });
 
   it('returns false with require_reason when count is incomplete (null variance)', () => {

@@ -16,13 +16,12 @@ import Database from 'better-sqlite3';
 
 import {
   calcTPS, calcTVQ, calcTaxTotal,
-  calcManualTotal, calcPOSGross, calcExpectedInRegister, calcVariance, isBalanced,
+  calcManualTotal, calcPOSGross, calcExpectedInRegister, calcVariance,
   calcNetSalesPOS,
   calcMoyenneParDouzaine,
   calcInventoryUsed,
   calcLabourCost, calcLabourPct,
   calcFoodCostPct, calcNetProfit, calcNetProfitPct,
-  calcInvoiceLine, calcInvoiceTotals,
   calcTipPool,
   calcEcoItem, calcEcoFee,
   calcRoyalty,
@@ -30,10 +29,9 @@ import {
   calcRecipeCost, calcRecipeCostPerServing,
   calcAgingDays, calcAgingBucket, calcAgingTotals,
   calcPasseParHeure, calcProjectionFinDeJour,
-  calcSoldeCalcule, calcEncaisseVariance, isEncaisseBalanced,
+  calcSoldeCalcule, calcEncaisseVariance,
   calcInvoiceBalance, calcTotalOutstanding,
   calcSteppedRoyaltyRate,
-  computeEncaisseChain,
 } from '../../utils/calculations.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -121,8 +119,6 @@ describe('Input validation - negative numbers in every numeric field', () => {
     expect(calcTPS(-500)).toBe(-25);
     // Math.round(-49.875 * 100) = -4987 (JS rounds -0.5 toward +Infinity) → -49.87, not -49.88
     expect(calcTVQ(-500)).toBe(-49.87);
-    // But isBalanced / isEncaisseBalanced should still work on the resulting variance
-    expect(isBalanced(calcVariance(-500, -500))).toBe(true);
   });
 
   it('negative interac / cash / deposits produce negative manual total', () => {
@@ -188,11 +184,6 @@ describe('Input validation - letters / non-numeric in numeric fields', () => {
     expect(calcManualTotal('abc', 'xyz', 'qrs')).toBe(0);
   });
 
-  it('calcInvoiceLine with string qty / price coerces to 0', () => {
-    // Fixed: n('many') = 0, n('expensive') = 0 → 0 * 0 = 0
-    expect(calcInvoiceLine('many', 'expensive')).toBe(0);
-  });
-
   it('calcLabourCost with string hours/wage coerces to 0', () => {
     // Fixed: n('huit') = 0, n('quinze') = 0 → 0 * 0 = 0
     expect(calcLabourCost([{ hours: 'huit', wage: 'quinze' }])).toBe(0);
@@ -218,18 +209,6 @@ describe('Input validation - overflow values (999999999.99 in sales)', () => {
     expect(Number.isFinite(cost)).toBe(true);
   });
 
-  it('calcInvoiceTotals with 100 overflow-value lines stays finite', () => {
-    const lines = Array.from({ length: 100 }, () => ({
-      quantite: OVERFLOW,
-      prixUnitaire: OVERFLOW,
-      remise: 0,
-      tps: true,
-      tvq: true,
-    }));
-    const { total } = calcInvoiceTotals(lines);
-    expect(Number.isFinite(total)).toBe(true);
-  });
-
   it('calcNetProfit on overflow inputs stays finite', () => {
     const profit = calcNetProfit(OVERFLOW, OVERFLOW / 3, OVERFLOW / 3, OVERFLOW / 3);
     expect(Number.isFinite(profit)).toBe(true);
@@ -245,10 +224,6 @@ describe('Input validation - too many decimal places (0.001)', () => {
 
   it('calcTPS on 0.001 rounds to 0', () => {
     expect(calcTPS(0.001)).toBe(0);
-  });
-
-  it('calcInvoiceLine with sub-cent unit price rounds to 0', () => {
-    expect(calcInvoiceLine(1, 0.001)).toBe(0);
   });
 
   it('calcSoldeCalcule with sub-cent differences rounds cleanly', () => {
@@ -278,10 +253,6 @@ describe('Input validation - empty strings where numbers expected', () => {
     expect(calcRecipeCost([])).toBe(0);
   });
 
-  it('calcInvoiceTotals with empty lines returns all zeros', () => {
-    const t = calcInvoiceTotals([]);
-    expect(t).toEqual({ sousTotal: 0, tpsTotal: 0, tvqTotal: 0, total: 0 });
-  });
 });
 
 describe('Input validation - HTML / script injection in text fields (XSS)', () => {
@@ -494,14 +465,6 @@ describe('Edge case - $0 sales (dead day)', () => {
     expect(calcNetProfit(0, 100, 200, 50)).toBe(-350);
   });
 
-  it('isBalanced on dead day with $0 variance is balanced', () => {
-    const variance = calcVariance(
-      calcManualTotal(0, 0, 0),
-      calcExpectedInRegister(calcPOSGross(0, 0, 0), 0)
-    );
-    expect(isBalanced(variance)).toBe(true);
-  });
-
   it('snapshot of dead day is stored and retrievable', () => {
     const data = JSON.stringify({ venteNet: 0, caisses: 1, date: '2026-03-31' });
     db.prepare('INSERT INTO daily_snapshots (date, data, device_id) VALUES (?, ?, ?)').run('2026-03-31', data, 'DEV-001');
@@ -522,48 +485,6 @@ describe('Edge case - negative variance (cash OVER)', () => {
     expect(variance).toBe(10);
   });
 
-  it('large overage ($200 over) is flagged as unbalanced', () => {
-    expect(isBalanced(calcVariance(950, 750))).toBe(false);
-  });
-
-  it('encaisse variance negative (physical < calculated) is handled by isEncaisseBalanced', () => {
-    const variance = calcEncaisseVariance(1000, 1050); // counting $50 short
-    expect(variance).toBe(-50);
-    expect(isEncaisseBalanced(variance)).toBe(false);
-  });
-
-  it('encaisse over by $1.50 is within tolerance', () => {
-    expect(isEncaisseBalanced(calcEncaisseVariance(1001.50, 1000))).toBe(true);
-  });
-});
-
-describe('Edge case - invoice with 100 line items', () => {
-  it('calcInvoiceTotals handles 100 lines without overflow or NaN', () => {
-    const lines = Array.from({ length: 100 }, (_, i) => ({
-      quantite: i + 1,
-      prixUnitaire: 9.99,
-      remise: 0,
-      tps: true,
-      tvq: true,
-    }));
-    const { sousTotal, tpsTotal, tvqTotal, total } = calcInvoiceTotals(lines);
-    expect(Number.isFinite(sousTotal)).toBe(true);
-    expect(Number.isFinite(total)).toBe(true);
-    expect(total).toBeGreaterThan(sousTotal); // taxes added
-  });
-
-  it('100-line invoice sous-total matches manual sum', () => {
-    const lines = Array.from({ length: 100 }, () => ({
-      quantite: 2,
-      prixUnitaire: 5.00,
-      remise: 0,
-      tps: false,
-      tvq: false,
-    }));
-    const { sousTotal, total } = calcInvoiceTotals(lines);
-    expect(sousTotal).toBe(1000); // 100 × 2 × $5
-    expect(total).toBe(1000);
-  });
 });
 
 describe('Edge case - recipe with 50 ingredients', () => {
@@ -589,30 +510,6 @@ describe('Edge case - recipe with 50 ingredients', () => {
 });
 
 describe('Edge case - 365 consecutive close-outs (encaisse chain)', () => {
-  it('computeEncaisseChain over 365 days chains opening→closing correctly', () => {
-    const days = Array.from({ length: 365 }, (_, i) => ({
-      cashVentes: 800 + (i % 7) * 50, // cycles through weekday variation
-      autresEntrees: 0,
-      depots: 500,
-      sorties: 50,
-      physicalCount: null, // let it calculate
-    }));
-
-    const chain = computeEncaisseChain(days);
-    expect(chain.length).toBe(365);
-
-    // Each day's opening must equal previous day's closing
-    for (let i = 1; i < chain.length; i++) {
-      expect(chain[i].opening).toBeCloseTo(chain[i - 1].closing, 2);
-    }
-
-    // All values must be finite numbers
-    chain.forEach((d, i) => {
-      expect(Number.isFinite(d.calculated)).toBe(true, `day ${i} calculated is not finite`);
-      expect(Number.isFinite(d.closing)).toBe(true, `day ${i} closing is not finite`);
-    });
-  });
-
   it('365 consecutive snapshots stored in SQLite without error', () => {
     const insert = db.prepare('INSERT INTO daily_snapshots (date, data, device_id) VALUES (?, ?, ?)');
     const insertMany = db.transaction((rows) => {
@@ -920,14 +817,6 @@ describe('Boundary combinations', () => {
     expect(calcProjectionFinDeJour(0, 0)).toBe(null);
   });
 
-  it('computeEncaisseChain with an opening override on day 1 ignores prior closing', () => {
-    const chain = computeEncaisseChain([
-      { cashVentes: 500, autresEntrees: 0, depots: 200, sorties: 50, physicalCount: null, openingOverride: 1000 },
-    ]);
-    expect(chain[0].opening).toBe(1000);
-    expect(chain[0].calculated).toBe(r2(1000 + 500 - 200 - 50));
-  });
-
   it('emoji-only cashier name stored in audit_log does not corrupt the table', () => {
     expect(() =>
       db.prepare(
@@ -975,29 +864,6 @@ describe('Fix regression - calcManualTotal now uses parseFloat coercion', () => 
 
   it('empty string coerces to 0', () => {
     expect(calcManualTotal('', '', '')).toBe(0);
-  });
-});
-
-describe('Fix regression - calcInvoiceLine now uses parseFloat coercion', () => {
-  it('string qty / price coerce correctly', () => {
-    expect(calcInvoiceLine('3', '10.00')).toBe(30);
-  });
-
-  it('alpha strings produce 0 (not NaN)', () => {
-    expect(calcInvoiceLine('many', 'expensive')).toBe(0);
-    expect(Number.isNaN(calcInvoiceLine('many', 'expensive'))).toBe(false);
-  });
-
-  it('string remise coerces (e.g. "10" = 10% discount)', () => {
-    expect(calcInvoiceLine(2, 100, '10')).toBe(180); // 2 × $100 × (1 − 0.10)
-  });
-
-  it('alpha remise coerces to 0 (no discount applied)', () => {
-    expect(calcInvoiceLine(2, 100, 'dix')).toBe(200); // no discount
-  });
-
-  it('empty string qty produces 0', () => {
-    expect(calcInvoiceLine('', 100)).toBe(0);
   });
 });
 

@@ -5,6 +5,26 @@ Each entry includes what changed, why, and exactly how to roll it back if needed
 
 ---
 
+## v1.84.0 - September 20, 2026
+
+Money integrity, first batch (from the audit brief; items the owner cleared as safe).
+
+### Fixed
+- Ledger: an invoice whose rounded parts missed its rounded total by a cent was refused by the ledger (unbalanced entry) and the refusal was swallowed, so the invoice never reached the books. The receivable is now the billed total, the taxes are as printed, and revenue takes the rounding cent (`src/services/ledgerSplit.js`). Refusals are logged, and invoices sent while unposted are posted at start (idempotent on the invoice id).
+- Daily close: a safe drop was counted twice in advanced (multi-tender) mode, once subtracted from expected cash and once carried into deposits, so a perfect day with one drop read as an overage of that drop. The carry into deposits now happens only in simple mode.
+- Daily close: a register with no count could be confirmed under the "inform" rule and was stored as balanced at $0.00. A missing count blocks confirmation under every rule, with a message on the review screen (FR/EN).
+- Tip pool: the modal carried its own copy of the distribution algorithm; it now calls `calcTipPool`.
+
+### Removed
+- Dead code: `calcInvoiceTotals`, `calcInvoiceLine`, `computeEncaisseChain`, `isBalanced`, `isEncaisseBalanced` (no callers in the app; the register tolerance lives in the close policy).
+
+### Rollback
+- Revert the v1.84.0 commits. Ledger entries posted by the backfill are ordinary invoice entries and can stay.
+
+## v1.23.0 to v1.83.1 - April to September 2026
+
+Not recorded here. The history for these versions is the git log and the GitHub Releases page (one tag per version, `vX.Y.Z`). This file resumes at v1.84.0.
+
 ## v1.22.6 - March 31, 2026
 
 ### Fixed

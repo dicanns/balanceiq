@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { calcTipPool } from '../utils/calculations.js';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 const fmt = (n) =>(n ?? 0).toLocaleString('fr-CA', { style: 'currency', currency: 'CAD' });
@@ -79,37 +80,10 @@ const TR = {
 };
 
 // ─── calculation engine ───────────────────────────────────────────────────────
+// One algorithm for the pool, shared with the tests and the reports: the copy
+// that lived here could drift from calcTipPool without anything noticing.
 function calcDistributions(method, totalTips, employees) {
-  if (!totalTips || totalTips<= 0 || employees.length === 0) return [];
-  const total = parseFloat(totalTips) || 0;
-
-  let shares = [];
-
-  if (method === 'equal') {
-    const each = round2(total / employees.length);
-    shares = employees.map(() =>each);
-
-  } else if (method === 'hours') {
-    const totalHours = employees.reduce((s, e) => s + (parseFloat(e.hours) || 0), 0);
-    if (totalHours === 0) return employees.map(e => ({ ...e, share: 0 }));
-    shares = employees.map(e => round2((parseFloat(e.hours) || 0) / totalHours * total));
-
-  } else if (method === 'points') {
-    const totalPoints = employees.reduce((s, e) => s + (parseFloat(e.points) || 0), 0);
-    if (totalPoints === 0) return employees.map(e => ({ ...e, share: 0 }));
-    shares = employees.map(e => round2((parseFloat(e.points) || 0) / totalPoints * total));
-
-  } else if (method === 'pct') {
-    const totalPct = employees.reduce((s, e) => s + (parseFloat(e.pct) || 0), 0);
-    shares = employees.map(e => round2((parseFloat(e.pct) || 0) / 100 * total));
-  }
-
-  // Fix rounding remainder on first employee
-  const allocated = shares.reduce((s, v) => s + v, 0);
-  const remainder = round2(total - allocated);
-  if (shares.length > 0 && remainder !== 0) shares[0] = round2(shares[0] + remainder);
-
-  return employees.map((e, i) => ({ ...e, share: shares[i] ?? 0 }));
+  return calcTipPool(method, totalTips, employees || []);
 }
 
 // ─── mini theme ───────────────────────────────────────────────────────────────
