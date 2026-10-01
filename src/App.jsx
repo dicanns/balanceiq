@@ -4077,12 +4077,22 @@ function ClientsSection({clients,saveClients,onNewDoc,onOpenDoc,soumissions,comm
  const setSelectedId=setSelectedClientId;
  const [addOpen,setAddOpen]=useState(false);
  const [form,setForm]=useState(BLANK);
+ // What each customer owes, the same figure their statement shows: open
+ // invoices less credit notes not yet applied. The column had been a fixed
+ // "0,00 $" since it was added.
+ const balances=useMemo(()=>{
+  const asOf=dk(new Date());const out={};
+  for(const c of (Array.isArray(clients)?clients:[])){
+   try{out[c.id]=accountStanding({clientId:c.id,factures:factures||[],creditNotes:creditNotes||[],asOf,totalOf:d=>computeSoumTotals(d.lignes||[],d).total}).balanceOwed;}catch(_){out[c.id]=0;}
+  }
+  return out;
+ },[clients,factures,creditNotes]);
  const filtered=useMemo(()=>{
- let list=Array.isArray(clients)?clients:[];
+ let list=(Array.isArray(clients)?clients:[]).map(c=>({...c,_solde:balances[c.id]||0}));
  if(filterStatut!=="tous")list=list.filter(c=>c.statut===filterStatut);
  if(search.trim()){const q=search.toLowerCase();list=list.filter(c=>c.code?.toLowerCase().includes(q)||c.entreprise?.toLowerCase().includes(q)||c.contact?.toLowerCase().includes(q));}
- return[...list].sort((a,b)=>{const av=a[sortCol]||"",bv=b[sortCol]||"";return sortAsc?av.localeCompare(bv,"fr"):bv.localeCompare(av,"fr");});
- },[clients,filterStatut,search,sortCol,sortAsc]);
+ return[...list].sort((a,b)=>{if(sortCol==="_solde")return sortAsc?a._solde-b._solde:b._solde-a._solde;const av=a[sortCol]||"",bv=b[sortCol]||"";return sortAsc?av.localeCompare(bv,"fr"):bv.localeCompare(av,"fr");});
+ },[clients,filterStatut,search,sortCol,sortAsc,balances]);
  const addClient=()=>{
  if(!form.entreprise.trim())return;
  const code=form.code.trim()||genClientCode(clients);
@@ -4103,7 +4113,7 @@ function ClientsSection({clients,saveClients,onNewDoc,onOpenDoc,soumissions,comm
  {filtered.map(c=>(<div key={c.id} onClick={()=>setSelectedId(c.id)}
  style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:7,padding:"7px 10px",cursor:"pointer",opacity:c.statut==="inactif"?0.55:1,display:"grid",gridTemplateColumns:"90px 2fr 1.5fr 1fr 1fr 100px",gap:6,alignItems:"center",transition:"border-color 0.15s"}}
  onMouseEnter={e=>e.currentTarget.style.borderColor="#f97316"}
- onMouseLeave={e=>e.currentTarget.style.borderColor=t.cardBorder}><span style={{fontSize:10,color:t.textMuted,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{c.code}</span><span style={{fontSize:12,fontWeight:600,color:t.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.entreprise}</span><span style={{fontSize:11,color:t.textSub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.contact||"-"}</span><span style={{fontSize:11,color:t.textSub}}>{c.ville||"-"}</span><span style={{fontSize:11,color:t.textSub,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{c.tel1||"-"}</span><span style={{fontSize:11,color:t.textSub,textAlign:"right",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>0,00 $</span></div>))}</div>);
+ onMouseLeave={e=>e.currentTarget.style.borderColor=t.cardBorder}><span style={{fontSize:10,color:t.textMuted,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{c.code}</span><span style={{fontSize:12,fontWeight:600,color:t.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.entreprise}</span><span style={{fontSize:11,color:t.textSub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.contact||"-"}</span><span style={{fontSize:11,color:t.textSub}}>{c.ville||"-"}</span><span style={{fontSize:11,color:t.textSub,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{c.tel1||"-"}</span><span style={{fontSize:11,color:c._solde>0.005?"#ef4444":t.textSub,fontWeight:c._solde>0.005?700:400,textAlign:"right",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{fmt(c._solde)}</span></div>))}</div>);
 }
 
 // ── PRODUITS & SERVICES ──
