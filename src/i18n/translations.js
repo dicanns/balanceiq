@@ -1070,6 +1070,7 @@ export const FR = {
     "En cours":"En cours","Complétée":"Complétée","Annulée":"Annulée",
     "Payée partiellement":"Payée partiellement","Payée":"Payée",
     "En retard":"En retard","Créditée":"Créditée",
+    "Émise":"Émise","Appliquée":"Appliquée",
   },
   facCondPaiements: {
     "Sur réception":"Sur réception","Net 15":"Net 15","Net 30":"Net 30",
@@ -3541,6 +3542,7 @@ export const EN = {
     "En cours":"In Progress","Complétée":"Completed","Annulée":"Cancelled",
     "Payée partiellement":"Partially Paid","Payée":"Paid",
     "En retard":"Overdue","Créditée":"Credited",
+    "Émise":"Issued","Appliquée":"Applied",
   },
   facCondPaiements: {
     "Sur réception":"On receipt","Net 15":"Net 15","Net 30":"Net 30",
