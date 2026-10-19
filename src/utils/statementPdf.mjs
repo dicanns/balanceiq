@@ -156,19 +156,26 @@ export function buildLines(items) {
 
 const DESC_WORD = /^(activity|description|descriptions|details|détails|detail|libellé|libelle|transaction details|activité|description de l'opération)$/i;
 const MONEY_HEADERS = [
-  { role: 'debit',   re: /^(withdrawals?|retraits?|debits?|débits?|cheques? ?& ?debits|chèques? et débits)\b/i },
-  { role: 'credit',  re: /^(deposits?|dépôts?|credits?|crédits?|deposits? ?& ?credits)\b/i },
+  // BMO chequing: "Amounts debited / from your account ($)", on two lines.
+  { role: 'debit',   re: /^(withdrawals?|retraits?|debits?|débits?|cheques? ?& ?debits|chèques? et débits|amounts? debited|montants? débités|from your account|de votre compte)/i },
+  { role: 'credit',  re: /^(deposits?|dépôts?|credits?|crédits?|deposits? ?& ?credits|amounts? credited|montants? crédités|to your account|à votre compte)/i },
   { role: 'balance', re: /^(balance|solde)(\s*\(\$\))?$/i },
   { role: 'amount',  re: /^(amount|montant)\b/i },
 ];
 
-function findHeader(line) {
+// A column title can run over two lines ("Amounts debited" above "from your
+// account ($)"). The words just above a title cell, at the same place across
+// the page, are read as the start of it.
+function findHeader(line, above) {
   const desc = line.cells.find(c => DESC_WORD.test(c.s) || /^(activity|activité)\s+description$/i.test(c.s));
   if (!desc) return null;
   const money = [];
   for (const c of line.cells) {
     if (c.x <= desc.x) continue;
-    const h = MONEY_HEADERS.find(m => m.re.test(c.s));
+    const top = above && Math.abs(above.cy - line.cy) <= 14
+      ? above.cells.filter(a => Math.abs(a.x - c.x) <= 25).map(a => a.s).join(' ') : '';
+    const title = top ? `${top} ${c.s}` : c.s;
+    const h = MONEY_HEADERS.find(m => m.re.test(title)) || MONEY_HEADERS.find(m => m.re.test(c.s));
     if (h) money.push({ role: h.role, x: c.x, right: c.x + (c.w || c.s.length * 5) });
   }
   if (!money.length) return null;
@@ -223,6 +230,12 @@ function findPeriod(pages) {
     const ds = fullDates(l.text);
     if (ds.length >= 2 && /\b(to|au|à|through)\b|[-–]/i.test(l.text.slice(ds[0].index, ds[1].index))) return { start: ds[0].iso, end: ds[1].iso };
   }
+  // BMO: "For the period ending July 31, 2026", the end only.
+  for (const l of all) {
+    if (!/(period ending|période (se )?terminant|period ended)/i.test(l.text)) continue;
+    const ds = fullDates(l.text);
+    if (ds.length) return { start: null, end: ds[0].iso };
+  }
   // At least the date the statement was made.
   for (const l of all) {
     if (!/(statement date|date du relevé)/i.test(l.text)) continue;
@@ -256,6 +269,9 @@ export function balanceCheck(opening, closing, deltas) {
 const LINE_START = /^([A-Za-zÀ-ÿ]{3,9}\.?\s+\d{1,2}(?!\d)|\d{1,2}\s+[A-Za-zÀ-ÿ]{3,9}\.?)/;
 const TOTAL_RE = /\b(sub-?total|total|sous-total|subtotal|balance|solde)\b/i;
 const HOLDER_RE = /(card ?number|numéro de (la )?carte)/i;
+// Dated rows that summarise rather than record: BMO chequing prints its
+// opening balance and its column totals as lines of the table.
+const SUMMARY_ROW = /^(opening balance|closing (balance|totals?)|balance forward|solde (d'ouverture|de clôture|reporté|précédent)|totaux?( de clôture)?|total)$/i;
 
 export function parseStatementPdf(items) {
   const pages = buildLines(items);
@@ -283,8 +299,10 @@ export function parseStatementPdf(items) {
     let header = null;
     let holder = null;
     let last = null;
+    let above = null;
     for (const l of p.lines) {
-      const h = findHeader(l);
+      const h = findHeader(l, above);
+      above = l;
       if (h) { header = h; last = null; continue; }
       if (!header) continue;
 
@@ -321,6 +339,25 @@ export function parseStatementPdf(items) {
         const description = l.cells
           .filter(c => c.x >= header.dateMaxX && c.x < firstMoneyX && !/^CR$/i.test(c.s))
           .map(c => c.s).join(' ').replace(/\s+/g, ' ').trim();
+        if (SUMMARY_ROW.test(description)) {
+          // Not a transaction. The opening row dates the start of the period
+          // and, when nothing else did, gives the opening balance.
+          const d = resolveYear(dates[0].month, dates[0].day, period.end);
+          if (/^(opening|solde d'ouverture|solde précédent|balance forward|solde reporté)/i.test(description)) {
+            if (!period.start && d) period.start = d;
+            const bal = money.find(m => m.role === 'balance') || money[0];
+            if (opening == null && bal) opening = bal.value;
+          }
+          // "Closing totals": what went out and what came in, as printed, so a
+          // misread line can be pinned to one side.
+          if (/^(closing totals?|totaux?( de clôture)?)$/i.test(description)) {
+            const deb = money.find(m => m.role === 'debit'), cre = money.find(m => m.role === 'credit');
+            if (printedPayments == null && deb) printedPayments = Math.abs(deb.value);
+            if (printedPurchases == null && cre) printedPurchases = Math.abs(cre.value);
+          }
+          last = null;
+          continue;
+        }
         const row = {
           date: resolveYear(dates[0].month, dates[0].day, period.end),
           postDate: dates[1] ? resolveYear(dates[1].month, dates[1].day, period.end) : null,
@@ -372,6 +409,13 @@ export function parseStatementPdf(items) {
 
   // Each line's effect on the balance the statement prints.
   const deltaOf = (r) => (r.amount != null ? r.amount : (r.credit || 0) - (r.debit || 0));
+
+  // A statement with a running balance and no labelled closing balance closes
+  // on its last line's balance; one with no labelled opening opened on the
+  // first line's balance before that line.
+  const withBal = rows.filter(r => r.balance != null);
+  if (closing == null && withBal.length) closing = withBal[withBal.length - 1].balance;
+  if (opening == null && withBal.length) opening = Math.round((withBal[0].balance - deltaOf(withBal[0])) * 100) / 100;
   const check = balanceCheck(opening, closing, rows.map(deltaOf));
   const charges = rows.map(deltaOf).map(d => d * check.direction);
   const found = {
