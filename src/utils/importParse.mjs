@@ -41,8 +41,27 @@ export function parseCsvRecords(text) {
 export function parseCsvLines(text) {
   const lines = String(text || '').replace(/^\uFEFF/, '').split(/\r?\n/).filter(l => l.trim());
   if (!lines.length) return { rows: [], delim: ',' };
-  const delim = detectDelimiter(lines[0]);
-  return { rows: lines.map(l => splitCsvLine(l, delim)), delim };
+  // The separator is judged on the widest line, not the first: a bank's title
+  // line ("Following data is valid as of ...") has no separator at all.
+  const delim = detectDelimiter(lines.reduce((w, l) => (l.length > w.length ? l : w), lines[0]));
+  const rows = lines.map(l => splitCsvLine(l, delim));
+  return { rows: dropPreamble(rows), delim };
+}
+
+// Lines above the table that are not part of it: BMO opens its export with
+// "Following data is valid as of ...", one field on a line of its own, and that
+// was taken for the column titles, so the real titles were read as a
+// transaction ("First Bank Card" is not a date). A leading line with a single
+// filled field, above a table of three columns or more, is dropped.
+export function dropPreamble(rows) {
+  const filled = (r) => r.filter(f => String(f ?? '').trim() !== '').length;
+  const counts = new Map();
+  for (const r of rows) counts.set(r.length, (counts.get(r.length) || 0) + 1);
+  const width = [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]?.[0] || 0;
+  if (width < 3) return rows;
+  let start = 0;
+  while (start < rows.length - 1 && filled(rows[start]) <= 1) start++;
+  return start ? rows.slice(start) : rows;
 }
 
 // ── DATES ────────────────────────────────────────────────────────────────────
