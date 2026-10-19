@@ -9,6 +9,7 @@ const {
   parseStatementAmount: _parseStatementAmount, decodeXmlEntities,
   parseCsvLines, looksLikeHeader, inferColumns,
 } = require('../utils/importParse.mjs');
+const { transferRule } = require('../utils/transferRule.mjs');
 
 let db;
 // The folder holding this company's database. The main process sets it before the
@@ -4213,12 +4214,26 @@ function _reverseBankTransactionEntry(db, txId) {
   return true;
 }
 
-function bankTransactionCategorize(txId, coaAccountId, notes, tax) {
-  const db = getDb();
+// Whether a statement line moving money between two of the operator's own
+// accounts is the side that records it (see src/utils/transferRule.mjs).
+function _transferDecision(db, txId, coaAccountId) {
+  const tx = db.prepare(`SELECT bank_account_id, amount FROM bank_transactions WHERE id=?`).get(txId);
+  if (!tx) return null;
+  const accounts = db.prepare(`SELECT id, coa_account_id, account_type FROM bank_accounts`).all();
+  const lineAccount = accounts.find(a => a.id === tx.bank_account_id);
+  return transferRule({ lineAccount, targetCoaId: coaAccountId, amount: tx.amount, accounts });
+}
+
+function bankTransactionCategorize(txId, coaAccountId, notes, tax, _db) {
+  const db = _db || getDb();
   const tpsPaid = Number(tax?.tpsPaid) || 0;
   const tvqPaid = Number(tax?.tvqPaid) || 0;
   // A transfer carries no tax and no expense: it is the same money seen twice.
-  const isTransfer = tax?.isTransfer ? 1 : 0;
+  // Between two accounts the operator holds here, which side records it is not
+  // left to the checkbox: ticking it on both sides recorded nothing, unticking
+  // it on both recorded it twice.
+  const decided = _transferDecision(db, txId, coaAccountId);
+  const isTransfer = decided ? (decided.transfer ? 1 : 0) : (tax?.isTransfer ? 1 : 0);
   db.transaction(() => {
     _reverseBankTransactionEntry(db, txId);
     db.prepare(
@@ -4241,6 +4256,29 @@ function bankTransactionCategorize(txId, coaAccountId, notes, tax) {
     ).run(norm, coaAccountId);
   }
   return true;
+}
+
+// Lines categorized before the rule was applied: a card payment marked as a
+// transfer on the bank side (recorded nowhere) or recorded on the card side
+// (recorded twice once the bank side is). Each is re-categorized with the side
+// the rule gives, which reverses and re-posts its entry. Run once at start,
+// after the daily backup; finds nothing on later launches.
+function bankRepairTransferFlags(_db) {
+  const db = _db || getDb();
+  const fixed = [];
+  const rows = db.prepare(
+    `SELECT id, coa_account_id, notes, tps_paid, tvq_paid, is_transfer FROM bank_transactions
+      WHERE coa_account_id IS NOT NULL AND match_status='manual'`
+  ).all();
+  for (const r of rows) {
+    const d = _transferDecision(db, r.id, r.coa_account_id);
+    if (!d || (d.transfer ? 1 : 0) === (r.is_transfer ? 1 : 0)) continue;
+    try {
+      bankTransactionCategorize(r.id, r.coa_account_id, r.notes, { tpsPaid: r.tps_paid, tvqPaid: r.tvq_paid, isTransfer: d.transfer }, db);
+      fixed.push({ id: r.id, kind: d.kind, transfer: d.transfer });
+    } catch (e) { /* a closed period keeps the line as it was */ }
+  }
+  return { fixed };
 }
 
 // Statuses that are considered cleared and included in the reconciled balance.
@@ -7463,7 +7501,7 @@ module.exports = {
   periodList, periodOpen, periodClose, periodReopen,
   glAuditLogList,
   bankAccountsList, bankAccountCreate, bankAccountUpdate, bankAccountArchive,
-  bankStatementImport, bankStatementPdfCheck, bankResyncOpeningEntries, _periodsDue, bankStatementsList, bankStatementDelete, bankStatementUpdate,
+  bankStatementImport, bankStatementPdfCheck, bankResyncOpeningEntries, bankRepairTransferFlags, _periodsDue, bankStatementsList, bankStatementDelete, bankStatementUpdate,
   parseBankCSV: _parseBankCSV, parseBankCsvFile, normalizeStatementDate, COA_TYPES,
   bankAccountPostOpeningBalance, bankPostMissingEntries, bankFindOrphanEntries, bankSubledgerBalances,
   bankTransactionsList, bankTransactionUnmatch, bankTransactionCategorize,

@@ -74,7 +74,7 @@ const {
   glAuditLogList,
   bankAccountsList, bankAccountCreate, bankAccountUpdate, bankAccountArchive,
   bankStatementImport, bankStatementPdfCheck, bankStatementsList, bankStatementDelete, bankStatementUpdate,
-  bankAccountPostOpeningBalance, bankPostMissingEntries, bankSubledgerBalances, bankResyncOpeningEntries,
+  bankAccountPostOpeningBalance, bankPostMissingEntries, bankSubledgerBalances, bankResyncOpeningEntries, bankRepairTransferFlags,
   bankTransactionsList, bankTransactionUnmatch, bankTransactionCategorize,
   bankLinesForBillAmount,
   bankReconcilePreview, bankReconcileClose, bankReconciliationStatus, bankReconcileReopen,
@@ -1673,6 +1673,11 @@ app.whenReady().then(() => {
       const r = bankResyncOpeningEntries();
       if (r.fixed.length) console.log('[bank] opening entries re-posted', JSON.stringify(r));
     } catch (e) { console.error('[bank] opening entry resync failed:', e.message); }
+    // Card payments and transfers recorded on the wrong side before v1.86.0.
+    try {
+      const r = bankRepairTransferFlags();
+      if (r.fixed.length) console.log('[bank] transfer sides repaired', JSON.stringify(r));
+    } catch (e) { console.error('[bank] transfer side repair failed:', e.message); }
   }, 8000);
 
   // Auto-updater - GitHub API fetch (works without code signing)

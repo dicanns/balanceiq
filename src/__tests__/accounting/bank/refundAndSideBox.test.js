@@ -62,7 +62,7 @@ describe('REFUND-003 the categorize screen', () => {
   it('shows the tax fields for money in against an expense, with its own hint', () => {
     const s = fs.readFileSync(path.join(ROOT, 'src/components/BanqueTab.jsx'), 'utf8');
     expect(s).toMatch(/const refund = Number\(categorizingTx\.amount\) > 0 && \(chosenType === 'expense' \|\| chosenType === 'cogs'\)/);
-    expect(s).toMatch(/return \(Number\(categorizingTx\.amount\) < 0 \|\| refund\) && !catTransfer/);
+    expect(s).toMatch(/return \(Number\(categorizingTx\.amount\) < 0 \|\| refund\) && !effectiveTransfer/);
     expect((s.match(/\btaxRefundHint:/g) || []).length).toBe(2);
   });
 });

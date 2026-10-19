@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ColumnMapper, { rolesFromMap, mapFromRoles } from './ColumnMapper.jsx';
 import { balanceCheck } from '../utils/statementPdf.mjs';
+import { transferRule } from '../utils/transferRule.mjs';
 import { parseCsvLines, looksLikeHeader, inferColumns, normalizeStatementDate, detectNumericDateOrder, parseStatementAmount } from '../utils/importParse.mjs';
 import { looksLikeCapitalPurchase } from '../utils/calculations.js';
 import CapexGuide from './CapexGuide.jsx';
@@ -143,6 +144,10 @@ const UI = {
     saveCategorize:   'Enregistrer',
     transferLabel:    'Virement entre mes propres comptes',
     transferHint:     'Un paiement de carte de crédit, ou de l\'argent déplacé entre deux de vos comptes. La ligne reste rapprochée, mais l\'écriture vient de l\'autre relevé - la comptabiliser ici la compterait deux fois.',
+    transferRuleBankSide: "Paiement de carte : il est enregistré à partir de ce relevé bancaire. Sur le relevé de la carte, le même paiement est marqué comme virement, automatiquement.",
+    transferRuleCardSide: "Paiement depuis votre compte bancaire : c'est le relevé bancaire qui l'enregistre. Ici, il est seulement rapproché (virement), automatiquement.",
+    transferRuleOut:      "Argent envoyé vers un autre de vos comptes : il est enregistré de ce côté-ci, celui qu'il a quitté. Le relevé de l'autre compte le marque comme virement.",
+    transferRuleIn:       "Argent reçu d'un autre de vos comptes : le relevé du compte qu'il a quitté l'enregistre. Ici, il est seulement rapproché (virement), automatiquement.",
     previewTitle:     (name) => `Rapprochement - ${name}`,
     stmtBalance:      'Solde au relevé',
     biqBalance:       'Solde BalanceIQ',
@@ -376,6 +381,10 @@ const UI = {
     saveCategorize:   'Save',
     transferLabel:    'Transfer between my own accounts',
     transferHint:     'A credit card payment, or money moved between two of your accounts. The line still reconciles, but the entry comes from the other statement - recording it here would count it twice.',
+    transferRuleBankSide: "Card payment: it is recorded from this bank statement. On the card's statement the same payment is marked as a transfer, automatically.",
+    transferRuleCardSide: "Paid from your bank account: the bank statement records it. Here it only reconciles (transfer), automatically.",
+    transferRuleOut:      "Money sent to another of your accounts: it is recorded from this side, the one it left. The other account's statement marks it as a transfer.",
+    transferRuleIn:       "Money received from another of your accounts: the statement of the account it left records it. Here it only reconciles (transfer), automatically.",
     previewTitle:     (name) => `Reconciliation - ${name}`,
     stmtBalance:      'Statement Balance',
     biqBalance:       'BalanceIQ Balance',
@@ -992,12 +1001,19 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
     setCategorizeNotes(tx.notes || '');
   };
 
+  // Between two accounts held here, which side records the money is the
+  // app's call (src/utils/transferRule.mjs); the box shows it and locks.
+  const transferDecision = categorizingTx && categorizeCoaId
+    ? transferRule({ lineAccount: accounts.find(a => a.id === categorizingTx.bank_account_id), targetCoaId: categorizeCoaId, amount: categorizingTx.amount, accounts })
+    : null;
+  const effectiveTransfer = transferDecision ? transferDecision.transfer : catTransfer;
+
   const saveCategorize = async () => {
     if (!categorizingTx || !categorizeCoaId) return;
     try {
       await window.api.bank.transactions.categorize(
         categorizingTx.id, parseInt(categorizeCoaId, 10), categorizeNotes,
-        { tpsPaid: parseFloat(catTps) || 0, tvqPaid: parseFloat(catTvq) || 0, isTransfer: catTransfer },
+        { tpsPaid: parseFloat(catTps) || 0, tvqPaid: parseFloat(catTvq) || 0, isTransfer: effectiveTransfer },
       );
       setCategorizingTx(null);
       loadTransactions();
@@ -1832,12 +1848,18 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
             nameOf={coaName}
             styles={pickerStyles}
           />
-          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', margin: '12px 0 4px', cursor: 'pointer' }}>
-            <input type="checkbox" checked={catTransfer} onChange={e => setCatTransfer(e.target.checked)}
+          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', margin: '12px 0 4px', cursor: transferDecision ? 'default' : 'pointer' }}>
+            <input type="checkbox" checked={effectiveTransfer} disabled={!!transferDecision} onChange={e => setCatTransfer(e.target.checked)}
               style={{ accentColor: '#f97316', marginTop: 3 }} />
             <span>
               <span style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>{T.transferLabel}</span>
-              <span style={{ display: 'block', fontSize: 10.5, color: C.muted, lineHeight: 1.45, marginTop: 2 }}>{T.transferHint}</span>
+              {transferDecision ? (
+                <span style={{ display: 'block', fontSize: 11, color: '#16a34a', fontWeight: 600, lineHeight: 1.45, marginTop: 3 }}>
+                  {{ card_payment_bank_side: T.transferRuleBankSide, card_payment_card_side: T.transferRuleCardSide, own_transfer_out: T.transferRuleOut, own_transfer_in: T.transferRuleIn }[transferDecision.kind]}
+                </span>
+              ) : (
+                <span style={{ display: 'block', fontSize: 10.5, color: C.muted, lineHeight: 1.45, marginTop: 2 }}>{T.transferHint}</span>
+              )}
             </span>
           </label>
 
@@ -1851,7 +1873,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
             // purchase actually hides in are watched: flagging every large
             // expense would fire on rent and payroll and be ignored within a week.
             const chosen = coaList.find(a => String(a.id) === String(categorizeCoaId));
-            if (catTransfer || capexDismissed || !looksLikeCapitalPurchase(categorizingTx.amount, chosen)) return null;
+            if (effectiveTransfer || capexDismissed || !looksLikeCapitalPurchase(categorizingTx.amount, chosen)) return null;
             const amt = Math.abs(Number(categorizingTx.amount) || 0).toLocaleString(
               lang === 'en' ? 'en-CA' : 'fr-CA', { style: 'currency', currency: 'CAD' });
             return (
@@ -1878,7 +1900,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
             // expense gives back tax that was claimed on the purchase.
             const chosenType = coaList.find(a => String(a.id) === String(categorizeCoaId))?.type;
             const refund = Number(categorizingTx.amount) > 0 && (chosenType === 'expense' || chosenType === 'cogs');
-            return (Number(categorizingTx.amount) < 0 || refund) && !catTransfer;
+            return (Number(categorizingTx.amount) < 0 || refund) && !effectiveTransfer;
           })() ? (
           <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
