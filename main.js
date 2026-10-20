@@ -27,6 +27,7 @@ Sentry.init({
 const {
   storageGet, storageSet, storageGetAll,
   stripApiConfigSecrets, mergeApiConfigSecrets, incomeStatement, coaSetItcPct, coaRename,
+  fiscalYearEndGet, fiscalYearEndSet, fiscalYearList, fiscalYearClose, fiscalYearReopen, openingBalancesPreview, openingBalancesPost,
   supplierBillPost, supplierBillUnpost, supplierBillPostPayment, supplierBillSubledger,
   supplierBillRepairTaxAccounts,
   bankNeedsCategorizingCount, firstRunFacts,
@@ -2098,6 +2099,13 @@ ipcMain.handle('ledger:entry:list',    (_e, opts)              => glListEntries(
 ipcMain.handle('ledger:account:history', (_e, accountId, opts) => glGetAccountHistory(accountId, opts));
 ipcMain.handle('ledger:trial_balance', (_e, asOfDate, opts)    => trialBalance(asOfDate, opts));
 ipcMain.handle('ledger:income_statement', (_e, start, end, opts) => incomeStatement(start, end, opts || {}));
+ipcMain.handle('ledger:fiscalYear:get',    ()                      => fiscalYearEndGet());
+ipcMain.handle('ledger:fiscalYear:set',    (_e, fye)               => fiscalYearEndSet(fye || {}));
+ipcMain.handle('ledger:fiscalYear:list',   ()                      => fiscalYearList());
+ipcMain.handle('ledger:fiscalYear:close',  (_e, fyEnd, opts)       => fiscalYearClose(fyEnd, opts || {}));
+ipcMain.handle('ledger:fiscalYear:reopen', (_e, fyEnd, reason)     => fiscalYearReopen(fyEnd, reason));
+ipcMain.handle('ledger:opening:preview',   (_e, asOf, targets)     => openingBalancesPreview(asOf, targets || {}));
+ipcMain.handle('ledger:opening:post',      (_e, asOf, targets)     => openingBalancesPost(asOf, targets || {}));
 ipcMain.handle('coa:setItcPct', (_e, id, pct) => coaSetItcPct(id, pct));
 ipcMain.handle('coa:rename',    (_e, id, names) => coaRename(id, names || {}));
 ipcMain.handle('supplier:bill:subledger', (_e, asOf) => supplierBillSubledger(asOf));

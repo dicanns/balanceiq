@@ -263,6 +263,17 @@ contextBridge.exposeInMainWorld('api', {
     },
     trialBalance: (asOfDate, opts)      => ipcRenderer.invoke('ledger:trial_balance', asOfDate, opts),
     incomeStatement: (start, end, opts) => ipcRenderer.invoke('ledger:income_statement', start, end, opts),
+    fiscalYear: {
+      get:    ()              => ipcRenderer.invoke('ledger:fiscalYear:get'),
+      set:    (fye)           => ipcRenderer.invoke('ledger:fiscalYear:set', fye),
+      list:   ()              => ipcRenderer.invoke('ledger:fiscalYear:list'),
+      close:  (fyEnd, opts)   => ipcRenderer.invoke('ledger:fiscalYear:close', fyEnd, opts),
+      reopen: (fyEnd, reason) => ipcRenderer.invoke('ledger:fiscalYear:reopen', fyEnd, reason),
+    },
+    openingBalances: {
+      preview: (asOf, targets) => ipcRenderer.invoke('ledger:opening:preview', asOf, targets),
+      post:    (asOf, targets) => ipcRenderer.invoke('ledger:opening:post', asOf, targets),
+    },
     audit:        { list: (opts)        => ipcRenderer.invoke('ledger:audit:list', opts) },
   },
   period: {

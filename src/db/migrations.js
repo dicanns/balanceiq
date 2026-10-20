@@ -1557,6 +1557,24 @@ const MIGRATIONS = [
       }
     },
   },
+  {
+    version: 48,
+    description: 'Fiscal years closed by the operator. Closing a year locks its months and records '
+      + 'the profit it ended on; retained earnings for earlier years are worked out from the '
+      + 'ledger rather than posted, so no report has to skip a closing entry.',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS fiscal_year_closes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fy_start TEXT NOT NULL,
+        fy_end TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL DEFAULT 'closed',
+        net_income_cents INTEGER NOT NULL DEFAULT 0,
+        closed_at TEXT,
+        reopened_at TEXT,
+        reopen_reason TEXT
+      )`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.

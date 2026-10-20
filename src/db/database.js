@@ -1615,6 +1615,24 @@ const MIGRATIONS = [
       }
     },
   },
+  {
+    version: 48,
+    description: 'Fiscal years closed by the operator. Closing a year locks its months and records '
+      + 'the profit it ended on; retained earnings for earlier years are worked out from the '
+      + 'ledger rather than posted, so no report has to skip a closing entry.',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS fiscal_year_closes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fy_start TEXT NOT NULL,
+        fy_end TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL DEFAULT 'closed',
+        net_income_cents INTEGER NOT NULL DEFAULT 0,
+        closed_at TEXT,
+        reopened_at TEXT,
+        reopen_reason TEXT
+      )`).run();
+    },
+  },
 ];
 
 // The newest schema this build knows. Anything on disk below it has migrations
@@ -3404,6 +3422,13 @@ function incomeStatement(periodStart, periodEnd, { locationId = null, _db } = {}
   const expenseCents = sum('expense');
   const grossProfitCents = revenueCents - cogsCents;
   const netIncomeCents   = grossProfitCents - expenseCents;
+  // EBITDA: profit before interest, income taxes, depreciation and amortization.
+  // Added back from the accounts that hold them, so it moves with the books.
+  const addBack = (test) => lines.filter(l => l.type !== 'revenue' && test(l)).reduce((s, l) => s + l.amountCents, 0);
+  const interestCents     = addBack(l => EBITDA_INTEREST.includes(l.accountNumber) || /int[ée]r[eê]ts? (pay[ée]s?|paid)|interest (paid|expense)/i.test(`${l.nameFr} ${l.nameEn}`));
+  const depreciationCents = addBack(l => EBITDA_DEPRECIATION.includes(l.accountNumber) || /amortissement|depreciation|amortization/i.test(`${l.nameFr} ${l.nameEn}`));
+  const incomeTaxCents    = addBack(l => /imp[ôo]ts? sur le revenu|income tax/i.test(`${l.nameFr} ${l.nameEn}`));
+  const ebitdaCents = netIncomeCents + interestCents + depreciationCents + incomeTaxCents;
 
   // Share of revenue is what makes a category legible: "meals are 4% of sales"
   // is a sentence an owner and a reviewer both understand, where a dollar figure
@@ -3417,8 +3442,15 @@ function incomeStatement(periodStart, periodEnd, { locationId = null, _db } = {}
     grossProfitCents, netIncomeCents,
     grossMarginPct: pct(grossProfitCents),
     netMarginPct: pct(netIncomeCents),
+    interestCents, depreciationCents, incomeTaxCents, ebitdaCents,
+    ebitdaMarginPct: pct(ebitdaCents),
   };
 }
+
+// The accounts EBITDA adds back by number (names are matched too, for accounts
+// an operator added with their own number).
+const EBITDA_INTEREST = ['6420'];
+const EBITDA_DEPRECIATION = ['6700'];
 
 function trialBalance(asOfDate, { locationId = null } = {}) {
   const db = getDb();
@@ -5949,6 +5981,246 @@ function ccaScheduleForYear(fiscalYear) {
   }).filter(Boolean);
 }
 
+// ── Fiscal year ──────────────────────────────────────────────────────────────
+// The year end lives on the tax registration (one per company). December 31
+// until somebody says otherwise.
+
+function fiscalYearEndGet(_db) {
+  const db = _db || getDb();
+  let row = null;
+  try {
+    row = db.prepare(`SELECT fiscal_year_end_month AS month, fiscal_year_end_day AS day FROM tax_registration ORDER BY id LIMIT 1`).get();
+  } catch (_) { row = null; }
+  return { month: row?.month || 12, day: row?.day || 31, set: !!row };
+}
+
+function fiscalYearEndSet({ month, day }, _db) {
+  const db = _db || getDb();
+  const m = Number(month), d = Number(day);
+  const last = new Date(Date.UTC(2025, m, 0)).getUTCDate();   // a year that is not a leap year
+  if (!(m >= 1 && m <= 12) || !(d >= 1 && d <= last)) throw new Error('ERR_FISCAL_YEAR_END_INVALID');
+  const row = db.prepare(`SELECT id FROM tax_registration ORDER BY id LIMIT 1`).get();
+  if (row) db.prepare(`UPDATE tax_registration SET fiscal_year_end_month=?, fiscal_year_end_day=? WHERE id=?`).run(m, d, row.id);
+  else db.prepare(`INSERT INTO tax_registration (fiscal_year_end_month, fiscal_year_end_day) VALUES (?, ?)`).run(m, d);
+  db.prepare(
+    `INSERT INTO audit_log (device_id, module, action, record_type, record_id, new_value) VALUES (?, 'GL', 'set_fiscal_year_end', 'company', '1', ?)`
+  ).run(_getDeviceUuid(db), `${m}-${d}`);
+  return fiscalYearEndGet(db);
+}
+
+const _iso = (y, m, d) => `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+const _endIn = (year, month, day) => _iso(year, month, Math.min(day, new Date(Date.UTC(year, month, 0)).getUTCDate()));
+const _nextDay = (iso) => new Date(Date.parse(iso + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10);
+
+/** The fiscal year a date falls in: { start, end }, both inclusive. */
+function fiscalYearBounds(date, fye) {
+  const { month, day } = fye || { month: 12, day: 31 };
+  const y = Number(String(date).slice(0, 4));
+  let end = _endIn(y, month, day);
+  if (String(date) > end) end = _endIn(y + 1, month, day);
+  const start = _nextDay(_endIn(Number(end.slice(0, 4)) - 1, month, day));
+  return { start, end };
+}
+
+function _netIncomeBetween(db, start, end) {
+  return db.prepare(
+    `SELECT COALESCE(SUM(jl.credit_cents) - SUM(jl.debit_cents), 0) AS n
+       FROM journal_lines jl
+       JOIN journal_entries je ON je.id = jl.entry_id AND je.status IN ('posted','reversed') AND je.entry_date >= ? AND je.entry_date <= ?
+       JOIN chart_of_accounts coa ON coa.id = jl.account_id AND coa.type IN ('revenue','cogs','expense')`
+  ).get(start, end).n;
+}
+
+// What stands between a year and its close, named.
+function _yearBlockers(db, fy) {
+  const out = [];
+  const drafts = db.prepare(`SELECT COUNT(*) AS n FROM journal_entries WHERE status='draft' AND entry_date BETWEEN ? AND ?`).get(fy.start, fy.end).n;
+  if (drafts) out.push({ code: 'drafts', count: drafts });
+  const open = db.prepare(
+    `SELECT a.name, s.period_end FROM bank_statements s JOIN bank_accounts a ON a.id = s.bank_account_id
+      WHERE COALESCE(s.reconciled,0)=0 AND s.period_end >= ? AND s.period_start <= ? ORDER BY s.period_end`
+  ).all(fy.start, fy.end);
+  if (open.length) out.push({ code: 'statements_open', items: open.map(o => `${o.name} ${o.period_end}`) });
+  const uncategorized = db.prepare(
+    `SELECT COUNT(*) AS n FROM bank_transactions WHERE coa_account_id IS NULL AND transaction_date BETWEEN ? AND ?`
+  ).get(fy.start, fy.end).n;
+  if (uncategorized) out.push({ code: 'lines_uncategorized', count: uncategorized });
+  return out;
+}
+
+/** Every fiscal year that has entries, up to the one in progress, newest first. */
+function fiscalYearList(_db, today) {
+  const db = _db || getDb();
+  const fye = fiscalYearEndGet(db);
+  const asOf = today || new Date().toISOString().slice(0, 10);
+  const first = db.prepare(`SELECT MIN(entry_date) AS d FROM journal_entries WHERE status IN ('posted','reversed')`).get().d;
+  const current = fiscalYearBounds(asOf, fye);
+  const years = [];
+  let fy = fiscalYearBounds(first || asOf, fye);
+  for (let guard = 0; guard < 50; guard++) {
+    const rec = db.prepare(`SELECT * FROM fiscal_year_closes WHERE fy_end=?`).get(fy.end);
+    years.push({
+      start: fy.start, end: fy.end,
+      ended: fy.end < asOf,
+      status: rec?.status === 'closed' ? 'closed' : 'open',
+      netIncomeCents: _netIncomeBetween(db, fy.start, fy.end),
+      closedAt: rec?.status === 'closed' ? rec.closed_at : null,
+      blockers: _yearBlockers(db, fy),
+    });
+    if (fy.end >= current.end) break;
+    fy = fiscalYearBounds(_nextDay(fy.end), fye);
+  }
+  return { fiscalYearEnd: fye, years: years.reverse() };
+}
+
+/**
+ * Close a fiscal year: every month in it is locked, so nothing can be posted,
+ * reversed or re-categorized into it, and the profit it ended on is recorded.
+ * Its profit becomes retained earnings on the balance sheet by itself (see
+ * buildBalanceSheet). Refused while anything named by _yearBlockers remains,
+ * unless the operator says to close anyway.
+ */
+function fiscalYearClose(fyEnd, { force = false, today = null } = {}, _db) {
+  const db = _db || getDb();
+  const fye = fiscalYearEndGet(db);
+  const fy = fiscalYearBounds(fyEnd, fye);
+  if (fy.end !== fyEnd) throw new Error('ERR_NOT_A_FISCAL_YEAR_END');
+  if (fy.end >= (today || new Date().toISOString().slice(0, 10)) && !force) throw new Error('ERR_FISCAL_YEAR_NOT_ENDED');
+  const blockers = _yearBlockers(db, fy);
+  if (blockers.some(b => b.code === 'drafts')) return { ok: false, blockers };
+  if (blockers.length && !force) return { ok: false, blockers };
+  const now = new Date().toISOString();
+  const netIncomeCents = _netIncomeBetween(db, fy.start, fy.end);
+  db.transaction(() => {
+    // Every month of the year, created if nothing was ever posted in it.
+    for (let d = fy.start; d <= fy.end; ) {
+      const p = _ensurePeriod(db, d);
+      db.prepare(`UPDATE accounting_periods SET status='closed', closed_at=?, closed_by_device_uuid=? WHERE id=?`).run(now, _getDeviceUuid(db), p.id);
+      const [y, m] = d.split('-').map(Number);
+      d = _iso(m === 12 ? y + 1 : y, m === 12 ? 1 : m + 1, 1);
+    }
+    db.prepare(
+      `INSERT INTO fiscal_year_closes (fy_start, fy_end, status, net_income_cents, closed_at) VALUES (?, ?, 'closed', ?, ?)
+       ON CONFLICT(fy_end) DO UPDATE SET status='closed', net_income_cents=excluded.net_income_cents, closed_at=excluded.closed_at, reopened_at=NULL, reopen_reason=NULL`
+    ).run(fy.start, fy.end, netIncomeCents, now);
+    db.prepare(
+      `INSERT INTO audit_log (device_id, module, action, record_type, record_id, new_value) VALUES (?, 'GL', 'close_fiscal_year', 'fiscal_year', ?, ?)`
+    ).run(_getDeviceUuid(db), fy.end, String(netIncomeCents));
+  })();
+  return { ok: true, start: fy.start, end: fy.end, netIncomeCents, forced: !!(force && blockers.length) };
+}
+
+function fiscalYearReopen(fyEnd, reason, _db) {
+  const db = _db || getDb();
+  if (!reason || !String(reason).trim()) throw new Error('ERR_REOPEN_REASON_REQUIRED');
+  const rec = db.prepare(`SELECT * FROM fiscal_year_closes WHERE fy_end=? AND status='closed'`).get(fyEnd);
+  if (!rec) throw new Error('ERR_FISCAL_YEAR_NOT_CLOSED');
+  const now = new Date().toISOString();
+  db.transaction(() => {
+    db.prepare(
+      `UPDATE accounting_periods SET status='reopened', reopened_at=?, reopened_by_device_uuid=?, reopen_reason=?
+        WHERE status='closed' AND start_date >= ? AND end_date <= ?`
+    ).run(now, _getDeviceUuid(db), String(reason).trim(), rec.fy_start, rec.fy_end);
+    db.prepare(`UPDATE fiscal_year_closes SET status='reopened', reopened_at=?, reopen_reason=? WHERE id=?`).run(now, String(reason).trim(), rec.id);
+    db.prepare(
+      `INSERT INTO audit_log (device_id, module, action, record_type, record_id, reason) VALUES (?, 'GL', 'reopen_fiscal_year', 'fiscal_year', ?, ?)`
+    ).run(_getDeviceUuid(db), fyEnd, String(reason).trim());
+  })();
+  return { ok: true };
+}
+
+// ── Opening balances from the bookkeeper ─────────────────────────────────────
+// When BalanceIQ becomes the books of record, its balance sheet at the
+// changeover date has to equal the bookkeeper's. The operator types his figures
+// per account; one entry, dated that day, moves each account the difference,
+// and what that leaves goes to retained earnings. Opening balance equity, the
+// account that held the starting position while both ran side by side, is
+// cleared into retained earnings at the same time.
+
+const OPENING_RE = '3100';
+const OPENING_BALANCE_EQUITY = '3400';
+
+function _accountBalancesAt(db, asOf) {
+  return db.prepare(
+    `SELECT coa.id, coa.account_number, coa.name_fr, coa.name_en, coa.type,
+            COALESCE(SUM(CASE WHEN je.id IS NOT NULL THEN jl.debit_cents - jl.credit_cents END), 0) AS dr_cents
+       FROM chart_of_accounts coa
+       LEFT JOIN journal_lines jl ON jl.account_id = coa.id
+       LEFT JOIN journal_entries je ON je.id = jl.entry_id AND je.status IN ('posted','reversed') AND je.entry_date <= ?
+      WHERE coa.type IN ('asset','liability','equity') AND COALESCE(coa.is_archived,0) = 0
+      GROUP BY coa.id ORDER BY coa.account_number`
+  ).all(asOf);
+}
+
+/**
+ * targets: { accountNumber: amount } in the account's natural sign (an asset's
+ * debit balance, a liability's or equity's credit balance), as a balance sheet
+ * prints it. Accounts left out keep their balance; opening balance equity goes
+ * to zero unless given.
+ */
+function openingBalancesPreview(asOf, targets = {}, _db) {
+  const db = _db || getDb();
+  const natural = (type, drCents) => (type === 'asset' ? drCents : -drCents);
+  const rows = _accountBalancesAt(db, asOf).map(r => {
+    const have = natural(r.type, r.dr_cents);
+    const given = Object.prototype.hasOwnProperty.call(targets, r.account_number) && targets[r.account_number] !== '' && targets[r.account_number] != null;
+    let want = given ? Math.round(Number(targets[r.account_number]) * 100) : have;
+    if (r.account_number === OPENING_BALANCE_EQUITY && !given) want = 0;
+    if (r.account_number === OPENING_RE) want = have;   // what is left goes here
+    return {
+      accountNumber: r.account_number, nameFr: r.name_fr, nameEn: r.name_en, type: r.type,
+      haveCents: have, wantCents: want,
+      // The adjustment in debit terms: positive debits the account.
+      adjustDrCents: r.type === 'asset' ? want - have : -(want - have),
+      control: r.account_number === '1100' || r.account_number === '2010',
+    };
+  });
+  const plugDrCents = -rows.reduce((s, r) => s + r.adjustDrCents, 0);
+  const re = rows.find(r => r.accountNumber === OPENING_RE);
+  if (re) re.adjustDrCents = plugDrCents;
+  // Retained earnings after the adjustment: the account plus every profit the
+  // ledger holds up to that day (this year's included, the year being closed).
+  const profitToDate = db.prepare(
+    `SELECT COALESCE(SUM(jl.credit_cents) - SUM(jl.debit_cents), 0) AS n FROM journal_lines jl
+       JOIN journal_entries je ON je.id = jl.entry_id AND je.status IN ('posted','reversed') AND je.entry_date <= ?
+       JOIN chart_of_accounts coa ON coa.id = jl.account_id AND coa.type IN ('revenue','cogs','expense')`
+  ).get(asOf).n;
+  const reHave = (re ? re.haveCents : 0) + profitToDate;
+  return {
+    asOf,
+    rows: rows.filter(r => r.haveCents !== 0 || r.wantCents !== 0 || r.adjustDrCents !== 0 || r.accountNumber === OPENING_RE),
+    retainedEarningsBeforeCents: reHave,
+    retainedEarningsAfterCents: reHave - plugDrCents,
+    changes: rows.filter(r => r.adjustDrCents !== 0).length,
+  };
+}
+
+function openingBalancesPost(asOf, targets = {}, _db) {
+  const db = _db || getDb();
+  const preview = openingBalancesPreview(asOf, targets, db);
+  const coaId = (n) => db.prepare('SELECT id FROM chart_of_accounts WHERE account_number=?').get(n)?.id;
+  if (!coaId(OPENING_RE)) throw new Error('ERR_MISSING_COA');
+  const lines = preview.rows.filter(r => r.adjustDrCents !== 0).map(r => ({
+    account_id: coaId(r.accountNumber),
+    debit_cents: r.adjustDrCents > 0 ? r.adjustDrCents : 0,
+    credit_cents: r.adjustDrCents < 0 ? -r.adjustDrCents : 0,
+    memo: r.accountNumber === OPENING_RE ? 'Bénéfices non répartis (ajustement)' : 'Solde selon les états financiers',
+  }));
+  if (!lines.length) return { ok: true, nothingToDo: true, preview };
+  const { entryId } = glDraftEntry({
+    entry_date: asOf,
+    description: `Soldes d'ouverture selon les états financiers au ${asOf}`,
+    source_type: 'opening_adjustment',
+    source_id: `opening:${asOf}:${Date.now()}`,
+    lines,
+  }, db);
+  glPostEntry(entryId, db);
+  db.prepare(
+    `INSERT INTO audit_log (device_id, module, action, record_type, record_id, new_value) VALUES (?, 'GL', 'post_opening_balances', 'journal_entry', ?, ?)`
+  ).run(_getDeviceUuid(db), String(entryId), `${asOf}: ${lines.length} lines`);
+  return { ok: true, entryId, preview: openingBalancesPreview(asOf, {}, db) };
+}
+
 // ── Balance Sheet ─────────────────────────────────────────────────────────────
 
 const BS_CURRENT_ASSET_MAX   = '1499';
@@ -5960,8 +6232,8 @@ const BS_LONGT_LIAB_MAX      = '2499';
 const BS_EQUITY_MIN          = '3000';
 const BS_EQUITY_MAX          = '3999';
 
-function buildBalanceSheet(asOfDate, { locationId = null } = {}) {
-  const db = getDb();
+function buildBalanceSheet(asOfDate, { locationId = null, _db } = {}) {
+  const db = _db || getDb();
   const params = [asOfDate];
   const locCond = locationId != null ? '(je.location_id IS ? OR je.location_id=?)' : '1=1';
   if (locationId != null) params.push(locationId, locationId);
@@ -6030,6 +6302,21 @@ function buildBalanceSheet(asOfDate, { locationId = null } = {}) {
   // net_income = revenue - expenses = (-revenueCents) - expenseCents
   const netIncomeCents   = (-revenueCents) - expenseCents;
   const totalCapitauxCents = totalEquityCents + netIncomeCents;
+  // Profit since the fiscal year began, apart from earlier years' profit, which
+  // is retained earnings. Worked out, not posted: a closing entry would zero
+  // the revenue and expense accounts on the last day and every report reading
+  // them would have to learn to skip it.
+  const fy = fiscalYearBounds(asOfDate, fiscalYearEndGet(db));
+  const earlierCents = (() => {
+    const r = db.prepare(
+      `SELECT COALESCE(SUM(jl.credit_cents) - SUM(jl.debit_cents), 0) AS n
+         FROM journal_lines jl
+         JOIN journal_entries je ON je.id = jl.entry_id AND je.status IN ('posted','reversed') AND je.entry_date < ?
+         JOIN chart_of_accounts coa ON coa.id = jl.account_id AND coa.type IN ('revenue','cogs','expense')`
+    ).get(fy.start);
+    return r ? r.n : 0;
+  })();
+  const currentYearCents = netIncomeCents - earlierCents;
 
   const trialBalanceCheck = rows.reduce((s, r) => s + r.balance_cents, 0);
   const isBalanced = trialBalanceCheck === 0;
@@ -6049,7 +6336,7 @@ function buildBalanceSheet(asOfDate, { locationId = null } = {}) {
       currentLiab:   { accounts: currentLiab.map(r => ({ account_number: r.account_number, name_fr: r.name_fr, name_en: r.name_en, balance: toAmount(-r.balance_cents) })), total: toAmount(totalCurrentLiabCents) },
       longTermLiab:  { accounts: longTermLiab.map(r => ({ account_number: r.account_number, name_fr: r.name_fr, name_en: r.name_en, balance: toAmount(-r.balance_cents) })), total: toAmount(totalLongTermLiabCents) },
       totalLiabilities: toAmount(totalLiabCents),
-      equity:        { accounts: equityAccounts.map(r => ({ account_number: r.account_number, name_fr: r.name_fr, name_en: r.name_en, balance: toAmount(-r.balance_cents) })), netIncome: toAmount(netIncomeCents), total: toAmount(totalCapitauxCents) },
+      equity:        { accounts: equityAccounts.map(r => ({ account_number: r.account_number, name_fr: r.name_fr, name_en: r.name_en, balance: toAmount(-r.balance_cents) })), netIncome: toAmount(currentYearCents), retainedEarlier: toAmount(earlierCents), fiscalYearStart: fy.start, total: toAmount(totalCapitauxCents) },
       totalLiabAndEquity: toAmount(totalLiabCents + totalCapitauxCents),
     },
   };
@@ -7459,7 +7746,7 @@ function mergeApiConfigSecrets(incoming, current) {
 
 module.exports = {
   setDataDir, getDataDir, latestSchemaVersion, preMigrationSnapshot, enableForeignKeys,
-  incomeStatement, coaSetItcPct, coaRename, bankNeedsCategorizingCount, firstRunFacts,
+  incomeStatement, fiscalYearEndGet, fiscalYearEndSet, fiscalYearBounds, fiscalYearList, fiscalYearClose, fiscalYearReopen, openingBalancesPreview, openingBalancesPost, coaSetItcPct, coaRename, bankNeedsCategorizingCount, firstRunFacts,
   supplierBillPost, supplierBillUnpost, supplierBillPostPayment, supplierBillSubledger,
   supplierBillRepairTaxAccounts,
   SECRET_CONFIG_FIELDS, stripApiConfigSecrets, mergeApiConfigSecrets,

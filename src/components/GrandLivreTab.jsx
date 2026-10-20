@@ -1,4 +1,5 @@
 import { calcInvoiceOutstanding, computeInvoiceTotals } from '../utils/calculations.js';
+import YearEndTab from './YearEndTab.jsx';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -87,6 +88,9 @@ const UI = {
     isGross:          'Marge brute',
     isExpenses:       'Charges',
     isNet:            'Bénéfice net',
+    isEbitda:         'BAIIA (EBITDA)',
+    isEbitdaHint:     "Bénéfice avant intérêts, impôts sur le revenu et amortissement : le bénéfice net, plus ce que ces comptes ont coûté dans la période.",
+    tabYearEnd:       "Fin d'exercice",
     isShare:          '% des ventes',
     isAmount:         'Montant',
     isAccount:        'Compte',
@@ -157,6 +161,10 @@ const UI = {
       ERR_ENTRY_UNBALANCED:             (d, c) => `Déséquilibre : débit ${d}¢ ≠ crédit ${c}¢.`,
       ERR_OPENING_BALANCE_EXISTS:       "Solde d'ouverture déjà comptabilisé pour cet emplacement.",
       ERR_PERIOD_CLOSED_POST:           'La période est fermée - rouvrez-la avant de comptabiliser.',
+      ERR_FISCAL_YEAR_END_INVALID:      "Cette date de fin d'exercice n'existe pas (vérifiez le jour et le mois).",
+      ERR_FISCAL_YEAR_NOT_ENDED:        "Cet exercice n'est pas encore terminé : il peut être fermé après sa dernière journée.",
+      ERR_NOT_A_FISCAL_YEAR_END:        "Cette date n'est pas une fin d'exercice selon le réglage de l'entreprise.",
+      ERR_FISCAL_YEAR_NOT_CLOSED:       "Cet exercice n'est pas fermé.",
       ERR_PERIOD_CLOSED_REVERSE:        "La période est fermée - rouvrez-la avant d'annuler.",
       ERR_PERIOD_NOT_FOUND:             'Période introuvable.',
       ERR_PERIOD_ALREADY_CLOSED:        'Période déjà fermée.',
@@ -202,6 +210,9 @@ const UI = {
     isGross:          'Gross profit',
     isExpenses:       'Expenses',
     isNet:            'Net income',
+    isEbitda:         'EBITDA',
+    isEbitdaHint:     'Earnings before interest, income taxes, depreciation and amortization: net income, plus what those accounts cost in the period.',
+    tabYearEnd:       'Year end',
     isShare:          '% of sales',
     isAmount:         'Amount',
     isAccount:        'Account',
@@ -272,6 +283,10 @@ const UI = {
       ERR_ENTRY_UNBALANCED:             (d, c) => `Out of balance: debit ${d}c does not equal credit ${c}c.`,
       ERR_OPENING_BALANCE_EXISTS:       'An opening balance is already posted for this location.',
       ERR_PERIOD_CLOSED_POST:           'The period is closed - reopen it before posting.',
+      ERR_FISCAL_YEAR_END_INVALID:      'That year-end date does not exist (check the day and the month).',
+      ERR_FISCAL_YEAR_NOT_ENDED:        'This fiscal year has not ended yet: it can be closed after its last day.',
+      ERR_NOT_A_FISCAL_YEAR_END:        "That date is not a year end under the company's setting.",
+      ERR_FISCAL_YEAR_NOT_CLOSED:       'This fiscal year is not closed.',
       ERR_PERIOD_CLOSED_REVERSE:        'The period is closed - reopen it before reversing.',
       ERR_PERIOD_NOT_FOUND:             'Period not found.',
       ERR_PERIOD_ALREADY_CLOSED:        'This period is already closed.',
@@ -893,6 +908,12 @@ function IncomeStatementTab({ lang }) {
               {byType('cogs').length > 0 && totalRow(t.isGross, data.grossProfitCents, data.grossMarginPct, false)}
               {section(t.isExpenses, byType('expense'), data.expenseCents)}
               {totalRow(t.isNet, data.netIncomeCents, data.netMarginPct, true)}
+              {data.ebitdaCents != null && totalRow(t.isEbitda, data.ebitdaCents, data.ebitdaMarginPct, false)}
+              {data.ebitdaCents != null && (
+                <tr><td colSpan={3} style={{ ...td, fontSize: 11, color: '#64748b', borderBottom: 'none' }}>
+                  {t.isEbitdaHint} ({money(data.interestCents)} + {money(data.incomeTaxCents)} + {money(data.depreciationCents)})
+                </td></tr>
+              )}
             </tbody>
           </table>
           {showsWatched && (
@@ -1431,6 +1452,7 @@ export default function GrandLivreTab({ lang = 'fr' }) {
           ['results', t.tabResults],
           ['control', t.tabControl],
           ['periods', t.tabPeriods],
+          ['yearend', t.tabYearEnd],
           ['export',  t.tabExport],
         ].map(([key, label]) => (
           <button key={key} onClick={() => setSubTab(key)}
@@ -1451,6 +1473,7 @@ export default function GrandLivreTab({ lang = 'fr' }) {
       {subTab === 'results'  && <IncomeStatementTab lang={lang} />}
       {subTab === 'control'  && <ControlVarianceTab lang={lang} />}
       {subTab === 'periods'  && <PeriodsTab lang={lang} />}
+      {subTab === 'yearend'  && <YearEndTab lang={lang} errors={t.ledgerErrors} />}
       {subTab === 'export'   && <ExportTab lang={lang} />}
     </div>
   );

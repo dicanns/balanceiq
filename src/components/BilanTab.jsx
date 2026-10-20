@@ -20,7 +20,8 @@ const T = {
     longTermLiab: 'Passifs a long terme',
     totalLiab: 'TOTAL DES PASSIFS',
     equity: 'CAPITAUX PROPRES',
-    netIncome: 'Resultat de l\'exercice',
+    netIncome: 'Resultat de l\'exercice en cours',
+    retainedEarlier: 'Benefices des exercices precedents (calcules)',
     totalEquity: 'TOTAL DES CAPITAUX PROPRES',
     totalLiabEquity: 'TOTAL PASSIFS + CAPITAUX PROPRES',
     exceptions: 'Exceptions comptables',
@@ -54,7 +55,8 @@ const T = {
     longTermLiab: 'Long-term liabilities',
     totalLiab: 'TOTAL LIABILITIES',
     equity: 'EQUITY',
-    netIncome: 'Net income for the period',
+    netIncome: 'Net income, current fiscal year',
+    retainedEarlier: 'Earnings from earlier fiscal years (calculated)',
     totalEquity: 'TOTAL EQUITY',
     totalLiabEquity: 'TOTAL LIABILITIES + EQUITY',
     exceptions: 'Accounting exceptions',
@@ -280,7 +282,10 @@ export default function BilanTab({ lang = 'fr', canUsePro = false, onUpgrade }) 
             {(bilan.sections.equity?.accounts || []).map((a, i) => (
               <SectionRow key={i} label={`${a.account_number} - ${lang === 'en' && a.name_en ? a.name_en : a.name_fr}`} value={a.balance} indent={1} />
             ))}
-            <SectionRow label={L.netIncome} value={bilan.sections.equity?.netIncome || 0} indent={1} />
+            {/* Earlier years' profit is retained earnings; only this fiscal
+                year's shows as the year's result. */}
+            {!!bilan.sections.equity?.retainedEarlier && <SectionRow label={L.retainedEarlier} value={bilan.sections.equity.retainedEarlier} indent={1} />}
+            <SectionRow label={`${L.netIncome}${bilan.sections.equity?.fiscalYearStart ? ` (${bilan.sections.equity.fiscalYearStart})` : ''}`} value={bilan.sections.equity?.netIncome || 0} indent={1} />
             <SectionRow label={L.totalEquity} value={bilan.sections.equity?.total || 0} bold />
           </div>
 
