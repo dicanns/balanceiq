@@ -4434,6 +4434,12 @@ function bankReconciliationStatus(_db, today) {
       `SELECT MAX(period_end) AS d FROM bank_statements WHERE bank_account_id=?`
     ).get(acc.id)?.d || null;
     const due = _periodsDue(lastStatementEnd, asOf);
+    // Every statement this account holds, oldest first, so the Accounts tab can
+    // show what has been imported without a trip to Transactions.
+    const statements = db.prepare(
+      `SELECT id, period_start AS start, period_end AS end, COALESCE(reconciled,0) AS reconciled
+         FROM bank_statements WHERE bank_account_id=? ORDER BY period_start, id`
+    ).all(acc.id).map(r => ({ ...r, reconciled: !!r.reconciled }));
     // One word for where the account stands, most pressing first.
     const state = !lastStatementEnd ? 'no_statements'
       : next ? (blockers.length ? 'in_progress' : 'ready')
@@ -4442,7 +4448,7 @@ function bankReconciliationStatus(_db, today) {
     return {
       accountId: acc.id, name: acc.name, accountType: acc.account_type,
       owedView: acc.account_type === 'credit_card' || acc.account_type === 'line_of_credit',
-      state, due, lastStatementEnd,
+      state, due, lastStatementEnd, statements,
       lastReconciledEnd: lastClosed,
       openCount: open.length,
       next: next ? { id: next.id, periodStart: next.period_start, periodEnd: next.period_end, endingBalance: next.ending_balance } : null,

@@ -241,6 +241,8 @@ const UI = {
     acctNoStatements: 'Aucun relevé importé',
     acctSummary:      (n, t) => `${n} compte${n > 1 ? 's' : ''} sur ${t} à jour`,
     acctGoReconcile:  'Rapprocher',
+    acctStatements:   (n) => `Relevés dans BalanceIQ (${n}) :`,
+    acctNoneYet:      'aucun relevé importé',
     openingOwed:      'dû',
     openingDateFix:   (d) => `Mettre la date d'ouverture au ${d}`,
     openingBalanceLbl:'Solde d\'ouverture',
@@ -478,6 +480,8 @@ const UI = {
     acctNoStatements: 'No statement imported yet',
     acctSummary:      (n, t) => `${n} of ${t} account${t > 1 ? 's' : ''} up to date`,
     acctGoReconcile:  'Reconcile',
+    acctStatements:   (n) => `Statements in BalanceIQ (${n}):`,
+    acctNoneYet:      'none imported yet',
     openingOwed:      'owed',
     openingDateFix:   (d) => `Set the opening date to ${d}`,
     openingBalanceLbl:'Opening balance',
@@ -1237,14 +1241,28 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
                         : st.state === 'ready' ? { text: T.acctReady(fmtDate(st.next.periodStart), fmtDate(st.next.periodEnd)), color: '#22c55e', go: true }
                         : st.state === 'in_progress' ? { text: T.acctInProgress(fmtDate(st.next.periodStart), fmtDate(st.next.periodEnd), why), color: '#f59e0b', go: true }
                         : { text: T.acctNoStatements, color: C.muted };
+                      const sts = st.statements || [];
+                      const mon = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString(lang === 'en' ? 'en-CA' : 'fr-CA', { month: 'short', day: 'numeric', year: 'numeric' });
                       return (
-                        <div style={{ fontSize: 12, fontWeight: 600, color: line.color, marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                          <span>{line.text}</span>
-                          {line.go && (
-                            <button onClick={() => { setSelectedAccount(acc); setSubTab('rapprochements'); }}
-                              style={{ ...btnSmall, fontSize: 11, padding: '2px 8px' }}>{T.acctGoReconcile}</button>
-                          )}
-                        </div>
+                        <>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: line.color, marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <span>{line.text}</span>
+                            {line.go && (
+                              <button onClick={() => { setSelectedAccount(acc); setSubTab('rapprochements'); }}
+                                style={{ ...btnSmall, fontSize: 11, padding: '2px 8px' }}>{T.acctGoReconcile}</button>
+                            )}
+                          </div>
+                          {/* What has been imported, so a missing month shows here
+                              rather than as a question later. */}
+                          <div style={{ fontSize: 11, color: C.muted, marginTop: 4, display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
+                            <span>{T.acctStatements(sts.length)}</span>
+                            {sts.length === 0 ? <span>{T.acctNoneYet}</span> : sts.map(x => (
+                              <span key={x.id} style={{ padding: '1px 7px', borderRadius: 10, border: `1px solid ${x.reconciled ? 'rgba(34,197,94,0.4)' : 'rgba(245,158,11,0.5)'}`, color: x.reconciled ? '#16a34a' : '#b45309' }}>
+                                {mon(x.start)} {'\u2192'} {mon(x.end)}{x.reconciled ? ' \u2713' : ''}
+                              </span>
+                            ))}
+                          </div>
+                        </>
                       );
                     })()}
                   </div>

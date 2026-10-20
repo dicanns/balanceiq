@@ -68,6 +68,21 @@ describe('STAND-002 where an account stands', () => {
   });
 });
 
+describe('STAND-005 the statements an account holds', () => {
+  it('are listed oldest first with whether each is closed, and shown on the Accounts tab', () => {
+    const id = card('Sample Card');
+    const { statementId } = importMonth(id, '2026-07-06', '2026-08-05', '07/10/2026,SAMPLE CAFE,10.00\n');
+    importMonth(id, '2026-08-06', '2026-09-05', '08/10/2026,SAMPLE STORE,12.00\n');
+    db.prepare(`UPDATE bank_statements SET reconciled=1 WHERE id=?`).run(statementId);
+    expect(stateOf(id, '2026-09-18').statements.map(x => [x.start, x.end, x.reconciled])).toEqual([
+      ['2026-07-06', '2026-08-05', true], ['2026-08-06', '2026-09-05', false],
+    ]);
+    const s = fs.readFileSync(path.join(ROOT, 'src/components/BanqueTab.jsx'), 'utf8');
+    expect(s).toMatch(/T\.acctStatements\(sts\.length\)/);
+    expect((s.match(/\bacctStatements:/g) || []).length).toBe(2);
+  });
+});
+
 describe('STAND-003 Today', () => {
   it('names the period to import, and nothing for an account up to date', () => {
     const items = buildWorklist({
