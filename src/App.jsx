@@ -65,6 +65,7 @@ import { accountStanding } from './services/accountStanding.js';
 import { newEmailLogEntry, needsStatusCheck, needsViewCheck, applyDeliveryUpdates, emailWorklistItems, emailBadge } from './services/emailTracking.js';
 import { companyAccess, COMPANY_PLAN_VERIFIED_KEY, PAID_PLANS } from './services/companyAccess.js';
 import { shouldRecalcDueDate } from './utils/invoiceDueDate.js';
+import { recurringInvoiceHtmlArgs } from './utils/recurringInvoiceEmail.js';
 import { precedingShiftKey } from "./services/shiftKeys.js";
 import { buildClosePacket } from "./services/closePacketGenerator.js";
 
@@ -2139,7 +2140,7 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
  {canUse("recurringInvoices")&&dueCount>0&&<div style={{background:"rgba(249,115,22,0.08)",border:"1px solid rgba(249,115,22,0.3)",borderRadius:8,padding:"8px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}><span style={{fontSize:11.5,color:"#f97316",fontWeight:600}}>{dueCount} facture{dueCount!==1?"s":""} récurrente{dueCount!==1?"s":""} à générer</span><button onClick={()=>setShowRecurringModal(true)} style={{padding:"4px 14px",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>Générer</button></div>}
 
  {/* Recurring generate modal */}
- {showRecurringModal&&<RecurringGenerateModal recurrents={recurrents||[]} saveRecurrents={saveRecurrents} factures={factures} saveFactures={saveFactures} docNums={docNums} saveDocNums={saveDocNums} clients={clients} companyInfo={companyInfo} apiConfig={apiConfig} onClose={()=>setShowRecurringModal(false)}/>}
+ {showRecurringModal&&<RecurringGenerateModal recurrents={recurrents||[]} saveRecurrents={saveRecurrents} factures={factures} saveFactures={saveFactures} docNums={docNums} saveDocNums={saveDocNums} clients={clients} companyInfo={companyInfo} invoiceTemplate={invoiceTemplate} apiConfig={apiConfig} onClose={()=>setShowRecurringModal(false)}/>}
 
  {/* Dashboard */}
  {subTab==="documents"&&<FacturationDashboard soumissions={soumissions} commandes={commandes} factures={factures} creditNotes={creditNotes} clients={clients} produits={produits} categories={categories} companyInfo={companyInfo} showUpgradePrompt={showUpgradePrompt} openDoc={openDoc} glAccounts={glAccounts}/>}
@@ -3965,7 +3966,7 @@ function RecurringTab({clientId,recurrents,saveRecurrents,produits,showUpgradePr
  })}</div>);
 }
 
-function RecurringGenerateModal({recurrents,saveRecurrents,factures,saveFactures,docNums,saveDocNums,clients,companyInfo,apiConfig,onClose}){
+function RecurringGenerateModal({recurrents,saveRecurrents,factures,saveFactures,docNums,saveDocNums,clients,companyInfo,invoiceTemplate,apiConfig,onClose}){
  const t=useT();
  const T=useL();
  const today=dk(new Date());
@@ -3994,12 +3995,15 @@ function RecurringGenerateModal({recurrents,saveRecurrents,factures,saveFactures
  const ri=newRecs.findIndex(r=>r.id===rec.id);
  if(ri>=0)newRecs[ri]={...newRecs[ri],lastGenerated:today};
  const client=clients.find(c=>c.id===rec.clientId);
- done.push({fac,rec,client});
+ const row={fac,rec,client};
+ done.push(row);
  if(rec.autoEnvoyer&&client?.courriel&&apiConfig?.resendKey){
  try{
- const html=buildFactureHTML({facture:fac,clients,companyInfo,produits:[]});
- await window.api.email.sendResend({apiKey:apiConfig.resendKey,from:apiConfig.resendFrom||"noreply@balanceiq.ca",to:client.courriel,subject:`Facture ${fac.numero} - ${companyInfo.nom||""}`,html,attachments:[]});
- }catch(_){}
+ const html=buildFactureHTML(recurringInvoiceHtmlArgs({fac,clients,companyInfo,invoiceTemplate}));
+ const r=await window.api.email.sendResend({apiKey:apiConfig.resendKey,from:apiConfig.resendFrom||"noreply@balanceiq.ca",to:client.courriel,subject:`Facture ${fac.numero} - ${companyInfo.nom||""}`,html,attachments:[]});
+ if(r?.success)row.emailSent=true;
+ else{row.emailError=r?.error||"unknown";console.warn('[recurring] auto-send failed',fac.numero,row.emailError);}
+ }catch(e){row.emailError=e?.message||"unknown";console.warn('[recurring] auto-send failed',fac.numero,e);}
  }
  }
  saveFactures(updFactures);
@@ -4010,7 +4014,7 @@ function RecurringGenerateModal({recurrents,saveRecurrents,factures,saveFactures
  setResults(done);
  };
  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{background:"#1a1d26",border:"1px solid rgba(249,115,22,0.3)",borderRadius:12,padding:24,maxWidth:540,width:"90%",maxHeight:"80vh",overflowY:"auto"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><span style={{fontSize:14,fontWeight:700,color:"#fff"}}>{T.recurringTitle}</span><button onClick={onClose} style={{background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:16}}>×</button></div>{results
- ?(<div><div style={{fontSize:12,color:"#22c55e",fontWeight:700,marginBottom:12}}>{results.length} facture{results.length!==1?"s":""} créée{results.length!==1?"s":""}</div>{results.map(({fac,client})=>(<div key={fac.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#9ca3af",borderTop:"1px solid rgba(255,255,255,0.05)",padding:"5px 0"}}><span>{fac.numero} - {client?.entreprise||"-"}</span><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:"#f97316"}}>{fmt(computeSoumTotals(fac.lignes,fac).total)}</span></div>))}<button onClick={onClose} style={{marginTop:16,padding:"7px 20px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T.close}</button></div>)
+ ?(<div><div style={{fontSize:12,color:"#22c55e",fontWeight:700,marginBottom:12}}>{results.length} facture{results.length!==1?"s":""} créée{results.length!==1?"s":""}</div>{results.map(({fac,client,emailSent,emailError})=>(<div key={fac.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#9ca3af",borderTop:"1px solid rgba(255,255,255,0.05)",padding:"5px 0"}}><span>{fac.numero} - {client?.entreprise||"-"}{emailSent&&<span style={{fontSize:9,color:"#22c55e",marginLeft:6}}>{T.recurringEmailSent}</span>}{emailError&&<span title={emailError} style={{fontSize:9,color:"#ef4444",marginLeft:6}}>{T.recurringEmailFailed}</span>}</span><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:"#f97316"}}>{fmt(computeSoumTotals(fac.lignes,fac).total)}</span></div>))}<button onClick={onClose} style={{marginTop:16,padding:"7px 20px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T.close}</button></div>)
  :(<div>{due.length===0
  ?<div style={{textAlign:"center",padding:"20px 0",color:"#9ca3af",fontSize:12}}>{T.noRecurringPending}</div>:<div>{due.map(r=>{const client=clients.find(c=>c.id===r.clientId);return(<div key={r.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#9ca3af",borderTop:"1px solid rgba(255,255,255,0.05)",padding:"6px 0"}}><div><span style={{color:"#fff",fontWeight:600}}>{client?.entreprise||"-"}</span><span style={{color:"#6b7280",marginLeft:8}}>{r.lignes[0]?.description}</span>{r.autoEnvoyer&&<span style={{fontSize:9,color:"#f97316",marginLeft:6}}>Auto-envoi</span>}</div><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:"#f97316",fontWeight:700}}>{fmt(computeSoumTotals(r.lignes,r).total)}</span></div>);})}<div style={{display:"flex",gap:8,marginTop:16}}><button onClick={doGenerate} disabled={generating} style={{padding:"7px 20px",borderRadius:6,border:"none",background:generating?"rgba(255,255,255,0.1)":"linear-gradient(135deg,#f97316,#ea580c)",color:generating?"#6b7280":"#fff",cursor:generating?"default":"pointer",fontWeight:700,fontSize:12,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{generating?"Génération…":`Créer ${due.length} facture${due.length!==1?"s":""}`}</button><button onClick={onClose} style={{padding:"7px 14px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:"#9ca3af",cursor:"pointer",fontSize:12}}>{T.cancel}</button></div></div>}</div>)}</div></div>);
 }
