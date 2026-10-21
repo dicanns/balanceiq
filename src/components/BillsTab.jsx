@@ -58,6 +58,10 @@ const UI = {
     attachUncat: 'pas encore catégorisée',
     attachBtn: 'Attacher',
     attachDismiss: 'Pas maintenant',
+    payFound: 'Paiement trouvé',
+    payFoundTitle: 'Une ligne de relevé du même montant, près de la date de la facture, est probablement son paiement. Cliquez pour la lier.',
+    payFoundBanner: (n) => `${n} facture${n > 1 ? 's' : ''} impayée${n > 1 ? 's ont leur' : ' a son'} paiement sur un relevé déjà importé. Cliquez sur « Paiement trouvé » pour lier chacune : la dépense compte alors une seule fois, par la facture.`,
+    markPaidTitle: 'Pour un paiement qui ne passe par aucun relevé importé (comptant, chèque d\'un compte hors BalanceIQ). Sinon, liez la ligne du relevé.',
     outstanding: 'Solde impayé',
     unpaid: 'Impayées',
     paid: 'Payées',
@@ -136,6 +140,10 @@ const UI = {
     attachUncat: 'not categorized yet',
     attachBtn: 'Attach',
     attachDismiss: 'Not now',
+    payFound: 'Payment found',
+    payFoundTitle: 'A statement line for the same amount, close to the bill date, is most likely its payment. Click to link it.',
+    payFoundBanner: (n) => `${n} unpaid bill${n > 1 ? 's have their' : ' has its'} payment on a statement already imported. Click "Payment found" to link each one: the expense is then counted once, by the bill.`,
+    markPaidTitle: 'For a payment that is on no imported statement (cash, a cheque from an account outside BalanceIQ). Otherwise, link the statement line.',
     outstanding: 'Outstanding',
     unpaid: 'Unpaid',
     paid: 'Paid',
@@ -283,12 +291,17 @@ export default function BillsTab({ lang = 'fr' }) {
   const [attach, setAttach]     = useState(null);   // { billId, lines } - statement lines that may be this bill's payment
   const [settling, setSettling] = useState(null);   // { bill, date, accountId } - marking a bill paid by hand
   const [bankAccounts, setBankAccounts] = useState([]);
+  const [payFound, setPayFound] = useState({});    // billId -> statement lines that are likely its payment
 
   const load = useCallback(async () => {
     try {
       const list = await window.api?.supplierBills?.list({});
       setBills(Array.isArray(list) ? list : []);
     } catch (_) { setBills([]); }
+    try {
+      const found = await window.api?.supplierBills?.paymentCandidates?.();
+      setPayFound(found && typeof found === 'object' ? found : {});
+    } catch (_) { setPayFound({}); }
     try {
       const accts = await window.api?.bank?.accounts?.list();
       setBankAccounts(Array.isArray(accts) ? accts.filter(a => !a.is_archived) : []);
@@ -676,52 +689,60 @@ export default function BillsTab({ lang = 'fr' }) {
         <input style={input} value={editing.note} onChange={e => set({ note: e.target.value })} /></div>
 
       {error && <div style={{ fontSize: 12, color: '#ef4444' }}>{error}</div>}
-      {settling && (
-        <div style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 8, padding: '10px 12px' }}>
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: '#86efac' }}>{T.settleTitle(settling.bill.supplier_name, money(settling.bill.amount))}</div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 8 }}>
-            <div><span style={lbl}>{T.settleDate}</span>
-              <input style={{ ...input, width: 150 }} type="date" value={settling.date} onChange={e => setSettling(s => ({ ...s, date: e.target.value }))} /></div>
-            <div style={{ minWidth: 220 }}><span style={lbl}>{T.settleFrom}</span>
-              {bankAccounts.length ? (
-                <select style={input} value={settling.accountId} onChange={e => setSettling(s => ({ ...s, accountId: e.target.value }))}>
-                  {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                </select>
-              ) : <div style={{ fontSize: 11.5, color: C.muted, padding: '6px 0' }}>{T.settleCash}</div>}
-            </div>
-            <button onClick={confirmSettle} disabled={busy} style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: 5, color: '#22c55e', cursor: busy ? 'default' : 'pointer', fontSize: 12, fontWeight: 700, padding: '7px 12px' }}>{T.settleConfirm}</button>
-            <button onClick={() => setSettling(null)} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 11, padding: '7px 4px' }}>{T.cancel}</button>
-          </div>
-        </div>
-      )}
-      {attach && (
-        <div style={{ background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.35)', borderRadius: 8, padding: '10px 12px' }}>
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: '#fdba74' }}>{T.attachTitle}</div>
-          <div style={{ fontSize: 11.5, color: C.muted, marginTop: 3, lineHeight: 1.5 }}>{T.attachBody}</div>
-          {attach.lines.map(l => (
-            <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 7 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, color: C.text }}>{l.transaction_date} · {l.account_name} · {money(Math.abs(l.amount))}</div>
-                <div style={{ fontSize: 10.5, color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {l.description} · {l.current_account_number ? T.attachNow(l.current_account_number) : T.attachUncat}
-                </div>
-              </div>
-              <button onClick={() => attachLine(l.id)} disabled={busy} style={{
-                background: 'none', border: '1px solid rgba(249,115,22,0.45)', borderRadius: 5, color: '#f97316',
-                cursor: busy ? 'default' : 'pointer', fontSize: 11, fontWeight: 600, padding: '3px 10px', whiteSpace: 'nowrap',
-              }}>{T.attachBtn}</button>
-            </div>
-          ))}
-          <button onClick={() => setAttach(null)} style={{
-            background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 11, padding: '6px 0 0',
-          }}>{T.attachDismiss}</button>
-        </div>
-      )}
 
       <div style={{ display: 'flex', gap: 8 }}>
         <button onClick={save} disabled={busy} style={btn('linear-gradient(135deg,#f97316,#ea580c)')}>{T.save}</button>
         <button onClick={() => { setEditing(null); setError(''); resetReading(); }} style={btn('#1e2131', C.sub)}>{T.cancel}</button>
       </div>
+    </div>
+  );
+
+  // Paying by hand and attaching a statement line are both started from the
+  // list, not from the editor: drawn inside the editor they never showed, since
+  // saving a bill closes it and a row's Mark paid opens no editor.
+  const sidePanels = (settling || attach) && (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
+          {settling && (
+            <div style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 8, padding: '10px 12px' }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#86efac' }}>{T.settleTitle(settling.bill.supplier_name, money(settling.bill.amount))}</div>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 8 }}>
+                <div><span style={lbl}>{T.settleDate}</span>
+                  <input style={{ ...input, width: 150 }} type="date" value={settling.date} onChange={e => setSettling(s => ({ ...s, date: e.target.value }))} /></div>
+                <div style={{ minWidth: 220 }}><span style={lbl}>{T.settleFrom}</span>
+                  {bankAccounts.length ? (
+                    <select style={input} value={settling.accountId} onChange={e => setSettling(s => ({ ...s, accountId: e.target.value }))}>
+                      {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                  ) : <div style={{ fontSize: 11.5, color: C.muted, padding: '6px 0' }}>{T.settleCash}</div>}
+                </div>
+                <button onClick={confirmSettle} disabled={busy} style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: 5, color: '#22c55e', cursor: busy ? 'default' : 'pointer', fontSize: 12, fontWeight: 700, padding: '7px 12px' }}>{T.settleConfirm}</button>
+                <button onClick={() => setSettling(null)} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 11, padding: '7px 4px' }}>{T.cancel}</button>
+              </div>
+            </div>
+          )}
+          {attach && (
+            <div style={{ background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.35)', borderRadius: 8, padding: '10px 12px' }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#fdba74' }}>{T.attachTitle}</div>
+              <div style={{ fontSize: 11.5, color: C.muted, marginTop: 3, lineHeight: 1.5 }}>{T.attachBody}</div>
+              {attach.lines.map(l => (
+                <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 7 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, color: C.text }}>{l.transaction_date} · {l.account_name} · {money(Math.abs(l.amount))}</div>
+                    <div style={{ fontSize: 10.5, color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {l.description} · {l.current_account_number ? T.attachNow(l.current_account_number) : T.attachUncat}
+                    </div>
+                  </div>
+                  <button onClick={() => attachLine(l.id)} disabled={busy} style={{
+                    background: 'none', border: '1px solid rgba(249,115,22,0.45)', borderRadius: 5, color: '#f97316',
+                    cursor: busy ? 'default' : 'pointer', fontSize: 11, fontWeight: 600, padding: '3px 10px', whiteSpace: 'nowrap',
+                  }}>{T.attachBtn}</button>
+                </div>
+              ))}
+              <button onClick={() => setAttach(null)} style={{
+                background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 11, padding: '6px 0 0',
+              }}>{T.attachDismiss}</button>
+            </div>
+          )}
     </div>
   );
 
@@ -834,6 +855,16 @@ export default function BillsTab({ lang = 'fr' }) {
         </div>
       )}
 
+      {!editing && error && <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 10 }}>{error}</div>}
+      {sidePanels}
+      {(() => {
+        const n = bills.filter(b => !b.paid && payFound[b.id]?.length > 0).length;
+        return n > 0 && !attach ? (
+          <div style={{ fontSize: 12, color: '#fdba74', background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.3)',
+            borderRadius: 8, padding: '9px 12px', marginBottom: 14, lineHeight: 1.5 }}>{T.payFoundBanner(n)}</div>
+        ) : null;
+      })()}
+
       {shown.length === 0 ? (
         <div style={{ color: C.muted, fontSize: 13, padding: '24px 0' }}>{T.none}</div>
       ) : (
@@ -886,7 +917,15 @@ export default function BillsTab({ lang = 'fr' }) {
                           note: b.note || '',
                         }); }} style={{ background: 'none', border: 'none', color: C.sub, cursor: 'pointer', fontSize: 12, marginRight: 6 }}>✎</button>
                       )}
-                      <button onClick={() => togglePaid(b)} disabled={busy} style={{
+                      {!b.paid && payFound[b.id]?.length > 0 && (
+                        <button onClick={() => { setError(''); setAttach({ billId: b.id, lines: payFound[b.id] }); }} disabled={busy}
+                          title={T.payFoundTitle} style={{
+                            background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.45)', borderRadius: 5,
+                            color: '#f97316', cursor: busy ? 'default' : 'pointer', fontSize: 11, fontWeight: 700,
+                            padding: '3px 9px', marginRight: 6,
+                          }}>{T.payFound}</button>
+                      )}
+                      <button onClick={() => togglePaid(b)} disabled={busy} title={b.paid ? undefined : T.markPaidTitle} style={{
                         background: 'none', border: `1px solid ${b.paid ? C.border : 'rgba(34,197,94,0.35)'}`,
                         borderRadius: 5, color: b.paid ? C.muted : '#22c55e', cursor: busy ? 'default' : 'pointer',
                         fontSize: 11, fontWeight: 600, padding: '3px 9px',

@@ -5839,6 +5839,53 @@ function bankLinesForBillAmount(amount, _db) {
     LIMIT 20`).all(cents);
 }
 
+// Every unpaid bill that already has its payment on an imported statement. The
+// two warnings above only speak at the moment a bill is saved or a line is
+// categorized; a bill entered in September whose card line arrives with
+// October's statement slips between them and sits on the Bills screen as
+// "unpaid" while the line books the expense a second time. This is asked each
+// time the Bills screen loads, so the match is shown until it is dealt with.
+// The line has to fall on or after the bill date and within a few months of it
+// (net-60 terms), so last month's payment of a recurring bill for the same
+// amount, often debited a day before the next bill is issued, is not offered.
+// A payment made ahead of its bill is still found when the bill is saved.
+const BILL_PAYMENT_WINDOW = { daysAfter: 90 };
+function supplierBillPaymentCandidates(_db) {
+  const db = _db || getDb();
+  const bills = db.prepare(
+    `SELECT id, amount, bill_date FROM supplier_bills WHERE COALESCE(paid, 0) = 0`
+  ).all();
+  const out = {};
+  if (!bills.length) return out;
+  const lines = db.prepare(`
+    SELECT bt.id, bt.transaction_date, bt.description, bt.amount, bt.match_status, bt.reconciled,
+           CAST(ROUND(ABS(bt.amount) * 100) AS INTEGER) AS cents,
+           ba.name AS account_name, ba.account_type,
+           ca.account_number AS current_account_number,
+           ca.name_fr        AS current_name_fr,
+           ca.name_en        AS current_name_en
+    FROM bank_transactions bt
+    JOIN bank_accounts ba ON ba.id = bt.bank_account_id
+    LEFT JOIN chart_of_accounts ca ON ca.id = bt.coa_account_id
+    WHERE bt.amount < 0
+      AND COALESCE(bt.is_transfer, 0) = 0
+      AND (bt.matched_entity_type IS NULL OR bt.matched_entity_type <> 'supplier_bill')
+    ORDER BY bt.transaction_date ASC, bt.id ASC`).all();
+  const DAY = 86400000;
+  for (const b of bills) {
+    const cents = Math.round((Number(b.amount) || 0) * 100);
+    if (!cents) continue;
+    const at = b.bill_date ? Date.parse(b.bill_date + 'T12:00:00Z') : NaN;
+    const hits = lines.filter(l => {
+      if (l.cents !== cents) return false;
+      if (Number.isNaN(at)) return true;
+      const t = Date.parse(l.transaction_date + 'T12:00:00Z');
+      return t >= at && t <= at + BILL_PAYMENT_WINDOW.daysAfter * DAY;
+    });
+    if (hits.length) out[b.id] = hits.map(({ cents: _c, ...l }) => l);
+  }
+  return out;
+}
 // What the subledger says is owed, for the control-account check on 2010. Built
 // from the bills themselves rather than from the ledger, so it is an independent
 // second opinion - which is the only kind worth comparing against.
@@ -7811,7 +7858,7 @@ module.exports = {
   onboardingPacketSave, onboardingPacketList, onboardingPacketGet, onboardingPacketDelete,
   onboardingPacketApply, locationOnboardingGet,
   supplierBillList, supplierBillCreate, supplierBillUpdate, supplierBillMarkPaid, supplierBillMarkUnpaid, supplierBillDelete,
-  supplierBillPayByBankTransaction, supplierBillSetDocument, supplierBillRecord, supplierBillCorrect,
+  supplierBillPayByBankTransaction, supplierBillPaymentCandidates, supplierBillSetDocument, supplierBillRecord, supplierBillCorrect,
   supplierBillSettle, supplierBillUnsettle,
   supplierPaymentsList, supplierPaymentCreate,
   assetList, assetCreate, assetUpdate, assetDelete,

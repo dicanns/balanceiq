@@ -1222,12 +1222,28 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {accounts.map(acc => (
-                <div key={acc.id} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 14, color: C.text }}>{acc.name}</div>
-                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
-                      {typeLabel(acc.account_type)} · {acc.account_number} {coaName(acc, 'coa_')}
+                <div key={acc.id} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: '14px 16px' }}>
+                  {/* Top row: who the account is, its opening balance and the actions.
+                      The status and statements get their own full-width rows below,
+                      so the buttons no longer squeeze them into a narrow column. */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+                    <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: C.text }}>{acc.name}</div>
+                      <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
+                        {typeLabel(acc.account_type)} · {acc.account_number} {coaName(acc, 'coa_')}
+                      </div>
+                      <div style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>{T.openingBalanceLbl}: {fmt(toShown(Number(acc.opening_balance) || 0, acc))}{owedAccount(acc) ? ` ${T.openingOwed}` : ''} · {fmtDate(acc.opening_date)}</div>
                     </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      <button onClick={() => { setSelectedAccount(acc); openImport(acc); }} style={btnStyle('#0ea5e9', 12)}>{T.importStatement}</button>
+                      <button onClick={() => { setSelectedAccount(acc); setSubTab('transactions'); }} style={btnStyle(C.muted, 12)}>{T.viewTransactions}</button>
+                      <button onClick={() => postOpening(acc)} style={btnSmall} title={T.openingTitle}>{T.openingBtn}</button>
+                      <button onClick={() => postMissing(acc)} style={btnSmall} title={T.backfillTitle}>{T.backfillBtn}</button>
+                      <button onClick={() => openEditAccount(acc)} style={btnSmall}>{T.editAccount}</button>
+                      <button onClick={() => archiveAccount(acc.id)} style={btnSmallDanger}>{T.archiveAccount}</button>
+                    </div>
+                  </div>
+                  <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 10, paddingTop: 2 }}>
                     {(() => {
                       // Where this account stands on its statements, without a trip
                       // to Reconciliations.
@@ -1265,17 +1281,6 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
                         </>
                       );
                     })()}
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 13, color: C.sub }}>{T.openingBalanceLbl}: {fmt(toShown(Number(acc.opening_balance) || 0, acc))}{owedAccount(acc) ? ` ${T.openingOwed}` : ''} · {fmtDate(acc.opening_date)}</div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={() => postOpening(acc)} style={{ ...btnSmall, marginRight: 6 }} title={T.openingTitle}>{T.openingBtn}</button>
-                    <button onClick={() => postMissing(acc)} style={{ ...btnSmall, marginRight: 6 }} title={T.backfillTitle}>{T.backfillBtn}</button>
-                    <button onClick={() => { setSelectedAccount(acc); openImport(acc); }} style={btnStyle('#0ea5e9', 12)}>{T.importStatement}</button>
-                    <button onClick={() => { setSelectedAccount(acc); setSubTab('transactions'); }} style={btnStyle(C.muted, 12)}>{T.viewTransactions}</button>
-                    <button onClick={() => openEditAccount(acc)} style={btnSmall}>{T.editAccount}</button>
-                    <button onClick={() => archiveAccount(acc.id)} style={btnSmallDanger}>{T.archiveAccount}</button>
                   </div>
                 </div>
               ))}

@@ -90,7 +90,7 @@ const {
   onboardingPacketSave, onboardingPacketList, onboardingPacketGet, onboardingPacketDelete,
   onboardingPacketApply, locationOnboardingGet,
   supplierBillList, supplierBillCreate, supplierBillUpdate, supplierBillMarkPaid, supplierBillMarkUnpaid, supplierBillDelete,
-  supplierBillPayByBankTransaction, supplierBillSetDocument, supplierBillRecord, supplierBillCorrect,
+  supplierBillPayByBankTransaction, supplierBillPaymentCandidates, supplierBillSetDocument, supplierBillRecord, supplierBillCorrect,
   supplierBillSettle, supplierBillUnsettle,
   supplierPaymentsList, supplierPaymentCreate,
   assetList, assetCreate, assetUpdate, assetDelete,
@@ -2302,6 +2302,7 @@ ipcMain.handle('supplier:bill:setDocument', (_e, id, docId) => supplierBillSetDo
 ipcMain.handle('supplier:bill:payByBankTx', (_e, txId, billIds) => supplierBillPayByBankTransaction(txId, billIds));
 // Statement lines that could be a bill's payment, for the statement-first order.
 ipcMain.handle('supplier:bill:linesForAmount', (_e, amount) => bankLinesForBillAmount(amount));
+ipcMain.handle('supplier:bill:paymentCandidates', () => supplierBillPaymentCandidates());
 ipcMain.handle('supplier:payments:list', (_e, billId)          => supplierPaymentsList(billId));
 ipcMain.handle('supplier:payments:create',(_e, data)           => supplierPaymentCreate(data));
 

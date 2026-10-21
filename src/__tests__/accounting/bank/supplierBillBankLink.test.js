@@ -8,6 +8,7 @@
  * APLINK-007  the statement came first: attaching moves the expense to the bill
  * APLINK-008  one payment settles three bills from the same supplier
  * APLINK-009  a selection that does not add up changes nothing
+ * APLINK-010  every unpaid bill whose payment is already imported is flagged
  *
  * A bill recorded in the Bills screen raises accounts payable. The statement line
  * that pays it must only settle that payable - Dr 2010 / Cr the bank or card
@@ -21,7 +22,7 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const {
   supplierBillPost, supplierBillPayByBankTransaction, bankTransactionUnmatch,
-  bankLinesForBillAmount, glDraftEntry, glPostEntry,
+  bankLinesForBillAmount, supplierBillPaymentCandidates, glDraftEntry, glPostEntry,
 } = require('../../../db/database.js');
 
 let db;
@@ -281,5 +282,34 @@ describe('APLINK-009 a selection that does not add up', () => {
     // The same bill twice is one bill, not two: it cannot be used to pad a total.
     expect(supplierBillPayByBankTransaction(txId, [ids[0], ids[0], ids[0]], db))
       .toMatchObject({ ok: false, error: 'amount_mismatch' });
+  });
+});
+
+describe('APLINK-010 unpaid bills whose payment is already on a statement', () => {
+  it('flags the line near the bill date, not an older payment of the same amount', () => {
+    // A recurring bill: last month's payment is the same amount and must not be
+    // offered for this month's bill.
+    const cardId = addAccount({ name: 'Amex', type: 'credit_card', coa: '2210' });
+    addTx({ accountId: cardId, date: '2026-07-20' });
+    addTx({ accountId: cardId, date: '2026-09-01' });
+    const wanted = addTx({ accountId: cardId, date: '2026-09-10' });
+    addTx({ accountId: cardId, date: '2026-09-11', amount: -50 });
+    const billId = addBill({ date: '2026-09-02' });
+    const found = supplierBillPaymentCandidates(db);
+    expect(Object.keys(found)).toEqual([String(billId)]);
+    expect(found[billId].map(l => l.id)).toEqual([wanted]);
+  });
+
+  it('a line marked as a transfer or already paying a bill is not offered, nor is a paid bill', () => {
+    const bankId = addAccount();
+    const transfer = addTx({ accountId: bankId, date: '2026-09-05' });
+    db.prepare(`UPDATE bank_transactions SET is_transfer=1 WHERE id=?`).run(transfer);
+    const billId = addBill({ date: '2026-09-01' });
+    expect(supplierBillPaymentCandidates(db)).toEqual({});
+
+    const line = addTx({ accountId: bankId, date: '2026-09-06' });
+    expect(supplierBillPaymentCandidates(db)[billId].map(l => l.id)).toEqual([line]);
+    expect(supplierBillPayByBankTransaction(line, billId, db).ok).toBe(true);
+    expect(supplierBillPaymentCandidates(db)).toEqual({});
   });
 });
