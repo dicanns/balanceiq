@@ -1,4 +1,4 @@
-import { calcInvoiceOutstanding, computeInvoiceTotals } from '../utils/calculations.js';
+import { calcInvoiceOutstanding, computeInvoiceTotals, documentDiscount } from '../utils/calculations.js';
 import YearEndTab from './YearEndTab.jsx';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 
@@ -1228,7 +1228,7 @@ function ControlVarianceTab({ lang }) {
               if (n.factureId) continue;
               if (n.statut === 'Annulée') continue;
               if (n.date && n.date > asOfDate) continue;
-              sum -= computeInvoiceTotals(n.lignes, { ...exemptOf(n.clientId), tpsOverride: n.tpsOverride, tvqOverride: n.tvqOverride }).total;
+              sum -= computeInvoiceTotals(n.lignes, { ...exemptOf(n.clientId), tpsOverride: n.tpsOverride, tvqOverride: n.tvqOverride, ...documentDiscount(n) }).total;
             }
           } catch (_) {}
 

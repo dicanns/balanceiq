@@ -401,27 +401,79 @@ export function isTaxOverride(v) {
   return Number.isFinite(n) && n >= 0;
 }
 
+// ── DISCOUNTS ────────────────────────────────────────────────────────────────
+// A discount is a value and a kind: DISCOUNT_PERCENT takes that percentage off,
+// DISCOUNT_AMOUNT takes that many dollars off. Documents saved before the kind
+// existed carry only a percentage, so a missing kind reads as a percentage.
+export const DISCOUNT_PERCENT = '%';
+export const DISCOUNT_AMOUNT = '$';
+
+// What a discount takes off a base: never negative, never more than the base,
+// so a $50 discount on a $30 line leaves it at zero rather than below.
+export function discountOff(base, value, kind) {
+  const b = n(base);
+  const v = n(value);
+  if (b <= 0 || v <= 0) return 0;
+  const off = kind === DISCOUNT_AMOUNT ? v : b * v / 100;
+  return Math.min(b, off);
+}
+
+// One line after its own discount. On a line, a dollar discount comes off the
+// line as a whole (quantity times price), not off each unit.
+export function lineTotal(l) {
+  const gross = n(l?.quantite) * n(l?.prixUnitaire);
+  return gross - discountOff(gross, l?.remise, l?.remiseType);
+}
+
+// How a line's discount reads on a document: "10%" or a dollar amount, or ''.
+export function lineDiscountLabel(l, money) {
+  const v = n(l?.remise);
+  if (v <= 0) return '';
+  // A percentage carried from an invoice can be 13.333...; two decimals read fine.
+  return l?.remiseType === DISCOUNT_AMOUNT ? money(v) : `${Math.round(v * 100) / 100}%`;
+}
+
+// A subtotal discount lowers the price of everything on the document, so it
+// lowers the tax too: it is spread over the lines in proportion to their value,
+// and each line's tax is charged on what is left. On a document mixing taxable
+// and zero-rated lines, the taxable lines carry only their share.
 export function computeInvoiceTotals(lignes, opts) {
-  let st = 0, tp = 0, tv = 0;
+  let gross = 0, taxTps = 0, taxTvq = 0;
   const skipTps = opts?.exemptFromTps;
   const skipTvq = opts?.exemptFromTvq;
   (lignes || []).forEach((l) => {
     if (l.type === 'section') return;
-    const lt = (l.quantite || 0) * (l.prixUnitaire || 0) * (1 - (l.remise || 0) / 100);
-    st += lt;
-    if (l.tps && !skipTps) tp += lt * 0.05;
-    if (l.tvq && !skipTvq) tv += lt * 0.09975;
+    const lt = lineTotal(l);
+    gross += lt;
+    if (l.tps && !skipTps) taxTps += lt;
+    if (l.tvq && !skipTvq) taxTvq += lt;
   });
+  const remiseGlobaleMontant = discountOff(gross, opts?.remiseGlobale, opts?.remiseGlobaleType);
+  const keep = gross > 0 ? (gross - remiseGlobaleMontant) / gross : 1;
+  const st = gross - remiseGlobaleMontant;
+  let tp = taxTps * keep * 0.05;
+  let tv = taxTvq * keep * 0.09975;
   // An exemption is a stronger statement than an override: an exempt customer is
   // charged no tax at all, so a stale override must not put it back.
   const ovTps = !skipTps && isTaxOverride(opts?.tpsOverride);
   const ovTvq = !skipTvq && isTaxOverride(opts?.tvqOverride);
   if (ovTps) tp = parseFloat(opts.tpsOverride);
   if (ovTvq) tv = parseFloat(opts.tvqOverride);
+  // sousTotal is what the customer is charged before tax, after every discount:
+  // the revenue. sousTotalBrut is the lines added up, before the subtotal discount.
   return {
     sousTotal: st, tpsTotal: tp, tvqTotal: tv, total: st + tp + tv,
+    sousTotalBrut: gross, remiseGlobaleMontant,
+    // For the document's label: the percentage when the discount is one, else null.
+    remiseGlobaleTaux: remiseGlobaleMontant > 0 && opts?.remiseGlobaleType !== DISCOUNT_AMOUNT ? n(opts?.remiseGlobale) : null,
     tpsOverridden: ovTps, tvqOverridden: ovTvq,
   };
+}
+
+// The subtotal discount fields a document carries, for callers that pass their
+// own options instead of the document itself.
+export function documentDiscount(doc) {
+  return { remiseGlobale: doc?.remiseGlobale, remiseGlobaleType: doc?.remiseGlobaleType };
 }
 
 // Outstanding balance on one invoice: total less what has been recorded against it.
@@ -431,6 +483,7 @@ export function calcInvoiceOutstanding(facture, taxExemptOpts) {
   const total = computeInvoiceTotals(facture?.lignes, {
     tpsOverride: facture?.tpsOverride,
     tvqOverride: facture?.tvqOverride,
+    ...documentDiscount(facture),
     ...(taxExemptOpts || {}),
   }).total;
   const paid = (facture?.paiements || []).reduce((s, p) => s + (parseFloat(p.montant) || 0), 0);
