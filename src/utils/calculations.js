@@ -476,6 +476,19 @@ export function documentDiscount(doc) {
   return { remiseGlobale: doc?.remiseGlobale, remiseGlobaleType: doc?.remiseGlobaleType };
 }
 
+// The GST and QST inside an unpaid balance that is written off as a bad debt.
+// The tax is recovered in proportion: the share of the invoice left unpaid times
+// the tax charged on it. Returns cents, so the write-off entry balances exactly.
+export function badDebtTaxShare({ writtenOff, total, tps, tvq }) {
+  const off = Math.round(n(writtenOff) * 100);
+  const tot = n(total);
+  if (off <= 0 || tot <= 0) return { amountCents: Math.max(0, off), tpsCents: 0, tvqCents: 0, netCents: Math.max(0, off) };
+  const share = Math.min(1, n(writtenOff) / tot);
+  const tpsCents = Math.round(n(tps) * share * 100);
+  const tvqCents = Math.round(n(tvq) * share * 100);
+  return { amountCents: off, tpsCents, tvqCents, netCents: off - tpsCents - tvqCents };
+}
+
 // Outstanding balance on one invoice: total less what has been recorded against it.
 // Overrides live on the document itself, so a caller that only knows the customer's
 // exemption still gets the right total.

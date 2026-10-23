@@ -32,6 +32,8 @@ const UI = {
     tpsCti: 'CTI (TPS payée)',
     ctiSources: (bills, bank, pl) => `Provenance TPS : ${bills} factures fournisseurs · ${bank} lignes de relevé · ${pl} factures P&L mensuelles`,
     tvqRti: 'RTI (TVQ payée)',
+    badDebtWrittenOff: (tps, tvq) => `Créances irrécouvrables : ${tps} TPS · ${tvq} TVQ reprises (incluses aux cases 108 et 208)`,
+    badDebtRecovered: (tps, tvq) => `Créances recouvrées : ${tps} TPS · ${tvq} TVQ de nouveau dues (incluses aux cases 105 et 205)`,
     netTps: 'Net TPS à remettre',
     netTvq: 'Net TVQ à remettre',
     suspenseCount: 'dépenses comptant non résolues',
@@ -94,6 +96,8 @@ const UI = {
     tpsCti: 'ITC (GST paid)',
     ctiSources: (bills, bank, pl) => `GST sources: ${bills} supplier bills · ${bank} statement lines · ${pl} monthly P&L bills`,
     tvqRti: 'ITR (QST paid)',
+    badDebtWrittenOff: (tps, tvq) => `Bad debts written off: ${tps} GST · ${tvq} QST taken back (included in boxes 108 and 208)`,
+    badDebtRecovered: (tps, tvq) => `Bad debts recovered: ${tps} GST · ${tvq} QST owed again (included in boxes 105 and 205)`,
     netTps: 'Net GST owing',
     netTvq: 'Net QST owing',
     suspenseCount: 'unresolved cash expenses',
@@ -376,8 +380,13 @@ export default function TaxPeriodTab({ lang }) {
     try {
       await window.api.tax.period.save({
         periodType, periodStart: pStart, periodEnd: pEnd,
-        tpsCollected: computed.tpsCollected, tvqCollected: computed.tvqCollected,
-        tpsCti: computed.tpsCti, tvqRti: computed.tvqRti,
+        // Boxes 105/205 are tax collected plus adjustments (a bad debt recovered),
+        // 108/208 are credits plus adjustments (a bad debt written off), so the
+        // saved period and the printed sheet carry them inside those totals.
+        tpsCollected: computed.tpsCollected + (computed.tpsBadDebtRecovered || 0),
+        tvqCollected: computed.tvqCollected + (computed.tvqBadDebtRecovered || 0),
+        tpsCti: computed.tpsCti + (computed.tpsBadDebtWrittenOff || 0),
+        tvqRti: computed.tvqRti + (computed.tvqBadDebtWrittenOff || 0),
         netTpsOwed: computed.netTpsOwed, netTvqOwed: computed.netTvqOwed,
         supplies: computed.supplies,
       });
@@ -608,6 +617,16 @@ export default function TaxPeriodTab({ lang }) {
               {(computed.tpsCti > 0 || computed.tvqRti > 0) && (
                 <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>
                   {T.ctiSources(fmt(computed.tpsCtiFromSupplierBills || 0), fmt(computed.tpsCtiFromBank || 0), fmt(computed.tpsCtiFromBills || 0))}
+                </div>
+              )}
+              {(Math.abs(computed.tpsBadDebtWrittenOff || 0) > 0.004 || Math.abs(computed.tvqBadDebtWrittenOff || 0) > 0.004) && (
+                <div style={{ fontSize: 10.5, color: '#10b981', marginTop: 4 }}>
+                  {T.badDebtWrittenOff(fmt(computed.tpsBadDebtWrittenOff || 0), fmt(computed.tvqBadDebtWrittenOff || 0))}
+                </div>
+              )}
+              {(Math.abs(computed.tpsBadDebtRecovered || 0) > 0.004 || Math.abs(computed.tvqBadDebtRecovered || 0) > 0.004) && (
+                <div style={{ fontSize: 10.5, color: '#f59e0b', marginTop: 2 }}>
+                  {T.badDebtRecovered(fmt(computed.tpsBadDebtRecovered || 0), fmt(computed.tvqBadDebtRecovered || 0))}
                 </div>
               )}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>

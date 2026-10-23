@@ -6,6 +6,8 @@
 // payment line marked fromCredit, referencing the credit note's number, which
 // is what account standing, statements and aging already read.
 
+import { WRITTEN_OFF, isCashPayment } from './invoiceStatus.mjs';
+
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const sum = (list) => (list || []).reduce((s, p) => s + (Number(p?.montant) || 0), 0);
 
@@ -26,7 +28,9 @@ export function invoiceBalance(invoice, invoiceTotal) {
 export function statusAfterPayments(invoice, invoiceTotal, fallback) {
   const paid = sum(invoice?.paiements);
   if (r2(invoiceTotal) - r2(paid) <= 0.005) {
-    const anyMoney = (invoice?.paiements || []).some((p) => !p?.fromCredit && Number(p?.montant) > 0);
+    // Written off stays written off: the balance was settled by the write-off.
+    if ((invoice?.paiements || []).some((p) => p?.badDebt)) return WRITTEN_OFF;
+    const anyMoney = (invoice?.paiements || []).some((p) => isCashPayment(p) && Number(p?.montant) > 0);
     return anyMoney ? 'Payée' : 'Créditée';
   }
   return paid > 0 ? 'Payée partiellement' : (fallback || 'Envoyée');

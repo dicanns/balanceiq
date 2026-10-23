@@ -11,10 +11,12 @@
 // references the credit note, so the applied part is already inside "outstanding"
 // and only the rest counts as available credit.
 
+import { CLOSED_INVOICE_STATUSES } from '../utils/invoiceStatus.mjs';
+
 const DAY = 86400000;
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const sum = (list) => (list || []).reduce((s, x) => s + (parseFloat(x?.montant) || 0), 0);
-const CLOSED = ['Payée', 'Créditée', 'Annulée', 'Brouillon'];
+const CLOSED = CLOSED_INVOICE_STATUSES;
 
 /**
  * totalOf(document) -> the document's total, computed the way the rest of the app

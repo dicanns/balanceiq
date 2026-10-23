@@ -1888,6 +1888,17 @@ ipcMain.handle('ledger:payment:reverse', async (_e, { paymentId, reason }) => {
   }
 });
 
+// Bad debts: the write-off and its recovery. The split arrives in cents from
+// badDebtTaxShare; the database checks it adds up and posts it once.
+ipcMain.handle('ledger:badDebt:writeOff', (_e, opts) => {
+  try { return require('./src/db/database.js').invoiceBadDebtWriteOff(opts || {}); }
+  catch (err) { return { ok: false, error: 'post_failed', detail: String(err?.message ?? err) }; }
+});
+ipcMain.handle('ledger:badDebt:recover', (_e, opts) => {
+  try { return require('./src/db/database.js').invoiceBadDebtRecover(opts || {}); }
+  catch (err) { return { ok: false, error: 'post_failed', detail: String(err?.message ?? err) }; }
+});
+
 ipcMain.handle('ledger:creditnote:reverse', async (_e, { creditNoteId, reason }) => {
   // An edited credit note has to carry its correction into the ledger. Reversing
   // and re-posting leaves both the original entry and its mirror in place, which

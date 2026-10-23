@@ -1575,6 +1575,20 @@ const MIGRATIONS = [
       )`).run();
     },
   },
+  {
+    version: 49,
+    description: 'Bad debts expense account (6430). An invoice written off as uncollectible '
+      + 'moves its unpaid balance, less the GST/QST recovered, to this account.',
+    up: (database) => {
+      const hasTable = database.prepare(
+        `SELECT name FROM sqlite_master WHERE type='table' AND name='chart_of_accounts'`
+      ).get();
+      if (!hasTable) return;
+      database.prepare(`INSERT OR IGNORE INTO chart_of_accounts
+        (account_number, name_fr, name_en, type, is_contra, is_simplified, is_system, tax_hint)
+        VALUES ('6430', 'Mauvaises créances', 'Bad debts', 'expense', 0, 0, 1, 'both')`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.

@@ -10,6 +10,7 @@ const {
   parseCsvLines, looksLikeHeader, inferColumns,
 } = require('../utils/importParse.mjs');
 const { transferRule } = require('../utils/transferRule.mjs');
+const { WRITTEN_OFF } = require('../utils/invoiceStatus.mjs');
 
 let db;
 // The folder holding this company's database. The main process sets it before the
@@ -1631,6 +1632,20 @@ const MIGRATIONS = [
         reopened_at TEXT,
         reopen_reason TEXT
       )`).run();
+    },
+  },
+  {
+    version: 49,
+    description: 'Bad debts expense account (6430). An invoice written off as uncollectible '
+      + 'moves its unpaid balance, less the GST/QST recovered, to this account.',
+    up: (database) => {
+      const hasTable = database.prepare(
+        `SELECT name FROM sqlite_master WHERE type='table' AND name='chart_of_accounts'`
+      ).get();
+      if (!hasTable) return;
+      database.prepare(`INSERT OR IGNORE INTO chart_of_accounts
+        (account_number, name_fr, name_en, type, is_contra, is_simplified, is_system, tax_hint)
+        VALUES ('6430', 'Mauvaises créances', 'Bad debts', 'expense', 0, 0, 1, 'both')`).run();
     },
   },
 ];
@@ -3287,6 +3302,66 @@ function glFindEntryBySource(sourceType, sourceId, _db) {
      WHERE source_type=? AND source_id=? AND status IN ('draft','posted')
      ORDER BY id DESC LIMIT 1`
   ).get(sourceType, String(sourceId)) ?? null;
+}
+
+// ── Bad debts ──────────────────────────────────────────────────────────────
+// An invoice the customer will not pay is written off: the receivable goes, the
+// unpaid balance becomes a bad-debt expense, and the GST/QST inside it is taken
+// back from what is owed to the governments (a bad-debt adjustment on the
+// return). The renderer works out the split with badDebtTaxShare; it arrives
+// here in cents and must add up. writeOffId names this write-off, so posting it
+// twice books it once.
+function _badDebtAccounts(db) {
+  const find = (num) => db.prepare(`SELECT * FROM chart_of_accounts WHERE account_number=?`).get(num);
+  return { ar: find('1100'), expense: find('6430'), gst: find('2100'), qst: find('2110') };
+}
+function _badDebtLines(db, { amountCents, tpsCents, tvqCents }, memo) {
+  const { ar, expense, gst, qst } = _badDebtAccounts(db);
+  if (!ar || !expense) return { error: 'missing_coa_accounts' };
+  const amount = Math.round(Number(amountCents) || 0);
+  // Without a tax account the tax cannot be taken back; it stays in the expense.
+  const tps = gst ? Math.round(Number(tpsCents) || 0) : 0;
+  const tvq = qst ? Math.round(Number(tvqCents) || 0) : 0;
+  if (amount <= 0 || tps < 0 || tvq < 0 || tps + tvq > amount) return { error: 'invalid_amounts' };
+  const lines = [{ account_id: expense.id, debit_cents: amount - tps - tvq, credit_cents: 0, memo }];
+  if (tps) lines.push({ account_id: gst.id, debit_cents: tps, credit_cents: 0, memo: 'TPS - créance irrécouvrable' });
+  if (tvq) lines.push({ account_id: qst.id, debit_cents: tvq, credit_cents: 0, memo: 'TVQ - créance irrécouvrable' });
+  lines.push({ account_id: ar.id, debit_cents: 0, credit_cents: amount, memo: 'Comptes clients' });
+  return { lines, tps, tvq };
+}
+
+function invoiceBadDebtWriteOff({ writeOffId, invoiceId, invoiceNumber, date, amountCents, tpsCents, tvqCents }, _db) {
+  const db = _db || getDb();
+  if (!writeOffId || !invoiceId || !date) return { ok: false, error: 'invalid_write_off' };
+  const existing = glFindEntryBySource('bad_debt', writeOffId, db);
+  if (existing && existing.status === 'posted') return { ok: true, entryId: existing.id, alreadyPosted: true };
+  const memo = `Créance irrécouvrable ${invoiceNumber || invoiceId}`;
+  const built = _badDebtLines(db, { amountCents, tpsCents, tvqCents }, memo);
+  if (built.error) return { ok: false, error: built.error };
+  const { entryId } = glDraftEntry({ entry_date: date, description: memo, source_type: 'bad_debt', source_id: String(writeOffId), lines: built.lines }, db);
+  try { glPostEntry(entryId, db); }
+  catch (e) { glDeleteDraft(entryId, db); return { ok: false, error: String(e?.message || e) }; }
+  return { ok: true, entryId, tpsCents: built.tps, tvqCents: built.tvq };
+}
+
+// The customer paid after all, or the write-off was a mistake. The receivable
+// comes back and the tax is owed again, dated the day of the recovery: a
+// recovery belongs to the return of the period it happened in, not to the one
+// the write-off was claimed on. The payment itself is then recorded as usual.
+function invoiceBadDebtRecover({ writeOffId, invoiceId, invoiceNumber, date }, _db) {
+  const db = _db || getDb();
+  if (!writeOffId || !date) return { ok: false, error: 'invalid_recovery' };
+  const done = glFindEntryBySource('bad_debt_recovery', writeOffId, db);
+  if (done && done.status === 'posted') return { ok: true, entryId: done.id, alreadyPosted: true };
+  const orig = glFindEntryBySource('bad_debt', writeOffId, db);
+  if (!orig || orig.status !== 'posted') return { ok: false, error: 'write_off_not_found' };
+  const origLines = db.prepare(`SELECT * FROM journal_lines WHERE entry_id=? ORDER BY line_number`).all(orig.id);
+  const memo = `Recouvrement de créance ${invoiceNumber || invoiceId || ''}`.trim();
+  const lines = origLines.map(l => ({ account_id: l.account_id, debit_cents: l.credit_cents, credit_cents: l.debit_cents, memo: l.memo }));
+  const { entryId } = glDraftEntry({ entry_date: date, description: memo, source_type: 'bad_debt_recovery', source_id: String(writeOffId), lines }, db);
+  try { glPostEntry(entryId, db); }
+  catch (e) { glDeleteDraft(entryId, db); return { ok: false, error: String(e?.message || e) }; }
+  return { ok: true, entryId };
 }
 
 function glGetEntry(entryId) {
@@ -4982,13 +5057,37 @@ function taxPeriodCompute(periodStart, periodEnd, _db) {
     supplierBillCount = row?.n || 0;
   } catch (_) { /* pre-ledger schema */ }
 
+  // Bad debts: a write-off takes the tax on the unpaid balance back (added to the
+  // credits side of the return, GST line 107 / QST line 207); a recovery puts it
+  // back (GST line 104 / QST line 204). Read from the ledger by source, so a
+  // reversed write-off nets to nothing.
+  const _badDebtTax = (accountNumber, sourceType) => {
+    try {
+      const row = db.prepare(
+        `SELECT COALESCE(SUM(jl.debit_cents - jl.credit_cents), 0) / 100.0 AS amt
+         FROM journal_lines jl
+         JOIN journal_entries je ON je.id = jl.entry_id AND je.status IN ('posted','reversed')
+         LEFT JOIN journal_entries orig ON orig.id = je.reverses_entry_id
+         JOIN chart_of_accounts ca ON ca.id = jl.account_id
+         WHERE ca.account_number = ?
+           AND je.entry_date >= ? AND je.entry_date <= ?
+           AND COALESCE(orig.source_type, je.source_type) = ?`
+      ).get(accountNumber, periodStart, periodEnd, sourceType);
+      return row?.amt || 0;
+    } catch (_) { return 0; }
+  };
+  const tpsBadDebtWrittenOff = _badDebtTax('2100', 'bad_debt');
+  const tvqBadDebtWrittenOff = _badDebtTax('2110', 'bad_debt');
+  const tpsBadDebtRecovered = -_badDebtTax('2100', 'bad_debt_recovery');
+  const tvqBadDebtRecovered = -_badDebtTax('2110', 'bad_debt_recovery');
+
   const tpsCtiFromBills = tpsCti;
   const tvqRtiFromBills = tvqRti;
   tpsCti += tpsCtiFromBank + tpsCtiFromSupplierBills;
   tvqRti += tvqCtiFromBank + tvqRtiFromSupplierBills;
 
-  const netTpsOwed = tpsCollected - tpsCti;
-  const netTvqOwed = tvqCollected - tvqRti;
+  const netTpsOwed = tpsCollected - tpsCti - tpsBadDebtWrittenOff + tpsBadDebtRecovered;
+  const netTvqOwed = tvqCollected - tvqRti - tvqBadDebtWrittenOff + tvqBadDebtRecovered;
 
   // Check for suspense blockers
   const suspenseCount = db.prepare(
@@ -5020,6 +5119,7 @@ function taxPeriodCompute(periodStart, periodEnd, _db) {
     // Broken out so the filing figure is auditable back to its two sources.
     tpsCtiFromBills, tvqRtiFromBills, tpsCtiFromBank, tvqCtiFromBank, bankTxCount,
     tpsCtiFromSupplierBills, tvqRtiFromSupplierBills, supplierBillCount,
+    tpsBadDebtWrittenOff, tvqBadDebtWrittenOff, tpsBadDebtRecovered, tvqBadDebtRecovered,
     suspenseCount,
     billCount: billIds.length + supplierBillCount,
     months,
@@ -6794,7 +6894,7 @@ function reminderCheckDue(factures, lang = 'fr') {
   for (const fac of (factures || [])) {
     if (!fac.dateEcheance || !fac.clientId) continue;
     const statut = fac.statut || '';
-    if (statut === 'Payée' || statut === 'Annulée' || statut === 'Void') continue;
+    if (statut === 'Payée' || statut === 'Annulée' || statut === 'Void' || statut === WRITTEN_OFF || statut === 'Créditée') continue;
     // Check if there's an outstanding balance
     const totalPaid = (fac.paiements || []).reduce((s, p) => s + (parseFloat(p.montant) || 0), 0);
     // Simple check: if any payments exist and total >= rough total, skip
@@ -7870,6 +7970,7 @@ module.exports = {
   bankReconcilePreview, bankReconcileClose, bankReconciliationStatus, bankReconcileReopen,
   bankLearnedRulesList, bankLearnedRuleDelete,
   taxPeriodCompute, taxPeriodSave, taxPeriodMarkFiled, taxPeriodList,
+  invoiceBadDebtWriteOff, invoiceBadDebtRecover,
   taxSuspenseList, taxSuspenseClassifyAsCashExpense, taxSuspenseReverseCategorization,
   taxProfileList, taxProfileUpsert, taxProfileDelete,
   taxRegistrationGet, taxRegistrationSave,
