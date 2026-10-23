@@ -4148,6 +4148,17 @@ const GL_CONTROL_ACCOUNTS = ['1100'];
 // Money out -> Dr the chosen account, Cr bank account.
 // Idempotent: re-categorizing reverses the previous entry before posting a new
 // one, so changing your mind never leaves a stale entry behind.
+// Which statement lines carry GST/QST of their own. Money going out pays tax
+// that can be claimed. Money coming in usually does not: a customer's payment
+// settles an invoice whose tax was recorded when it was raised. The exception is
+// a refund of a purchase, money in against an expense, which gives back tax that
+// was claimed and so comes off the claim. One rule for the categorize step, the
+// ledger posting and the tax return, so the three cannot disagree.
+const REFUND_ACCOUNT_TYPES = ['expense', 'cogs'];
+function _bankLineCarriesTax(amount, accountType) {
+  return Number(amount) < 0 || REFUND_ACCOUNT_TYPES.includes(accountType);
+}
+
 function _postBankTransactionEntry(db, txId) {
   const tx = db.prepare(`SELECT * FROM bank_transactions WHERE id=?`).get(txId);
   if (!tx || !tx.coa_account_id) return null;
@@ -4182,8 +4193,7 @@ function _postBankTransactionEntry(db, txId) {
   // recorded when the invoice was raised: splitting it again would count it
   // twice. A refund of a purchase is different: it comes in against an expense,
   // and the tax claimed on the purchase has to come back out of the claim.
-  const refund = inflow && (target.type === 'expense' || target.type === 'cogs');
-  if (inflow && !refund) { tpsCents = 0; tvqCents = 0; }
+  if (!_bankLineCarriesTax(tx.amount, target.type)) { tpsCents = 0; tvqCents = 0; }
   if (!gstAcc) tpsCents = 0;
   if (!qstAcc) tvqCents = 0;
   // Tax can never exceed the transaction itself.
@@ -4266,13 +4276,19 @@ function bankTransactionCategorize(txId, coaAccountId, notes, tax, _db) {
   // it on both recorded it twice.
   const decided = _transferDecision(db, txId, coaAccountId);
   const isTransfer = decided ? (decided.transfer ? 1 : 0) : (tax?.isTransfer ? 1 : 0);
+  // Tax typed while another account was chosen stays in the form when the
+  // account changes; on a line that carries none it is dropped, not kept on the
+  // line where the return would read it.
+  const line = db.prepare(`SELECT amount FROM bank_transactions WHERE id=?`).get(txId);
+  const target = db.prepare(`SELECT type FROM chart_of_accounts WHERE id=?`).get(coaAccountId);
+  const keepTax = !isTransfer && _bankLineCarriesTax(line?.amount, target?.type);
   db.transaction(() => {
     _reverseBankTransactionEntry(db, txId);
     db.prepare(
       `UPDATE bank_transactions SET match_status='manual', coa_account_id=?, notes=?, tps_paid=?, tvq_paid=?, is_transfer=? WHERE id=?`
     ).run(coaAccountId, notes || null,
-          isTransfer ? null : (tpsPaid || null),
-          isTransfer ? null : (tvqPaid || null),
+          keepTax ? (tpsPaid || null) : null,
+          keepTax ? (tvqPaid || null) : null,
           isTransfer, txId);
     _postBankTransactionEntry(db, txId);
   })();
@@ -4872,15 +4888,20 @@ function taxPeriodCompute(periodStart, periodEnd, _db) {
   let tpsCtiFromBank = 0, tvqCtiFromBank = 0, bankTxCount = 0;
   try {
     const row = db.prepare(
-      `SELECT COALESCE(SUM(bt.tps_paid * COALESCE(ca.itc_pct, 100) / 100.0), 0) AS tps,
-              COALESCE(SUM(bt.tvq_paid * COALESCE(ca.itc_pct, 100) / 100.0), 0) AS tvq,
+      // Signed like the ledger posting: a purchase adds to the claim, a refund
+      // takes its tax back off. Lines that carry no tax by _bankLineCarriesTax
+      // (a customer payment, a transfer) are left out whatever they hold.
+      `SELECT COALESCE(SUM(CASE WHEN bt.amount < 0 THEN 1 ELSE -1 END * bt.tps_paid * COALESCE(ca.itc_pct, 100) / 100.0), 0) AS tps,
+              COALESCE(SUM(CASE WHEN bt.amount < 0 THEN 1 ELSE -1 END * bt.tvq_paid * COALESCE(ca.itc_pct, 100) / 100.0), 0) AS tvq,
               COUNT(*) AS n
        FROM bank_transactions bt
        JOIN chart_of_accounts ca ON ca.id = bt.coa_account_id
        WHERE bt.transaction_date >= ? AND bt.transaction_date <= ?
          AND bt.coa_account_id IS NOT NULL
+         AND COALESCE(bt.is_transfer, 0) = 0
+         AND (bt.amount < 0 OR ca.type IN (${REFUND_ACCOUNT_TYPES.map(() => '?').join(',')}))
          AND (COALESCE(bt.tps_paid,0) <> 0 OR COALESCE(bt.tvq_paid,0) <> 0)`
-    ).get(periodStart, periodEnd);
+    ).get(periodStart, periodEnd, ...REFUND_ACCOUNT_TYPES);
     tpsCtiFromBank = row?.tps || 0;
     tvqCtiFromBank = row?.tvq || 0;
     bankTxCount = row?.n || 0;
