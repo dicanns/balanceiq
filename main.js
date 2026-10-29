@@ -714,7 +714,7 @@ ipcMain.handle('pdf:toPDF', async (event, html) => {
 });
 
 // IPC handler - open print dialog for a document HTML string
-ipcMain.handle('pdf:print', async (event, html) => {
+ipcMain.handle('pdf:print', async (event, html, opts = {}) => {
   const tmpFile = path.join(os.tmpdir(), `balanceiq-print-${Date.now()}.html`);
   fs.writeFileSync(tmpFile, html, 'utf-8');
   const printWin = new BrowserWindow({
@@ -723,7 +723,12 @@ ipcMain.handle('pdf:print', async (event, html) => {
     webPreferences: { nodeIntegration: false, contextIsolation: true },
   });
   await printWin.loadFile(tmpFile);
-  printWin.webContents.print({}, () => {
+  // exact: cheques on pre-printed stock, where a default margin or "fit to page"
+  // would move every field. Letter size, no margins, no scaling, no headers.
+  const printOpts = opts && opts.exact
+    ? { margins: { marginType: 'none' }, pageSize: 'Letter', scaleFactor: 100, printBackground: true, landscape: false }
+    : {};
+  printWin.webContents.print(printOpts, () => {
     try { fs.unlinkSync(tmpFile); } catch (_) {}
   });
   return { success: true };

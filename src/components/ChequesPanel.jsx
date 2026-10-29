@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { CHEQUE_ISSUED, CHEQUE_RECEIVED } from '../utils/chequeNumber.mjs';
+import { buildChequesHtml, DEFAULT_PRINT_SETTINGS, CHEQUE_POSITIONS, DATE_FORMATS } from '../utils/chequePrint.mjs';
+
+const PRINT_KEY = 'dicann-cheque-print';
 
 // Cheque register (Banking > Cheques) and the dialog that links a statement line
 // to the cheque(s) that cleared on it. The accounting lives in database.js
@@ -52,6 +55,16 @@ const UI = {
       ERR_PERIOD_CLOSED_POST: 'Cette période comptable est fermée. Choisissez une date dans une période ouverte.',
     },
     errorGeneric: (c) => `Refusé : ${c}`,
+    printBtn: 'Imprimer', saveAndPrint: 'Enregistrer et imprimer', printSettingsBtn: 'Réglages d\'impression',
+    printSettingsTitle: (n) => `Impression des chèques : ${n}`,
+    printIntro: 'Pour les chèques laser préimprimés (format lettre, chèque et deux talons). Choisissez où se trouve le chèque sur la feuille et le format de date imprimé sur votre papier. Imprimez la page test sur du papier ordinaire, superposez-la à un chèque à la lumière, puis ajustez au millimètre.',
+    position: 'Position du chèque', posTop: 'En haut', posMiddle: 'Au milieu', posBottom: 'En bas',
+    dateFormat: 'Format de la date (selon le guide sur le chèque)', offsetX: 'Décalage horizontal (mm, + vers la droite)', offsetY: 'Décalage vertical (mm, + vers le bas)',
+    wordsLang: 'Montant en lettres', langFr: 'Français', langEn: 'Anglais',
+    printTest: 'Imprimer une page test', saveSettings: 'Enregistrer les réglages', settingsSaved: 'Réglages enregistrés.',
+    printHint: 'À l\'impression, choisissez le papier Lettre, échelle 100 %, sans « ajuster à la page ».',
+    stub: { cheque: 'Chèque', payee: 'À l\'ordre de', amount: 'Montant', for: 'Pour', memo: 'Note' },
+    testPayee: 'PAGE TEST - NE PAS ENCAISSER',
   },
   en: {
     title: 'Cheques',
@@ -99,6 +112,16 @@ const UI = {
       ERR_PERIOD_CLOSED_POST: 'That accounting period is closed. Pick a date in an open period.',
     },
     errorGeneric: (c) => `Refused: ${c}`,
+    printBtn: 'Print', saveAndPrint: 'Save and print', printSettingsBtn: 'Print settings',
+    printSettingsTitle: (n) => `Cheque printing: ${n}`,
+    printIntro: 'For pre-printed laser cheques (letter size, one cheque and two stubs). Choose where the cheque sits on the sheet and the date format printed on your stock. Print the test page on plain paper, hold it against a cheque to the light, then nudge it to the millimetre.',
+    position: 'Cheque position', posTop: 'Top', posMiddle: 'Middle', posBottom: 'Bottom',
+    dateFormat: 'Date format (as the guide on the cheque shows)', offsetX: 'Horizontal nudge (mm, + moves right)', offsetY: 'Vertical nudge (mm, + moves down)',
+    wordsLang: 'Amount in words', langFr: 'French', langEn: 'English',
+    printTest: 'Print a test page', saveSettings: 'Save settings', settingsSaved: 'Settings saved.',
+    printHint: 'When printing, choose Letter paper, scale 100%, no "fit to page".',
+    stub: { cheque: 'Cheque', payee: 'Pay to', amount: 'Amount', for: 'For', memo: 'Memo' },
+    testPayee: 'TEST PAGE - DO NOT CASH',
   },
 };
 
@@ -134,6 +157,32 @@ export default function ChequesPanel({ lang = 'fr', C, accounts = [], coaList = 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [flash, setFlash] = useState('');
+  const [printCfg, setPrintCfg] = useState({});
+  const [cfgFor, setCfgFor] = useState(null);   // { accountId, ...settings } while editing
+  useEffect(() => {
+    (async () => {
+      try { const r = await window.api.storage.get(PRINT_KEY); setPrintCfg(r?.value ? JSON.parse(r.value) : {}); } catch (_) { setPrintCfg({}); }
+    })();
+  }, []);
+  const settingsFor = (accountId) => ({ ...DEFAULT_PRINT_SETTINGS, wordsLang: lang === 'en' ? 'en' : 'fr', ...(printCfg[accountId] || {}) });
+  const printCheques = async (list, accountId, testMarks = false) => {
+    const html = buildChequesHtml(list, settingsFor(accountId), { labels: T.stub, testMarks, title: T.title });
+    try { await window.api.pdf.print(html, { exact: true }); } catch (e) { setError(T.errorGeneric(String(e?.message || e))); }
+  };
+  const printRow = (c) => printCheques([{ ...c, forLabel: forLabel(c) }], c.bank_account_id);
+  const saveCfg = async () => {
+    const { accountId, ...cfg } = cfgFor;
+    const next = { ...printCfg, [accountId]: cfg };
+    setPrintCfg(next);
+    try { await window.api.storage.set(PRINT_KEY, JSON.stringify(next)); setFlash(T.settingsSaved); } catch (e) { setError(T.errorGeneric(String(e?.message || e))); }
+    setCfgFor(null);
+  };
+  const printTest = () => {
+    const { accountId, ...cfg } = cfgFor;
+    const sample = { cheque_number: '0000', cheque_date: today(), party_name: T.testPayee, amount_cents: 123456, memo: T.testPayee, bank_account_name: bankAccounts.find(a => a.id === accountId)?.name };
+    const html = buildChequesHtml([sample], cfg, { labels: T.stub, testMarks: true, title: T.title });
+    window.api.pdf.print(html, { exact: true }).catch(() => {});
+  };
 
   const load = useCallback(async () => {
     try { setRows(await window.api.cheques.list({ direction: dir || null, status: status || null }) || []); } catch (_) { setRows([]); }
@@ -159,7 +208,7 @@ export default function ChequesPanel({ lang = 'fr', C, accounts = [], coaList = 
   const set = (patch) => setForm(f => ({ ...f, ...patch }));
   const billCents = form ? bills.filter(b => form.billIds.includes(b.id)).reduce((n, b) => n + Math.round((Number(b.amount) || 0) * 100), 0) : 0;
 
-  const save = async () => {
+  const save = async (andPrint = false) => {
     setBusy(true); setError('');
     try {
       const amountCents = form.kind === 'supplier_bills' ? billCents : toCents(form.amount);
@@ -171,9 +220,14 @@ export default function ChequesPanel({ lang = 'fr', C, accounts = [], coaList = 
         invoiceRefs: form.invoiceRefs.split(/[,\s]+/).map(s => s.trim()).filter(Boolean), memo: form.memo,
       });
       if (!r?.ok) { setError(say(T, r)); return; }
+      const bankId = form.bankAccountId ? Number(form.bankAccountId) : null;
       setForm(null);
       if (r.matchedTxId) setFlash(T.savedMatched);
       await load();
+      if (andPrint) {
+        const saved = (await window.api.cheques.list({})).find(c => c.id === r.id);
+        if (saved) await printCheques([{ ...saved, forLabel: forLabel(saved) }], bankId);
+      }
     } catch (e) { setError(T.errorGeneric(String(e?.message || e))); }
     finally { setBusy(false); }
   };
@@ -222,7 +276,10 @@ export default function ChequesPanel({ lang = 'fr', C, accounts = [], coaList = 
           const any = s && (s.issued.count || s.received.count);
           return (
             <div key={a.id} style={S.card}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: C.text, marginBottom: 4 }}>{a.name}</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: C.text }}>{a.name}</div>
+                <button type="button" onClick={() => setCfgFor({ accountId: a.id, ...settingsFor(a.id) })} style={{ ...S.btn, fontSize: 11 }}>{T.printSettingsBtn}</button>
+              </div>
               {!any ? <div style={{ fontSize: 12, color: C.muted }}>{T.noneOutstanding}</div> : <>
                 {s.issued.count > 0 && <div style={{ fontSize: 12, color: '#f59e0b' }}>{T.outstandingWritten(s.issued.count, money(s.issued.cents))}</div>}
                 {s.received.count > 0 && <div style={{ fontSize: 12, color: '#0ea5e9' }}>{T.outstandingReceived(s.received.count, money(s.received.cents))}</div>}
@@ -231,6 +288,42 @@ export default function ChequesPanel({ lang = 'fr', C, accounts = [], coaList = 
           );
         })}
       </div>
+
+      {cfgFor && (
+        <div style={{ ...S.card, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: C.text }}>{T.printSettingsTitle(bankAccounts.find(a => a.id === cfgFor.accountId)?.name || '')}</div>
+          <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.5 }}>{T.printIntro}</div>
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 12.5, color: C.text, alignItems: 'center' }}>
+            <span style={{ ...S.label, marginBottom: 0 }}>{T.position}</span>
+            {CHEQUE_POSITIONS.map(p => (
+              <label key={p} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                <input type="radio" name="chq-pos" checked={cfgFor.position === p} onChange={() => setCfgFor(c => ({ ...c, position: p }))} style={{ accentColor: '#0ea5e9' }} />
+                {p === 'top' ? T.posTop : p === 'middle' ? T.posMiddle : T.posBottom}
+              </label>
+            ))}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10 }}>
+            <div><label style={S.label} htmlFor="chq-datefmt">{T.dateFormat}</label>
+              <select id="chq-datefmt" style={S.input} value={cfgFor.dateFormat} onChange={e => setCfgFor(c => ({ ...c, dateFormat: e.target.value }))}>
+                {DATE_FORMATS.map(f => <option key={f} value={f}>{f.replace(/(YYYY|MM|DD)/g, '$1 ').trim()}</option>)}
+              </select></div>
+            <div><label style={S.label} htmlFor="chq-offx">{T.offsetX}</label>
+              <input id="chq-offx" type="number" step="0.5" style={{ ...S.input, textAlign: 'right' }} value={cfgFor.offsetXmm} onChange={e => setCfgFor(c => ({ ...c, offsetXmm: e.target.value }))} /></div>
+            <div><label style={S.label} htmlFor="chq-offy">{T.offsetY}</label>
+              <input id="chq-offy" type="number" step="0.5" style={{ ...S.input, textAlign: 'right' }} value={cfgFor.offsetYmm} onChange={e => setCfgFor(c => ({ ...c, offsetYmm: e.target.value }))} /></div>
+            <div><label style={S.label} htmlFor="chq-words">{T.wordsLang}</label>
+              <select id="chq-words" style={S.input} value={cfgFor.wordsLang} onChange={e => setCfgFor(c => ({ ...c, wordsLang: e.target.value }))}>
+                <option value="fr">{T.langFr}</option><option value="en">{T.langEn}</option>
+              </select></div>
+          </div>
+          <div style={{ fontSize: 11, color: C.muted }}>{T.printHint}</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" onClick={printTest} style={S.btn}>{T.printTest}</button>
+            <button type="button" onClick={saveCfg} style={S.primary}>{T.saveSettings}</button>
+            <button type="button" onClick={() => setCfgFor(null)} style={S.btn}>{T.cancel}</button>
+          </div>
+        </div>
+      )}
 
       {flash && <div style={{ fontSize: 12, color: '#22c55e' }}>{flash}</div>}
       {error && !form && <div style={{ fontSize: 12, color: '#ef4444' }}>{error}</div>}
@@ -303,7 +396,8 @@ export default function ChequesPanel({ lang = 'fr', C, accounts = [], coaList = 
 
           {error && <div style={{ fontSize: 12, color: '#ef4444' }}>{error}</div>}
           <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" onClick={save} disabled={busy} style={S.primary}>{T.save}</button>
+            <button type="button" onClick={() => save(false)} disabled={busy} style={S.primary}>{T.save}</button>
+            {form.direction === CHEQUE_ISSUED && <button type="button" onClick={() => save(true)} disabled={busy} style={{ ...S.primary, background: '#6366f1' }}>{T.saveAndPrint}</button>}
             <button type="button" onClick={() => { setForm(null); setError(''); }} style={S.btn}>{T.cancel}</button>
           </div>
         </div>
@@ -339,6 +433,7 @@ export default function ChequesPanel({ lang = 'fr', C, accounts = [], coaList = 
                   {c.direction === CHEQUE_ISSUED ? '-' : ''}{money(c.amount_cents)}</td>
                 <td style={{ ...S.td, whiteSpace: 'nowrap' }}>{pill(c)}</td>
                 <td style={{ ...S.td, textAlign: 'right' }}>
+                  {c.direction === CHEQUE_ISSUED && c.status !== 'void' && <button type="button" onClick={() => printRow(c)} style={{ ...S.btn, fontSize: 11, marginRight: 6 }}>{T.printBtn}</button>}
                   {c.status === 'outstanding' && <button type="button" onClick={() => voidCheque(c)} disabled={busy} style={S.danger}>{T.voidBtn}</button>}
                 </td>
               </tr>

@@ -14,7 +14,7 @@ contextBridge.exposeInMainWorld('api', {
     openDir: () => ipcRenderer.invoke('backup:openDir'),
   },
   pdf: {
-    print: (html) => ipcRenderer.invoke('pdf:print', html),
+    print: (html, opts) => ipcRenderer.invoke('pdf:print', html, opts),
     toPDF: (html) => ipcRenderer.invoke('pdf:toPDF', html),
   },
   email: {
