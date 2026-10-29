@@ -3312,6 +3312,16 @@ function EncaissementEditor({showBack,clientId,factureId,initialDeposit=false,cl
  const todayStr=dk(new Date());
  const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none"};
  const client=clients.find(c=>c.id===clientId);
+ // A payment by cheque goes into the cheque register too, so the deposit can be
+ // matched to it on the statement. The invoice payment already booked it, so the
+ // register entry books nothing (kind invoice_payment). One cheque, one entry,
+ // even when it paid several invoices.
+ const registerCheque=(applied)=>{
+  if(form.mode!=="Chèque"||!applied.length||!window.api?.cheques?.record)return;
+  const total=applied.reduce((s,a)=>s+(a.montant||0),0);
+  window.api.cheques.record({direction:"received",chequeNumber:form.reference||"",chequeDate:form.date,partyName:client?.entreprise||"",
+   amountCents:Math.round(total*100),kind:"invoice_payment",invoiceRefs:applied.map(a=>a.factureNumero).filter(Boolean),paymentIds:applied.map(a=>a.paymentId)}).catch(()=>{});
+ };
  const unpaid=useMemo(()=>factures.filter(f=>f.clientId===clientId&&!CLOSED_INVOICE_STATUSES.includes(f.statut)).sort((a,b)=>(a.date||"").localeCompare(b.date||"")),[factures,clientId]);
 
  // Free tier: single selection
@@ -3433,6 +3443,7 @@ function EncaissementEditor({showBack,clientId,factureId,initialDeposit=false,cl
  const montant=Math.min(parseFloat(form.montant),solde);
  const{updFactures,paiement,updFac,numero}=_applyPayment([...factures],selFac,montant,docNums.encaissement);
  saveFactures(updFactures);
+ registerCheque([{montant,factureNumero:selFac.numero,paymentId:paiement.id}]);
  saveDocNums({...docNums,encaissement:docNums.encaissement+1});
  if(form.mode==="Comptant"&&persistEncaisse){
  const d=form.date;const prev=encaisseData[d]||{};
@@ -3453,13 +3464,14 @@ function EncaissementEditor({showBack,clientId,factureId,initialDeposit=false,cl
  if(montant<=0)return;
  const{updFactures:uf,paiement,updFac,numero}=_applyPayment(updFactures,f,montant,encNum++);
  updFactures=uf;
- results.push({numero,montant,factureNumero:f.numero,facture:updFac});
+ results.push({numero,montant,factureNumero:f.numero,facture:updFac,paymentId:paiement.id});
  if(form.mode==="Comptant"&&persistEncaisse){
  const d=form.date;const prev=encaisseData[d]||{};
  persistEncaisse({...encaisseData,[d]:{...prev,autreEntrees:[...(prev.autreEntrees||[]),{id:paiement.id,description:`Paiement ${updFac.numero} (Facturation)`,montant,fromFacturation:true}]}});
  }
  });
  saveFactures(updFactures);
+ registerCheque(results);
  saveDocNums({...docNums,encaissement:encNum});
  setConfirmation({bulk:true,results,totalMontant:totalAlloue,overflowChoice,excedent});
  };

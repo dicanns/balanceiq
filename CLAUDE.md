@@ -109,3 +109,27 @@ npm run scan:semgrep           # semgrep security scan (slow -- run before big P
 ```bash
 SUPABASE_ACCESS_TOKEN="sbp_..." npx supabase functions deploy <fn> --project-ref etiwnesxjypdwhxqnqqq
 ```
+
+---
+
+## LEGACY SOFTWARE (Kesa, Mon Resto, Fortune 1000)
+
+Anthony's current billing, till and accounting programs live on the ThinkPad and are copied
+nightly to the backup server. Before studying them, read docs/LEGACY_SOFTWARE_ACCESS.md: it gives
+the two SSH doors (already keyed from this Mac), what every folder is, how the data can be read,
+and the rules (read-only, no personal data in the repo, nothing installed or changed on the
+ThinkPad without Anthony).
+
+
+## If Claude is on a new account (written 2026-10-28)
+
+Anthony may have moved from the business Claude account to a personal one. Nothing in this folder depends on the Claude account:
+- The code, data and git history are plain files here. Claude Code conversations about this folder are local too
+  (`~/.claude/projects/`), and a readable copy of every past conversation is in
+  `~/Documents/CLAUDE EXPORT - all conversations (READ ME)/`. Read the relevant ones there if context is missing.
+- Logins used from the terminal (GitHub `gh`, Vercel, Cloudflare `wrangler`, Supabase CLI, SSH keys to the ThinkPad and the
+  backup server) live on this Mac, not in the Claude account. They keep working. Test with the usual command before assuming otherwise.
+- Only the connectors inside the Claude desktop app (Supabase, Netlify, Sentry, Stripe, Spark mail, Claude Docs, Chrome extension,
+  scheduled tasks) are tied to the account. If a connector tool is missing, ask Anthony to re-add it under Connectors; do not work around it.
+- The full account-move notes and the day-of checklist: `~/Desktop/Automation/docs/MOVE.md`. The automation machine (ThinkPad) and the
+  backup server are documented in `~/Desktop/Automation/HANDBOOK.md`.

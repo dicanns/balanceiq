@@ -5,12 +5,16 @@ import { transferRule } from '../utils/transferRule.mjs';
 import { parseCsvLines, looksLikeHeader, inferColumns, normalizeStatementDate, detectNumericDateOrder, parseStatementAmount } from '../utils/importParse.mjs';
 import { looksLikeCapitalPurchase } from '../utils/calculations.js';
 import CapexGuide from './CapexGuide.jsx';
+import ChequesPanel, { ChequeLinkModal } from './ChequesPanel.jsx';
 
 // ── i18n ─────────────────────────────────────────────────────────────────────
 const UI = {
   fr: {
     tabComptes:       'Comptes',
     tabTransactions:  'Transactions',
+    tabCheques:       'Chèques',
+    chequeBtn:        'Chèque',
+    chequeBtnTitle:   'Lier cette ligne au chèque qui y est passé',
     tabRapprochements:'Rapprochements',
     tabRegles:        'Règles appris',
     addAccount:       '+ Ajouter un compte',
@@ -250,6 +254,9 @@ const UI = {
   en: {
     tabComptes:       'Accounts',
     tabTransactions:  'Transactions',
+    tabCheques:       'Cheques',
+    chequeBtn:        'Cheque',
+    chequeBtnTitle:   'Link this line to the cheque that cleared on it',
     tabRapprochements:'Reconciliations',
     tabRegles:        'Learned Rules',
     addAccount:       '+ Add Account',
@@ -590,6 +597,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
 
   const [categorizingTx, setCategorizingTx]       = useState(null);
   const [payingTx, setPayingTx]                   = useState(null);
+  const [chequeTx, setChequeTx]                   = useState(null);
   const [payableBills, setPayableBills]           = useState([]);
   const [payPicked, setPayPicked]                 = useState([]);
   const [payError, setPayError]                   = useState('');
@@ -1184,6 +1192,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
     { key: 'comptes',        label: T.tabComptes },
     { key: 'transactions',   label: T.tabTransactions },
     { key: 'rapprochements', label: T.tabRapprochements },
+    { key: 'cheques',        label: T.tabCheques },
     { key: 'regles',         label: T.tabRegles },
   ];
 
@@ -1410,6 +1419,9 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
                           {tx.amount < 0 && tx.match_status !== 'matched' && (
                             <button onClick={() => openPayBill(tx)} style={btnSmall}>{T.payBill}</button>
                           )}
+                          {tx.match_status !== 'matched' && (
+                            <button onClick={() => setChequeTx(tx)} style={btnSmall} title={T.chequeBtnTitle}>{T.chequeBtn}</button>
+                          )}
                           {(tx.match_status === 'matched' || tx.match_status === 'manual' || tx.match_status === 'suggested') && (
                             <button onClick={() => unmatch(tx.id)} style={btnSmallDanger}>{T.unmatch}</button>
                           )}
@@ -1607,6 +1619,14 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
       )}
 
       {/* ── RÈGLES ─────────────────────────────────────────────────────────────── */}
+      {subTab === 'cheques' && (
+        <ChequesPanel lang={lang} C={C} accounts={accounts} coaList={coaList} />
+      )}
+      {chequeTx && (
+        <ChequeLinkModal lang={lang} C={C} tx={chequeTx} onClose={() => setChequeTx(null)}
+          onLinked={() => { loadTransactions(); loadRecPreview(); }} />
+      )}
+
       {subTab === 'regles' && (
         <div>
           <h3 style={{ margin: '0 0 14px', fontSize: 15, color: C.text }}>🧠 {T.tabRegles}</h3>

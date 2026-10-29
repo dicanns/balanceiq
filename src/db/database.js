@@ -11,6 +11,7 @@ const {
 } = require('../utils/importParse.mjs');
 const { transferRule } = require('../utils/transferRule.mjs');
 const { WRITTEN_OFF } = require('../utils/invoiceStatus.mjs');
+const { CHEQUE_ISSUED, CHEQUE_RECEIVED, chequeNumberFromDescription, normalizeChequeNumber } = require('../utils/chequeNumber.mjs');
 
 let db;
 // The folder holding this company's database. The main process sets it before the
@@ -1646,6 +1647,39 @@ const MIGRATIONS = [
       database.prepare(`INSERT OR IGNORE INTO chart_of_accounts
         (account_number, name_fr, name_en, type, is_contra, is_simplified, is_system, tax_hint)
         VALUES ('6430', 'Mauvaises créances', 'Bad debts', 'expense', 0, 0, 1, 'both')`).run();
+    },
+  },
+  {
+    version: 50,
+    description: 'Cheque register: cheques written and received, posted when written or recorded, '
+      + 'and linked to the statement line where they clear so the bank side posts nothing twice.',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS cheques (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        direction TEXT NOT NULL,
+        cheque_number TEXT,
+        cheque_date TEXT NOT NULL,
+        party_name TEXT,
+        amount_cents INTEGER NOT NULL,
+        bank_account_id INTEGER,
+        coa_account_id INTEGER,
+        tps_cents INTEGER NOT NULL DEFAULT 0,
+        tvq_cents INTEGER NOT NULL DEFAULT 0,
+        kind TEXT NOT NULL DEFAULT 'account',
+        bill_ids TEXT,
+        invoice_refs TEXT,
+        payment_ids TEXT,
+        memo TEXT,
+        status TEXT NOT NULL DEFAULT 'outstanding',
+        bank_transaction_id INTEGER,
+        cleared_date TEXT,
+        journal_entry_id INTEGER,
+        void_reason TEXT,
+        voided_at TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_cheques_account_status ON cheques(bank_account_id, status)`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_cheques_tx ON cheques(bank_transaction_id)`).run();
     },
   },
 ];
@@ -4205,6 +4239,10 @@ function bankTransactionUnmatch(txId, _db) {
       `UPDATE supplier_bills SET paid=0, payment_date=NULL, payment_method=NULL, bank_transaction_id=NULL
         WHERE bank_transaction_id=?`
     ).run(txId);
+    // A cheque that cleared on this line is outstanding again; it stays written.
+    db.prepare(
+      `UPDATE cheques SET status='outstanding', bank_transaction_id=NULL, cleared_date=NULL WHERE bank_transaction_id=?`
+    ).run(txId);
     db.prepare(
       `UPDATE bank_transactions SET match_status='unmatched', matched_entity_type=NULL, matched_entity_id=NULL, coa_account_id=NULL WHERE id=?`
     ).run(txId);
@@ -4242,6 +4280,9 @@ function _postBankTransactionEntry(db, txId) {
   const account = db.prepare(`SELECT * FROM bank_accounts WHERE id=?`).get(tx.bank_account_id);
   if (!target || !account?.coa_account_id) return null;
   if (GL_CONTROL_ACCOUNTS.includes(target.account_number)) return null;
+  // A line where a cheque cleared: the cheque posted when it was written or
+  // recorded, so the line only proves it went through the bank.
+  if (tx.matched_entity_type === 'cheque') return null;
 
   // A transfer between the operator's own accounts is one movement of money on two
   // statements. Paying the credit card off the chequing account posts Dr 2210 /
@@ -5049,7 +5090,7 @@ function taxPeriodCompute(periodStart, periodEnd, _db) {
        LEFT JOIN journal_entries orig ON orig.id = je.reverses_entry_id
        JOIN chart_of_accounts ca ON ca.id = jl.account_id
        WHERE ca.account_number IN ('1400','1410')
-         AND COALESCE(orig.source_type, je.source_type) = 'supplier_bill'
+         AND COALESCE(orig.source_type, je.source_type) IN ('supplier_bill', 'cheque')
          AND je.entry_date >= ? AND je.entry_date <= ?`
     ).get(periodStart, periodEnd);
     tpsCtiFromSupplierBills = row?.tps || 0;
@@ -6007,6 +6048,265 @@ function supplierBillPaymentCandidates(_db) {
   }
   return out;
 }
+// ── Cheques ────────────────────────────────────────────────────────────────
+// A cheque is recorded when it is written or received, and clears days or weeks
+// later. Written: it posts the day it is written (the expense, or the supplier
+// bills it pays) and is outstanding until a statement line shows it went
+// through; that line is then linked to it and posts nothing. Received for
+// invoices: the invoice payment already posted it, the register only remembers
+// the cheque so the deposit can be matched. Received for anything else: it
+// posts when recorded, like a written one.
+const CHEQUE_KINDS = ['account', 'supplier_bills', 'invoice_payment'];
+const _jsonList = (v) => { try { const a = JSON.parse(v || '[]'); return Array.isArray(a) ? a : []; } catch (_) { return []; } };
+
+function _chequeEntryLines(db, ch) {
+  const bank = db.prepare(`SELECT * FROM bank_accounts WHERE id=?`).get(ch.bank_account_id);
+  const bankCoa = bank?.coa_account_id ? db.prepare(`SELECT * FROM chart_of_accounts WHERE id=?`).get(bank.coa_account_id) : null;
+  if (!bankCoa) return { error: 'no_bank_account' };
+  const issued = ch.direction === CHEQUE_ISSUED;
+  const amount = ch.amount_cents;
+  let target;
+  if (ch.kind === 'supplier_bills') target = db.prepare(`SELECT * FROM chart_of_accounts WHERE account_number='2010'`).get();
+  else target = db.prepare(`SELECT * FROM chart_of_accounts WHERE id=?`).get(ch.coa_account_id);
+  if (!target) return { error: 'no_account' };
+  if (target.id === bankCoa.id) return { error: 'same_account' };
+  // Tax rides only where a bank line would carry it: a purchase paid by cheque,
+  // or a refund of one received by cheque.
+  let tps = 0, tvq = 0, gstId = null, qstId = null;
+  const taxable = ch.kind === 'account' && (issued || ['expense', 'cogs'].includes(target.type));
+  if (taxable) {
+    const gst = db.prepare(`SELECT * FROM chart_of_accounts WHERE account_number='1400'`).get();
+    const qst = db.prepare(`SELECT * FROM chart_of_accounts WHERE account_number='1410'`).get();
+    const pct = target.itc_pct == null ? 100 : Number(target.itc_pct);
+    tps = gst ? Math.round((ch.tps_cents || 0) * pct / 100) : 0;
+    tvq = qst ? Math.round((ch.tvq_cents || 0) * pct / 100) : 0;
+    if (tps + tvq >= amount) { tps = 0; tvq = 0; }
+    gstId = gst?.id; qstId = qst?.id;
+  }
+  const memo = `Chèque ${ch.cheque_number || ''} ${ch.party_name || ''}`.replace(/\s+/g, ' ').trim();
+  const side = (acc, cents, debit) => ({ account_id: acc, debit_cents: debit ? cents : 0, credit_cents: debit ? 0 : cents, memo });
+  const lines = [side(target.id, amount - tps - tvq, issued)];
+  if (tps) lines.push(side(gstId, tps, issued));
+  if (tvq) lines.push(side(qstId, tvq, issued));
+  lines.push(side(bankCoa.id, amount, !issued));
+  return { lines, memo };
+}
+
+function chequeList({ bankAccountId = null, direction = null, status = null } = {}, _db) {
+  const db = _db || getDb();
+  const where = []; const args = [];
+  if (bankAccountId) { where.push('c.bank_account_id=?'); args.push(bankAccountId); }
+  if (direction) { where.push('c.direction=?'); args.push(direction); }
+  if (status) { where.push('c.status=?'); args.push(status); }
+  return db.prepare(`
+    SELECT c.*, ba.name AS bank_account_name, ca.account_number, ca.name_fr AS account_name_fr, ca.name_en AS account_name_en,
+           bt.transaction_date AS cleared_on, bt.description AS cleared_description
+    FROM cheques c
+    LEFT JOIN bank_accounts ba ON ba.id = c.bank_account_id
+    LEFT JOIN chart_of_accounts ca ON ca.id = c.coa_account_id
+    LEFT JOIN bank_transactions bt ON bt.id = c.bank_transaction_id
+    ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+    ORDER BY c.cheque_date DESC, c.id DESC`).all(...args);
+}
+
+// Records a cheque. data: { direction, chequeNumber, chequeDate, partyName, amountCents,
+// bankAccountId, kind, coaAccountId, tpsCents, tvqCents, billIds, invoiceRefs, paymentIds, memo }
+function chequeRecord(data, _db) {
+  const db = _db || getDb();
+  const direction = data?.direction;
+  if (![CHEQUE_ISSUED, CHEQUE_RECEIVED].includes(direction)) return { ok: false, error: 'invalid_direction' };
+  const kind = CHEQUE_KINDS.includes(data.kind) ? data.kind : 'account';
+  if (kind === 'supplier_bills' && direction !== CHEQUE_ISSUED) return { ok: false, error: 'invalid_kind' };
+  if (kind === 'invoice_payment' && direction !== CHEQUE_RECEIVED) return { ok: false, error: 'invalid_kind' };
+  const amount = Math.round(Number(data.amountCents) || 0);
+  if (amount <= 0) return { ok: false, error: 'invalid_amount' };
+  if (!data.chequeDate) return { ok: false, error: 'invalid_date' };
+  const number = normalizeChequeNumber(data.chequeNumber);
+  const bankAccountId = data.bankAccountId ? Number(data.bankAccountId) : null;
+  if (kind !== 'invoice_payment' && !bankAccountId) return { ok: false, error: 'no_bank_account' };
+  if (number && bankAccountId) {
+    const dup = db.prepare(`SELECT id FROM cheques WHERE bank_account_id=? AND direction=? AND cheque_number=? AND status<>'void'`)
+      .get(bankAccountId, direction, number);
+    if (dup && direction === CHEQUE_ISSUED) return { ok: false, error: 'duplicate_number', chequeId: dup.id };
+  }
+  const billIds = kind === 'supplier_bills' ? [...new Set((data.billIds || []).map(Number).filter(Boolean))] : [];
+  if (kind === 'supplier_bills') {
+    if (!billIds.length) return { ok: false, error: 'no_bills' };
+    let sum = 0;
+    for (const id of billIds) {
+      const b = db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(id);
+      if (!b) return { ok: false, error: 'bill_not_found' };
+      if (b.paid) return { ok: false, error: 'bill_already_paid' };
+      sum += Math.round((Number(b.amount) || 0) * 100);
+    }
+    if (sum !== amount) return { ok: false, error: 'amount_mismatch' };
+  }
+  const row = {
+    direction, cheque_number: number, cheque_date: data.chequeDate, party_name: (data.partyName || '').trim() || null,
+    amount_cents: amount, bank_account_id: bankAccountId, coa_account_id: data.coaAccountId ? Number(data.coaAccountId) : null,
+    tps_cents: Math.max(0, Math.round(Number(data.tpsCents) || 0)), tvq_cents: Math.max(0, Math.round(Number(data.tvqCents) || 0)),
+    kind, bill_ids: billIds.length ? JSON.stringify(billIds) : null,
+    invoice_refs: (data.invoiceRefs || []).length ? JSON.stringify(data.invoiceRefs) : null,
+    payment_ids: (data.paymentIds || []).length ? JSON.stringify(data.paymentIds) : null,
+    memo: (data.memo || '').trim() || null,
+  };
+  if (kind === 'account' && !row.coa_account_id) return { ok: false, error: 'no_account' };
+  let built = null;
+  if (kind !== 'invoice_payment') {
+    built = _chequeEntryLines(db, row);
+    if (built.error) return { ok: false, error: built.error };
+  }
+  let result;
+  try {
+    result = db.transaction(() => {
+      const id = db.prepare(`INSERT INTO cheques (direction, cheque_number, cheque_date, party_name, amount_cents, bank_account_id,
+          coa_account_id, tps_cents, tvq_cents, kind, bill_ids, invoice_refs, payment_ids, memo)
+        VALUES (@direction, @cheque_number, @cheque_date, @party_name, @amount_cents, @bank_account_id,
+          @coa_account_id, @tps_cents, @tvq_cents, @kind, @bill_ids, @invoice_refs, @payment_ids, @memo)`).run(row).lastInsertRowid;
+      let entryId = null;
+      if (built) {
+        entryId = glDraftEntry({ entry_date: row.cheque_date, description: built.memo, source_type: 'cheque', source_id: String(id), lines: built.lines }, db).entryId;
+        glPostEntry(entryId, db);
+        db.prepare(`UPDATE cheques SET journal_entry_id=? WHERE id=?`).run(entryId, id);
+      }
+      for (const b of billIds) {
+        db.prepare(`UPDATE supplier_bills SET paid=1, payment_date=?, payment_method='cheque' WHERE id=?`).run(row.cheque_date, b);
+      }
+      return { id, entryId };
+    })();
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+  // The statement may already be in: a cheque recorded after its month was imported.
+  let matchedTxId = null;
+  if (bankAccountId) {
+    const auto = chequeAutoMatch(bankAccountId, db);
+    matchedTxId = auto.links.find(l => l.chequeIds.includes(result.id))?.txId || null;
+  }
+  return { ok: true, id: result.id, entryId: result.entryId, matchedTxId };
+}
+
+// Voids a cheque that never went through: its entry is reversed and the bills
+// it paid are owed again. A cheque that cleared is unlinked from its line first.
+function chequeVoid(id, reason, _db) {
+  const db = _db || getDb();
+  const ch = db.prepare(`SELECT * FROM cheques WHERE id=?`).get(id);
+  if (!ch) return { ok: false, error: 'not_found' };
+  if (ch.status === 'void') return { ok: true, alreadyVoid: true };
+  if (ch.status === 'cleared') return { ok: false, error: 'cheque_cleared' };
+  try {
+    db.transaction(() => {
+      if (ch.journal_entry_id) {
+        const e = db.prepare(`SELECT status, reversed_by_entry_id FROM journal_entries WHERE id=?`).get(ch.journal_entry_id);
+        if (e && e.status === 'posted' && !e.reversed_by_entry_id) glReverseEntry(ch.journal_entry_id, reason || 'Chèque annulé', db);
+      }
+      for (const b of _jsonList(ch.bill_ids)) {
+        db.prepare(`UPDATE supplier_bills SET paid=0, payment_date=NULL, payment_method=NULL WHERE id=? AND payment_method='cheque'`).run(b);
+      }
+      db.prepare(`UPDATE cheques SET status='void', void_reason=?, voided_at=CURRENT_TIMESTAMP WHERE id=?`).run(reason || null, id);
+    })();
+  } catch (e) { return { ok: false, error: String(e?.message || e) }; }
+  return { ok: true };
+}
+
+// Links one statement line to the cheque(s) that cleared on it: one cheque for a
+// cheque written, one or several for a deposit. The line's own entry, if it was
+// categorized before the cheque was recorded, is reversed: the cheque is what
+// books the money, so the line must not book it again.
+function chequeLink(txId, chequeIds, _db) {
+  const db = _db || getDb();
+  const ids = [...new Set((Array.isArray(chequeIds) ? chequeIds : [chequeIds]).map(Number).filter(Boolean))];
+  if (!ids.length) return { ok: false, error: 'no_cheques' };
+  const tx = db.prepare(`SELECT * FROM bank_transactions WHERE id=?`).get(txId);
+  if (!tx) return { ok: false, error: 'transaction_not_found' };
+  if (tx.matched_entity_type && tx.matched_entity_type !== 'cheque') return { ok: false, error: 'already_matched' };
+  const direction = Number(tx.amount) < 0 ? CHEQUE_ISSUED : CHEQUE_RECEIVED;
+  const cheques = ids.map(id => db.prepare(`SELECT * FROM cheques WHERE id=?`).get(id));
+  if (cheques.some(c => !c)) return { ok: false, error: 'cheque_not_found' };
+  if (cheques.some(c => c.status !== 'outstanding')) return { ok: false, error: 'cheque_not_outstanding' };
+  if (cheques.some(c => c.direction !== direction)) return { ok: false, error: 'wrong_direction' };
+  if (cheques.some(c => c.bank_account_id && c.bank_account_id !== tx.bank_account_id)) return { ok: false, error: 'wrong_account' };
+  const sum = cheques.reduce((n, c) => n + c.amount_cents, 0);
+  if (sum !== Math.round(Math.abs(Number(tx.amount) || 0) * 100)) return { ok: false, error: 'amount_mismatch' };
+  // The line keeps an account so it counts as categorized: the receivable for
+  // deposits of invoice cheques, otherwise what the (first) cheque was for.
+  const ar = db.prepare(`SELECT id FROM chart_of_accounts WHERE account_number='1100'`).get();
+  const ap = db.prepare(`SELECT id FROM chart_of_accounts WHERE account_number='2010'`).get();
+  const first = cheques[0];
+  const coa = first.kind === 'invoice_payment' ? ar?.id : first.kind === 'supplier_bills' ? ap?.id : first.coa_account_id;
+  try {
+    db.transaction(() => {
+      _reverseBankTransactionEntry(db, txId);
+      db.prepare(`UPDATE bank_transactions SET match_status='matched', matched_entity_type='cheque', matched_entity_id=?,
+          coa_account_id=?, tps_paid=NULL, tvq_paid=NULL, is_transfer=0, journal_entry_id=NULL WHERE id=?`).run(first.id, coa || null, txId);
+      for (const c of cheques) {
+        db.prepare(`UPDATE cheques SET status='cleared', bank_transaction_id=?, cleared_date=?, bank_account_id=COALESCE(bank_account_id, ?) WHERE id=?`)
+          .run(txId, tx.transaction_date, tx.bank_account_id, c.id);
+      }
+    })();
+  } catch (e) { return { ok: false, error: String(e?.message || e) }; }
+  return { ok: true, txId, chequeIds: ids };
+}
+
+// Outstanding cheques a statement line could be: the right direction, the same
+// account (or none yet), the cheque number from the description first, then the
+// same amount, then the closest date.
+function chequeCandidatesForTx(txId, _db) {
+  const db = _db || getDb();
+  const tx = db.prepare(`SELECT * FROM bank_transactions WHERE id=?`).get(txId);
+  if (!tx) return { number: null, cheques: [] };
+  const direction = Number(tx.amount) < 0 ? CHEQUE_ISSUED : CHEQUE_RECEIVED;
+  const number = chequeNumberFromDescription(tx.description);
+  const cents = Math.round(Math.abs(Number(tx.amount) || 0) * 100);
+  const rows = db.prepare(`SELECT * FROM cheques WHERE status='outstanding' AND direction=? AND (bank_account_id=? OR bank_account_id IS NULL)`)
+    .all(direction, tx.bank_account_id);
+  const day = (d) => Date.parse(`${d}T12:00:00Z`) || 0;
+  const scored = rows.map(c => ({
+    ...c,
+    sameNumber: !!number && c.cheque_number === number,
+    sameAmount: c.amount_cents === cents,
+    gapDays: Math.abs(day(tx.transaction_date) - day(c.cheque_date)) / 86400000,
+  })).filter(c => c.cheque_date <= tx.transaction_date || c.sameNumber);
+  scored.sort((a, b) => (b.sameNumber - a.sameNumber) || (b.sameAmount - a.sameAmount) || (a.gapDays - b.gapDays));
+  return { number, cents, direction, cheques: scored.slice(0, 30) };
+}
+
+// Links every unlinked, unreconciled line on the account whose description names a
+// cheque number matching exactly one outstanding cheque of the same amount. Run
+// after a statement import and after a cheque is recorded.
+function chequeAutoMatch(bankAccountId, _db) {
+  const db = _db || getDb();
+  const links = [];
+  const lines = db.prepare(`SELECT id, description, amount FROM bank_transactions
+     WHERE bank_account_id=? AND COALESCE(reconciled,0)=0 AND (matched_entity_type IS NULL OR matched_entity_type='')`).all(bankAccountId);
+  for (const l of lines) {
+    const number = chequeNumberFromDescription(l.description);
+    if (!number) continue;
+    const direction = Number(l.amount) < 0 ? CHEQUE_ISSUED : CHEQUE_RECEIVED;
+    const cents = Math.round(Math.abs(Number(l.amount) || 0) * 100);
+    const hits = db.prepare(`SELECT id FROM cheques WHERE status='outstanding' AND direction=? AND cheque_number=? AND amount_cents=?
+        AND (bank_account_id=? OR bank_account_id IS NULL)`).all(direction, number, cents, bankAccountId);
+    if (hits.length !== 1) continue;
+    const r = chequeLink(l.id, [hits[0].id], db);
+    if (r.ok) links.push({ txId: l.id, chequeIds: [hits[0].id] });
+  }
+  return { linked: links.length, links };
+}
+
+// Cheques written or received but not yet through the bank, up to a date: what
+// separates the books from the statement for that account.
+function chequeOutstandingSummary(bankAccountId, asOf, _db) {
+  const db = _db || getDb();
+  const rows = db.prepare(`SELECT direction, COUNT(*) AS n, COALESCE(SUM(amount_cents),0) AS cents FROM cheques
+     WHERE status='outstanding' AND (? IS NULL OR bank_account_id=?) AND cheque_date <= ? GROUP BY direction`)
+    .all(bankAccountId || null, bankAccountId || null, asOf || '9999-12-31');
+  const by = Object.fromEntries(rows.map(r => [r.direction, { count: r.n, cents: r.cents }]));
+  return {
+    issued: by[CHEQUE_ISSUED] || { count: 0, cents: 0 },
+    received: by[CHEQUE_RECEIVED] || { count: 0, cents: 0 },
+  };
+}
+
 // What the subledger says is owed, for the control-account check on 2010. Built
 // from the bills themselves rather than from the ledger, so it is an independent
 // second opinion - which is the only kind worth comparing against.
@@ -7971,6 +8271,7 @@ module.exports = {
   bankLearnedRulesList, bankLearnedRuleDelete,
   taxPeriodCompute, taxPeriodSave, taxPeriodMarkFiled, taxPeriodList,
   invoiceBadDebtWriteOff, invoiceBadDebtRecover,
+  chequeList, chequeRecord, chequeVoid, chequeLink, chequeCandidatesForTx, chequeAutoMatch, chequeOutstandingSummary,
   taxSuspenseList, taxSuspenseClassifyAsCashExpense, taxSuspenseReverseCategorization,
   taxProfileList, taxProfileUpsert, taxProfileDelete,
   taxRegistrationGet, taxRegistrationSave,

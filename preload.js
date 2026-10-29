@@ -239,6 +239,14 @@ contextBridge.exposeInMainWorld('api', {
     setItcPct:            (id, pct)      => ipcRenderer.invoke('coa:setItcPct', id, pct),
     rename:               (id, names)    => ipcRenderer.invoke('coa:rename', id, names),
   },
+  cheques: {
+    list:        (opts)          => ipcRenderer.invoke('cheques:list', opts),
+    record:      (data)          => ipcRenderer.invoke('cheques:record', data),
+    void:        (id, reason)    => ipcRenderer.invoke('cheques:void', id, reason),
+    link:        (txId, ids)     => ipcRenderer.invoke('cheques:link', txId, ids),
+    candidates:  (txId)          => ipcRenderer.invoke('cheques:candidates', txId),
+    outstanding: (accId, asOf)   => ipcRenderer.invoke('cheques:outstanding', accId, asOf),
+  },
   ledger: {
     entry: {
       draft:   (data)                    => ipcRenderer.invoke('ledger:entry:draft', data),

@@ -1589,6 +1589,39 @@ const MIGRATIONS = [
         VALUES ('6430', 'Mauvaises créances', 'Bad debts', 'expense', 0, 0, 1, 'both')`).run();
     },
   },
+  {
+    version: 50,
+    description: 'Cheque register: cheques written and received, posted when written or recorded, '
+      + 'and linked to the statement line where they clear so the bank side posts nothing twice.',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS cheques (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        direction TEXT NOT NULL,
+        cheque_number TEXT,
+        cheque_date TEXT NOT NULL,
+        party_name TEXT,
+        amount_cents INTEGER NOT NULL,
+        bank_account_id INTEGER,
+        coa_account_id INTEGER,
+        tps_cents INTEGER NOT NULL DEFAULT 0,
+        tvq_cents INTEGER NOT NULL DEFAULT 0,
+        kind TEXT NOT NULL DEFAULT 'account',
+        bill_ids TEXT,
+        invoice_refs TEXT,
+        payment_ids TEXT,
+        memo TEXT,
+        status TEXT NOT NULL DEFAULT 'outstanding',
+        bank_transaction_id INTEGER,
+        cleared_date TEXT,
+        journal_entry_id INTEGER,
+        void_reason TEXT,
+        voided_at TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_cheques_account_status ON cheques(bank_account_id, status)`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_cheques_tx ON cheques(bank_transaction_id)`).run();
+    },
+  },
 ];
 
 // Runs all pending migrations in ascending version order.

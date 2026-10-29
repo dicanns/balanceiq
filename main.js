@@ -2201,7 +2201,19 @@ ipcMain.handle('bank:accounts:create',     (_e, fields)                => bankAc
 ipcMain.handle('bank:accounts:update',     (_e, id, fields)            => bankAccountUpdate(id, fields));
 ipcMain.handle('bank:accounts:archive',    (_e, id)                    => bankAccountArchive(id));
 
-ipcMain.handle('bank:statement:import',    (_e, opts)                  => bankStatementImport(opts));
+ipcMain.handle('bank:statement:import',    (_e, opts)                  => {
+  const res = bankStatementImport(opts);
+  // Cheques already in the register clear on the lines just imported.
+  try { if (res && res.ok !== false && opts?.bankAccountId) res.chequesLinked = require('./src/db/database.js').chequeAutoMatch(opts.bankAccountId).linked; } catch (_) { /* matching is a courtesy */ }
+  return res;
+});
+// Cheque register: written and received cheques, and the statement lines they clear on.
+ipcMain.handle('cheques:list',        (_e, opts)          => require('./src/db/database.js').chequeList(opts || {}));
+ipcMain.handle('cheques:record',      (_e, data)          => require('./src/db/database.js').chequeRecord(data || {}));
+ipcMain.handle('cheques:void',        (_e, id, reason)    => require('./src/db/database.js').chequeVoid(id, reason));
+ipcMain.handle('cheques:link',        (_e, txId, ids)     => require('./src/db/database.js').chequeLink(txId, ids));
+ipcMain.handle('cheques:candidates',  (_e, txId)          => require('./src/db/database.js').chequeCandidatesForTx(txId));
+ipcMain.handle('cheques:outstanding', (_e, accId, asOf)   => require('./src/db/database.js').chequeOutstandingSummary(accId, asOf));
 
 // A statement PDF: read in the isolated PDF process like every other PDF, then
 // turned into a statement (src/utils/statementPdf.mjs), then compared with what
