@@ -211,8 +211,10 @@ const UI = {
     etransferNoAccount: (n) => `Compte ${n} introuvable dans le plan comptable.`,
     taxCaptureTitle:  'Taxes payées (CTI/RTI)',
     taxCaptureHint:   'Optionnel. Saisir la TPS et la TVQ réellement payées, telles qu\'inscrites sur la facture. La dépense est alors comptabilisée hors taxes.',
-    taxInflowNote:    "Aucune taxe à saisir sur un encaissement : la TPS/TVQ sur les ventes est déjà comptabilisée à la facturation. Un remboursement d'achat est différent : choisissez le compte de dépense et les champs de taxe apparaissent.",
+    taxInflowNote:    "Aucune taxe à saisir ici : la TPS/TVQ d'un paiement client est comptabilisée à la facturation. Un remboursement d'achat (choisissez le compte de dépense) ou une vente sans facture (choisissez un compte de revenus) fait apparaître les champs de taxe.",
     taxRefundHint:    "Un remboursement rend la TPS/TVQ réclamée sur l'achat. Entrez la taxe indiquée sur le remboursement; elle est retirée de votre réclamation.",
+    taxSaleTitle:     'Taxes incluses dans ce dépôt (TPS/TVQ perçues)',
+    taxSaleHint:      "Une vente sans facture (redevances d'un licencié, vente en ligne). Si le montant inclut la TPS/TVQ, entrez-les ou cliquez sur Calculer : elles vont à la TPS/TVQ à payer et paraissent dans votre déclaration. Laissez vide si la vente n'est pas taxable.",
     taxAutoFillHint:  'Calculer suppose que la totalité du montant est taxable aux taux du Québec. Sinon, saisir les montants exacts de la facture.',
     taxAutoFill:      'Calculer',
     taxRestricted:    (pct, tps, tvq) => `Ce compte est limité à ${pct} % : ${tps} de TPS et ${tvq} de TVQ seront réclamés. Le reste fait partie de la dépense.`,
@@ -456,8 +458,10 @@ const UI = {
     etransferNoAccount: (n) => `Account ${n} not found in the chart of accounts.`,
     taxCaptureTitle:  'Tax paid (ITC/ITR)',
     taxCaptureHint:   'Optional. Enter the GST and QST actually paid, as shown on the invoice. The expense is then recorded net of tax.',
-    taxInflowNote:    'No tax to capture on a receipt: sales GST/QST was already recorded when the invoice was raised. A refund of a purchase is different: choose the expense account and the tax fields appear.',
+    taxInflowNote:    'No tax to capture here: a customer payment\'s GST/QST was recorded when the invoice was raised. A refund of a purchase (choose the expense account) or a sale with no invoice (choose a revenue account) shows the tax fields.',
     taxRefundHint:    'A refund gives back the GST/QST claimed on the purchase. Enter the tax shown on the refund; it comes off your claim.',
+    taxSaleTitle:     'Tax included in this deposit (GST/QST collected)',
+    taxSaleHint:      'A sale with no invoice (a licensee\'s royalties, an online sale). If the amount includes GST/QST, enter it or click Calculate: it goes to GST/QST owing and shows on your return. Leave blank if the sale is not taxable.',
     taxAutoFillHint:  'Calculate assumes the entire amount is taxable at Quebec rates. Otherwise enter the exact amounts from the invoice.',
     taxAutoFill:      'Calculate',
     taxRestricted:    (pct, tps, tvq) => `This account is limited to ${pct}%: ${tps} GST and ${tvq} QST will be claimed. The rest is part of the expense.`,
@@ -1976,11 +1980,13 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
             // expense gives back tax that was claimed on the purchase.
             const chosenType = coaList.find(a => String(a.id) === String(categorizeCoaId))?.type;
             const refund = Number(categorizingTx.amount) > 0 && (chosenType === 'expense' || chosenType === 'cogs');
-            return (Number(categorizingTx.amount) < 0 || refund) && !effectiveTransfer;
+            // A deposit to a revenue account is a sale with no invoice: its tax is tax collected.
+            const sale = Number(categorizingTx.amount) > 0 && chosenType === 'revenue';
+            return (Number(categorizingTx.amount) < 0 || refund || sale) && !effectiveTransfer;
           })() ? (
           <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
-              <label style={{ ...labelStyle, marginBottom: 0 }}>{T.taxCaptureTitle}</label>
+              <label style={{ ...labelStyle, marginBottom: 0 }}>{Number(categorizingTx.amount) > 0 && coaList.find(a => String(a.id) === String(categorizeCoaId))?.type === 'revenue' ? T.taxSaleTitle : T.taxCaptureTitle}</label>
               <button
                 type="button"
                 onClick={() => {
@@ -1992,7 +1998,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
                 style={{ ...btnSmall, fontSize: 11 }}
               >{T.taxAutoFill}</button>
             </div>
-            <div style={{ fontSize: 10.5, color: C.muted, margin: '4px 0 2px' }}>{Number(categorizingTx.amount) > 0 ? T.taxRefundHint : T.taxCaptureHint}</div>
+            <div style={{ fontSize: 10.5, color: C.muted, margin: '4px 0 2px' }}>{Number(categorizingTx.amount) > 0 ? (coaList.find(a => String(a.id) === String(categorizeCoaId))?.type === 'revenue' ? T.taxSaleHint : T.taxRefundHint) : T.taxCaptureHint}</div>
             <div style={{ fontSize: 10, color: C.muted, fontStyle: 'italic', margin: '0 0 8px' }}>{T.taxAutoFillHint}</div>
             {(() => {
               // A restricted account claims only part of the tax paid. Showing the

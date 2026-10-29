@@ -4268,8 +4268,15 @@ const GL_CONTROL_ACCOUNTS = ['1100'];
 // was claimed and so comes off the claim. One rule for the categorize step, the
 // ledger posting and the tax return, so the three cannot disagree.
 const REFUND_ACCOUNT_TYPES = ['expense', 'cogs'];
+// A deposit put straight to a revenue account is a sale with no invoice behind it
+// (a licensee's payment, an online sale): the tax inside it is tax collected.
+const SALES_ACCOUNT_TYPES = ['revenue'];
 function _bankLineCarriesTax(amount, accountType) {
-  return Number(amount) < 0 || REFUND_ACCOUNT_TYPES.includes(accountType);
+  return Number(amount) < 0 || REFUND_ACCOUNT_TYPES.includes(accountType)
+    || (Number(amount) > 0 && SALES_ACCOUNT_TYPES.includes(accountType));
+}
+function _bankLineIsSale(amount, accountType) {
+  return Number(amount) > 0 && SALES_ACCOUNT_TYPES.includes(accountType);
 }
 
 function _postBankTransactionEntry(db, txId) {
@@ -4301,8 +4308,10 @@ function _postBankTransactionEntry(db, txId) {
   // When the tax portion was captured, split it out to the input tax credit
   // accounts so the expense is recorded net and the GST/QST becomes claimable.
   // Falls back to a single-line split when the accounts are absent.
-  const gstAcc = db.prepare(`SELECT * FROM chart_of_accounts WHERE account_number='1400'`).get();
-  const qstAcc = db.prepare(`SELECT * FROM chart_of_accounts WHERE account_number='1410'`).get();
+  // A sale's tax is collected (owed: 2100/2110); any other line's is paid (claimable: 1400/1410).
+  const sale = _bankLineIsSale(tx.amount, target.type);
+  const gstAcc = db.prepare(`SELECT * FROM chart_of_accounts WHERE account_number=?`).get(sale ? '2100' : '1400');
+  const qstAcc = db.prepare(`SELECT * FROM chart_of_accounts WHERE account_number=?`).get(sale ? '2110' : '1410');
   let tpsCents = Math.round((Number(tx.tps_paid) || 0) * 100);
   let tvqCents = Math.round((Number(tx.tvq_paid) || 0) * 100);
   // Money coming in is usually a customer paying, and the sales tax on that was
@@ -4319,7 +4328,7 @@ function _postBankTransactionEntry(db, txId) {
   // because netCents is whatever is left after the claimable tax comes out.
   // Knowing to halve it by hand is exactly what a new owner does not know, so the
   // rate lives on the account and choosing the account is the only decision.
-  const claimPct = target.itc_pct == null ? 100 : Number(target.itc_pct);
+  const claimPct = sale || target.itc_pct == null ? 100 : Number(target.itc_pct);
   if (claimPct !== 100) {
     tpsCents = Math.round((tpsCents * claimPct) / 100);
     tvqCents = Math.round((tvqCents * claimPct) / 100);
@@ -5074,17 +5083,34 @@ function taxPeriodCompute(periodStart, periodEnd, _db) {
       return row?.amt || 0;
     } catch (_) { return 0; }
   };
+  // Tax collected on deposits booked straight to a revenue account (sales with no
+  // invoice). The line's tax columns hold the tax inside the deposit.
+  let tpsCollectedFromBank = 0, tvqCollectedFromBank = 0, salesFromBank = 0;
+  try {
+    const row = db.prepare(
+      `SELECT COALESCE(SUM(bt.tps_paid), 0) AS tps, COALESCE(SUM(bt.tvq_paid), 0) AS tvq,
+              COALESCE(SUM(bt.amount - COALESCE(bt.tps_paid,0) - COALESCE(bt.tvq_paid,0)), 0) AS net
+       FROM bank_transactions bt JOIN chart_of_accounts ca ON ca.id = bt.coa_account_id
+       WHERE bt.transaction_date >= ? AND bt.transaction_date <= ? AND bt.amount > 0
+         AND COALESCE(bt.is_transfer, 0) = 0 AND (bt.matched_entity_type IS NULL OR bt.matched_entity_type = '')
+         AND (COALESCE(bt.tps_paid,0) <> 0 OR COALESCE(bt.tvq_paid,0) <> 0)
+         AND ca.type IN (${SALES_ACCOUNT_TYPES.map(() => '?').join(',')})`
+    ).get(periodStart, periodEnd, ...SALES_ACCOUNT_TYPES);
+    tpsCollectedFromBank = row?.tps || 0;
+    tvqCollectedFromBank = row?.tvq || 0;
+    salesFromBank = row?.net || 0;
+  } catch (_) { /* pre-v35 schema */ }
   const tpsCollectedFromInvoices = _salesSourced('2100');
   const tvqCollectedFromInvoices = _salesSourced('2110');
   const invoicedRevenue = _salesRevenue();
 
   const tpsCollectedFromRegister = tpsCollected;
   const tvqCollectedFromRegister = tvqCollected;
-  tpsCollected += tpsCollectedFromInvoices;
-  tvqCollected += tvqCollectedFromInvoices;
+  tpsCollected += tpsCollectedFromInvoices + tpsCollectedFromBank;
+  tvqCollected += tvqCollectedFromInvoices + tvqCollectedFromBank;
 
   // Box 101: taxable supplies, before tax, from both channels.
-  const supplies = plRevenue + invoicedRevenue;
+  const supplies = plRevenue + invoicedRevenue + salesFromBank;
 
   // Bills recorded in the Bills screen post their recoverable tax to 1400 / 1410
   // the moment they are saved, so the ledger is the source for them: posted
@@ -5170,6 +5196,7 @@ function taxPeriodCompute(periodStart, periodEnd, _db) {
     // Each half of the filing figure stays visible so it can be traced back.
     tpsCollectedFromRegister, tvqCollectedFromRegister,
     tpsCollectedFromInvoices, tvqCollectedFromInvoices,
+    tpsCollectedFromBank, tvqCollectedFromBank, salesFromBank,
     plRevenue, invoicedRevenue,
     // Broken out so the filing figure is auditable back to its two sources.
     tpsCtiFromBills, tvqRtiFromBills, tpsCtiFromBank, tvqCtiFromBank, bankTxCount,

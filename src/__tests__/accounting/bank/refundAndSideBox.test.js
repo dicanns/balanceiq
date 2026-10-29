@@ -1,6 +1,6 @@
 /**
  * REFUND-001  money in against an expense (a refund) gives back the tax claimed
- * REFUND-002  money in against revenue still captures no tax: the invoice did
+ * REFUND-002  money in against revenue is a sale with no invoice: its tax is collected, never claimed
  * REFUND-003  the categorize screen offers the tax fields for a refund
  * PDFST-008   a box of text beside the table does not split a transaction's line
  *
@@ -49,10 +49,14 @@ describe('REFUND-001 a refund of a purchase', () => {
   });
 });
 
-describe('REFUND-002 a customer paying', () => {
-  it('captures no tax, whatever was typed', () => {
+describe('REFUND-002 a sale with no invoice', () => {
+  it('books the tax typed on it as collected, never as a credit to claim', () => {
+    // A customer paying an invoice is booked to receivables (no tax); a deposit
+    // booked straight to revenue is a sale with no invoice behind it.
     lineOn('4000', 57.49, 2.50, 4.99);
-    expect(net('4000')).toBe(-5749);
+    expect(net('4000')).toBe(-5000);
+    expect(net('2100')).toBe(-250);
+    expect(net('2110')).toBe(-499);
     expect(net('1400')).toBe(0);
     expect(net('1410')).toBe(0);
   });
@@ -62,7 +66,7 @@ describe('REFUND-003 the categorize screen', () => {
   it('shows the tax fields for money in against an expense, with its own hint', () => {
     const s = fs.readFileSync(path.join(ROOT, 'src/components/BanqueTab.jsx'), 'utf8');
     expect(s).toMatch(/const refund = Number\(categorizingTx\.amount\) > 0 && \(chosenType === 'expense' \|\| chosenType === 'cogs'\)/);
-    expect(s).toMatch(/return \(Number\(categorizingTx\.amount\) < 0 \|\| refund\) && !effectiveTransfer/);
+    expect(s).toMatch(/return \(Number\(categorizingTx\.amount\) < 0 \|\| refund \|\| sale\) && !effectiveTransfer/);
     expect((s.match(/\btaxRefundHint:/g) || []).length).toBe(2);
   });
 });

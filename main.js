@@ -2004,8 +2004,22 @@ ipcMain.handle('ledger:deposit:reverse', async (_e, { depositId, reason } = {}) 
 
 const { ledgerSplit } = require('./src/services/ledgerSplit.js');
 
+// Revenue split by account for an invoice or credit note. Each line goes to the
+// revenue account of its product's category (Products > Categories); anything
+// without one goes to the default sales account, as every invoice did before.
+// The amounts are spread so they add up exactly to the revenue the split gives.
+// deduction: a chain's remittance deduction, booked against Sales returns and
+// allowances instead of the products' accounts.
+function revenueAccountLines(doc, revenueCents, accounts, { debit = false, memo = 'Revenus' } = {}) {
+  const { planRevenue } = require('./src/utils/revenueSplit.mjs');
+  const read = (key) => { try { const r = storageGet(key); const v = r?.value ? JSON.parse(r.value) : []; return Array.isArray(v) ? v : []; } catch (_) { return []; } };
+  const plan = planRevenue(doc, revenueCents, { accounts, produits: read('dicann-fac-produits'), categories: read('dicann-fac-categories') });
+  return plan.map(p => ({ account_id: p.account_id, debit_cents: debit ? p.cents : 0, credit_cents: debit ? 0 : p.cents, memo }));
+}
+
 ipcMain.handle('ledger:invoice:post', async (_e, {
   invoiceId, invoiceDate, subtotalCents, tpsCents, tvqCents, totalCents, taxExempt,
+  lignes, remiseGlobale, remiseGlobaleType,
 }) => {
   // Idempotent: the renderer's glEntryId can be lost, and re-posting would
   // double the revenue and the receivable.
@@ -2037,10 +2051,12 @@ ipcMain.handle('ledger:invoice:post', async (_e, {
   if (!split.ok) return { ok: false, error: split.error };
   const lines = [];
   lines.push({ account_id: ar.id, debit_cents: split.totalCents, credit_cents: 0, memo: `Facture ${invoiceId}` });
+  const revenueLines = revenueAccountLines({ lignes, remiseGlobale, remiseGlobaleType }, split.revenueCents, accounts,
+    { memo: taxExempt ? 'Revenus (exonéré)' : 'Revenus' });
   if (taxExempt) {
-    lines.push({ account_id: revenue.id, debit_cents: 0, credit_cents: split.revenueCents, memo: `Revenus (exonéré)` });
+    lines.push(...revenueLines);
   } else {
-    lines.push({ account_id: revenue.id, debit_cents: 0, credit_cents: split.revenueCents, memo: 'Revenus' });
+    lines.push(...revenueLines);
     if (split.tpsCents) lines.push({ account_id: tpsAcc.id, debit_cents: 0, credit_cents: split.tpsCents, memo: 'TPS à payer' });
     if (split.tvqCents) lines.push({ account_id: tvqAcc.id, debit_cents: 0, credit_cents: split.tvqCents, memo: 'TVQ à payer' });
   }
@@ -2058,6 +2074,7 @@ ipcMain.handle('ledger:invoice:post', async (_e, {
 
 ipcMain.handle('ledger:creditnote:post', async (_e, {
   creditNoteId, creditNoteDate, subtotalCents, tpsCents, tvqCents, totalCents, taxExempt,
+  lignes, deduction,
 }) => {
   const already = glFindEntryBySource('credit_note', creditNoteId);
   if (already && already.status === 'posted') return { ok: true, entryId: already.id, alreadyPosted: true };
@@ -2080,10 +2097,14 @@ ipcMain.handle('ledger:creditnote:post', async (_e, {
   if (!split.ok) return { ok: false, error: split.error };
   const lines = [];
   lines.push({ account_id: ar.id, debit_cents: 0, credit_cents: split.totalCents, memo: `Note de crédit ${creditNoteId}` });
+  // The mirror of the invoice: each line comes back out of the account it went
+  // into, or all of it out of Sales returns and allowances for a chain deduction.
+  const revenueLines = revenueAccountLines({ lignes, deduction }, split.revenueCents, accounts,
+    { debit: true, memo: taxExempt ? 'Contra-revenus (exonéré)' : 'Contra-revenus' });
   if (taxExempt) {
-    lines.push({ account_id: revenue.id, debit_cents: split.revenueCents, credit_cents: 0, memo: 'Contra-revenus (exonéré)' });
+    lines.push(...revenueLines);
   } else {
-    lines.push({ account_id: revenue.id, debit_cents: split.revenueCents, credit_cents: 0, memo: 'Contra-revenus' });
+    lines.push(...revenueLines);
     if (split.tpsCents) lines.push({ account_id: tpsAcc.id, debit_cents: split.tpsCents, credit_cents: 0, memo: 'TPS – note de crédit' });
     if (split.tvqCents) lines.push({ account_id: tvqAcc.id, debit_cents: split.tvqCents, credit_cents: 0, memo: 'TVQ – note de crédit' });
   }

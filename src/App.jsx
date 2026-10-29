@@ -2013,7 +2013,7 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
     try{
      const taxExempt=!!(clients?.find(c=>c.id===f.clientId)?.taxExempt);
      const ft=computeSoumTotals(f.lignes||[],f);
-     const res=await window.api.ledger.invoicePost({invoiceId:f.id,invoiceDate:f.date,subtotalCents:Math.round((ft.sousTotal||0)*100),tpsCents:Math.round((ft.tpsTotal||0)*100),tvqCents:Math.round((ft.tvqTotal||0)*100),totalCents:Math.round((ft.total||0)*100),taxExempt});
+     const res=await window.api.ledger.invoicePost({...revenueSource(f.lignes,f),invoiceId:f.id,invoiceDate:f.date,subtotalCents:Math.round((ft.sousTotal||0)*100),tpsCents:Math.round((ft.tpsTotal||0)*100),tvqCents:Math.round((ft.tvqTotal||0)*100),totalCents:Math.round((ft.total||0)*100),taxExempt});
      if(res?.ok&&res.entryId)done[f.id]=res.entryId;
     }catch(e){console.error('[ledger] backfill failed',f.numero,e);}
    }
@@ -2080,6 +2080,13 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
  const [editForm,setEditForm]=useState({});
  const [newForm,setNewForm]=useState({nom:"",compteRevenu:"",compteEscompte:"",description:""});
  const [showInactive,setShowInactive]=useState(false);
+ // A category's revenue account decides where invoice lines for its products
+ // are booked; the list is the chart's revenue accounts.
+ const [revAccounts,setRevAccounts]=useState([]);
+ useEffect(()=>{let alive=true;window.api?.coa?.list?.().then(r=>{if(alive)setRevAccounts((r||[]).filter(a=>a.type==='revenue'&&!a.is_archived).sort((a,b)=>String(a.account_number).localeCompare(String(b.account_number))));}).catch(()=>{});return()=>{alive=false;};},[]);
+ const revName=a=>`${a.account_number} · ${T===EN?(a.name_en||a.name_fr):(a.name_fr||a.name_en)}`;
+ const revLabel=num=>{if(!num)return T.catRevenuDefault;const a=revAccounts.find(x=>String(x.account_number)===String(num));return a?revName(a):String(num);};
+ const revSelect=(value,onChange,flex)=>(<select value={value||""} onChange={e=>onChange(e.target.value)} style={{...inputS,flex,width:flex?undefined:"100%",boxSizing:"border-box"}}><option value="">{T.catRevenuDefault}</option>{revAccounts.map(a=><option key={a.id} value={a.account_number}>{revName(a)}</option>)}{value&&!revAccounts.some(a=>String(a.account_number)===String(value))&&<option value={value}>{value}</option>}</select>);
  const [sortAZ,setSortAZ]=useState(true);
  const [addOpen,setAddOpen]=useState(false);
 
@@ -2180,7 +2187,7 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
  {sortAZ?"A → Z":"Z → A"}</button><button onClick={()=>setShowInactive(s=>!s)} style={{fontSize:10,padding:"3px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:showInactive?"rgba(249,115,22,0.08)":t.section,color:showInactive?"#f97316":t.textSub,cursor:"pointer",fontWeight:600}}>
  {showInactive?T.catHideInactive:T.catShowInactive}</button><button onClick={()=>setAddOpen(o=>!o)} style={{fontSize:11,padding:"4px 12px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontWeight:700}}>
  {T.catNewBtn}</button></div></div>{/* Add form */}
- {addOpen&&(<div style={{background:t.card,border:`1px solid rgba(249,115,22,0.2)`,borderRadius:9,padding:12}}><span style={{fontSize:12,fontWeight:700,color:"#f97316",display:"block",marginBottom:8}}>{T.catNewTitle}</span><div style={{display:"flex",flexDirection:"column",gap:5}}><div style={{display:"flex",gap:6,flexWrap:"wrap"}}><div style={{flex:"2 1 160px"}}><div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.catFieldNom}<span style={{color:"#f97316"}}>*</span></div><input value={newForm.nom} onChange={e=>setNewForm(f=>({...f,nom:e.target.value}))} placeholder={T===EN?"e.g. product sale":"ex: product sale"} autoFocus style={{...inputS,width:"100%",boxSizing:"border-box"}} onKeyDown={e=>{if(e.key==="Enter")addCat()}}/></div><div style={{flex:"1 1 100px"}}><div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.catFieldRevenu}</div><input value={newForm.compteRevenu} onChange={e=>setNewForm(f=>({...f,compteRevenu:e.target.value}))} placeholder="ex: 100"style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}/></div><div style={{flex:"1 1 100px"}}><div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.catFieldEscompte}</div><input value={newForm.compteEscompte} onChange={e=>setNewForm(f=>({...f,compteEscompte:e.target.value}))} placeholder="ex: 5050"style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}/></div></div><div><div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.catFieldDescOpt}</div><input value={newForm.description} onChange={e=>setNewForm(f=>({...f,description:e.target.value}))} placeholder={T.catDescPH} style={{...inputS,width:"100%",boxSizing:"border-box"}}/></div><div style={{display:"flex",gap:6,marginTop:2}}><button onClick={addCat} disabled={!newForm.nom.trim()} style={{padding:"6px 16px",borderRadius:6,border:"none",background:newForm.nom.trim()?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:newForm.nom.trim()?"#fff":t.textDim,cursor:newForm.nom.trim()?"pointer":"default",fontWeight:700,fontSize:12,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T.save}</button><button onClick={()=>{setAddOpen(false);setNewForm({nom:"",compteRevenu:"",compteEscompte:"",description:""})}} style={{padding:"6px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T.cancel}</button></div></div></div>)}
+ {addOpen&&(<div style={{background:t.card,border:`1px solid rgba(249,115,22,0.2)`,borderRadius:9,padding:12}}><span style={{fontSize:12,fontWeight:700,color:"#f97316",display:"block",marginBottom:8}}>{T.catNewTitle}</span><div style={{display:"flex",flexDirection:"column",gap:5}}><div style={{display:"flex",gap:6,flexWrap:"wrap"}}><div style={{flex:"2 1 160px"}}><div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.catFieldNom}<span style={{color:"#f97316"}}>*</span></div><input value={newForm.nom} onChange={e=>setNewForm(f=>({...f,nom:e.target.value}))} placeholder={T===EN?"e.g. product sale":"ex: product sale"} autoFocus style={{...inputS,width:"100%",boxSizing:"border-box"}} onKeyDown={e=>{if(e.key==="Enter")addCat()}}/></div><div style={{flex:"1 1 100px"}}><div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.catFieldRevenu}</div>{revSelect(newForm.compteRevenu,v=>setNewForm(f=>({...f,compteRevenu:v})))}</div><div style={{flex:"1 1 100px"}}><div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.catFieldEscompte}</div><input value={newForm.compteEscompte} onChange={e=>setNewForm(f=>({...f,compteEscompte:e.target.value}))} placeholder="ex: 5050"style={{...inputS,width:"100%",boxSizing:"border-box",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}/></div></div><div><div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.catFieldDescOpt}</div><input value={newForm.description} onChange={e=>setNewForm(f=>({...f,description:e.target.value}))} placeholder={T.catDescPH} style={{...inputS,width:"100%",boxSizing:"border-box"}}/></div><div style={{display:"flex",gap:6,marginTop:2}}><button onClick={addCat} disabled={!newForm.nom.trim()} style={{padding:"6px 16px",borderRadius:6,border:"none",background:newForm.nom.trim()?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:newForm.nom.trim()?"#fff":t.textDim,cursor:newForm.nom.trim()?"pointer":"default",fontWeight:700,fontSize:12,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T.save}</button><button onClick={()=>{setAddOpen(false);setNewForm({nom:"",compteRevenu:"",compteEscompte:"",description:""})}} style={{padding:"6px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T.cancel}</button></div></div></div>)}
 
  {/* Column headers */}
  {visibleCats.length>0&&(<div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr auto",gap:6,padding:"3px 8px",borderBottom:`1px solid ${t.dividerMid}`}}>{[T.catFieldNom,T.catColRevenu,T.catColEscompte,T.description,""].map((h,i)=>(<span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i===4?"center":"left"}}>{h}</span>))}</div>)}
@@ -2188,10 +2195,10 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
  {/* Category rows */}
  {visibleCats.length===0&&(<div style={{textAlign:"center",padding:"24px 0",color:t.textMuted,fontSize:12}}>{T.catEmpty}</div>)}
  {visibleCats.map(cat=>(<div key={cat.id} style={{background:t.card,border:`1px solid ${cat.actif===false?"rgba(239,68,68,0.12)":t.cardBorder}`,borderRadius:7,padding:"6px 8px",opacity:cat.actif===false?0.55:1}}>{editingId===cat.id
- ?(<div style={{display:"flex",flexDirection:"column",gap:6}}><div style={{display:"flex",gap:6,flexWrap:"wrap"}}><input value={editForm.nom} onChange={e=>setEditForm(f=>({...f,nom:e.target.value}))} autoFocus placeholder={T.catNomPH} style={{...inputS,flex:"2 1 140px",boxSizing:"border-box"}}/><input value={editForm.compteRevenu} onChange={e=>setEditForm(f=>({...f,compteRevenu:e.target.value}))} placeholder={T.catRevenuPH} style={{...inputS,flex:"1 1 90px",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",boxSizing:"border-box"}}/><input value={editForm.compteEscompte} onChange={e=>setEditForm(f=>({...f,compteEscompte:e.target.value}))} placeholder={T.catEscomptePH} style={{...inputS,flex:"1 1 90px",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",boxSizing:"border-box"}}/></div><input value={editForm.description} onChange={e=>setEditForm(f=>({...f,description:e.target.value}))} placeholder={T.catDescEditPH} style={{...inputS,width:"100%",boxSizing:"border-box"}}/><div style={{display:"flex",gap:6}}><button onClick={saveEdit} disabled={!editForm.nom.trim()} style={{padding:"4px 12px",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T.save}</button><button onClick={()=>setEditingId(null)} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T.cancel}</button></div></div>)
+ ?(<div style={{display:"flex",flexDirection:"column",gap:6}}><div style={{display:"flex",gap:6,flexWrap:"wrap"}}><input value={editForm.nom} onChange={e=>setEditForm(f=>({...f,nom:e.target.value}))} autoFocus placeholder={T.catNomPH} style={{...inputS,flex:"2 1 140px",boxSizing:"border-box"}}/>{revSelect(editForm.compteRevenu,v=>setEditForm(f=>({...f,compteRevenu:v})),"1 1 160px")}<input value={editForm.compteEscompte} onChange={e=>setEditForm(f=>({...f,compteEscompte:e.target.value}))} placeholder={T.catEscomptePH} style={{...inputS,flex:"1 1 90px",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",boxSizing:"border-box"}}/></div><input value={editForm.description} onChange={e=>setEditForm(f=>({...f,description:e.target.value}))} placeholder={T.catDescEditPH} style={{...inputS,width:"100%",boxSizing:"border-box"}}/><div style={{display:"flex",gap:6}}><button onClick={saveEdit} disabled={!editForm.nom.trim()} style={{padding:"4px 12px",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T.save}</button><button onClick={()=>setEditingId(null)} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T.cancel}</button></div></div>)
  :(<div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr auto",gap:6,alignItems:"center"}}><span style={{fontSize:12,fontWeight:600,color:t.text,cursor:"pointer"}} onClick={()=>startEdit(cat)}>
  {cat.nom}
- {cat.actif===false&&<span style={{fontSize:9,color:"#ef4444",marginLeft:5,fontWeight:400}}>inactif</span>}<span style={{fontSize:9,color:t.textDim,marginLeft:4}}></span></span><span style={{fontSize:11,color:t.textSub,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{cat.compteRevenu||"-"}</span><span style={{fontSize:11,color:t.textSub,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{cat.compteEscompte||"-"}</span><span style={{fontSize:11,color:t.textSub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cat.description||"-"}</span><button onClick={()=>toggleActif(cat)} title={cat.actif===false?"Réactiver":"Désactiver"} style={{background:cat.actif===false?"rgba(34,197,94,0.08)":"rgba(239,68,68,0.07)",border:"none",borderRadius:4,color:cat.actif===false?"#16a34a":"#ef4444",fontSize:10,padding:"2px 6px",cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>
+ {cat.actif===false&&<span style={{fontSize:9,color:"#ef4444",marginLeft:5,fontWeight:400}}>inactif</span>}<span style={{fontSize:9,color:t.textDim,marginLeft:4}}></span></span><span style={{fontSize:11,color:t.textSub,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{revLabel(cat.compteRevenu)}</span><span style={{fontSize:11,color:t.textSub,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{cat.compteEscompte||"-"}</span><span style={{fontSize:11,color:t.textSub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cat.description||"-"}</span><button onClick={()=>toggleActif(cat)} title={cat.actif===false?"Réactiver":"Désactiver"} style={{background:cat.actif===false?"rgba(34,197,94,0.08)":"rgba(239,68,68,0.07)",border:"none",borderRadius:4,color:cat.actif===false?"#16a34a":"#ef4444",fontSize:10,padding:"2px 6px",cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>
  {cat.actif===false?"Réactiver":"Désactiver"}</button></div>)}</div>))}</div>)}
 
  {/* Paramètres / Invoice Template */}
@@ -2242,6 +2249,13 @@ function newLigne(){return{id:Date.now().toString(36)+Math.random().toString(36)
 // The subtotal discount as one row of a line-by-line export, so the rows of an
 // invoice still add up to its total. Its tax is the lines' tax times the share
 // taken off, which is how computeInvoiceTotals spreads it.
+// What the ledger needs to split an invoice's revenue by account: each line's
+// product and amount, and the subtotal discount. The main process looks up each
+// product's category account (see revenueAccountLines in main.js).
+function revenueSource(lignes,doc){
+ return{lignes:(lignes||[]).filter(l=>l&&l.type!=='section').map(l=>({produitId:l.produitId||null,quantite:l.quantite,prixUnitaire:l.prixUnitaire,remise:l.remise,remiseType:l.remiseType})),
+  remiseGlobale:doc?.remiseGlobale,remiseGlobaleType:doc?.remiseGlobaleType};
+}
 function subtotalDiscountRow(fac){
  const tt=computeInvoiceTotals(fac.lignes||[],documentDiscount(fac));
  if(!(tt.remiseGlobaleMontant>0)||!(tt.sousTotalBrut>0))return null;
@@ -3017,7 +3031,7 @@ function FactureEditor({showBack,facture,clients,produits,companyInfo,docNums,sa
  const isFinalize=!isProforma&&form.statut!=='Brouillon'&&form.statut!=='Annulée'&&(isNew||prevStatut==='Brouillon')&&!form.glEntryId;
  if(isFinalize&&window.api?.ledger?.invoicePost){
   const taxExempt=!!(clients.find(c=>c.id===form.clientId)?.taxExempt);
-  window.api.ledger.invoicePost({invoiceId:id,invoiceDate:form.date||dk(new Date()),subtotalCents:Math.round((totals.sousTotal||0)*100),tpsCents:Math.round((totals.tpsTotal||0)*100),tvqCents:Math.round((totals.tvqTotal||0)*100),totalCents:Math.round((totals.total||0)*100),taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(f=>f.id===id?{...f,glEntryId:res.entryId}:f));}).catch(e=>console.error('[ledger] invoice post failed',e));
+  window.api.ledger.invoicePost({...revenueSource(lignes,form),invoiceId:id,invoiceDate:form.date||dk(new Date()),subtotalCents:Math.round((totals.sousTotal||0)*100),tpsCents:Math.round((totals.tpsTotal||0)*100),tvqCents:Math.round((totals.tvqTotal||0)*100),totalCents:Math.round((totals.total||0)*100),taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(f=>f.id===id?{...f,glEntryId:res.entryId}:f));}).catch(e=>console.error('[ledger] invoice post failed',e));
  }
  if(!isProforma&&form.statut!=='Brouillon'&&form.statut!=='Annulée')settleDepositsOnSend(id,numero,doc);
  else if(form.statut==='Brouillon')postDepositReceipts(id,numero,doc.acomptes);
@@ -3295,7 +3309,7 @@ function FactureEditor({showBack,facture,clients,produits,companyInfo,docNums,sa
  const doc={...form,statut:newStatut,id:savedId,numero:savedNumero,lignes,acomptes};
  saveFactures(factures.some(f=>f.id===savedId)?factures.map(f=>f.id===savedId?doc:f):[...factures,doc]);
  settleDepositsOnSend(savedId,savedNumero,doc);
- if(!form.glEntryId&&!isProforma&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients.find(c=>c.id===form.clientId)?.taxExempt);window.api.ledger.invoicePost({invoiceId:savedId,invoiceDate:form.date||dk(new Date()),subtotalCents:Math.round((totals.sousTotal||0)*100),tpsCents:Math.round((totals.tpsTotal||0)*100),tvqCents:Math.round((totals.tvqTotal||0)*100),totalCents:Math.round((totals.total||0)*100),taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(f=>f.id===savedId?{...f,glEntryId:res.entryId}:f));}).catch(e=>console.error('[ledger] invoice post failed',e));}
+ if(!form.glEntryId&&!isProforma&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients.find(c=>c.id===form.clientId)?.taxExempt);window.api.ledger.invoicePost({...revenueSource(lignes,form),invoiceId:savedId,invoiceDate:form.date||dk(new Date()),subtotalCents:Math.round((totals.sousTotal||0)*100),tpsCents:Math.round((totals.tpsTotal||0)*100),tvqCents:Math.round((totals.tvqTotal||0)*100),totalCents:Math.round((totals.total||0)*100),taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(f=>f.id===savedId?{...f,glEntryId:res.entryId}:f));}).catch(e=>console.error('[ledger] invoice post failed',e));}
  }
  }
  }} onClose={()=>setEmailModal(null)}/>}
@@ -3527,12 +3541,16 @@ function EncaissementEditor({showBack,clientId,factureId,initialDeposit=false,cl
 }
 
 // ── NOTE DE CRÉDIT ──
-const RAISONS_NC=["Article brisé / endommagé","Erreur de facturation","Retour de marchandise","Ajustement de prix","Autre"];
+// A chain's remittance deduction (promotions, unsaleables, listing fees) is not a
+// return of a product line: it is booked against Sales returns and allowances.
+const REMITTANCE_DEDUCTION_REASON="Déduction sur remise (chaîne)";
+const RAISONS_NC=["Article brisé / endommagé","Erreur de facturation","Retour de marchandise","Ajustement de prix",REMITTANCE_DEDUCTION_REASON,"Autre"];
 const NC_REASON_EN={
  "Article brisé / endommagé":"Damaged item",
  "Erreur de facturation":"Billing error",
  "Retour de marchandise":"Goods returned",
  "Ajustement de prix":"Price adjustment",
+ [REMITTANCE_DEDUCTION_REASON]:"Remittance deduction (chain)",
  "Autre":"Other",
 };
 // Reasons the operator adds themselves, so recurring deductions (loyalty
@@ -3606,7 +3624,7 @@ function NoteDeCreditEditor({showBack,creditNote,clients,factures,companyInfo,do
  // From-invoice selection lines (one per invoice line)
  const [selLines,setSelLines]=useState(()=>{
  if(creditNote?.selLines)return creditNote.selLines;
- if(initFac){const eff=creditLineDiscounts(initFac);return initFac.lignes.map(l=>({srcId:l.id,description:l.description||"",qtéOriginale:l.quantite||0,prixUnitaire:l.prixUnitaire||0,remise:eff[l.id]??(l.remise||0),tps:l.tps!==false,tvq:l.tvq!==false,checked:false,qtéACréditer:"0",useOverride:false,montantOverride:""}));}
+ if(initFac){const eff=creditLineDiscounts(initFac);return initFac.lignes.map(l=>({srcId:l.id,produitId:l.produitId||null,description:l.description||"",qtéOriginale:l.quantite||0,prixUnitaire:l.prixUnitaire||0,remise:eff[l.id]??(l.remise||0),tps:l.tps!==false,tvq:l.tvq!==false,checked:false,qtéACréditer:"0",useOverride:false,montantOverride:""}));}
  return[];
  });
  // Manual / custom lines (standalone: all lines; from-invoice: extra custom lines)
@@ -3651,8 +3669,8 @@ function NoteDeCreditEditor({showBack,creditNote,clients,factures,companyInfo,do
  if(fromInvoice){
  for(const sl of selLines){
  if(!sl.checked)continue;
- if(sl.useOverride){const amt=parseFloat(sl.montantOverride)||0;if(amt<=0)continue;lines.push({id:sl.srcId,description:sl.description,quantite:1,prixUnitaire:amt,remise:0,tps:sl.tps,tvq:sl.tvq});}
- else{const qty=parseFloat(sl.qtéACréditer)||0;if(qty<=0)continue;lines.push({id:sl.srcId,description:sl.description,quantite:qty,prixUnitaire:sl.prixUnitaire,remise:sl.remise,tps:sl.tps,tvq:sl.tvq});}
+ if(sl.useOverride){const amt=parseFloat(sl.montantOverride)||0;if(amt<=0)continue;lines.push({id:sl.srcId,produitId:sl.produitId||null,description:sl.description,quantite:1,prixUnitaire:amt,remise:0,tps:sl.tps,tvq:sl.tvq});}
+ else{const qty=parseFloat(sl.qtéACréditer)||0;if(qty<=0)continue;lines.push({id:sl.srcId,produitId:sl.produitId||null,description:sl.description,quantite:qty,prixUnitaire:sl.prixUnitaire,remise:sl.remise,tps:sl.tps,tvq:sl.tvq});}
  }
  for(const ml of manualLines){if((ml.prixUnitaire||0)>0||(ml.description||"").trim())lines.push(ml);}
  } else {
@@ -3745,6 +3763,7 @@ function NoteDeCreditEditor({showBack,creditNote,clients,factures,companyInfo,do
  const _cnExempt=!!(clients?.find(c=>c.id===_cnClientId)?.taxExempt);
  window.api.ledger.creditNotePost({
  creditNoteId:id,creditNoteDate:form.date,
+ ...revenueSource(activeLignes,null),deduction:form.raison===REMITTANCE_DEDUCTION_REASON,
  subtotalCents:Math.round((totals.sousTotal||0)*100),
  tpsCents:Math.round((totals.tpsTotal||0)*100),
  tvqCents:Math.round((totals.tvqTotal||0)*100),
@@ -3779,6 +3798,7 @@ function NoteDeCreditEditor({showBack,creditNote,clients,factures,companyInfo,do
  if(!rev?.ok){alert(T===EN?"The ledger entry could not be reversed, so the correction was not posted. The credit note was saved.":"L'écriture n'a pas pu être annulée, la correction n'a donc pas été comptabilisée. La note de crédit est enregistrée.");return;}
  const res=await window.api.ledger.creditNotePost({
  creditNoteId:id,creditNoteDate:form.date,
+ ...revenueSource(activeLignes,null),deduction:form.raison===REMITTANCE_DEDUCTION_REASON,
  subtotalCents:Math.round((totals.sousTotal||0)*100),
  tpsCents:Math.round((totals.tpsTotal||0)*100),
  tvqCents:Math.round((totals.tvqTotal||0)*100),
@@ -3912,7 +3932,7 @@ function DepositScheduleSection({commandeId,totals,factures,saveFactures,clients
    const num=fmtDocNum(docNums?.prefix||"BIQ","F",docNums?.facture||1);
    const depFac={id:newId,clientId:sched.commande_id,numero:num,date:todayStr,dateEcheance:"",statut:"Envoyée",notes:sched.label,lignes:[{id:"1",description:sched.label,quantite:1,prixUnitaire:parseFloat(beforeTax.toFixed(2)),tps:true,tvq:true,remise:0}],paiements:[],sourceType:"commande_acompte",isDepositInvoice:true,parentCommandeId:sched.commande_id};
    saveFactures([...factures,depFac]);
-   if(!depFac.glEntryId&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients?.find(c=>c.id===depFac.clientId)?.taxExempt);const dTot=computeSoumTotals(depFac.lignes||[],depFac);window.api.ledger.invoicePost({invoiceId:depFac.id,invoiceDate:depFac.date,subtotalCents:Math.round((dTot.sousTotal||0)*100),tpsCents:Math.round((dTot.tpsTotal||0)*100),tvqCents:Math.round((dTot.tvqTotal||0)*100),totalCents:Math.round((dTot.total||0)*100),taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(f=>f.id===depFac.id?{...f,glEntryId:res.entryId}:f));}).catch(e=>console.error('[ledger] invoice post failed',e));}
+   if(!depFac.glEntryId&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients?.find(c=>c.id===depFac.clientId)?.taxExempt);const dTot=computeSoumTotals(depFac.lignes||[],depFac);window.api.ledger.invoicePost({...revenueSource(depFac.lignes,depFac),invoiceId:depFac.id,invoiceDate:depFac.date,subtotalCents:Math.round((dTot.sousTotal||0)*100),tpsCents:Math.round((dTot.tpsTotal||0)*100),tvqCents:Math.round((dTot.tvqTotal||0)*100),totalCents:Math.round((dTot.total||0)*100),taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(f=>f.id===depFac.id?{...f,glEntryId:res.entryId}:f));}).catch(e=>console.error('[ledger] invoice post failed',e));}
    if(saveDocNums&&docNums)saveDocNums({...docNums,facture:(docNums.facture||1)+1});
    await window.api.deposits.markGenerated(sched.id,newId);
    setSchedules(prev=>prev.map(s=>s.id===sched.id?{...s,status:'generated',generated_invoice_id:newId}:s));
@@ -3994,7 +4014,7 @@ function InterestConfigSection({showUpgradePrompt,factures,saveFactures,clients,
   }
   saveFactures(newFacs);
   if(saveDocNums&&docNums)saveDocNums({...docNums,facture:encNum});
-  for(const f of newIntFacs){if(!f.glEntryId&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients?.find(c=>c.id===f.clientId)?.taxExempt);const ft=computeSoumTotals(f.lignes||[],f);window.api.ledger.invoicePost({invoiceId:f.id,invoiceDate:f.date,subtotalCents:Math.round((ft.sousTotal||0)*100),tpsCents:Math.round((ft.tpsTotal||0)*100),tvqCents:Math.round((ft.tvqTotal||0)*100),totalCents:Math.round((ft.total||0)*100),taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(fa=>fa.id===f.id?{...fa,glEntryId:res.entryId}:fa));}).catch(e=>console.error('[ledger] invoice post failed',e));}}
+  for(const f of newIntFacs){if(!f.glEntryId&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients?.find(c=>c.id===f.clientId)?.taxExempt);const ft=computeSoumTotals(f.lignes||[],f);window.api.ledger.invoicePost({...revenueSource(f.lignes,f),invoiceId:f.id,invoiceDate:f.date,subtotalCents:Math.round((ft.sousTotal||0)*100),tpsCents:Math.round((ft.tpsTotal||0)*100),tvqCents:Math.round((ft.tvqTotal||0)*100),totalCents:Math.round((ft.total||0)*100),taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(fa=>fa.id===f.id?{...fa,glEntryId:res.entryId}:fa));}).catch(e=>console.error('[ledger] invoice post failed',e));}}
   setPreview(null);setResult(generated);
  };
  return(<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:14}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}><span style={{fontSize:13,fontWeight:700,color:t.text}}>{T.interestTitle||"Intérêts sur retard"}</span>{isPro?<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"1px 6px",borderRadius:6}}>PRO</span>:<span style={{fontSize:9,fontWeight:700,color:"#6b7280",background:"rgba(255,255,255,0.06)",padding:"1px 6px",borderRadius:6}}>Pro</span>}</div>
@@ -4116,7 +4136,7 @@ function RecurringGenerateModal({recurrents,saveRecurrents,factures,saveFactures
  }
  }
  saveFactures(updFactures);
- for(const f of newRecFacs){if(!f.glEntryId&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients?.find(c=>c.id===f.clientId)?.taxExempt);const ft=computeSoumTotals(f.lignes||[],f);window.api.ledger.invoicePost({invoiceId:f.id,invoiceDate:f.date,subtotalCents:Math.round((ft.sousTotal||0)*100),tpsCents:Math.round((ft.tpsTotal||0)*100),tvqCents:Math.round((ft.tvqTotal||0)*100),totalCents:Math.round((ft.total||0)*100),taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(fa=>fa.id===f.id?{...fa,glEntryId:res.entryId}:fa));}).catch(e=>console.error('[ledger] invoice post failed',e));}}
+ for(const f of newRecFacs){if(!f.glEntryId&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients?.find(c=>c.id===f.clientId)?.taxExempt);const ft=computeSoumTotals(f.lignes||[],f);window.api.ledger.invoicePost({...revenueSource(f.lignes,f),invoiceId:f.id,invoiceDate:f.date,subtotalCents:Math.round((ft.sousTotal||0)*100),tpsCents:Math.round((ft.tpsTotal||0)*100),tvqCents:Math.round((ft.tvqTotal||0)*100),totalCents:Math.round((ft.total||0)*100),taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(fa=>fa.id===f.id?{...fa,glEntryId:res.entryId}:fa));}).catch(e=>console.error('[ledger] invoice post failed',e));}}
  saveDocNums({...docNums,facture:encNum});
  saveRecurrents(newRecs);
  setGenerating(false);
