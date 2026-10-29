@@ -140,6 +140,9 @@ const UI = {
     billMatchBody:    (n) => `${n} : cette facture comptabilise déjà la dépense et les taxes. Liez cette ligne à la facture au lieu de la catégoriser, sinon la dépense compterait deux fois.`,
     billMatchLink:    'Lier à la facture',
     billMatchIgnore:  'Non, ce n\'est pas cette facture',
+    chequeMatchTitle: 'Un chèque en circulation correspond à ce montant',
+    chequeMatchBody:  (n) => `${n} : ce chèque est déjà comptabilisé. Liez cette ligne au chèque au lieu de la catégoriser, sinon il compterait deux fois.`,
+    chequeMatchLink:  'Lier au chèque',
     match:            'Apparier',
     unmatch:          'Désapparier',
     selectCoa:        'Sélectionner un compte GL…',
@@ -382,6 +385,9 @@ const UI = {
     billMatchBody:    (n) => `${n}: that bill already books the expense and the tax. Link this line to the bill instead of categorizing it, or the expense is counted twice.`,
     billMatchLink:    'Link to the bill',
     billMatchIgnore:  'No, not that bill',
+    chequeMatchTitle: 'An outstanding cheque matches this amount',
+    chequeMatchBody:  (n) => `${n}: that cheque is already booked. Link this line to the cheque instead of categorizing it, or it counts twice.`,
+    chequeMatchLink:  'Link to the cheque',
     match:            'Match',
     unmatch:          'Unmatch',
     selectCoa:        'Select a GL account…',
@@ -605,6 +611,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   const [balanceDraft, setBalanceDraft]           = useState('');
   const [billMatches, setBillMatches]             = useState([]);
   const [billMatchDismissed, setBillMatchDismissed] = useState(false);
+  const [chequeMatches, setChequeMatches]         = useState([]);
   const [categorizeCoaId, setCategorizeCoaId]     = useState('');
   const [categorizeNotes, setCategorizeNotes]     = useState('');
   const [catTransfer, setCatTransfer]             = useState(false);
@@ -962,6 +969,22 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
   // line with an unpaid bill for the same amount is almost certainly that bill's
   // payment, and categorizing it to an expense account would book the expense a
   // second time. A courtesy, never a block: the operator may know better.
+  // Same courtesy for cheques: a line the amount of an outstanding cheque in the
+  // register is that cheque clearing, and categorizing it would book it again.
+  useEffect(() => {
+    setChequeMatches([]);
+    const tx = categorizingTx;
+    if (!tx || !window.api?.cheques?.candidates) return undefined;
+    let alive = true;
+    (async () => {
+      try {
+        const c = await window.api.cheques.candidates(tx.id);
+        if (alive) setChequeMatches((c?.cheques || []).filter(x => x.sameAmount));
+      } catch (_) { /* a courtesy: never stand in the way */ }
+    })();
+    return () => { alive = false; };
+  }, [categorizingTx]);
+
   useEffect(() => {
     setBillMatchDismissed(false);
     setBillMatches([]);
@@ -1870,6 +1893,16 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
                   style={{ ...btnSmall, fontSize: 11 }}>{T.billMatchLink}</button>
                 <button type="button" onClick={() => setBillMatchDismissed(true)}
                   style={{ ...btnSmall, fontSize: 11 }}>{T.billMatchIgnore}</button>
+              </div>
+            </div>
+          )}
+          {chequeMatches.length > 0 && (
+            <div style={{ marginTop: 10, padding: '9px 11px', borderRadius: 7, background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.3)', fontSize: 12 }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>{T.chequeMatchTitle}</div>
+              <div style={{ color: C.muted }}>{T.chequeMatchBody(chequeMatches.map(c => `#${c.cheque_number || '-'} ${c.party_name || ''}`.trim()).join(', '))}</div>
+              <div style={{ marginTop: 6 }}>
+                <button type="button" onClick={() => { const tx = categorizingTx; setCategorizingTx(null); setChequeTx(tx); }}
+                  style={{ ...btnSmall, fontSize: 11 }}>{T.chequeMatchLink}</button>
               </div>
             </div>
           )}

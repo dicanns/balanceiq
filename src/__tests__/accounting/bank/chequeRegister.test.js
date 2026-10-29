@@ -209,3 +209,39 @@ describe('CHQ-008 tax on a cheque purchase', () => {
     expect(t.tvqRtiFromSupplierBills).toBeCloseTo(99.75, 6);
   });
 });
+
+describe('CHQ-009 the modules meet without counting twice', () => {
+  it('a deposit categorized to receivables links the one invoice cheque it must be', () => {
+    const bank = addAccount();
+    const r = chequeRecord({ direction: 'received', chequeNumber: '9001', chequeDate: '2026-11-03', amountCents: 40000,
+      bankAccountId: null, kind: 'invoice_payment', invoiceRefs: ['F-0101'], paymentIds: ['p1'] }, db);
+    const dep = addTx(bank, 400, '2026-11-05', 'DEPOSIT');
+    bankTransactionCategorize(dep, acc('1100').id, null, {}, db);
+    expect(cheque(r.id).status).toBe('cleared');
+    expect(line(dep).matched_entity_type).toBe('cheque');
+    expect(bal('1010')).toBe(0);
+  });
+
+  it('voiding the invoice payment takes its cheque out of the register', () => {
+    const { chequeRemoveInvoicePayment } = require('../../../db/database.js');
+    const single = chequeRecord({ direction: 'received', chequeNumber: '9002', chequeDate: '2026-11-03', amountCents: 40000,
+      kind: 'invoice_payment', paymentIds: ['pA'] }, db);
+    const multi = chequeRecord({ direction: 'received', chequeNumber: '9003', chequeDate: '2026-11-03', amountCents: 70000,
+      kind: 'invoice_payment', paymentIds: ['pB', 'pC'] }, db);
+    expect(chequeRemoveInvoicePayment('pA', 40000, db).voided).toBe(single.id);
+    expect(cheque(single.id).status).toBe('void');
+    expect(chequeRemoveInvoicePayment('pB', 30000, db).reduced).toBe(multi.id);
+    expect(cheque(multi.id).amount_cents).toBe(40000);
+    expect(chequeRemoveInvoicePayment('nope', 100, db).nothing).toBe(true);
+  });
+
+  it('a cleared invoice cheque is reported, not silently changed', () => {
+    const { chequeRemoveInvoicePayment } = require('../../../db/database.js');
+    const bank = addAccount();
+    const r = chequeRecord({ direction: 'received', chequeNumber: '9004', chequeDate: '2026-11-03', amountCents: 25000,
+      kind: 'invoice_payment', paymentIds: ['pD'] }, db);
+    chequeLink(addTx(bank, 250, '2026-11-06', 'DEPOSIT'), [r.id], db);
+    expect(chequeRemoveInvoicePayment('pD', 25000, db).error).toBe('cheque_cleared');
+    expect(cheque(r.id).status).toBe('cleared');
+  });
+});

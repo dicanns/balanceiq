@@ -4384,6 +4384,20 @@ function _transferDecision(db, txId, coaAccountId) {
 
 function bankTransactionCategorize(txId, coaAccountId, notes, tax, _db) {
   const db = _db || getDb();
+  // A deposit put to receivables when exactly one invoice cheque in the register
+  // is that amount: it is that cheque clearing. Linking books the same nothing
+  // (the invoice payment already did) and takes the cheque off the outstanding list.
+  {
+    const line = db.prepare(`SELECT * FROM bank_transactions WHERE id=?`).get(txId);
+    const target = db.prepare(`SELECT account_number FROM chart_of_accounts WHERE id=?`).get(coaAccountId);
+    if (line && Number(line.amount) > 0 && target && GL_CONTROL_ACCOUNTS.includes(target.account_number)) {
+      const cents = Math.round(Number(line.amount) * 100);
+      const hits = db.prepare(`SELECT id FROM cheques WHERE status='outstanding' AND direction=? AND kind='invoice_payment'
+          AND amount_cents=? AND cheque_date<=? AND (bank_account_id=? OR bank_account_id IS NULL)`)
+        .all(CHEQUE_RECEIVED, cents, line.transaction_date, line.bank_account_id);
+      if (hits.length === 1 && chequeLink(txId, [hits[0].id], db).ok) return true;
+    }
+  }
   const tpsPaid = Number(tax?.tpsPaid) || 0;
   const tvqPaid = Number(tax?.tvqPaid) || 0;
   // A transfer carries no tax and no expense: it is the same money seen twice.
@@ -6207,6 +6221,28 @@ function chequeVoid(id, reason, _db) {
     })();
   } catch (e) { return { ok: false, error: String(e?.message || e) }; }
   return { ok: true };
+}
+
+// An invoice payment by cheque was voided. The register entry loses that payment:
+// voided when it was the only one, reduced when the cheque paid several
+// invoices. A cheque that already cleared is left as it is and reported, because
+// its deposit line now proves money the books no longer show: unlink that line.
+function chequeRemoveInvoicePayment(paymentId, amountCents, _db) {
+  const db = _db || getDb();
+  const id = String(paymentId || '');
+  if (!id) return { ok: false, error: 'invalid_payment' };
+  const rows = db.prepare(`SELECT * FROM cheques WHERE kind='invoice_payment' AND status<>'void' AND payment_ids LIKE ?`).all(`%"${id.replace(/["%_]/g, '')}"%`);
+  const ch = rows.find(r => _jsonList(r.payment_ids).map(String).includes(id));
+  if (!ch) return { ok: true, nothing: true };
+  if (ch.status === 'cleared') return { ok: false, error: 'cheque_cleared', chequeId: ch.id, bankTransactionId: ch.bank_transaction_id };
+  const rest = _jsonList(ch.payment_ids).map(String).filter(x => x !== id);
+  const cut = Math.round(Number(amountCents) || 0);
+  if (!rest.length || cut >= ch.amount_cents) {
+    db.prepare(`UPDATE cheques SET status='void', void_reason='payment voided', voided_at=CURRENT_TIMESTAMP WHERE id=?`).run(ch.id);
+    return { ok: true, voided: ch.id };
+  }
+  db.prepare(`UPDATE cheques SET payment_ids=?, amount_cents=? WHERE id=?`).run(JSON.stringify(rest), ch.amount_cents - cut, ch.id);
+  return { ok: true, reduced: ch.id };
 }
 
 // Links one statement line to the cheque(s) that cleared on it: one cheque for a
@@ -8271,7 +8307,7 @@ module.exports = {
   bankLearnedRulesList, bankLearnedRuleDelete,
   taxPeriodCompute, taxPeriodSave, taxPeriodMarkFiled, taxPeriodList,
   invoiceBadDebtWriteOff, invoiceBadDebtRecover,
-  chequeList, chequeRecord, chequeVoid, chequeLink, chequeCandidatesForTx, chequeAutoMatch, chequeOutstandingSummary,
+  chequeList, chequeRecord, chequeVoid, chequeLink, chequeRemoveInvoicePayment, chequeCandidatesForTx, chequeAutoMatch, chequeOutstandingSummary,
   taxSuspenseList, taxSuspenseClassifyAsCashExpense, taxSuspenseReverseCategorization,
   taxProfileList, taxProfileUpsert, taxProfileDelete,
   taxRegistrationGet, taxRegistrationSave,

@@ -46,6 +46,9 @@ const UI = {
     settleTitle: (name, amt) => `Marquer payée : ${name} · ${amt}`,
     settleDate: 'Date du paiement',
     settleFrom: 'Payé depuis',
+    settleCheque: 'No de chèque (si payé par chèque)',
+    settleChequeHint: 'Avec un numéro, le chèque va au registre des chèques : il reste en circulation et se lie à la ligne du relevé quand il passe.',
+    errChequeDup: 'Ce numéro de chèque existe déjà pour ce compte.',
     settleCash: 'Encaisse (1010) : aucun compte bancaire configuré dans Banque.',
     settleConfirm: 'Confirmer le paiement',
     viewDocument: 'Voir le document',
@@ -128,6 +131,9 @@ const UI = {
     settleTitle: (name, amt) => `Mark paid: ${name} · ${amt}`,
     settleDate: 'Payment date',
     settleFrom: 'Paid from',
+    settleCheque: 'Cheque no. (if paid by cheque)',
+    settleChequeHint: 'With a number, the cheque goes to the cheque register: it stays outstanding and links to the statement line when it clears.',
+    errChequeDup: 'That cheque number already exists for this account.',
     settleCash: 'Cash (1010): no bank account set up in Bank yet.',
     settleConfirm: 'Confirm payment',
     viewDocument: 'View document',
@@ -572,6 +578,20 @@ export default function BillsTab({ lang = 'fr' }) {
     if (!settling) return;
     setBusy(true); setError('');
     try {
+      // Paid by cheque: record the cheque instead, so the bill is settled once
+      // and the cheque links to its statement line when it clears.
+      const acct = bankAccounts.find(a => String(a.id) === String(settling.accountId));
+      if ((settling.chequeNo || '').trim() && acct && acct.account_type === 'bank' && window.api?.cheques?.record) {
+        const r = await window.api.cheques.record({
+          direction: 'issued', kind: 'supplier_bills', billIds: [settling.bill.id],
+          amountCents: Math.round((Number(settling.bill.amount) || 0) * 100), bankAccountId: acct.id,
+          chequeNumber: settling.chequeNo.trim(), chequeDate: settling.date || today(), partyName: settling.bill.supplier_name,
+        });
+        if (!r?.ok) { setError(r?.error === 'duplicate_number' ? T.errChequeDup : refusalText(r)); return; }
+        setSettling(null);
+        await load();
+        return;
+      }
       const r = await window.api.supplierBills.markPaid(settling.bill.id, {
         payment_date: settling.date || today(),
         bank_account_id: settling.accountId ? parseInt(settling.accountId, 10) : null,
@@ -715,9 +735,14 @@ export default function BillsTab({ lang = 'fr' }) {
                     </select>
                   ) : <div style={{ fontSize: 11.5, color: C.muted, padding: '6px 0' }}>{T.settleCash}</div>}
                 </div>
+                {bankAccounts.find(a => String(a.id) === String(settling.accountId))?.account_type === 'bank' && (
+                  <div style={{ minWidth: 160 }}><span style={lbl}>{T.settleCheque}</span>
+                    <input style={{ ...input, width: 160 }} value={settling.chequeNo || ''} onChange={e => setSettling(s => ({ ...s, chequeNo: e.target.value }))} /></div>
+                )}
                 <button onClick={confirmSettle} disabled={busy} style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: 5, color: '#22c55e', cursor: busy ? 'default' : 'pointer', fontSize: 12, fontWeight: 700, padding: '7px 12px' }}>{T.settleConfirm}</button>
                 <button onClick={() => setSettling(null)} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 11, padding: '7px 4px' }}>{T.cancel}</button>
               </div>
+              {(settling.chequeNo || '').trim() && <div style={{ fontSize: 11, color: C.muted, marginTop: 6, lineHeight: 1.45 }}>{T.settleChequeHint}</div>}
             </div>
           )}
           {attach && (

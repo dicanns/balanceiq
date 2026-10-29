@@ -246,6 +246,7 @@ contextBridge.exposeInMainWorld('api', {
     link:        (txId, ids)     => ipcRenderer.invoke('cheques:link', txId, ids),
     candidates:  (txId)          => ipcRenderer.invoke('cheques:candidates', txId),
     outstanding: (accId, asOf)   => ipcRenderer.invoke('cheques:outstanding', accId, asOf),
+    removePayment: (paymentId, cents) => ipcRenderer.invoke('cheques:removePayment', paymentId, cents),
   },
   ledger: {
     entry: {

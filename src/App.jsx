@@ -3146,6 +3146,14 @@ function FactureEditor({showBack,facture,clients,produits,companyInfo,docNums,sa
     const r=await reverse(p.appliedDeposit?{depositId:p.id,reason:T===EN?"Deposit voided":"Acompte annulé"}:{paymentId:p.id,reason:T===EN?"Payment voided":"Paiement annulé"});
     if(r&&r.ok===false){alert(T===EN?"Could not reverse the ledger entry. Nothing was changed.":"Impossible de contrepasser l'écriture. Rien n'a été modifié.");return;}
    }
+   // A cheque payment also leaves the cheque register. If its deposit already
+   // cleared, that statement line now proves money the books no longer hold.
+   if(p.mode==="Chèque"&&window.api?.cheques?.removePayment){
+    const c=await window.api.cheques.removePayment(p.id,Math.round((p.montant||0)*100)).catch(()=>null);
+    if(c&&c.error==="cheque_cleared")alert(T===EN
+     ?"This cheque was already deposited and its statement line is linked to it. In Banking, unlink that deposit line and categorize it again."
+     :"Ce chèque a déjà été déposé et sa ligne de relevé y est liée. Dans Banque, déliez cette ligne de dépôt et catégorisez-la de nouveau.");
+   }
    const rest=(form.paiements||[]).filter(x=>x.id!==p.id);
    const paid=rest.reduce((a,x)=>a+(x.montant||0),0);
    const newStatut=paid<=0.005?"Envoyée":(totals.total-totalAcomptes-paid)<=0.005?"Payée":"Payée partiellement";

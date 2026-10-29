@@ -2213,6 +2213,7 @@ ipcMain.handle('cheques:record',      (_e, data)          => require('./src/db/d
 ipcMain.handle('cheques:void',        (_e, id, reason)    => require('./src/db/database.js').chequeVoid(id, reason));
 ipcMain.handle('cheques:link',        (_e, txId, ids)     => require('./src/db/database.js').chequeLink(txId, ids));
 ipcMain.handle('cheques:candidates',  (_e, txId)          => require('./src/db/database.js').chequeCandidatesForTx(txId));
+ipcMain.handle('cheques:removePayment', (_e, paymentId, cents) => require('./src/db/database.js').chequeRemoveInvoicePayment(paymentId, cents));
 ipcMain.handle('cheques:outstanding', (_e, accId, asOf)   => require('./src/db/database.js').chequeOutstandingSummary(accId, asOf));
 
 // A statement PDF: read in the isolated PDF process like every other PDF, then
