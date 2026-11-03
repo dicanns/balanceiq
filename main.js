@@ -2244,6 +2244,7 @@ ipcMain.handle('bank:statement:import',    (_e, opts)                  => {
   return res;
 });
 // Cheque register: written and received cheques, and the statement lines they clear on.
+ipcMain.handle('bank:monthlySummary', (_e, opts) => require('./src/db/database.js').bankMonthlySummary(opts || {}));
 ipcMain.handle('cheques:list',        (_e, opts)          => require('./src/db/database.js').chequeList(opts || {}));
 ipcMain.handle('cheques:record',      (_e, data)          => require('./src/db/database.js').chequeRecord(data || {}));
 ipcMain.handle('cheques:void',        (_e, id, reason)    => require('./src/db/database.js').chequeVoid(id, reason));

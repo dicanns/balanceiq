@@ -4250,6 +4250,108 @@ function bankTransactionUnmatch(txId, _db) {
   return true;
 }
 
+// ── Monthly summary ────────────────────────────────────────────────────────
+// What one bank or card account paid for over a period, grouped by account the
+// way a bookkeeper's expense sheet is laid out: a row per category with the
+// amount before tax, the GST and QST entered, and the total. A line that paid
+// supplier bills is shown as those bills (their accounts and their tax); a line
+// where a cheque cleared as what the cheque was for. Money in is grouped the
+// same way in its own table, transfers are counted apart, and uncategorized
+// lines are listed so nothing is missing from the sheet without being noticed.
+// period: { statementId } for a statement, or { monthKey: 'YYYY-MM' }.
+function bankMonthlySummary({ bankAccountId = null, statementId = null, monthKey = null } = {}, _db) {
+  const db = _db || getDb();
+  const conds = ['1=1']; const args = [];
+  let period = null;
+  if (statementId) {
+    const st = db.prepare(`SELECT * FROM bank_statements WHERE id=?`).get(statementId);
+    if (!st) return { ok: false, error: 'statement_not_found' };
+    conds.push('bt.bank_statement_id=?'); args.push(statementId);
+    period = { from: st.period_start, to: st.period_end, statementId: st.id, bankAccountId: st.bank_account_id };
+    bankAccountId = st.bank_account_id;
+  } else if (monthKey && /^\d{4}-\d{2}$/.test(monthKey)) {
+    const [y, m] = monthKey.split('-').map(Number);
+    const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    period = { from: `${monthKey}-01`, to: `${monthKey}-${String(last).padStart(2, '0')}` };
+    conds.push('bt.transaction_date >= ? AND bt.transaction_date <= ?'); args.push(period.from, period.to);
+  } else {
+    return { ok: false, error: 'period_required' };
+  }
+  if (bankAccountId) { conds.push('bt.bank_account_id=?'); args.push(bankAccountId); }
+
+  const lines = db.prepare(`
+    SELECT bt.*, ba.name AS bank_account_name, ba.account_type AS bank_account_type,
+           ca.account_number, ca.name_fr AS coa_name_fr, ca.name_en AS coa_name_en, ca.type AS coa_type, ca.itc_pct
+    FROM bank_transactions bt
+    JOIN bank_accounts ba ON ba.id = bt.bank_account_id
+    LEFT JOIN chart_of_accounts ca ON ca.id = bt.coa_account_id
+    WHERE ${conds.join(' AND ')}
+    ORDER BY bt.bank_account_id, bt.transaction_date, bt.id`).all(...args);
+
+  const coaById = new Map(db.prepare(`SELECT id, account_number, name_fr, name_en, type, itc_pct FROM chart_of_accounts`).all().map(a => [a.id, a]));
+  const billsByTx = db.prepare(`SELECT * FROM supplier_bills WHERE bank_transaction_id=?`);
+  const chequesByTx = db.prepare(`SELECT * FROM cheques WHERE bank_transaction_id=? AND status='cleared'`);
+  const cents = (v) => Math.round((Number(v) || 0) * 100);
+
+  const accounts = new Map();
+  const bucket = (accId, name, type) => {
+    if (!accounts.has(accId)) accounts.set(accId, { id: accId, name, type, expenses: new Map(), inflows: new Map(), transfers: { count: 0, cents: 0 }, uncategorized: [], lineCount: 0 });
+    return accounts.get(accId);
+  };
+  const add = (map, coa, amountCents, tpsCents, tvqCents, memo) => {
+    const key = coa ? coa.account_number : '';
+    if (!map.has(key)) map.set(key, { account_number: key, name_fr: coa?.name_fr || '', name_en: coa?.name_en || '', itc_pct: coa?.itc_pct ?? 100, count: 0, gross_cents: 0, tps_cents: 0, tvq_cents: 0, net_cents: 0, items: [] });
+    const r = map.get(key);
+    r.count += 1; r.gross_cents += amountCents; r.tps_cents += tpsCents; r.tvq_cents += tvqCents; r.net_cents += amountCents - tpsCents - tvqCents;
+    r.items.push(memo);
+  };
+
+  for (const l of lines) {
+    const acc = bucket(l.bank_account_id, l.bank_account_name, l.bank_account_type);
+    acc.lineCount += 1;
+    const amt = cents(l.amount);
+    const out = amt < 0;
+    const memo = { date: l.transaction_date, description: l.description, cents: Math.abs(amt) };
+    if (l.is_transfer) { acc.transfers.count += 1; acc.transfers.cents += Math.abs(amt); continue; }
+    if (!l.coa_account_id && !l.matched_entity_type) { acc.uncategorized.push(memo); continue; }
+
+    if (l.matched_entity_type === 'supplier_bill') {
+      const bills = billsByTx.all(l.id);
+      if (bills.length) {
+        for (const b of bills) add(acc.expenses, coaById.get(b.coa_account_id), cents(b.amount), cents(b.tps_paid), cents(b.tvq_paid), { ...memo, description: `${b.supplier_name}${b.invoice_number ? ' ' + b.invoice_number : ''}`, cents: cents(b.amount) });
+        continue;
+      }
+    }
+    if (l.matched_entity_type === 'cheque') {
+      const chs = chequesByTx.all(l.id);
+      if (chs.length) {
+        for (const c of chs) {
+          const coa = c.kind === 'account' ? coaById.get(c.coa_account_id) : coaById.get(l.coa_account_id);
+          const m = { ...memo, description: `${l.description} (#${c.cheque_number || '-'} ${c.party_name || ''})`.trim(), cents: c.amount_cents };
+          if (c.direction === 'issued') add(acc.expenses, coa, c.amount_cents, c.kind === 'account' ? c.tps_cents : 0, c.kind === 'account' ? c.tvq_cents : 0, m);
+          else add(acc.inflows, coa, c.amount_cents, 0, 0, m);
+        }
+        continue;
+      }
+    }
+    const coa = coaById.get(l.coa_account_id);
+    if (out) add(acc.expenses, coa, Math.abs(amt), cents(l.tps_paid), cents(l.tvq_paid), memo);
+    else add(acc.inflows, coa, amt, cents(l.tps_paid), cents(l.tvq_paid), memo);
+  }
+
+  const finish = (map) => {
+    const rows = [...map.values()].sort((a, b) => a.account_number.localeCompare(b.account_number));
+    const totals = rows.reduce((t, r) => ({ count: t.count + r.count, gross_cents: t.gross_cents + r.gross_cents, tps_cents: t.tps_cents + r.tps_cents, tvq_cents: t.tvq_cents + r.tvq_cents, net_cents: t.net_cents + r.net_cents }),
+      { count: 0, gross_cents: 0, tps_cents: 0, tvq_cents: 0, net_cents: 0 });
+    return { rows, totals };
+  };
+  return {
+    ok: true, period,
+    accounts: [...accounts.values()].map(a => ({ id: a.id, name: a.name, type: a.type, lineCount: a.lineCount,
+      expenses: finish(a.expenses), inflows: finish(a.inflows), transfers: a.transfers, uncategorized: a.uncategorized })),
+  };
+}
+
 // Accounts whose balance is already driven by documents elsewhere in the app.
 // A customer payment recorded in Facturation posts Dr cash / Cr 1100 already, so
 // posting the matching bank line again would credit receivables twice and
@@ -8334,7 +8436,7 @@ module.exports = {
   bankLearnedRulesList, bankLearnedRuleDelete,
   taxPeriodCompute, taxPeriodSave, taxPeriodMarkFiled, taxPeriodList,
   invoiceBadDebtWriteOff, invoiceBadDebtRecover,
-  chequeList, chequeRecord, chequeVoid, chequeLink, chequeRemoveInvoicePayment, chequeCandidatesForTx, chequeAutoMatch, chequeOutstandingSummary,
+  chequeList, chequeRecord, chequeVoid, chequeLink, chequeRemoveInvoicePayment, bankMonthlySummary, chequeCandidatesForTx, chequeAutoMatch, chequeOutstandingSummary,
   taxSuspenseList, taxSuspenseClassifyAsCashExpense, taxSuspenseReverseCategorization,
   taxProfileList, taxProfileUpsert, taxProfileDelete,
   taxRegistrationGet, taxRegistrationSave,

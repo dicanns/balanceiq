@@ -6,6 +6,7 @@ import { parseCsvLines, looksLikeHeader, inferColumns, normalizeStatementDate, d
 import { looksLikeCapitalPurchase } from '../utils/calculations.js';
 import CapexGuide from './CapexGuide.jsx';
 import ChequesPanel, { ChequeLinkModal } from './ChequesPanel.jsx';
+import MonthlySummaryPanel from './MonthlySummaryPanel.jsx';
 
 // ── i18n ─────────────────────────────────────────────────────────────────────
 const UI = {
@@ -13,6 +14,7 @@ const UI = {
     tabComptes:       'Comptes',
     tabTransactions:  'Transactions',
     tabCheques:       'Chèques',
+    tabSommaire:      'Sommaire mensuel',
     chequeBtn:        'Chèque',
     chequeBtnTitle:   'Lier cette ligne au chèque qui y est passé',
     tabRapprochements:'Rapprochements',
@@ -260,6 +262,7 @@ const UI = {
     tabComptes:       'Accounts',
     tabTransactions:  'Transactions',
     tabCheques:       'Cheques',
+    tabSommaire:      'Monthly summary',
     chequeBtn:        'Cheque',
     chequeBtnTitle:   'Link this line to the cheque that cleared on it',
     tabRapprochements:'Reconciliations',
@@ -513,7 +516,7 @@ const fmt = (n) => {
 const fmtDate = (d) => d ? d.slice(0, 10) : '-';
 
 // ── BanqueTab ─────────────────────────────────────────────────────────────────
-export default function BanqueTab({ lang = 'fr', t: theme }) {
+export default function BanqueTab({ lang = 'fr', t: theme, companyName = '' }) {
   // The tab previously hardcoded a dark palette, so every label rendered
   // near-white on a light background in light mode. Derive colours from the
   // app theme instead, falling back to the original dark values.
@@ -1220,6 +1223,7 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
     { key: 'transactions',   label: T.tabTransactions },
     { key: 'rapprochements', label: T.tabRapprochements },
     { key: 'cheques',        label: T.tabCheques },
+    { key: 'sommaire',       label: T.tabSommaire },
     { key: 'regles',         label: T.tabRegles },
   ];
 
@@ -1648,6 +1652,9 @@ export default function BanqueTab({ lang = 'fr', t: theme }) {
       {/* ── RÈGLES ─────────────────────────────────────────────────────────────── */}
       {subTab === 'cheques' && (
         <ChequesPanel lang={lang} C={C} accounts={accounts} coaList={coaList} />
+      )}
+      {subTab === 'sommaire' && (
+        <MonthlySummaryPanel lang={lang} C={C} accounts={accounts} companyName={companyName} />
       )}
       {chequeTx && (
         <ChequeLinkModal lang={lang} C={C} tx={chequeTx} onClose={() => setChequeTx(null)}

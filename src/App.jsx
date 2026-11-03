@@ -8521,7 +8521,7 @@ function AppInner(){
             const cur=sectionTab[activeTab];
             return(<div style={{padding:"0 20px 24px"}}>
               <Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>{T.loading}</div>}>
-                {activeTab==="bank"&&cur==="comptes"&&<BanqueTabLazy lang={lang} t={t}/>}
+                {activeTab==="bank"&&cur==="comptes"&&<BanqueTabLazy lang={lang} t={t} companyName={companyInfo?.nom||""}/>}
                 {activeTab==="bank"&&cur==="fournisseurs"&&<BillsTabLazy lang={lang}/>}
                 {activeTab==="books"&&cur==="grandlivre"&&<GrandLivreTabLazy lang={lang}/>}
                 {activeTab==="books"&&cur==="comptabilite"&&<ChartOfAccountsTabLazy lang={lang} t={t}/>}
@@ -8792,7 +8792,7 @@ function AppInner(){
             {/*  GRAND LIVRE (General Ledger) - Sprint 2 Accounting Suite */}
             {configSubTab==="grandlivre"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>{T.loading}</div>}><GrandLivreTabLazy lang={lang}/></Suspense>)}
             {/*  BANQUE (Bank Reconciliation) - Sprint 3 Accounting Suite */}
-            {configSubTab==="banque"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>{T.loading}</div>}><BanqueTabLazy lang={lang} t={t}/></Suspense>)}
+            {configSubTab==="banque"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>{T.loading}</div>}><BanqueTabLazy lang={lang} t={t} companyName={companyInfo?.nom||""}/></Suspense>)}
             {configSubTab==="facturesfourn"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>{T.loading}</div>}><BillsTabLazy lang={lang}/></Suspense>)}
             {configSubTab==="taxperiod"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>{T.loading}</div>}><TaxPeriodTabLazy lang={lang}/></Suspense>)}
             {/*  BILAN (Balance Sheet) - Sprint 6 Accounting Suite */}
