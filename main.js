@@ -2034,7 +2034,7 @@ function revenueAccountLines(doc, revenueCents, accounts, { debit = false, memo 
 
 ipcMain.handle('ledger:invoice:post', async (_e, {
   invoiceId, invoiceDate, subtotalCents, tpsCents, tvqCents, totalCents, taxExempt,
-  lignes, remiseGlobale, remiseGlobaleType,
+  lignes, remiseGlobale, remiseGlobaleType, openingBalance,
 }) => {
   // Idempotent: the renderer's glEntryId can be lost, and re-posting would
   // double the revenue and the receivable.
@@ -2055,6 +2055,25 @@ ipcMain.handle('ledger:invoice:post', async (_e, {
 
   if (!ar || !revenue) {
     return { ok: false, error: 'missing_coa_accounts', detail: 'Comptes 1100 ou 4000 introuvables' };
+  }
+
+  // An invoice carried over from the previous software: owed to the business,
+  // but counted as revenue (and taxed) there, not here. The receivable comes in
+  // against opening balance equity, the same place every pre-BalanceIQ figure goes.
+  if (openingBalance) {
+    const opening = find('3400');
+    if (!opening) return { ok: false, error: 'missing_coa_accounts', detail: 'Compte 3400 introuvable' };
+    const cents = Math.round(Number(totalCents) || 0);
+    if (cents <= 0) return { ok: false, error: 'invalid_amount' };
+    const { entryId } = glDraftEntry({
+      entry_date: invoiceDate, description: `Solde d'ouverture - facture ${invoiceId}`, source_type: 'invoice', source_id: String(invoiceId),
+      lines: [
+        { account_id: ar.id, debit_cents: cents, credit_cents: 0, memo: `Facture ${invoiceId}` },
+        { account_id: opening.id, debit_cents: 0, credit_cents: cents, memo: "Solde d'ouverture" },
+      ],
+    });
+    glPostEntry(entryId);
+    return { ok: true, entryId, openingBalance: true };
   }
 
   // The renderer rounds subtotal, each tax and the total to cents separately,
@@ -2089,7 +2108,7 @@ ipcMain.handle('ledger:invoice:post', async (_e, {
 
 ipcMain.handle('ledger:creditnote:post', async (_e, {
   creditNoteId, creditNoteDate, subtotalCents, tpsCents, tvqCents, totalCents, taxExempt,
-  lignes, deduction,
+  lignes, deduction, openingBalance,
 }) => {
   const already = glFindEntryBySource('credit_note', creditNoteId);
   if (already && already.status === 'posted') return { ok: true, entryId: already.id, alreadyPosted: true };
@@ -2105,6 +2124,24 @@ ipcMain.handle('ledger:creditnote:post', async (_e, {
 
   if (!ar || !revenue) {
     return { ok: false, error: 'missing_coa_accounts' };
+  }
+
+  // A credit on an invoice carried over from the previous software takes the
+  // receivable back out against opening balance equity, where it came in.
+  if (openingBalance) {
+    const opening = find('3400');
+    if (!opening) return { ok: false, error: 'missing_coa_accounts', detail: 'Compte 3400 introuvable' };
+    const cents = Math.round(Number(totalCents) || 0);
+    if (cents <= 0) return { ok: false, error: 'invalid_amount' };
+    const { entryId } = glDraftEntry({
+      entry_date: creditNoteDate, description: `Note de crédit ${creditNoteId} (solde d'ouverture)`, source_type: 'credit_note', source_id: String(creditNoteId),
+      lines: [
+        { account_id: ar.id, debit_cents: 0, credit_cents: cents, memo: `Note de crédit ${creditNoteId}` },
+        { account_id: opening.id, debit_cents: cents, credit_cents: 0, memo: "Solde d'ouverture" },
+      ],
+    });
+    glPostEntry(entryId);
+    return { ok: true, entryId, openingBalance: true };
   }
 
   // Same split as an invoice, mirrored, so a credit note is the exact reverse.

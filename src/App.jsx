@@ -18,6 +18,7 @@ const BanqueTabLazy           = lazy(() => import('./components/BanqueTab.jsx'))
 const BilanTabLazy            = lazy(() => import('./components/BilanTab.jsx'));
 const ImmobilisationsTabLazy  = lazy(() => import('./components/ImmobilisationsTab.jsx'));
 const TaxPeriodTabLazy        = lazy(() => import('./components/TaxPeriodTab.jsx'));
+const OpeningReceivablesModalLazy = lazy(() => import('./components/OpeningReceivablesModal.jsx'));
 const BillsTabLazy            = lazy(() => import('./components/BillsTab.jsx'));
 import { BreadcrumbProvider, BreadcrumbBar, useBreadcrumb } from './components/Breadcrumbs.jsx';
 const VaultTabLazy            = lazy(() => import('./components/VaultTab.jsx'));
@@ -247,7 +248,7 @@ const DEFAULT_GL_ACCOUNTS={
  hydro:"6100",gazNat:"6110",loyer:"6120",csst:"6130",
  telephone:"6140",internet:"6150",assurances:"6160",
  entretien:"6170",fournitures:"6180",publicite:"6190",
- transport:"6200",autre:"6210",badDebt:"6430",
+ transport:"6200",autre:"6210",badDebt:"6430",openingEquity:"3400",
 };
 const BLANK_CASH={cashierId:"",posVentes:null,posTPS:null,posTVQ:null,posLivraisons:null,float:null,interac:null,livraisons:null,deposits:null,finalCash:null,pmtVisa:null,pmtMastercard:null,pmtDebit:null,pmtAmex:null,pmtOther:null,pmtTips:null,pmtGiftCard:null};
 const BLANK_EMP={name:"",hours:null,wage:null};
@@ -1404,7 +1405,7 @@ function ComptabiliteExport({factures,clients,produits,categories,companyInfo,on
   const buildFacRows=()=>{
     const hdr=["Date","# Facture","Code client","Nom client","Code produit","Catégorie","# Compte revenu","Description","Quantité","Prix unitaire","Remise %","Remise $","Sous-total","TPS","TVQ","Total"];
     const data=[];
-    const facs=factures.filter(f=>!["Annulée","Brouillon"].includes(f.statut)&&f.documentType!=="proforma"&&(!dateFrom||f.date>=dateFrom)&&(!dateTo||f.date<=dateTo));
+    const facs=factures.filter(f=>!["Annulée","Brouillon"].includes(f.statut)&&f.documentType!=="proforma"&&!f.openingBalance&&(!dateFrom||f.date>=dateFrom)&&(!dateTo||f.date<=dateTo));
     for(const fac of facs){const cl=clients.find(c=>c.id===fac.clientId);for(const l of fac.lignes||[]){const prod=produits.find(p=>p.id===l.produitId);const cat=categories.find(c=>c.id===prod?.categorieId);const st=lineTotal(l);const tps=l.tps!==false?st*0.05:0;const tvq=l.tvq!==false?st*0.09975:0;const isAmt=l.remiseType===DISCOUNT_AMOUNT;data.push([fac.date||"",fac.numero||"",cl?.code||"",cl?.entreprise||"",prod?.code||"",cat?.nom||"",cat?.compteRevenu||"",l.description||"",l.quantite||0,parseFloat((l.prixUnitaire||0).toFixed(2)),isAmt?0:parseFloat((l.remise||0).toFixed(1)),isAmt?parseFloat((l.remise||0).toFixed(2)):0,parseFloat(st.toFixed(2)),parseFloat(tps.toFixed(2)),parseFloat(tvq.toFixed(2)),parseFloat((st+tps+tvq).toFixed(2))]);}const dr=subtotalDiscountRow(fac);if(dr)data.push([fac.date||"",fac.numero||"",cl?.code||"",cl?.entreprise||"","","","",dr.label,"","","",parseFloat(dr.amount.toFixed(2)),parseFloat(dr.st.toFixed(2)),parseFloat(dr.tps.toFixed(2)),parseFloat(dr.tvq.toFixed(2)),parseFloat((dr.st+dr.tps+dr.tvq).toFixed(2))]);}
     return{hdr,data};
   };
@@ -1442,6 +1443,11 @@ function ComptabiliteExport({factures,clients,produits,categories,companyInfo,on
       const cl=clients.find(c=>c.id===fac.clientId);
       const clName=cl?.entreprise||"";
       const totals=computeSoumTotals(fac.lignes||[],fac);
+      if(fac.openingBalance){
+        data.push([fac.date,"VE",fac.numero,`Solde d'ouverture - ${fac.numero}`,GL.openingEquity,"",totals.total.toFixed(2),clName]);
+        data.push([fac.date,"VE",fac.numero,`Ctes clients - ${fac.numero}`,GL.ar,totals.total.toFixed(2),"",clName]);
+        continue;
+      }
       for(const l of fac.lignes||[]){
         const prod=produits.find(p=>p.id===l.produitId);
         const cat=categories.find(c=>c.id===prod?.categorieId);
@@ -1484,6 +1490,11 @@ function ComptabiliteExport({factures,clients,produits,categories,companyInfo,on
       const cl=clients.find(c=>c.id===fac.clientId);
       const clName=cl?.entreprise||"";
       const totals=computeSoumTotals(fac.lignes||[],fac);
+      if(fac.openingBalance){
+        data.push([fac.date,fac.numero,`Opening balance - ${fac.numero}`,GL.openingEquity,"Opening Balance Equity","",totals.total.toFixed(2)]);
+        data.push([fac.date,fac.numero,`A/R - ${fac.numero} - ${clName}`,GL.ar,"Accounts Receivable",totals.total.toFixed(2),""]);
+        continue;
+      }
       for(const l of fac.lignes||[]){
         const prod=produits.find(p=>p.id===l.produitId);
         const cat=categories.find(c=>c.id===prod?.categorieId);
@@ -1555,7 +1566,7 @@ function ComptabiliteExport({factures,clients,produits,categories,companyInfo,on
  setMsg("");setUpgradeMsg(false);
  if(exportType==="facturation"){
  const rows=[["Date","# Facture","Code client","Nom client","Code produit","Catégorie","# Compte revenu","Description","Quantité","Prix unitaire","Remise %","Remise $","Sous-total","TPS","TVQ","Total"]];
- const facs=factures.filter(f=>!["Annulée","Brouillon"].includes(f.statut)&&(!dateFrom||f.date>=dateFrom)&&(!dateTo||f.date<=dateTo));
+ const facs=factures.filter(f=>!["Annulée","Brouillon"].includes(f.statut)&&!f.openingBalance&&(!dateFrom||f.date>=dateFrom)&&(!dateTo||f.date<=dateTo));
  for(const fac of facs){const cl=clients.find(c=>c.id===fac.clientId);for(const l of fac.lignes||[]){const prod=produits.find(p=>p.id===l.produitId);const cat=categories.find(c=>c.id===prod?.categorieId);const st=lineTotal(l);const tps=l.tps!==false?st*0.05:0;const tvq=l.tvq!==false?st*0.09975:0;const isAmt=l.remiseType===DISCOUNT_AMOUNT;rows.push([fac.date||"",fac.numero||"",cl?.code||"",cl?.entreprise||"",prod?.code||"",cat?.nom||"",cat?.compteRevenu||"",l.description||"",l.quantite||0,(l.prixUnitaire||0).toFixed(2),isAmt?"0.0":(l.remise||0).toFixed(1),isAmt?(l.remise||0).toFixed(2):"0.00",st.toFixed(2),tps.toFixed(2),tvq.toFixed(2),(st+tps+tvq).toFixed(2)]);}const dr=subtotalDiscountRow(fac);if(dr)rows.push([fac.date||"",fac.numero||"",cl?.code||"",cl?.entreprise||"","","","",dr.label,"","","",dr.amount.toFixed(2),dr.st.toFixed(2),dr.tps.toFixed(2),dr.tvq.toFixed(2),(dr.st+dr.tps+dr.tvq).toFixed(2)]);}
  if(rows.length<=1){setMsg("Aucune donnée dans cette période.");return;}
  buildCSV(rows,"journal-facturation");setMsg(`${rows.length-1} ligne${rows.length>2?"s":""} exportée${rows.length>2?"s":""}.`);
@@ -1997,6 +2008,8 @@ function EditorLayer({title,onClose,children}){
 }
 
 function FacturationTab({categories,saveCategories,produits,saveProduits,clients,saveClients,soumissions,saveSoumissions,commandes,saveCommandes,factures,saveFactures,creditNotes,saveCreditNotes,docNums,saveDocNums,companyInfo,encaisseData,persistEncaisse,showUpgradePrompt,apiConfig,recurrents,saveRecurrents,invoiceTemplate,rawInvoiceTemplate,saveInvoiceTemplate,canUse,glAccounts,saveGlAccounts,deepLink,onDeepLinkDone}){
+ // Opening receivables: invoices still owed when the business moved here.
+ const [showOpeningImport,setShowOpeningImport]=useState(false);
  const t=useT();
  const T=useL();
  const [subTab,setSubTab]=useState("documents");
@@ -2161,7 +2174,7 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
   document.body):null;
 
  return(<div style={{display:"flex",flexDirection:"column",gap:0}}>{editorLayer}{/* Sub-nav */}<div style={{display:"flex",gap:1,marginBottom:10,borderBottom:`1px solid ${t.dividerMid}`,overflowX:"auto",alignItems:"center"}}>{subTabs.map(s=>(<button key={s.id} onClick={()=>!s.soon&&setSubTab(s.id)} style={{background:"none",border:"none",color:subTab===s.id?"#f97316":s.soon?t.textDim:t.textMuted,fontSize:11.5,fontWeight:600,padding:"5px 10px",cursor:s.soon?"default":"pointer",borderBottom:subTab===s.id?"2px solid #f97316":"2px solid transparent",whiteSpace:"nowrap",opacity:s.soon?0.5:1}}>
- {s.label}{s.soon&&<span style={{fontSize:8,marginLeft:4,color:t.textDim,fontWeight:400}}>bientôt</span>}</button>))}<div style={{flex:1}}/><button onClick={()=>openDoc("soumission",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,marginBottom:2}}>{T.facNewQuote}</button><button onClick={()=>openDoc("commande",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,marginBottom:2}}>{T.facNewOrder}</button><button onClick={()=>openDoc("facture",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,marginBottom:2}}>{T.facNewInvoice}</button>{canUse("proformaInvoices")&&<button onClick={()=>openDoc("proforma",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(167,139,250,0.35)",background:"rgba(167,139,250,0.08)",color:"#a78bfa",cursor:"pointer",fontWeight:700,marginBottom:2}}>{T.proformaNew||"+ Proforma"}</button>}<button onClick={()=>openDoc("creditnote",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:700,marginBottom:2}}>{T.facNewCreditNote}</button></div>{/* Recurring invoices alert banner */}
+ {s.label}{s.soon&&<span style={{fontSize:8,marginLeft:4,color:t.textDim,fontWeight:400}}>bientôt</span>}</button>))}<div style={{flex:1}}/><button onClick={()=>openDoc("soumission",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,marginBottom:2}}>{T.facNewQuote}</button><button onClick={()=>openDoc("commande",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,marginBottom:2}}>{T.facNewOrder}</button><button onClick={()=>openDoc("facture",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,marginBottom:2}}>{T.facNewInvoice}</button>{canUse("proformaInvoices")&&<button onClick={()=>openDoc("proforma",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(167,139,250,0.35)",background:"rgba(167,139,250,0.08)",color:"#a78bfa",cursor:"pointer",fontWeight:700,marginBottom:2}}>{T.proformaNew||"+ Proforma"}</button>}<button onClick={()=>openDoc("creditnote",null,null)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:700,marginBottom:2}}>{T.facNewCreditNote}</button>{<button onClick={()=>setShowOpeningImport(true)} style={{fontSize:10.5,padding:"3px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,marginBottom:2}}>{T.facImportOpening}</button>}</div>{showOpeningImport&&<React.Suspense fallback={null}><OpeningReceivablesModalLazy clients={clients} saveClients={saveClients} factures={factures} saveFactures={saveFactures} lang={T===EN?"en":"fr"} t={t} onClose={()=>setShowOpeningImport(false)}/></React.Suspense>}{/* Recurring invoices alert banner */}
  {canUse("recurringInvoices")&&dueCount>0&&<div style={{background:"rgba(249,115,22,0.08)",border:"1px solid rgba(249,115,22,0.3)",borderRadius:8,padding:"8px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}><span style={{fontSize:11.5,color:"#f97316",fontWeight:600}}>{dueCount} facture{dueCount!==1?"s":""} récurrente{dueCount!==1?"s":""} à générer</span><button onClick={()=>setShowRecurringModal(true)} style={{padding:"4px 14px",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>Générer</button></div>}
 
  {/* Recurring generate modal */}
@@ -3763,7 +3776,7 @@ function NoteDeCreditEditor({showBack,creditNote,clients,factures,companyInfo,do
  const _cnExempt=!!(clients?.find(c=>c.id===_cnClientId)?.taxExempt);
  window.api.ledger.creditNotePost({
  creditNoteId:id,creditNoteDate:form.date,
- ...revenueSource(activeLignes,null),deduction:form.raison===REMITTANCE_DEDUCTION_REASON,
+ ...revenueSource(activeLignes,null),deduction:form.raison===REMITTANCE_DEDUCTION_REASON,openingBalance:!!linkedFac?.openingBalance,
  subtotalCents:Math.round((totals.sousTotal||0)*100),
  tpsCents:Math.round((totals.tpsTotal||0)*100),
  tvqCents:Math.round((totals.tvqTotal||0)*100),
@@ -3798,7 +3811,7 @@ function NoteDeCreditEditor({showBack,creditNote,clients,factures,companyInfo,do
  if(!rev?.ok){alert(T===EN?"The ledger entry could not be reversed, so the correction was not posted. The credit note was saved.":"L'écriture n'a pas pu être annulée, la correction n'a donc pas été comptabilisée. La note de crédit est enregistrée.");return;}
  const res=await window.api.ledger.creditNotePost({
  creditNoteId:id,creditNoteDate:form.date,
- ...revenueSource(activeLignes,null),deduction:form.raison===REMITTANCE_DEDUCTION_REASON,
+ ...revenueSource(activeLignes,null),deduction:form.raison===REMITTANCE_DEDUCTION_REASON,openingBalance:!!linkedFac?.openingBalance,
  subtotalCents:Math.round((totals.sousTotal||0)*100),
  tpsCents:Math.round((totals.tpsTotal||0)*100),
  tvqCents:Math.round((totals.tvqTotal||0)*100),

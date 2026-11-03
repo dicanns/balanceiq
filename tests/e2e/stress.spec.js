@@ -104,9 +104,9 @@ test.describe.serial('0 - App launch & mode selection', () => {
       await restaurantBtn.click();
       await win.waitForTimeout(800);
     }
-    // Either way, the sidebar should now be visible (BIQ logo)
-    const sidebar = await win.locator('text=BIQ').first();
-    expect(await sidebar.count()).toBeGreaterThan(0);
+    // Either way, the sidebar should now be visible (BIQ logo). The first
+    // paint can land after the mode choice, so wait for it rather than count once.
+    await expect(win.locator('text=BIQ').first()).toBeVisible({ timeout: 15000 });
   });
 });
 
