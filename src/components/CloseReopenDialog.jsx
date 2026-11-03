@@ -52,6 +52,7 @@ export default function CloseReopenDialog({ open, session, closePolicy, T, t, la
         actor_name: actor.name,
         actor_role: actor.role ?? null,
         approval_method: actor.identity_method,
+        actor_token: actor.actor_token,
         reason: reasonTrimmed,
       });
       resetState();

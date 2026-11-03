@@ -99,11 +99,17 @@ Deno.serve(async (req: Request) => {
       metadata: { org_id, client_id, mandate_id: mandateId },
     });
 
-    // Store setup intent ID on the mandate so the webhook can match it
-    await supabase
+    // Store setup intent ID on the mandate so the webhook can match it. If this
+    // write fails the mandate could never be activated, so the caller hears it
+    // now instead of waiting for a webhook that never matches.
+    const { error: siErr } = await supabase
       .from('pad_mandates')
       .update({ stripe_setup_intent: session.setup_intent as string })
       .eq('id', mandateId);
+    if (siErr) {
+      console.error('create-pad-mandate: could not record setup intent', siErr);
+      return json({ error: 'mandate_not_recorded', detail: 'The mandate could not be saved. Please try again.' }, 500);
+    }
 
     return json({ ok: true, checkout_url: session.url, mandate_id: mandateId });
   } catch (e) {

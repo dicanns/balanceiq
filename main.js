@@ -143,7 +143,7 @@ const COMPANY_DATA_DIR = companies.dataDirFor(USER_DATA_DIR, ACTIVE_COMPANY);
 try { fs.mkdirSync(COMPANY_DATA_DIR, { recursive: true }); } catch (_) {}
 setDataDir(COMPANY_DATA_DIR);
 
-const { hashPin, verifyPin, enforceRole } = require('./src/services/identityCore.js');
+const { hashPin, verifyPin, enforceRole, createActorRegistry } = require('./src/services/identityCore.js');
 
 const BACKUP_DIR = () => path.join(COMPANY_DATA_DIR, 'Backups');
 const BACKUP_KEEP_DAYS = 30;
@@ -295,6 +295,14 @@ function netRequest(opts) {
 }
 
 // Exchange OAuth code for access token
+// A Shopify shop is always <name>.myshopify.com. The shop domain arrives from a
+// deep link anyone can craft, and the access token is sent to it, so anything
+// else is refused before a request is built.
+function shopifyShopDomain(raw) {
+  const shop = String(raw || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+  return /^[a-z0-9][a-z0-9-]{0,98}\.myshopify\.com$/.test(shop) ? shop : null;
+}
+
 async function exchangePosOAuthCode(posType, code, shopDomain) {
   const isDev = !app.isPackaged;
   const env = isDev ? 'sandbox' : 'production';
@@ -334,7 +342,8 @@ async function exchangePosOAuthCode(posType, code, shopDomain) {
   }
 
   if (posType === 'shopify' && shopDomain) {
-    const shop = shopDomain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const shop = shopifyShopDomain(shopDomain);
+    if (!shop) return { error: 'invalid_shop_domain' };
     const body = JSON.stringify({
       client_id: 'a728cf71c0b64c5d7e0694567a085d0d',
       client_secret: POS_SECRETS.shopify.clientSecret,
@@ -1197,7 +1206,8 @@ ipcMain.handle('pos:startOAuth', async (_event, posType, shopDomain) => {
     const p = new URLSearchParams({ client_id: '5GTA1NCXTO5YY', redirect_uri: OAUTH_CALLBACK_URL, state });
     authUrl = `${base}/oauth/authorize?${p}`;
   } else if (posType === 'shopify' && shopDomain) {
-    const shop = shopDomain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const shop = shopifyShopDomain(shopDomain);
+    if (!shop) return { error: 'invalid_shop_domain' };
     const p = new URLSearchParams({ client_id: 'a728cf71c0b64c5d7e0694567a085d0d', scope: 'read_orders,read_products', redirect_uri: OAUTH_CALLBACK_URL, state });
     authUrl = `https://${shop}/admin/oauth/authorize?${p}`;
   }
@@ -1247,7 +1257,7 @@ ipcMain.handle('pos:testConnection', async (_event, posType) => {
       return { connected: res.status === 200, merchantName: res.body?.name };
     }
     if (posType === 'shopify') {
-      const res = await netRequest({ method: 'GET', url: `https://${cred.shopDomain}/admin/api/2024-01/shop.json`, headers: { 'X-Shopify-Access-Token': cred.accessToken } });
+      const res = await netRequest({ method: 'GET', url: `https://${shopifyShopDomain(cred.shopDomain) || 'invalid.myshopify.com.invalid'}/admin/api/2024-01/shop.json`, headers: { 'X-Shopify-Access-Token': cred.accessToken } });
       return { connected: res.status === 200, merchantName: res.body?.shop?.name };
     }
   } catch (err) { return { connected: false, error: err.message }; }
@@ -1347,7 +1357,7 @@ ipcMain.handle('pos:fetchDailySales', async (_event, posType, dateStr) => {
     }
     if (posType === 'shopify') {
       const params = new URLSearchParams({ status: 'any', financial_status: 'paid', source_name: 'pos', created_at_min: `${dateStr}T00:00:00-05:00`, created_at_max: `${dateStr}T23:59:59-05:00`, limit: '250' });
-      const res = await netRequest({ method: 'GET', url: `https://${cred.shopDomain}/admin/api/2024-01/orders.json?${params}`, headers: { 'X-Shopify-Access-Token': cred.accessToken } });
+      const res = await netRequest({ method: 'GET', url: `https://${shopifyShopDomain(cred.shopDomain) || 'invalid.myshopify.com.invalid'}/admin/api/2024-01/orders.json?${params}`, headers: { 'X-Shopify-Access-Token': cred.accessToken } });
       const orders = res.body?.orders || [];
       let totalNet = 0, tipCents = 0, discountCents = 0, nonTaxable = 0;
       const hourlyMap = {};
@@ -3318,9 +3328,9 @@ ipcMain.handle('close:policy:save',           (_e, policy)     => closePolicySav
 ipcMain.handle('close:session:get',             (_e, id)         => closeSessionGet(id));
 ipcMain.handle('close:session:list',            (_e, opts)       => closeSessionList(opts || {}));
 ipcMain.handle('close:session:createOrLoad',    (_e, opts)       => closeSessionCreateOrLoad(opts));
-ipcMain.handle('close:session:transition',      (_e, opts)       => closeSessionTransition(opts || {}));
+ipcMain.handle('close:session:transition',      (_e, opts)       => closeSessionTransition(withVerifiedActor(opts)));
 ipcMain.handle('close:session:setCarryForward', (_e, opts)       => closeStoreCarryForward(opts || {}));
-ipcMain.handle('close:approval:create',       (_e, opts)       => closeApprovalCreate(opts || {}));
+ipcMain.handle('close:approval:create',       (_e, opts)       => closeApprovalCreate(withVerifiedActor(opts)));
 ipcMain.handle('close:approval:list',         (_e, sessionId)  => closeApprovalList(sessionId));
 ipcMain.handle('close:override:record',       (_e, opts)       => closeOverrideRecord(opts || {}));
 ipcMain.handle('close:variance:reveal',       (_e, closureId, actor) => closeVarianceReveal(closureId, actor));
@@ -3352,6 +3362,12 @@ ipcMain.handle('identity:users:setPin',     (_e, opts) => {
   const { hash, salt } = hashPin(pin);
   return localUserSetPin({ id, pin_hash: hash, pin_salt: salt });
 });
+// Verified-actor tokens (see identityCore.createActorRegistry): a transition or
+// approval claiming a PIN or signed-in verification must carry the token that
+// verification issued.
+const actorRegistry = createActorRegistry();
+const withVerifiedActor = (opts) => actorRegistry.trust(opts);
+
 ipcMain.handle('identity:verify', (_e, opts) => {
   const { method, name, pin, cloudUser, requiredRole } = opts || {};
   let actor = null;
@@ -3378,7 +3394,7 @@ ipcMain.handle('identity:verify', (_e, opts) => {
   if (requiredRole && !enforceRole(actor.role, requiredRole)) {
     return { ok: false, error: 'role_insufficient', actor };
   }
-  return { ok: true, actor };
+  return { ok: true, actor: { ...actor, actor_token: actorRegistry.issue(actor) } };
 });
 
 app.on('window-all-closed', () => {

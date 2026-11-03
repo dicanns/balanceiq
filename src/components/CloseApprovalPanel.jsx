@@ -75,6 +75,7 @@ export default function CloseApprovalPanel({ session, closePolicy, t, T, lang, c
         actor_name: actor.name,
         actor_role: actor.role ?? null,
         approval_method: actor.identity_method,
+        actor_token: actor.actor_token,
         reason: reason || null,
       });
       loadApprovals();
