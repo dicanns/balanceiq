@@ -16,3 +16,13 @@ export const CLOSED_INVOICE_STATUSES = ['Payée', 'Créditée', WRITTEN_OFF, 'An
 export function isCashPayment(p) {
   return !!p && !p.fromCredit && !p.badDebt;
 }
+
+// One definition of "overdue" for the dashboard, the lists, the editor badge and
+// the Today list: still owing (not closed, not a draft, not a pro forma) with a
+// due date before today. A part-paid late invoice is overdue too.
+export function isOverdue(invoice, todayStr) {
+  if (!invoice || !todayStr) return false;
+  if (invoice.documentType === 'proforma') return false;
+  if (CLOSED_INVOICE_STATUSES.includes(invoice.statut)) return false;
+  return !!invoice.dateEcheance && invoice.dateEcheance < todayStr;
+}

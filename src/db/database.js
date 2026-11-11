@@ -10,6 +10,8 @@ const {
   parseCsvLines, looksLikeHeader, inferColumns,
 } = require('../utils/importParse.mjs');
 const { transferRule } = require('../utils/transferRule.mjs');
+const { csvField } = require('../utils/csvSafe.mjs');
+const { STRINGS } = require('../services/mainStrings.cjs');
 const { WRITTEN_OFF } = require('../utils/invoiceStatus.mjs');
 const { CHEQUE_ISSUED, CHEQUE_RECEIVED, chequeNumberFromDescription, normalizeChequeNumber } = require('../utils/chequeNumber.mjs');
 
@@ -2188,13 +2190,18 @@ function auditQuery({ module, action, recordType, recordId, dateFrom, dateTo, li
   return getDb().prepare(sql).all(...params);
 }
 
-// Maximum byte length for a kv_store value (10 MB). Guards against runaway payloads
+// Maximum byte length for a kv_store value. A whole company's invoice list is ONE
+// value (dicann-fac-factures), so the cap has to leave room for years of invoices;
+// it was 10 MB, which a busy company reaches. Guards against runaway payloads
 // from bugs or malicious input writing unbounded data into SQLite.
-const KV_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+const KV_MAX_MB = 64;
+const KV_MAX_BYTES = KV_MAX_MB * 1024 * 1024;
 
-// Maximum length for individual text fields stored inside JSON values.
-// Enforced at write time so no single field can bloat the DB.
-const FIELD_MAX_LEN = 500;
+// Maximum length for individual free-text fields stored inside JSON values. It was
+// 500 characters and silently cut long invoice notes; it is now far above any real
+// note, and the invoice / customer / quote keys are never cut at all.
+const FIELD_MAX_LEN = 20000;
+const UNCLAMPED_KV_PREFIX = 'dicann-fac-';
 
 // Clamp free-text fields inside a parsed object to FIELD_MAX_LEN characters.
 // Only touches known free-text keys; numeric and date fields are left alone.
@@ -2231,11 +2238,14 @@ function storageSet(key, value) {
     throw new TypeError(`storageSet: value must be a JSON string, got ${typeof value}`);
   }
   if (Buffer.byteLength(value, 'utf8') > KV_MAX_BYTES) {
-    throw new RangeError(`storageSet: value for key "${key}" exceeds ${KV_MAX_BYTES / 1024 / 1024} MB limit`);
+    // The renderer shows this text in its save-failed banner: both languages, never a silent drop.
+    const fill = (str) => str.replace('{key}', key).replace('{mb}', String(KV_MAX_MB));
+    throw new RangeError(`${fill(STRINGS.fr.storageTooLarge)} / ${fill(STRINGS.en.storageTooLarge)}`);
   }
   // Clamp free-text fields to prevent unbounded string storage
   let sanitised = value;
   try {
+    if (key.startsWith(UNCLAMPED_KV_PREFIX)) throw new Error('unclamped');
     const parsed = JSON.parse(value);
     sanitised = JSON.stringify(clampFreeTextFields(parsed));
   } catch {
@@ -3100,7 +3110,7 @@ function coaExportCSV() {
   const rows = coaList();
   const header = 'account_number,name_fr,name_en,type,tax_hint,is_simplified,is_system';
   const lines = rows.map(r =>
-    [r.account_number, r.name_fr, r.name_en, r.type, r.tax_hint || '', r.is_simplified, r.is_system].join(',')
+    [r.account_number, r.name_fr, r.name_en, r.type, r.tax_hint || '', r.is_simplified, r.is_system].map(csvField).join(',')
   );
   return [header, ...lines].join('\n');
 }
@@ -4389,8 +4399,17 @@ function bankMonthlySummary({ bankAccountId = null, statementId = null, monthKey
         for (const c of chs) {
           const coa = c.kind === 'account' ? coaById.get(c.coa_account_id) : coaById.get(l.coa_account_id);
           const m = { ...memo, description: `${l.description} (#${c.cheque_number || '-'} ${c.party_name || ''})`.trim(), cents: c.amount_cents };
-          if (c.direction === 'issued') add(acc.expenses, coa, c.amount_cents, c.kind === 'account' ? c.tps_cents : 0, c.kind === 'account' ? c.tvq_cents : 0, m);
-          else add(acc.inflows, coa, c.amount_cents, 0, 0, m);
+          if (c.direction === 'issued' && c.kind === 'supplier_bills') {
+            // Shown like a bill paid by a bank line: under each bill's own expense account, with its tax.
+            const paid = _jsonList(c.bill_ids).map(id => db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(id)).filter(Boolean);
+            if (paid.length) {
+              for (const b of paid) add(acc.expenses, coaById.get(b.coa_account_id), cents(b.amount), cents(b.tps_paid), cents(b.tvq_paid), { ...m, description: `${b.supplier_name}${b.invoice_number ? ' ' + b.invoice_number : ''} (#${c.cheque_number || '-'})`, cents: cents(b.amount) });
+              continue;
+            }
+          }
+          const taxed = c.kind === 'account' && (c.direction === 'issued' || _bankLineCarriesTax(1, coa?.type));
+          if (c.direction === 'issued') add(acc.expenses, coa, c.amount_cents, taxed ? c.tps_cents : 0, taxed ? c.tvq_cents : 0, m);
+          else add(acc.inflows, coa, c.amount_cents, taxed ? c.tps_cents : 0, taxed ? c.tvq_cents : 0, m);
         }
         continue;
       }
@@ -5148,6 +5167,11 @@ function _monthsInRange(periodStart, periodEnd) {
   return months;
 }
 
+// Ledger entries whose 2100/2110 lines are tax collected on a sale: invoices, credit
+// notes, and sales received by cheque (the cheque posts the tax; the bank line that
+// later clears it posts nothing, so it is never counted twice).
+const SALES_TAX_SOURCES_SQL = "('invoice','credit_note','cheque')";
+
 function taxPeriodCompute(periodStart, periodEnd, _db) {
   const db = _db || getDb();
   const months = _monthsInRange(periodStart, periodEnd);
@@ -5255,7 +5279,7 @@ function taxPeriodCompute(periodStart, periodEnd, _db) {
          JOIN chart_of_accounts ca ON ca.id = jl.account_id
          WHERE ca.account_number = ?
            AND je.entry_date >= ? AND je.entry_date <= ?
-           AND COALESCE(orig.source_type, je.source_type) IN ('invoice','credit_note')`
+           AND COALESCE(orig.source_type, je.source_type) IN ${SALES_TAX_SOURCES_SQL}`
       ).get(accountNumber, periodStart, periodEnd);
       return row?.amt || 0;
     } catch (_) { return 0; }
@@ -5270,7 +5294,10 @@ function taxPeriodCompute(periodStart, periodEnd, _db) {
          JOIN chart_of_accounts ca ON ca.id = jl.account_id
          WHERE ca.type = 'revenue'
            AND je.entry_date >= ? AND je.entry_date <= ?
-           AND COALESCE(orig.source_type, je.source_type) IN ('invoice','credit_note')`
+           AND (COALESCE(orig.source_type, je.source_type) IN ('invoice','credit_note')
+                OR (COALESCE(orig.source_type, je.source_type) = 'cheque'
+                    AND EXISTS (SELECT 1 FROM journal_lines tl JOIN chart_of_accounts tc ON tc.id = tl.account_id
+                                WHERE tl.entry_id = je.id AND tc.account_number IN ('2100','2110'))))`
       ).get(periodStart, periodEnd);
       return row?.amt || 0;
     } catch (_) { return 0; }
@@ -6358,13 +6385,15 @@ function _chequeEntryLines(db, ch) {
   if (!target) return { error: 'no_account' };
   if (target.id === bankCoa.id) return { error: 'same_account' };
   // Tax rides only where a bank line would carry it: a purchase paid by cheque,
-  // or a refund of one received by cheque.
+  // a refund of one received by cheque, or a sale received by cheque and booked
+  // straight to a revenue account (tax collected: 2100/2110, like a deposit line).
   let tps = 0, tvq = 0, gstId = null, qstId = null;
-  const taxable = ch.kind === 'account' && (issued || ['expense', 'cogs'].includes(target.type));
+  const sale = !issued && ch.kind === 'account' && _bankLineIsSale(1, target.type);
+  const taxable = ch.kind === 'account' && (issued || sale || ['expense', 'cogs'].includes(target.type));
   if (taxable) {
-    const gst = db.prepare(`SELECT * FROM chart_of_accounts WHERE account_number='1400'`).get();
-    const qst = db.prepare(`SELECT * FROM chart_of_accounts WHERE account_number='1410'`).get();
-    const pct = target.itc_pct == null ? 100 : Number(target.itc_pct);
+    const gst = db.prepare(`SELECT * FROM chart_of_accounts WHERE account_number=?`).get(sale ? '2100' : '1400');
+    const qst = db.prepare(`SELECT * FROM chart_of_accounts WHERE account_number=?`).get(sale ? '2110' : '1410');
+    const pct = sale || target.itc_pct == null ? 100 : Number(target.itc_pct);
     tps = gst ? Math.round((ch.tps_cents || 0) * pct / 100) : 0;
     tvq = qst ? Math.round((ch.tvq_cents || 0) * pct / 100) : 0;
     if (tps + tvq >= amount) { tps = 0; tvq = 0; }

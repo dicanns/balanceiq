@@ -78,6 +78,20 @@ describe('MSUM-002 bills and cheques', () => {
   });
 });
 
+describe('MSUM-002b a bill paid by cheque', () => {
+  it('shows under the bill expense account with its tax, not under accounts payable', () => {
+    const bank = addAccount('Chequing', 'bank', '1010'); const st = addStatement(bank, '2026-10-01', '2026-10-31');
+    const b1 = db.prepare(`INSERT INTO supplier_bills (month_key, supplier_name, amount, bill_date, tps_paid, tvq_paid, coa_account_id, paid) VALUES ('2026-10','Landlord',1149.75,'2026-10-01',50,99.75,?,0)`).run(acc('6100').id).lastInsertRowid;
+    const c = chequeRecord({ direction: 'issued', chequeNumber: '61', chequeDate: '2026-10-03', partyName: 'Landlord', amountCents: 114975, bankAccountId: bank, kind: 'supplier_bills', billIds: [b1] }, db);
+    expect(c.ok).toBe(true);
+    const tx = addTx(bank, st, -1149.75, '2026-10-09', 'CHEQUE 000061');
+    expect(chequeLink(tx, [c.id], db).ok).toBe(true);
+    const a = bankMonthlySummary({ statementId: st }, db).accounts[0];
+    expect(row(a.expenses, '6100')).toMatchObject({ count: 1, gross_cents: 114975, tps_cents: 5000, tvq_cents: 9975 });
+    expect(row(a.expenses, '2010')).toBeUndefined();
+  });
+});
+
 describe('MSUM-003 the rest of the statement', () => {
   it('transfers apart, money in on its own, uncategorized listed', () => {
     const card = addAccount(); const st = addStatement(card, '2026-10-06', '2026-11-05');

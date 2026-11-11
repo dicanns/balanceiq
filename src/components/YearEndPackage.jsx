@@ -1,5 +1,23 @@
 import React, { useState, useCallback } from 'react';
 import { escapeHtml as esc } from '../utils/htmlSafe.mjs';
+import { computeInvoiceTotals, calcInvoiceOutstanding, documentDiscount } from '../utils/calculations.js';
+
+// Statuses that carry no receivable and no revenue in the journal.
+const NOT_BILLED_STATUSES = ['Brouillon', 'Annulée'];
+const NO_BALANCE_STATUSES = ['Brouillon', 'Annulée', 'Créditée'];
+
+function clientExemptOpts(client) {
+  return client?.taxExempt ? { exemptFromTps: client.exemptFromTps !== false, exemptFromTvq: client.exemptFromTvq !== false } : {};
+}
+
+// Totals and balance of one invoice as of a date: payments dated after it are ignored.
+function invoiceFigures(f, client, asOf) {
+  const opts = { tpsOverride: f.tpsOverride, tvqOverride: f.tvqOverride, ...documentDiscount(f), ...clientExemptOpts(client) };
+  const t = computeInvoiceTotals(f.lignes, opts);
+  const asOfDoc = { ...f, paiements: (f.paiements || []).filter(p => !p.date || !asOf || p.date <= asOf) };
+  const due = NO_BALANCE_STATUSES.includes(f.statut) ? 0 : calcInvoiceOutstanding(asOfDoc, clientExemptOpts(client));
+  return { sub: t.sousTotal, tps: t.tpsTotal, tvq: t.tvqTotal, total: t.total, due };
+}
 
 // Helper: compute net sales for a day from raw caisse data
 function dayVenteNet(dayData) {
@@ -98,21 +116,34 @@ async function buildYearEndHTML(fiscalStart, fiscalEnd, liveData, suppliers, fac
   // Invoice journal - filter by date range
   const fyStart = `${fiscalStart}-01`;
   const fyEndDate = `${fiscalEnd}-${new Date(parseInt(fiscalEnd.split('-')[0]), parseInt(fiscalEnd.split('-')[1]), 0).getDate()}`;
-  const invoices = (facFactures || []).filter(f => f.date >= fyStart && f.date<= fyEndDate);
+  let clientsList = [];
+  try {
+    const r = await window.api.storage.get('dicann-fac-clients');
+    if (r?.value) { const v = JSON.parse(r.value); if (Array.isArray(v)) clientsList = v; }
+  } catch (e) { /* no clients */ }
+  const clientOf = id => clientsList.find(c => c.id === id);
+  const clientName = f => clientOf(f.clientId)?.nom || clientOf(f.clientId)?.name || f.clientNom || '-';
+  const invoices = (facFactures || [])
+    .filter(f => f.date >= fyStart && f.date <= fyEndDate && !NOT_BILLED_STATUSES.includes(f.statut))
+    .map(f => ({ f, fig: invoiceFigures(f, clientOf(f.clientId), fyEndDate) }));
 
-  // AR aging as of fiscal year end
+  // AR aging as of fiscal year end: every invoice dated up to year end that still has a balance then,
+  // including those from earlier years.
   const today2 = new Date(fyEndDate + 'T12:00:00');
-  const unpaid = invoices.filter(f =>f.statut !== 'Annulée' && (f.montantDu || 0) > 0.01);
+  const unpaid = (facFactures || [])
+    .filter(f => f.date && f.date <= fyEndDate && !NOT_BILLED_STATUSES.includes(f.statut))
+    .map(f => ({ f, due: invoiceFigures(f, clientOf(f.clientId), fyEndDate).due }))
+    .filter(x => x.due > 0.01);
   const agingBuckets = { current: [], d30: [], d60: [], d90: [], d90plus: [] };
-  unpaid.forEach(f => {
-    const age = Math.floor((today2 - new Date(f.date + 'T12:00:00')) / 86400000);
-    if (age<= 30) agingBuckets.current.push(f);
-    else if (age <= 60) agingBuckets.d30.push(f);
-    else if (age <= 90) agingBuckets.d60.push(f);
-    else if (age <= 120) agingBuckets.d90.push(f);
-    else agingBuckets.d90plus.push(f);
+  unpaid.forEach(x => {
+    const age = Math.floor((today2 - new Date(x.f.date + 'T12:00:00')) / 86400000);
+    if (age<= 30) agingBuckets.current.push(x);
+    else if (age <= 60) agingBuckets.d30.push(x);
+    else if (age <= 90) agingBuckets.d60.push(x);
+    else if (age <= 120) agingBuckets.d90.push(x);
+    else agingBuckets.d90plus.push(x);
   });
-  const agingSum = arr =>arr.reduce((s, f) => s + (f.montantDu || 0), 0);
+  const agingSum = arr => arr.reduce((s, x) => s + x.due, 0);
 
   // Supplier annual breakdown
   const supTotals = {};
@@ -167,10 +198,9 @@ td:not(:first-child){text-align:right}
   } else {
     h += `<table><tr><th>${lang === 'en' ? 'No.' : 'No.'}</th><th>${lang === 'en' ? 'Date' : 'Date'}</th><th>${lang === 'en' ? 'Client' : 'Client'}</th><th>${lang === 'en' ? 'Subtotal' : 'Sous-total'}</th><th>TPS</th><th>TVQ</th><th>${lang === 'en' ? 'Total' : 'Total'}</th><th>${lang === 'en' ? 'Balance due' : 'Solde dû'}</th><th>${lang === 'en' ? 'Status' : 'Statut'}</th></tr>`;
     let invTot = 0, invDue = 0;
-    invoices.forEach(f => {
-      const total = (f.subtotalHT || 0) + (f.tps || 0) + (f.tvq || 0);
-      invTot += total; invDue += f.montantDu || 0;
-      h += `<tr><td>${esc(f.numero || '-')}</td><td>${esc(f.date || '-')}</td><td>${esc(f.clientNom || '-')}</td><td>${fmt(f.subtotalHT || 0)}</td><td>${fmt(f.tps || 0)}</td><td>${fmt(f.tvq || 0)}</td><td>${fmt(total)}</td><td class="${(f.montantDu || 0) >0.01 ? 'r' : 'g'}">${fmt(f.montantDu || 0)}</td><td>${esc(f.statut || '-')}</td></tr>`;
+    invoices.forEach(({ f, fig }) => {
+      invTot += fig.total; invDue += fig.due;
+      h += `<tr><td>${esc(f.numero || '-')}</td><td>${esc(f.date || '-')}</td><td>${esc(clientName(f))}</td><td>${fmt(fig.sub)}</td><td>${fmt(fig.tps)}</td><td>${fmt(fig.tvq)}</td><td>${fmt(fig.total)}</td><td class="${fig.due > 0.01 ? 'r' : 'g'}">${fmt(fig.due)}</td><td>${esc(f.statut || '-')}</td></tr>`;
     });
     h += `<tr class="tot"><td colspan="6">${lang === 'en' ? 'TOTAL' : 'TOTAL'}</td><td>${fmt(invTot)}</td><td class="r">${fmt(invDue)}</td><td></td></tr>`;
     h += `</table>`;
@@ -232,8 +262,26 @@ async function buildTaxHTML(fiscalStart, fiscalEnd, liveData, suppliers, lang) {
   let totTpsC = 0, totTvqC = 0, totTpsN = 0, totTvqN = 0, totRev = 0;
   const qRows = [];
 
+  // The same compute the tax return uses (register sales, invoices, bank lines, cheques,
+  // supplier bills), so the package and the return agree. When it is not reachable the
+  // quarter falls back to register sales only, and the report says so.
+  let registerOnly = false;
   for (const q of quarters) {
-    let qRev = 0, qTpsC = 0, qTvqC = 0, qTpsCti = 0, qTvqRti = 0;
+    const [fy, fm] = q.months[0].split('-').map(Number);
+    const [ly, lm] = q.months[q.months.length - 1].split('-').map(Number);
+    const qStart = `${fy}-${String(fm).padStart(2, '0')}-01`;
+    const qEnd = `${ly}-${String(lm).padStart(2, '0')}-${String(new Date(ly, lm, 0).getDate()).padStart(2, '0')}`;
+    let c = null;
+    try { c = await window.api.tax.period.compute(qStart, qEnd); } catch (e) { c = null; }
+    if (c && !c.error && c.tpsCollected != null) {
+      const qRev = c.supplies || 0;
+      totRev += qRev; totTpsC += c.tpsCollected; totTvqC += c.tvqCollected;
+      totTpsN += c.netTpsOwed; totTvqN += c.netTvqOwed;
+      qRows.push({ label: q.label, rev: qRev, tpsC: c.tpsCollected, tvqC: c.tvqCollected, tpsCti: c.tpsCti, tvqRti: c.tvqRti, tpsNet: c.netTpsOwed, tvqNet: c.netTvqOwed });
+      continue;
+    }
+    registerOnly = true;
+    let qRev = 0, qTpsCti = 0, qTvqRti = 0;
     for (const month of q.months) {
       const [my, mm] = month.split('-');
       const daysInMonth = new Date(parseInt(my), parseInt(mm), 0).getDate();
@@ -242,34 +290,26 @@ async function buildTaxHTML(fiscalStart, fiscalEnd, liveData, suppliers, lang) {
         const r = await window.api.storage.get(`dicann-pl-${month}`);
         if (r?.value) plData = JSON.parse(r.value);
       } catch (e) { /* no data */ }
-
       let monthRev = 0;
-      for (let d = 1; d<= daysInMonth; d++) {
+      for (let d = 1; d <= daysInMonth; d++) {
         const key = `${my}-${mm}-${String(d).padStart(2, '0')}`;
         monthRev += dayVenteNet(liveData[key]);
       }
       if (plData._revenueOverride != null) monthRev = plData._revenueOverride;
       qRev += monthRev;
-      qTpsC += monthRev * 0.05;
-      qTvqC += monthRev * 0.09975;
-
-      // Sum CTI/RTI from bill entries
       for (const key of Object.keys(plData)) {
-        if (!key.endsWith('_bills')) continue;
-        const bills = plData[key];
-        if (!Array.isArray(bills)) continue;
-        for (const bill of bills) {
+        if (!key.endsWith('_bills') || !Array.isArray(plData[key])) continue;
+        for (const bill of plData[key]) {
           const pct = (parseFloat(bill.business_use_pct) || 100) / 100;
           qTpsCti += (parseFloat(bill.tps_paid) || 0) * pct;
           qTvqRti += (parseFloat(bill.tvq_paid) || 0) * pct;
         }
       }
     }
-    const qTpsNet = qTpsC - qTpsCti;
-    const qTvqNet = qTvqC - qTvqRti;
+    const qTpsC = qRev * 0.05, qTvqC = qRev * 0.09975;
     totRev += qRev; totTpsC += qTpsC; totTvqC += qTvqC;
-    totTpsN += qTpsNet; totTvqN += qTvqNet;
-    qRows.push({ label: q.label, rev: qRev, tpsC: qTpsC, tvqC: qTvqC, tpsCti: qTpsCti, tvqRti: qTvqRti, tpsNet: qTpsNet, tvqNet: qTvqNet });
+    totTpsN += qTpsC - qTpsCti; totTvqN += qTvqC - qTvqRti;
+    qRows.push({ label: q.label, rev: qRev, tpsC: qTpsC, tvqC: qTvqC, tpsCti: qTpsCti, tvqRti: qTvqRti, tpsNet: qTpsC - qTpsCti, tvqNet: qTvqC - qTvqRti });
   }
   const totTpsCti = qRows.reduce((s, q) => s + q.tpsCti, 0);
   const totTvqRti = qRows.reduce((s, q) => s + q.tvqRti, 0);
@@ -278,6 +318,11 @@ async function buildTaxHTML(fiscalStart, fiscalEnd, liveData, suppliers, lang) {
   const disclaimer = lang === 'en'
     ? 'Estimate only. Validate with your accountant before filing.'
     : 'Estimation à titre indicatif. Validez avec votre comptable avant de produire vos déclarations.';
+  const registerOnlyNote = registerOnly
+    ? (lang === 'en'
+        ? 'WARNING: the tax return figures could not be read. These amounts are register sales only and leave out invoices, bank deposits and cheques.'
+        : 'ATTENTION : les chiffres de la déclaration de taxes n\'ont pas pu être lus. Ces montants viennent des ventes de caisse seulement et excluent les factures, dépôts bancaires et chèques.')
+    : '';
   const hasCti = totTpsCti > 0 || totTvqRti > 0;
   const creditsNote = hasCti
     ? (lang === 'en'
@@ -322,6 +367,7 @@ td:not(:first-child){text-align:right}
 
   h += `<tr class="tot"><td>TOTAL</td><td>${fmt(totRev)}</td><td>${fmt(totTvqC)}</td><td style="text-align:right">${ctiCell(totTvqRti)}</td><td>${fmt(totTvqN)}</td></tr></table>`;
 
+  if (registerOnlyNote) h += `<p class="note" style="color:#dc2626;font-weight:700">${registerOnlyNote}</p>`;
   h += `<p class="note">${creditsNote}</p>`;
   h += `<p class="sub" style="margin-top:20px">BalanceIQ &nbsp;|&nbsp; ${today}</p></body></html>`;
   return h;

@@ -3499,10 +3499,8 @@ ipcMain.handle('ledger:exportAcomba', (_e, opts = {}) => {
   const format = opts.format || 'acomba';
   let csv = '';
   let rowCount = 0;
-  // Free text from the books goes into a spreadsheet or an import file: no tabs
-  // or line breaks inside a field, and nothing a spreadsheet would run as a formula.
-  const flat = (v) => String(v == null ? '' : v).replace(/[\t\r\n]+/g, ' ');
-  const cell = (v) => { const t = flat(v); return /^[=+\-@]/.test(t) ? "'" + t : t; };
+  // Free text from the books goes into a spreadsheet or an import file (see csvSafe.mjs).
+  const { flat, cell } = require('./src/utils/csvSafe.mjs');
 
   if (format === 'acomba') {
     csv = 'Date,No. compte,Description,Débit,Crédit,Projet,Taxe\n';

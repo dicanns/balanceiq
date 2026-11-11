@@ -210,6 +210,34 @@ describe('CHQ-008 tax on a cheque purchase', () => {
   });
 });
 
+describe('CHQ-008b tax on a cheque received for a sale', () => {
+  it('posts to 2100/2110, reaches the return once, and the clearing line adds nothing', () => {
+    for (const [num, name] of [['2100', 'GST payable'], ['2110', 'QST payable']]) {
+      db.prepare(`INSERT OR IGNORE INTO chart_of_accounts (account_number, name_fr, name_en, type, itc_pct) VALUES (?,?,?,'liability',100)`).run(num, name, name);
+    }
+    const bank = addAccount();
+    const r = chequeRecord({ direction: 'received', chequeNumber: '77', chequeDate: '2026-11-02', amountCents: 114975,
+      bankAccountId: bank, kind: 'account', coaAccountId: acc('4900').id, tpsCents: 5000, tvqCents: 9975 }, db);
+    expect(r.ok).toBe(true);
+    expect(bal('4900')).toBe(-100000);
+    expect(bal('2100')).toBe(-5000);
+    expect(bal('2110')).toBe(-9975);
+    expect(bal('1010')).toBe(114975);
+    const t = taxPeriodCompute('2026-10-01', '2026-12-31', db);
+    expect(t.tpsCollectedFromInvoices).toBeCloseTo(50, 6);
+    expect(t.tvqCollectedFromInvoices).toBeCloseTo(99.75, 6);
+    expect(t.tpsCollectedFromBank).toBe(0);
+    expect(t.invoicedRevenue).toBeCloseTo(1000, 6);
+    // The deposit line that clears it posts nothing and carries no tax of its own.
+    const tx = addTx(bank, 1149.75, '2026-11-05', 'DEPOSIT CHEQUE 77');
+    chequeLink(tx, [r.id], db);
+    const t2 = taxPeriodCompute('2026-10-01', '2026-12-31', db);
+    expect(t2.tpsCollected).toBeCloseTo(50, 6);
+    expect(t2.tvqCollected).toBeCloseTo(99.75, 6);
+    expect(bal('1010')).toBe(114975);
+  });
+});
+
 describe('CHQ-009 the modules meet without counting twice', () => {
   it('a deposit categorized to receivables links the one invoice cheque it must be', () => {
     const bank = addAccount();

@@ -32,7 +32,7 @@ const UI = {
     kindAccount: 'Une dépense ou un autre compte', kindBills: 'Des factures fournisseur',
     kindInvoice: 'Paiement de factures clients (déjà enregistré dans Facturation)', kindOther: 'Autre revenu ou remboursement',
     account: 'Compte', chooseAccount: '- Choisir -',
-    tps: 'TPS', tvq: 'TVQ', calc: 'Calculer', taxHint: 'Les taxes inscrites sur la facture payée par ce chèque.',
+    tps: 'TPS', tvq: 'TVQ', calc: 'Calculer', taxHint: 'Les taxes inscrites sur la facture payée par ce chèque.', taxHintSale: 'Les taxes comprises dans ce chèque reçu. Pour un compte de revenus, elles sont comptées comme taxes perçues (TPS/TVQ à remettre).',
     bills: 'Factures payées par ce chèque', noBills: 'Aucune facture fournisseur impayée.', billsTotal: (a) => `Total du chèque : ${a}`,
     invoiceRefs: 'Numéros de facture (optionnel)', memo: 'Note (optionnelle)',
     save: 'Enregistrer', cancel: 'Annuler',
@@ -89,7 +89,7 @@ const UI = {
     kindAccount: 'An expense or other account', kindBills: 'Supplier bills',
     kindInvoice: 'Payment of customer invoices (already recorded in Invoicing)', kindOther: 'Other income or a refund',
     account: 'Account', chooseAccount: '- Choose -',
-    tps: 'GST', tvq: 'QST', calc: 'Calculate', taxHint: 'The tax shown on the bill this cheque pays.',
+    tps: 'GST', tvq: 'QST', calc: 'Calculate', taxHint: 'The tax shown on the bill this cheque pays.', taxHintSale: 'The tax included in this received cheque. On a revenue account it is recorded as tax collected (GST/QST payable).',
     bills: 'Bills this cheque pays', noBills: 'No unpaid supplier bills.', billsTotal: (a) => `Cheque total: ${a}`,
     invoiceRefs: 'Invoice numbers (optional)', memo: 'Note (optional)',
     save: 'Save', cancel: 'Cancel',
@@ -368,7 +368,7 @@ export default function ChequesPanel({ lang = 'fr', C, accounts = [], coaList = 
               <div><label style={S.label} htmlFor="chq-tvq">{T.tvq}</label>
                 <input id="chq-tvq" type="number" step="0.01" min="0" style={{ ...S.input, textAlign: 'right' }} value={form.tvq} onChange={e => set({ tvq: e.target.value })} /></div>
               <div><button type="button" onClick={calcTax} style={S.btn}>{T.calc}</button></div>
-              <div style={{ gridColumn: '1 / -1', fontSize: 11, color: C.muted }}>{T.taxHint}</div>
+              <div style={{ gridColumn: '1 / -1', fontSize: 11, color: C.muted }}>{form.direction === CHEQUE_RECEIVED ? T.taxHintSale : T.taxHint}</div>
             </div>
           )}
 

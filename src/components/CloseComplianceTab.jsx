@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { computeCloseScore, deriveRates, BAND_COLOR } from '../services/closeScorecard.js';
 import { buildCompliancePdfHTML } from '../services/compliancePdfBuilder.js';
+import { csvField } from '../utils/csvSafe.mjs';
 
 const fmt = (cents) =>
   new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' }).format((cents ?? 0) / 100);
@@ -79,14 +80,14 @@ function exportCsv(kpis, lists, fr) {
   if (lists.unapproved.length > 0) {
     rows.push(fr ? 'Non-approuvées (>1j)' : 'Unapproved (>1 day)');
     rows.push(`${fr ? 'Date' : 'Date'},${fr ? 'Quart' : 'Shift'},${fr ? 'Soumis le' : 'Submitted at'}`);
-    lists.unapproved.forEach(s => rows.push(`${s.date_key},${s.shift_key || '-'},${s.submitted_at?.slice(0, 16) || '-'}`));
+    lists.unapproved.forEach(s => rows.push(`${csvField(s.date_key)},${csvField(s.shift_key || '-')},${csvField(s.submitted_at?.slice(0, 16) || '-')}`));
     rows.push('');
   }
 
   if (lists.topVarianceCashiers.length > 0) {
     rows.push(fr ? 'Caisses avec écarts fréquents' : 'Top variance cashiers');
     rows.push(`${fr ? 'Caissier' : 'Cashier'},${fr ? 'Total fermetures' : 'Total closes'},${fr ? 'Avec écart' : 'With variance'}`);
-    lists.topVarianceCashiers.forEach(r => rows.push(`${r.cashier_name},${r.total_closures},${r.variance_count}`));
+    lists.topVarianceCashiers.forEach(r => rows.push(`${csvField(r.cashier_name)},${r.total_closures},${r.variance_count}`));
     rows.push('');
   }
 

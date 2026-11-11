@@ -127,6 +127,7 @@ const UI = {
     ledgerExportBtn:      'Télécharger',
     ledgerExportDone:     (n) => `${n} ligne(s) exportée(s)`,
     ledgerExportNone:     'Aucune écriture trouvée pour cette période',
+    ledgerExportPro:      'L\'export Acomba, Sage 50 et QuickBooks est inclus dans le forfait Pro.',
     newEntry:         '+ Nouvelle écriture',
     search:           'Rechercher…',
     statusAll:        'Tous',
@@ -251,6 +252,7 @@ const UI = {
     ledgerExportBtn:      'Download',
     ledgerExportDone:     (n) => `${n} line(s) exported`,
     ledgerExportNone:     'No entries found for this period',
+    ledgerExportPro:      'Acomba, Sage 50 and QuickBooks export is included in the Pro plan.',
     newEntry:         '+ New entry',
     search:           'Search…',
     statusAll:        'All',
@@ -1404,7 +1406,11 @@ function ControlVarianceTab({ lang }) {
 
 // ── Export Tab (Acomba / Sage 50 / QuickBooks) ─────────────────────────────
 
-function ExportTab({ lang = 'fr' }) {
+// Same plan key as the Acomba / Sage 50 exports in Invoicing. canUse is passed down by App.jsx;
+// without it (older caller) the export stays open rather than breaking.
+const LEDGER_EXPORT_FEATURE = 'excelExport';
+
+function ExportTab({ lang = 'fr', canUse }) {
   const t = UI[lang];
   const today = todayStr();
   const firstOfMonth = today.slice(0, 7) + '-01';
@@ -1414,7 +1420,10 @@ function ExportTab({ lang = 'fr' }) {
   const [working,  setWorking]  = useState(false);
   const [result,   setResult]   = useState(null);
 
+  const locked = typeof canUse === 'function' && !canUse(LEDGER_EXPORT_FEATURE);
+
   const doExport = async () => {
+    if (locked) { setResult({ err: t.ledgerExportPro }); return; }
     setWorking(true); setResult(null);
     try {
       const { csv, rowCount } = await window.api.ledgerExport.acomba({ dateFrom, dateTo, format });
@@ -1446,7 +1455,8 @@ function ExportTab({ lang = 'fr' }) {
             {FORMATS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
           </select></div>
       </div>
-      <button onClick={doExport} disabled={working || !dateFrom || !dateTo} style={{ alignSelf: 'flex-start', padding: '8px 20px', borderRadius: 6, border: 'none', background: working ? '#334155' : 'linear-gradient(135deg,#f97316,#ea580c)', color: '#fff', cursor: working ? 'default' : 'pointer', fontWeight: 700, fontSize: 12, opacity: working ? 0.6 : 1 }}>
+      {locked && <div style={{ fontSize: 11, color: '#f97316' }}>{t.ledgerExportPro}</div>}
+      <button onClick={doExport} disabled={working || !dateFrom || !dateTo || locked} style={{ alignSelf: 'flex-start', padding: '8px 20px', borderRadius: 6, border: 'none', background: working ? '#334155' : 'linear-gradient(135deg,#f97316,#ea580c)', color: '#fff', cursor: working ? 'default' : 'pointer', fontWeight: 700, fontSize: 12, opacity: working ? 0.6 : 1 }}>
         {working ? '…' : (t.ledgerExportBtn || 'Télécharger')}
       </button>
       {result?.ok && <div style={{ fontSize: 11, color: '#22c55e', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 6, padding: '6px 12px' }}>{typeof t.ledgerExportDone === 'function' ? t.ledgerExportDone(result.rowCount) : `${result.rowCount} lignes exportées`}</div>}
@@ -1455,7 +1465,7 @@ function ExportTab({ lang = 'fr' }) {
   );
 }
 
-export default function GrandLivreTab({ lang = 'fr' }) {
+export default function GrandLivreTab({ lang = 'fr', canUse }) {
   const t = UI[lang];
   const [subTab, setSubTab] = useState('journal');
   const [accounts, setAccounts] = useState([]);
@@ -1497,7 +1507,7 @@ export default function GrandLivreTab({ lang = 'fr' }) {
       {subTab === 'control'  && <ControlVarianceTab lang={lang} />}
       {subTab === 'periods'  && <PeriodsTab lang={lang} />}
       {subTab === 'yearend'  && <YearEndTab lang={lang} errors={t.ledgerErrors} />}
-      {subTab === 'export'   && <ExportTab lang={lang} />}
+      {subTab === 'export'   && <ExportTab lang={lang} canUse={canUse} />}
     </div>
   );
 }

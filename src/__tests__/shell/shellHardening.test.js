@@ -61,7 +61,7 @@ describe('SHELL-002 packaged files', () => {
 
 describe('SHELL-003 print builders escape free text', () => {
   const must = {
-    'src/components/YearEndPackage.jsx': ['esc(co.name', 'esc(f.clientNom', 'esc(f.numero', 'esc(name)'],
+    'src/components/YearEndPackage.jsx': ['esc(co.name', 'esc(clientName(f))', 'esc(f.numero', 'esc(name)'],
     'src/components/PrevisionsTab.jsx': ['esc(item.product.name)', 'esc(title)', 'esc(a.product.name)'],
     'src/components/TipPoolModal.jsx': ['esc(e.name)', 'esc(notes)'],
     'src/components/TaxPeriodTab.jsx': ['esc(period.period_start)', 'esc(period.confirmation_number)'],
