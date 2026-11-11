@@ -26,12 +26,13 @@ Sentry.init({
 });
 const {
   storageGet, storageSet, storageGetAll,
+  DOCUMENT_KINDS, withTransaction, documentsList, documentsListReconciled, documentsSaveChanges, documentsReplaceAll, booksCheck,
   stripApiConfigSecrets, mergeApiConfigSecrets, incomeStatement, coaSetItcPct, coaRename,
   fiscalYearEndGet, fiscalYearEndSet, fiscalYearList, fiscalYearClose, fiscalYearReopen, openingBalancesPreview, openingBalancesPost,
   supplierBillPost, supplierBillUnpost, supplierBillPostPayment, supplierBillSubledger,
   supplierBillRepairTaxAccounts,
   bankNeedsCategorizingCount, firstRunFacts,
-  getAllTablesForBackup, restoreAllTablesFromBackup, backupDatabaseFile,
+  getAllTablesForBackup, restoreAllTablesFromBackup, backupDatabaseFile, backupRestoreVerdict,
   syncQueuePush, syncQueuePeek, syncQueueDelete, syncQueueIncrementAttempts, syncQueueLength,
   auditInsert, auditQuery, getDeviceId,
   snapshotSave, snapshotGetByDate, snapshotGetLatest, snapshotListDates,
@@ -652,7 +653,29 @@ ipcMain.handle('storage:get', (event, key) => {
 });
 
 ipcMain.handle('storage:set', (event, key, value) => {
+  // The invoice and credit note lists live as rows; a write of the whole list goes through the
+  // document store, which keeps the rows and the kv_store mirror together.
+  const kind = Object.prototype.hasOwnProperty.call(DOCUMENT_KINDS, key) ? DOCUMENT_KINDS[key] : null;
+  if (kind) {
+    let list;
+    try { list = JSON.parse(value); } catch (_) { list = null; }
+    const res = documentsReplaceAll(kind, list);
+    if (!res.ok) throw new Error(`storage:set ${key}: ${res.error}`);
+    return true;
+  }
   return secretSet(key, value);
+});
+
+// One document at a time: the screen sends what changed, never the whole list.
+ipcMain.handle('documents:list', (event, kind) => documentsListReconciled(kind));
+ipcMain.handle('documents:saveChanges', (event, kind, changes) => {
+  const res = documentsSaveChanges(kind, changes || {});
+  if (!res.ok) throw new Error(`documents:saveChanges ${kind}: ${res.error}`);
+  return res;
+});
+ipcMain.handle('books:check', () => {
+  try { return booksCheck(); }
+  catch (err) { return { ok: false, error: String(err?.message ?? err), checked: { invoices: 0, payments: 0, creditNotes: 0 }, findings: [] }; }
 });
 
 // IPC handler - restore from backup
@@ -687,7 +710,7 @@ ipcMain.handle('backup:restore', async () => {
   if (isNewFormat) {
     const { schemaVersion: currentVersion } = getAllTablesForBackup();
     if (data.schemaVersion > currentVersion) return { error: tm('restoreNewer') };
-    if (data.schemaVersion < currentVersion && !(Array.isArray(data.schema) && data.schema.length)) return { error: tm('restoreTooOld') };
+    if (backupRestoreVerdict(data) === 'too_old') return { error: tm('restoreTooOld') };
     backupName = data.company?.name || '';
     if (!backupName) {
       try {
@@ -2273,10 +2296,12 @@ function revenueAccountLines(doc, revenueCents, accounts, { debit = false, memo 
   return plan.map(p => ({ account_id: p.account_id, debit_cents: debit ? p.cents : 0, credit_cents: debit ? 0 : p.cents, memo }));
 }
 
-ledgerHandle('ledger:invoice:post', async (_e, {
+// The posting itself, synchronous so the commit below can run it inside one transaction. Returns
+// { ok, entryId } or { ok:false, error }; a refusal by the ledger (closed period) throws.
+function postInvoiceToLedger({
   invoiceId, invoiceDate, subtotalCents, tpsCents, tvqCents, totalCents, taxExempt,
   lignes, remiseGlobale, remiseGlobaleType, openingBalance,
-}) => {
+} = {}) {
   // Idempotent: the renderer's glEntryId can be lost, and re-posting would
   // double the revenue and the receivable.
   const already = glFindEntryBySource('invoice', invoiceId);
@@ -2345,7 +2370,9 @@ ledgerHandle('ledger:invoice:post', async (_e, {
   });
   glPostEntry(entryId);
   return { ok: true, entryId };
-});
+}
+
+ledgerHandle('ledger:invoice:post', async (_e, args) => postInvoiceToLedger(args));
 
 // Totals the ledger holds for every posted invoice, to freeze the totals of
 // invoices sent before the document kept its own.
@@ -2362,16 +2389,56 @@ ipcMain.handle('ledger:invoice:postedTotals', async () => {
 // voided. Looked up by the invoice itself, not by an entry id the screen holds,
 // so a stale id cannot leave the entry posted. A closed period refuses, and the
 // screen must then keep the invoice as it was.
-ipcMain.handle('ledger:invoice:unpost', async (_e, { invoiceId, reason } = {}) => {
-  try {
-    if (!invoiceId) return { ok: false, error: 'invalid_invoice' };
-    const entry = glFindEntryBySource('invoice', String(invoiceId));
-    if (!entry) return { ok: true, reversed: false };
-    if (entry.status === 'draft') { glDeleteDraft(entry.id); return { ok: true, reversed: false, deletedDraft: true }; }
-    glReverseEntry(entry.id, reason || 'Facture retiree du grand livre');
-    return { ok: true, reversed: true, entryId: entry.id };
-  } catch (err) {
+// Looked up by the invoice, throws when the ledger refuses (closed period).
+function unpostInvoiceFromLedger({ invoiceId, reason } = {}) {
+  if (!invoiceId) return { ok: false, error: 'invalid_invoice' };
+  const entry = glFindEntryBySource('invoice', String(invoiceId));
+  if (!entry) return { ok: true, reversed: false };
+  if (entry.status === 'draft') { glDeleteDraft(entry.id); return { ok: true, reversed: false, deletedDraft: true }; }
+  glReverseEntry(entry.id, reason || 'Facture retiree du grand livre');
+  return { ok: true, reversed: true, entryId: entry.id };
+}
+
+ipcMain.handle('ledger:invoice:unpost', async (_e, args = {}) => {
+  try { return unpostInvoiceFromLedger(args || {}); }
+  catch (err) {
     return { ok: false, error: String(err?.message ?? err) };
+  }
+});
+
+// Save an invoice and its ledger step as one: the ledger step runs first, inside the same
+// transaction as the save, so a refusal leaves nothing saved and a saved invoice always has
+// its posting. ledger is 'post', 'unpost' or 'none'. Refusals are shown like any ledger refusal.
+class CommitRefused extends Error {
+  constructor(res) { super(String(res?.detail || res?.error || 'refused')); this.res = res; }
+}
+ledgerHandle('invoices:commit', async (_e, { doc, ledger = 'none', post, reason, order } = {}) => {
+  if (!doc || typeof doc !== 'object' || doc.id === undefined || doc.id === null || doc.id === '') {
+    return { ok: false, error: 'invalid_invoice' };
+  }
+  if (!['post', 'unpost', 'none'].includes(ledger)) return { ok: false, error: 'invalid_ledger_step' };
+  try {
+    return withTransaction(() => {
+      let entryId = doc.glEntryId ?? null;
+      let saved = doc;
+      if (ledger === 'unpost') {
+        const r = unpostInvoiceFromLedger({ invoiceId: doc.id, reason });
+        if (!r.ok) throw new CommitRefused(r);
+        entryId = null;
+        saved = { ...doc, glEntryId: null };
+      } else if (ledger === 'post') {
+        const r = postInvoiceToLedger({ ...(post || {}), invoiceId: (post && post.invoiceId) || doc.id });
+        if (!r.ok) throw new CommitRefused(r);
+        entryId = r.entryId;
+        saved = { ...doc, glEntryId: r.entryId };
+      }
+      const res = documentsSaveChanges('facture', { upserts: [saved], deletes: [], order });
+      if (!res.ok) throw new CommitRefused(res);
+      return { ok: true, doc: saved, entryId };
+    });
+  } catch (err) {
+    if (err instanceof CommitRefused) return { ...err.res, ok: false };
+    return { ok: false, error: 'post_failed', detail: String(err?.message ?? err) };
   }
 });
 

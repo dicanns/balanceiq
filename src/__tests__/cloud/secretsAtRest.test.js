@@ -106,7 +106,8 @@ describe('SECRET-005 main-process wiring', () => {
   it('pins the update link, routes storage through the secret store, refuses POS OAuth without a secret', () => {
     expect(MAIN).toMatch(/github\\\.com\\\/dicanns\\\/balanceiq\\\/releases\\\//);
     expect(MAIN).toMatch(/ipcMain\.handle\('storage:get', \(event, key\) => \{\s*return secretGet\(key\);/);
-    expect(MAIN).toMatch(/ipcMain\.handle\('storage:set', \(event, key, value\) => \{\s*return secretSet\(key, value\);/);
+    // Every key but the two document lists (routed to the document store first) goes through the secret store.
+    expect(MAIN).toMatch(/ipcMain\.handle\('storage:set', \(event, key, value\) => \{[\s\S]*?\n  return secretSet\(key, value\);\n\}\);/);
     expect(MAIN).not.toMatch(/storageGet\('pos-credentials'\)/);
     expect(MAIN).toMatch(/return \{ started: false, error: 'pos_oauth_unavailable' \};/);
   });

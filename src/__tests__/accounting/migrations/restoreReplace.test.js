@@ -152,7 +152,9 @@ describe('RESTORE-007 refused versions', () => {
     const backup = getAllTablesForBackup(db);
     expect(() => restoreAllTablesFromBackup({ ...backup, schemaVersion: backup.schemaVersion + 1 }, undefined, db)).toThrow(/schema_version_newer/);
     const { schema, ...noSchema } = backup;
-    expect(() => restoreAllTablesFromBackup({ ...noSchema, schemaVersion: backup.schemaVersion - 1 }, undefined, db)).toThrow(/schema_version_mismatch/);
+    // One version back restores directly when the migration in between is marked
+    // restoreSafe; further back, without its structure, a backup is refused.
+    expect(() => restoreAllTablesFromBackup({ ...noSchema, schemaVersion: backup.schemaVersion - 2 }, undefined, db)).toThrow(/schema_version_mismatch/);
   });
 });
 

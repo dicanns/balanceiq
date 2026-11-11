@@ -78,7 +78,7 @@ describe('DEPOSIT ledger wiring', () => {
   it('DEPOSIT-009 the invoice editor posts receipts on save and applies deposits on both send paths', () => {
     expect(FE).toMatch(/else if\(form\.statut==='Brouillon'\)postDepositReceipts\(id,numero,doc\.acomptes\)/);
     expect(FE).toMatch(/settleDepositsOnSend\(id,numero,doc\)/);
-    expect(FE).toMatch(/settleDepositsOnSend\(savedId,savedNumero,doc\)/);
+    expect(FE).toMatch(/settleDepositsOnSend\(savedId,savedNumero,committed\.doc\)/);
     expect(FE).toMatch(/p\.appliedDeposit\?window\.api\?\.ledger\?\.depositReverse/);
   });
 });

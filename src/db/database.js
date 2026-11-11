@@ -12,8 +12,11 @@ const {
 const { transferRule } = require('../utils/transferRule.mjs');
 const { csvField } = require('../utils/csvSafe.mjs');
 const { STRINGS } = require('../services/mainStrings.cjs');
-const { WRITTEN_OFF } = require('../utils/invoiceStatus.mjs');
+const { WRITTEN_OFF, isCashPayment } = require('../utils/invoiceStatus.mjs');
 const { CHEQUE_ISSUED, CHEQUE_RECEIVED, chequeNumberFromDescription, normalizeChequeNumber } = require('../utils/chequeNumber.mjs');
+
+// The document table helpers live with the migration chain so the migration and the store share them.
+const { DOCUMENT_KINDS, documentColumns, isStorableDocumentList, importDocumentsFromKv } = require('./migrations.js');
 
 let db;
 // The folder holding this company's database. The main process sets it before the
@@ -1684,6 +1687,31 @@ const MIGRATIONS = [
       database.prepare(`CREATE INDEX IF NOT EXISTS idx_cheques_tx ON cheques(bank_transaction_id)`).run();
     },
   },
+  {
+    version: 51,
+    // A backup written before this version restores straight into it: the table
+    // is rebuilt from the restored lists (see restoreAllTablesFromBackup).
+    restoreSafe: true,
+    description: 'Documents table: invoices and credit notes stored one row each (the kv_store lists stay as a mirror), '
+      + 'imported from the existing lists in their order.',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS documents (
+        kind TEXT NOT NULL,
+        id TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        numero TEXT,
+        client_id TEXT,
+        statut TEXT,
+        doc_date TEXT,
+        total_cents INTEGER,
+        doc TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (kind, id)
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_documents_kind_position ON documents(kind, position)`).run();
+      importDocumentsFromKv(database);
+    },
+  },
 ];
 
 // The newest schema this build knows. Anything on disk below it has migrations
@@ -2253,6 +2281,124 @@ function storageSet(key, value) {
   }
   getDb().prepare('INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)').run(key, sanitised);
   return true;
+}
+
+// ── Documents: invoices and credit notes, one row each ──────────────────────
+// The screen used to hold each list as ONE kv_store value and rewrite all of it
+// on every change, so a stale copy could overwrite newer invoices. Each document
+// is now a row; the kv_store list stays as a mirror, rewritten inside the same
+// transaction as every change, so every reader of the old key (backups, cloud
+// sync, the ledger tabs) keeps working and an older app version loses nothing.
+// The mirror is written with plain SQL, not storageSet: the size cap and the
+// field clamping must never apply to it.
+const DOCUMENT_KEYS = Object.fromEntries(Object.entries(DOCUMENT_KINDS).map(([k, v]) => [v, k]));
+
+// Runs fn inside one transaction on the app's connection and returns its result.
+// If fn throws, everything it wrote is rolled back and the error propagates.
+function withTransaction(fn, _db) {
+  const conn = _db || getDb();
+  return conn.transaction(() => fn())();
+}
+
+function documentsList(kind, _db) {
+  const conn = _db || getDb();
+  return conn.prepare('SELECT doc FROM documents WHERE kind = ? ORDER BY position, rowid').all(kind)
+    .map(r => JSON.parse(r.doc));
+}
+
+// The list as the screen should load it. Every write to the table rewrites the
+// kv mirror in the same transaction, so the table can never be ahead of the
+// mirror. A mirror that differs was therefore written by something that does
+// not know the table (an older version of the app after a rollback, a restore
+// of an old backup): it is the newer of the two, and the table takes it.
+function documentsListReconciled(kind, _db) {
+  const conn = _db || getDb();
+  const key = DOCUMENT_KEYS[kind];
+  const docs = documentsList(kind, conn);
+  if (!key) return docs;
+  const row = conn.prepare('SELECT value FROM kv_store WHERE key = ?').get(key);
+  if (!row) return docs;
+  let mirror = null;
+  try { mirror = JSON.parse(row.value); } catch (_) { mirror = null; }
+  if (!Array.isArray(mirror) || JSON.stringify(mirror) === JSON.stringify(docs)) return docs;
+  if (!isStorableDocumentList(mirror)) return docs;
+  const res = documentsReplaceAll(kind, mirror, conn);
+  return res && res.ok === false ? docs : documentsList(kind, conn);
+}
+
+function _writeDocumentsMirror(conn, kind) {
+  const key = DOCUMENT_KEYS[kind];
+  if (!key) return;
+  const rows = conn.prepare('SELECT doc FROM documents WHERE kind = ? ORDER BY position, rowid').all(kind);
+  // Built from the stored text so the mirror holds each document exactly as it was saved.
+  conn.prepare('INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)').run(key, '[' + rows.map(r => r.doc).join(',') + ']');
+}
+
+function _upsertDocument(conn, kind, doc, position) {
+  const c = documentColumns(doc);
+  conn.prepare(
+    `INSERT INTO documents (kind, id, position, numero, client_id, statut, doc_date, total_cents, doc, updated_at)
+     VALUES (@kind, @id, @position, @numero, @client_id, @statut, @doc_date, @total_cents, @doc, datetime('now'))
+     ON CONFLICT(kind, id) DO UPDATE SET
+       numero = excluded.numero, client_id = excluded.client_id,
+       statut = excluded.statut, doc_date = excluded.doc_date, total_cents = excluded.total_cents,
+       doc = excluded.doc, updated_at = datetime('now')`
+  ).run({ kind, position, ...c, doc: JSON.stringify(doc) });
+}
+
+function _validDocumentKind(kind) {
+  return Object.values(DOCUMENT_KINDS).includes(kind);
+}
+
+// Applies a set of changes in one transaction. upserts are full documents,
+// deletes are ids, order is every id in display order (ids not stored are ignored).
+function documentsSaveChanges(kind, { upserts = [], deletes = [], order } = {}, _db) {
+  if (!_validDocumentKind(kind)) return { ok: false, error: 'invalid_kind' };
+  if (!Array.isArray(upserts) || !Array.isArray(deletes)) return { ok: false, error: 'invalid_documents' };
+  if (!isStorableDocumentList(upserts)) return { ok: false, error: 'invalid_documents' };
+  const conn = _db || getDb();
+  return conn.transaction(() => {
+    const maxPos = () => conn.prepare('SELECT COALESCE(MAX(position), -1) AS m FROM documents WHERE kind = ?').get(kind).m;
+    for (const doc of upserts) {
+      _upsertDocument(conn, kind, doc, maxPos() + 1);
+    }
+    for (const id of deletes) conn.prepare('DELETE FROM documents WHERE kind = ? AND id = ?').run(kind, String(id));
+    if (Array.isArray(order)) {
+      const stored = conn.prepare('SELECT id FROM documents WHERE kind = ? ORDER BY position, rowid').all(kind).map(r => r.id);
+      const storedSet = new Set(stored);
+      const seen = new Set();
+      const ordered = [];
+      for (const id of order.map(String)) if (storedSet.has(id) && !seen.has(id)) { seen.add(id); ordered.push(id); }
+      const final = ordered.concat(stored.filter(id => !seen.has(id)));
+      const setPos = conn.prepare('UPDATE documents SET position = ? WHERE kind = ? AND id = ? AND position <> ?');
+      final.forEach((id, i) => setPos.run(i, kind, id, i));
+    }
+    _writeDocumentsMirror(conn, kind);
+    return { ok: true };
+  })();
+}
+
+// Makes the table equal to list: changed documents upserted, missing ones deleted,
+// positions set from the list. Used when something writes the whole list.
+function documentsReplaceAll(kind, list, _db) {
+  if (!_validDocumentKind(kind)) return { ok: false, error: 'invalid_kind' };
+  if (!isStorableDocumentList(list)) return { ok: false, error: 'invalid_documents' };
+  const conn = _db || getDb();
+  return conn.transaction(() => {
+    const current = new Map(conn.prepare('SELECT id, position, doc FROM documents WHERE kind = ?').all(kind).map(r => [r.id, r]));
+    const keep = new Set();
+    list.forEach((doc, position) => {
+      const id = String(doc.id);
+      keep.add(id);
+      const json = JSON.stringify(doc);
+      const row = current.get(id);
+      if (!row || row.doc !== json) _upsertDocument(conn, kind, doc, position);
+      if (row && row.position !== position) conn.prepare('UPDATE documents SET position = ? WHERE kind = ? AND id = ?').run(position, kind, id);
+    });
+    for (const id of current.keys()) if (!keep.has(id)) conn.prepare('DELETE FROM documents WHERE kind = ? AND id = ?').run(kind, id);
+    _writeDocumentsMirror(conn, kind);
+    return { ok: true };
+  })();
 }
 
 function storageGetAll() {
@@ -3430,6 +3576,67 @@ function invoicePostedTotals(_db) {
   const out = {};
   for (const e of byEntry.values()) out[e.invoiceId] = { totalCents: e.totalCents, tpsCents: e.tpsCents, tvqCents: e.tvqCents };
   return out;
+}
+
+// Compares the stored documents with the ledger and reports every difference.
+// Read-only. A sent invoice must be posted for its total, a draft or voided one
+// must not be posted, every cash payment must be posted for its amount, and a
+// credit note that counts must be posted. Pro forma invoices never reach the ledger.
+function booksCheck(_db) {
+  const conn = _db || getDb();
+  const findings = [];
+  const checked = { invoices: 0, payments: 0, creditNotes: 0 };
+  // Latest posted entry per source, with what it debited on 1100 and in all.
+  const postedBySource = (sourceType) => {
+    const map = new Map();
+    const rows = conn.prepare(
+      `SELECT je.id AS entry_id, je.source_id AS source_id,
+              COALESCE(SUM(CASE WHEN coa.account_number = '1100' THEN jl.debit_cents ELSE 0 END), 0) AS ar_debit,
+              COALESCE(SUM(jl.debit_cents), 0) AS debit
+       FROM journal_entries je
+       LEFT JOIN journal_lines jl ON jl.entry_id = je.id
+       LEFT JOIN chart_of_accounts coa ON coa.id = jl.account_id
+       WHERE je.source_type = ? AND je.status = 'posted' AND je.source_id IS NOT NULL
+       GROUP BY je.id ORDER BY je.id`
+    ).all(sourceType);
+    for (const r of rows) map.set(String(r.source_id), r);
+    return map;
+  };
+  const invoiceEntries = postedBySource('invoice');
+  const paymentEntries = postedBySource('payment');
+  const creditEntries = postedBySource('credit_note');
+  const add = (code, kind, doc, detail) => findings.push({ code, kind, numero: doc.numero ?? null, id: String(doc.id), detail: detail || {} });
+  const notCounted = (d) => d.statut === 'Brouillon' || d.statut === 'Annulée';
+
+  for (const inv of documentsList('facture', conn)) {
+    if (inv.documentType === 'proforma') continue;
+    checked.invoices++;
+    const entry = invoiceEntries.get(String(inv.id));
+    if (notCounted(inv)) {
+      if (entry) add('draft_or_void_posted', 'invoice', inv, { entryId: entry.entry_id });
+      continue;
+    }
+    if (!entry) { add('invoice_not_posted', 'invoice', inv); }
+    else if (inv.totauxCents && Number.isFinite(inv.totauxCents.total) && Math.round(inv.totauxCents.total) !== entry.ar_debit) {
+      add('invoice_total_differs', 'invoice', inv, { documentCents: Math.round(inv.totauxCents.total), ledgerCents: entry.ar_debit, entryId: entry.entry_id });
+    }
+    for (const p of (inv.paiements || [])) {
+      // A deposit applied to the invoice is posted as a deposit, not as a payment.
+      if (!isCashPayment(p) || p.appliedDeposit || !p.id) continue;
+      const cents = Math.round((Number(p.montant) || 0) * 100);
+      if (cents <= 0) continue;
+      checked.payments++;
+      const pe = paymentEntries.get(String(p.id));
+      if (!pe) add('payment_not_posted', 'payment', { numero: inv.numero, id: p.id }, { amountCents: cents });
+      else if (pe.debit !== cents) add('payment_amount_differs', 'payment', { numero: inv.numero, id: p.id }, { documentCents: cents, ledgerCents: pe.debit, entryId: pe.entry_id });
+    }
+  }
+  for (const cn of documentsList('creditnote', conn)) {
+    if (notCounted(cn)) continue;
+    checked.creditNotes++;
+    if (!creditEntries.get(String(cn.id))) add('credit_note_not_posted', 'credit_note', cn);
+  }
+  return { ok: findings.length === 0, checked, findings };
 }
 
 // ── Bad debts ──────────────────────────────────────────────────────────────
@@ -7903,6 +8110,23 @@ function _upgradeBackup(data, currentVersion) {
   }
 }
 
+// Whether a backup can be restored here, and how: 'same' version, 'upgrade'
+// (older, and it carries its structure, so the migrations bring it forward),
+// 'direct' (older and without its structure, but every migration since then is
+// marked restoreSafe: its rows fit today's tables as they are), 'newer' (written
+// by a later version of the app) or 'too_old'.
+function backupRestoreVerdict(data, _db) {
+  const db = _db || getDb();
+  const currentVersion = db.pragma('user_version', { simple: true });
+  const backupVersion = Number(data?.schemaVersion);
+  if (!Number.isFinite(backupVersion)) return 'too_old';
+  if (backupVersion === currentVersion) return 'same';
+  if (backupVersion > currentVersion) return 'newer';
+  if (Array.isArray(data.schema) && data.schema.length) return 'upgrade';
+  const since = MIGRATIONS.filter(m => m.version > backupVersion && m.version <= currentVersion);
+  return since.length && since.every(m => m.restoreSafe === true) ? 'direct' : 'too_old';
+}
+
 /**
  * Restore a backup made by getAllTablesForBackup into db. Every table in the
  * backup is replaced by the backup's rows - a restore, not a merge - except the
@@ -7925,7 +8149,14 @@ function restoreAllTablesFromBackup(data, _expectedSchemaVersion, _db) {
     err.currentVersion = currentVersion;
     throw err;
   }
-  const payload = backupVersion < currentVersion ? _upgradeBackup(data, currentVersion) : data;
+  const verdict = backupRestoreVerdict(data, db);
+  const payload = verdict === 'upgrade' ? _upgradeBackup(data, currentVersion) : data;
+  if (verdict === 'too_old') {
+    const err = new Error('schema_version_mismatch');
+    err.backupVersion = backupVersion;
+    err.currentVersion = currentVersion;
+    throw err;
+  }
 
   // A backup lists tables in no particular order, so children can arrive before
   // their parents. Enforcement is suspended around the restore - the pragma is a
@@ -7937,6 +8168,11 @@ function restoreAllTablesFromBackup(data, _expectedSchemaVersion, _db) {
     db.transaction(() => {
       const restoreGuards = _liftGuardTriggers(db);
       _replaceRows(db, payload.sqlite);
+      // The documents table is rebuilt from the restored lists when the backup did not carry it,
+      // so rows from before the restore cannot outlive it.
+      if (!Object.prototype.hasOwnProperty.call(payload.sqlite || {}, 'documents') && _backupTableNames(db).includes('documents')) {
+        importDocumentsFromKv(db, { force: true });
+      }
       restoreGuards();
       const unbalanced = _unbalancedPostedEntries(db);
       if (unbalanced) {
@@ -8732,7 +8968,8 @@ module.exports = {
   supplierBillRepairTaxAccounts,
   SECRET_CONFIG_FIELDS, stripApiConfigSecrets, mergeApiConfigSecrets,
   storageGet, storageSet, storageGetAll, storageGetByPrefix,
-  getAllTablesForBackup, restoreAllTablesFromBackup, backupDatabaseFile,
+  DOCUMENT_KINDS, withTransaction, documentsListReconciled, documentsList, documentsSaveChanges, documentsReplaceAll, booksCheck,
+  getAllTablesForBackup, restoreAllTablesFromBackup, backupDatabaseFile, backupRestoreVerdict,
   syncQueuePush, syncQueuePeek, syncQueueDelete, syncQueueIncrementAttempts, syncQueueLength,
   auditInsert, auditQuery, getDeviceId,
   snapshotSave, snapshotGetByDate, snapshotGetLatest, snapshotListDates,

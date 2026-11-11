@@ -1622,7 +1622,87 @@ const MIGRATIONS = [
       database.prepare(`CREATE INDEX IF NOT EXISTS idx_cheques_tx ON cheques(bank_transaction_id)`).run();
     },
   },
+  {
+    version: 51,
+    // A backup written before this version restores straight into it: the table
+    // is rebuilt from the restored lists (see restoreAllTablesFromBackup).
+    restoreSafe: true,
+    description: 'Documents table: invoices and credit notes stored one row each (the kv_store lists stay as a mirror), '
+      + 'imported from the existing lists in their order.',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS documents (
+        kind TEXT NOT NULL,
+        id TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        numero TEXT,
+        client_id TEXT,
+        statut TEXT,
+        doc_date TEXT,
+        total_cents INTEGER,
+        doc TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (kind, id)
+      )`).run();
+      database.prepare(`CREATE INDEX IF NOT EXISTS idx_documents_kind_position ON documents(kind, position)`).run();
+      importDocumentsFromKv(database);
+    },
+  },
 ];
+
+// kv_store keys that hold a whole list of documents, and the kind each one is
+// stored under in the documents table. One definition for every reader and writer.
+const DOCUMENT_KINDS = { 'dicann-fac-factures': 'facture', 'dicann-fac-creditnotes': 'creditnote' };
+
+// The lookup columns copied out of a document. The document itself is stored
+// untouched; these exist only so rows can be found without parsing every one.
+function documentColumns(doc) {
+  const text = (v) => (v === undefined || v === null ? null : String(v));
+  const total = doc && doc.totauxCents && doc.totauxCents.total;
+  return {
+    id: String(doc.id),
+    numero: text(doc.numero),
+    client_id: text(doc.clientId),
+    statut: text(doc.statut),
+    doc_date: text(doc.date),
+    total_cents: typeof total === 'number' && Number.isFinite(total) ? Math.round(total) : null,
+  };
+}
+
+// A list can be stored as rows only when it is an array of objects with distinct,
+// usable ids. Anything else is left alone (the kv_store copy keeps it).
+function isStorableDocumentList(list) {
+  if (!Array.isArray(list)) return false;
+  const seen = new Set();
+  for (const d of list) {
+    if (!d || typeof d !== 'object' || Array.isArray(d)) return false;
+    if (d.id === undefined || d.id === null || d.id === '') return false;
+    const id = String(d.id);
+    if (seen.has(id)) return false;
+    seen.add(id);
+  }
+  return true;
+}
+
+// Fills the documents table from the lists held in kv_store, in list order.
+// Safe to repeat: a kind that already has rows is left alone unless `force` is
+// set, which rebuilds the kind from the list (used after a restore). A missing,
+// empty or malformed list imports nothing.
+function importDocumentsFromKv(database, { force = false } = {}) {
+  const insert = database.prepare(
+    `INSERT INTO documents (kind, id, position, numero, client_id, statut, doc_date, total_cents, doc)
+     VALUES (@kind, @id, @position, @numero, @client_id, @statut, @doc_date, @total_cents, @doc)`);
+  for (const [key, kind] of Object.entries(DOCUMENT_KINDS)) {
+    if (!force && database.prepare('SELECT 1 FROM documents WHERE kind = ? LIMIT 1').get(kind)) continue;
+    if (force) database.prepare('DELETE FROM documents WHERE kind = ?').run(kind);
+    const row = database.prepare('SELECT value FROM kv_store WHERE key = ?').get(key);
+    let list = null;
+    try { list = row ? JSON.parse(row.value) : null; } catch (_) { list = null; }
+    if (!isStorableDocumentList(list)) continue;
+    list.forEach((doc, position) => {
+      insert.run({ kind, position, ...documentColumns(doc), doc: JSON.stringify(doc) });
+    });
+  }
+}
 
 // Runs all pending migrations in ascending version order.
 // If any migration fails the error is re-thrown.
@@ -1647,4 +1727,4 @@ function runMigrations(database) {
   }
 }
 
-module.exports = { MIGRATIONS, runMigrations };
+module.exports = { MIGRATIONS, runMigrations, DOCUMENT_KINDS, documentColumns, isStorableDocumentList, importDocumentsFromKv };

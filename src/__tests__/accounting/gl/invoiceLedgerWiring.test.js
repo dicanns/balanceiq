@@ -42,22 +42,26 @@ describe('WIRE-002 posting on send', () => {
 describe('WIRE-003 leaving the ledger', () => {
   it('save reverses before it writes, and stops when the reversal is refused', () => {
     const save = editor.slice(editor.indexOf('const doSave=async()=>{'), editor.indexOf('const doDelete=async()=>{'));
-    const unpost = save.indexOf('invoiceUnpost');
-    expect(unpost).toBeGreaterThan(-1);
-    expect(unpost).toBeLessThan(save.indexOf('saveFactures('));
-    expect(save).toMatch(/if\(!r\?\.ok\)\{alert\(T\.facUnpostFailed[^;]*;return;\}/);
+    // The reversal is the ledger step of the one commit that saves the invoice: no separate save, and a refusal stops here.
+    expect(save).toMatch(/commitInvoice\(doc,isFinalize\?'post':glCleared\?'unpost':'none'/);
+    expect(save).toMatch(/if\(!committed\)return;/);
+    expect(save).not.toMatch(/saveFactures\(/);
+    const helper = editor.slice(editor.indexOf('const commitInvoice=async'), editor.indexOf('const doSave=async()=>{'));
+    expect(helper).toMatch(/ledger==="unpost"\?T\.facUnpostFailed:T\.facCommitFailed/);
+    expect(helper).toMatch(/if\(!r\?\.ok\)\{alert\([^;]*;return null;\}/);
   });
   it('void does the same and refuses an invoice with payments', () => {
     const del = editor.slice(editor.indexOf('const doDelete=async()=>{'), editor.indexOf('const doReissue='));
-    expect(del.indexOf('invoiceUnpost')).toBeGreaterThan(-1);
-    expect(del.indexOf('invoiceUnpost')).toBeLessThan(del.indexOf('saveFactures('));
-    expect(del).toMatch(/facVoidHasPayments/);
+    expect(del.indexOf("'unpost'")).toBeGreaterThan(-1);
+    expect(del).toMatch(/commitInvoice\(voidedDoc,releasedWasLive\?'unpost':'none'/);
+    expect(del.indexOf('facVoidHasPayments')).toBeLessThan(del.indexOf('commitInvoice('));
+    expect(del.indexOf('commitInvoice(')).toBeLessThan(del.lastIndexOf('onBack()'));
   });
 });
 
 describe('WIRE-004 unpost by invoice', () => {
   it('the handler finds the entry by source and reverses it', () => {
-    const h = MAIN.slice(MAIN.indexOf("ipcMain.handle('ledger:invoice:unpost'"), MAIN.indexOf("ipcMain.handle('ledger:creditnote:post'"));
+    const h = MAIN.slice(MAIN.indexOf('function unpostInvoiceFromLedger'), MAIN.indexOf("ipcMain.handle('ledger:creditnote:post'"));
     expect(h).toMatch(/glFindEntryBySource\('invoice', String\(invoiceId\)\)/);
     expect(h).toMatch(/glReverseEntry\(entry\.id/);
   });

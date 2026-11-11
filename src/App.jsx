@@ -37,6 +37,7 @@ import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./confi
 import { calcRoyaltyFull, computeInvoiceTotals, documentTotals, freezeTotals, invoiceExportParts, frozenFromPosted, backfillFrozenTotals, isTaxOverride, badDebtTaxShare, lineTotal, lineDiscountLabel, documentDiscount, DISCOUNT_PERCENT, DISCOUNT_AMOUNT } from "./utils/calculations.js";
 import { applyCreditToInvoice, creditRemaining, invoiceBalance, unapplyCredit, statusAfterPayments } from "./utils/creditNotes.js";
 import { WRITTEN_OFF, CLOSED_INVOICE_STATUSES, isCashPayment, isOverdue } from "./utils/invoiceStatus.mjs";
+import { diffDocuments } from "./utils/documentDiff.mjs";
 import { overdueInvoices, nextFilingDeadline, cashVarianceCents, buildWorklist, worklistCounts } from "./services/todayWorklist.js";
 import TodayWorklist from "./components/TodayWorklist.jsx";
 import { normalizeBusinessTypes, businessTypesChosen, visibleDestinations, landingDestination, firstRunItems, BUSINESS_TYPE_INFO } from "./services/businessProfile.js";
@@ -90,6 +91,35 @@ function escapeHtml(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'
 // A save that fails must never fail silently: the operator sees it, and the key
 // says which change was lost. Every storage write's catch goes through here.
 function saveFailed(key){return e=>{console.error('[save]',key,e);try{window.dispatchEvent(new CustomEvent('biq:save-failed',{detail:{key:String(key),message:String(e?.message||e)}}));}catch(_){}};}
+
+// Invoices and credit notes are stored one row per document. A save sends only what changed
+// since the previous list (found by object identity), never the whole list.
+const DOC_KIND_FACTURE="facture", DOC_KIND_CREDITNOTE="creditnote";
+function persistDocumentList(key,kind,prevList,list){
+  const v=JSON.stringify(list);
+  if(window.api?.documents?.saveChanges){
+    const d=diffDocuments(prevList,list);
+    if(d.errors.length)saveFailed(key)(new Error('document without an id: '+JSON.stringify(d.errors)));
+    if(d.upserts.length||d.deletes.length||d.order){
+      window.api.documents.saveChanges(kind,{upserts:d.upserts,deletes:d.deletes,order:d.order||undefined}).catch(saveFailed(key));
+    }
+  }else{
+    window.api.storage.set(key,v).catch(saveFailed(key));
+  }
+  schedulePush(key,v);
+}
+// Startup read of a document list: from the document store, falling back to the kv copy.
+async function loadDocumentList(kind,key){
+  try{
+    if(window.api?.documents?.list){
+      const rows=await window.api.documents.list(kind);
+      if(Array.isArray(rows)&&rows.length)return rows;
+    }
+  }catch(e){console.error('[load]',key,e);}
+  const r=await window.api.storage.get(key);
+  if(r?.value){const v=JSON.parse(r.value);if(Array.isArray(v))return v;}
+  return null;
+}
 
 // ── THEME ──
 const DARK = {
@@ -3102,6 +3132,16 @@ function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,pr
     .catch(()=>{});
   }
  };
+ // Saves the invoice and its ledger step as one: nothing is saved when the ledger refuses.
+ // Returns the committed result, or null after telling the operator why nothing was saved.
+ const commitInvoice=async(doc,ledger,nextList,extra={})=>{
+  let r;
+  try{r=await window.api.invoices.commit({doc,ledger,post:extra.post,reason:extra.reason,order:nextList.map(f=>f.id)});}
+  catch(e){r={ok:false,error:String(e?.message||e)};}
+  if(!r?.ok){alert((ledger==="unpost"?T.facUnpostFailed:T.facCommitFailed)+(r?.detail||r?.error?`\n(${r.detail||r.error})`:""));return null;}
+  saveFactures(nextList.map(f=>f.id===r.doc.id?r.doc:f),{alreadySaved:true});
+  return r;
+ };
  const doSave=async()=>{
  if(canUse('creditLimits')&&client?.credit_limit_enabled&&client?.credit_limit&&form.statut!=="Brouillon"&&form.statut!=="Annulée"&&!isProforma){
   const action=client.credit_limit_action||"warn";
@@ -3134,14 +3174,9 @@ function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,pr
  // Applied customer credits are released the same way payments are, before the void.
  let releasedCreditRows=false;
  if(!isProforma&&form.statut==="Annulée"&&prevStatut!=="Annulée"&&(form.paiements||[]).some(p=>p.fromClientCredit)){if(!await releaseClientCreditRows())return;releasedCreditRows=true;}
- // Leaving the ledger (back to draft, or voided): the entry is reversed first,
- // and the invoice only changes if that worked. A closed period refuses.
- if(!isProforma&&wasLive&&!nowLive){
-  const r=await window.api?.ledger?.invoiceUnpost?.({invoiceId:id,reason:form.statut==="Annulée"?(T===EN?'Invoice voided':'Facture annulée'):(T===EN?'Invoice returned to draft for correction':'Facture remise en brouillon pour correction')}).catch(e=>({ok:false,error:String(e?.message||e)}));
-  if(!r?.ok){alert(T.facUnpostFailed+(r?.error?`\n(${r.error})`:""));return;}
-  glCleared=true;
-  setForm(p=>({...p,glEntryId:null}));
- }
+ // Leaving the ledger (back to draft, or voided): the entry is reversed in the same step as the
+ // save below, and the invoice only changes if that worked. A closed period refuses.
+ if(!isProforma&&wasLive&&!nowLive)glCleared=true;
  const doc={...form,...(releasedCreditRows?{paiements:(form.paiements||[]).filter(p=>!p.fromClientCredit)}:{}),id,numero,lignes,acomptes,customPaymentInstructions:cpiSanitized||null,customPaymentInstructionsSnapshot:cpiSnapshot,...(glCleared?{glEntryId:null}:{})};
  // Totals are frozen in cents when the invoice enters the ledger, and dropped when it goes back to draft.
  const fz=freezeTotals(liveTotals);
@@ -3149,17 +3184,19 @@ function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,pr
  if(willFinalize){doc.totauxCents=fz;setForm(p=>({...p,totauxCents:fz}));}
  else if(form.statut==="Brouillon"){delete doc.totauxCents;setForm(p=>{const{totauxCents:_t,...r}=p;return r;});}
  else if(!doc.totauxCents){const stored=factures.find(f=>f.id===id)?.totauxCents;if(stored)doc.totauxCents=stored;}
- saveFactures(factures.some(f=>f.id===id)?factures.map(f=>f.id===id?doc:f):[...factures,doc]);
- if(isNew)logCreate('invoice','facture',id,doc);
- else logUpdate('invoice','facture',id,'document',null,JSON.stringify(doc));
  // Entering the ledger: new, or coming back from draft or void. The main process
  // posts once per invoice whatever the screen remembers, so no entry id is
  // consulted here - a stale one used to skip the posting after a return to draft.
  const isFinalize=!isProforma&&nowLive&&!wasLive;
- if(isFinalize&&window.api?.ledger?.invoicePost){
-  const taxExempt=!!(clients.find(c=>c.id===form.clientId)?.taxExempt);
-  window.api.ledger.invoicePost({...revenueSource(lignes,form),invoiceId:id,invoiceDate:form.date||dk(new Date()),subtotalCents:fz.sousTotal,tpsCents:fz.tps,tvqCents:fz.tvq,totalCents:fz.total,taxExempt}).then(res=>{if(res?.ok&&res.entryId){setForm(p=>({...p,glEntryId:res.entryId}));saveFactures(prev=>prev.map(f=>f.id===id?{...f,glEntryId:res.entryId}:f));}}).catch(e=>console.error('[ledger] invoice post failed',e));
- }
+ const taxExempt=!!(clients.find(c=>c.id===form.clientId)?.taxExempt);
+ const committed=await commitInvoice(doc,isFinalize?'post':glCleared?'unpost':'none',factures.some(f=>f.id===id)?factures.map(f=>f.id===id?doc:f):[...factures,doc],{
+  post:isFinalize?{...revenueSource(lignes,form),invoiceId:id,invoiceDate:form.date||dk(new Date()),subtotalCents:fz.sousTotal,tpsCents:fz.tps,tvqCents:fz.tvq,totalCents:fz.total,taxExempt}:undefined,
+  reason:glCleared?(form.statut==="Annulée"?(T===EN?'Invoice voided':'Facture annulée'):(T===EN?'Invoice returned to draft for correction':'Facture remise en brouillon pour correction')):undefined});
+ if(!committed)return;
+ if(glCleared)setForm(p=>({...p,glEntryId:null}));
+ else if(isFinalize&&committed.entryId)setForm(p=>({...p,glEntryId:committed.entryId}));
+ if(isNew)logCreate('invoice','facture',id,doc);
+ else logUpdate('invoice','facture',id,'document',null,JSON.stringify(doc));
  if(!isProforma&&form.statut!=='Brouillon'&&form.statut!=='Annulée')settleDepositsOnSend(id,numero,doc);
  else if(form.statut==='Brouillon')postDepositReceipts(id,numero,doc.acomptes);
  setCreditLimitBanner(null);setCreditLimitOverrideGranted(false);
@@ -3178,7 +3215,7 @@ function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,pr
  };
  const doDelete=async()=>{
  if(!savedId)return;
- let releasedOnDelete=false;
+ let releasedOnDelete=false,releasedWasLive=false;
  const reason=await promptCorrectionReason(T===EN?'Invoice void':'Annulation de la facture',T===EN?'en':'fr');
  if(!reason)return;
  // A voided invoice leaves the ledger: its revenue, tax and receivable are
@@ -3186,12 +3223,15 @@ function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,pr
  if(!isProforma&&isLiveInvoiceStatus(savedStatut)){
   if((form.paiements||[]).some(isCashPayment)){alert(T.facVoidHasPayments);return;}
   if((form.paiements||[]).some(p=>p.fromClientCredit)){if(!await releaseClientCreditRows())return;releasedOnDelete=true;}
-  const r=await window.api?.ledger?.invoiceUnpost?.({invoiceId:savedId,reason:`${T===EN?'Invoice voided':'Facture annulée'}: ${reason}`}).catch(e=>({ok:false,error:String(e?.message||e)}));
-  if(!r?.ok){alert(T.facUnpostFailed+(r?.error?`\n(${r.error})`:""));return;}
+  releasedWasLive=true;
  }
+ // The void and the reversal of its ledger entry are one step: if the ledger refuses, nothing changes.
+ const voided=factures.map(f=>f.id===savedId?{...f,...(releasedOnDelete?{paiements:(f.paiements||[]).filter(p=>!p.fromClientCredit)}:{}),statut:"Annulée",voidReason:reason,voidDate:dk(new Date()),glEntryId:null}:f);
+ const voidedDoc=voided.find(f=>f.id===savedId);
+ if(!voidedDoc){onBack();return;}
+ if(!await commitInvoice(voidedDoc,releasedWasLive?'unpost':'none',voided,{reason:`${T===EN?'Invoice voided':'Facture annulée'}: ${reason}`}))return;
  logVoid('invoice','facture',savedId,reason);
  if(invBridgeConfig.enabled)window.api?.inventory?.deduct?.delete?.(savedId);
- saveFactures(factures.map(f=>f.id===savedId?{...f,...(releasedOnDelete?{paiements:(f.paiements||[]).filter(p=>!p.fromClientCredit)}:{}),statut:"Annulée",voidReason:reason,voidDate:dk(new Date()),glEntryId:null}:f));
  onBack();
  };
  const doReissue=()=>{
@@ -3476,21 +3516,23 @@ function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,pr
  })}</div>)}
  {locked&&!isProforma&&savedId&&onEnregistrerPaiement&&["Envoyée","Payée partiellement"].includes(form.statut)&&<button type="button" onClick={()=>onEnregistrerPaiement({...form,id:savedId,numero:savedNumero},{deposit:true})} style={{marginTop:6,width:"100%",padding:"5px 0",borderRadius:6,border:`1px dashed ${t.cardBorder}`,background:"none",color:t.textSub,cursor:"pointer",fontSize:11,fontWeight:600}}>{T===EN?"+ Record a deposit":"+ Enregistrer un acompte"}</button>}{!locked&&(showDepotForm
  ?<div style={{borderTop:`1px solid ${t.dividerMid}`,paddingTop:8,marginTop:4,display:"flex",flexDirection:"column",gap:5}}><div style={{fontSize:11,fontWeight:700,color:t.text}}>{T.facEnregistrerDepot}</div><input type="date"value={depotForm.date} onChange={e=>setDepotForm(p=>({...p,date:e.target.value}))} style={{...inputS,fontSize:11}}/><input type="number"value={depotForm.montant} onChange={e=>setDepotForm(p=>({...p,montant:e.target.value}))} placeholder="Montant"style={{...inputS,fontSize:11}}/><select value={depotForm.mode} onChange={e=>setDepotForm(p=>({...p,mode:e.target.value}))} style={{...inputS,fontSize:11}}>
- {MODES_PAIEMENT.map(m=><option key={m} value={m}>{m}</option>)}</select><input value={depotForm.reference} onChange={e=>setDepotForm(p=>({...p,reference:e.target.value}))} placeholder={T.facRefOptional} style={{...inputS,fontSize:11}}/><div style={{display:"flex",gap:6}}><button onClick={addDepot} style={{flex:1,padding:"4px 0",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>{T.save}</button><button onClick={()=>setShowDepotForm(false)} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>{T.cancel}</button></div></div>:<div style={{marginTop:6,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}><button onClick={()=>setShowDepotForm(true)} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:600,fontSize:11,display:"flex",alignItems:"center",gap:5}}>+ {T.facEnregistrerDepot}</button><span style={{fontSize:10,color:t.textMuted}}>{T===EN?"Records a payment already received from the client.":"Enregistre un paiement déjà reçu du client."}</span></div>)}</div></div>{emailModal&&<EmailComposeModal {...emailModal} fromEmail={apiConfig?.resendFrom||"noreply@balanceiq.ca"} apiConfig={apiConfig} onSuccess={(to,meta)=>{
+ {MODES_PAIEMENT.map(m=><option key={m} value={m}>{m}</option>)}</select><input value={depotForm.reference} onChange={e=>setDepotForm(p=>({...p,reference:e.target.value}))} placeholder={T.facRefOptional} style={{...inputS,fontSize:11}}/><div style={{display:"flex",gap:6}}><button onClick={addDepot} style={{flex:1,padding:"4px 0",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>{T.save}</button><button onClick={()=>setShowDepotForm(false)} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>{T.cancel}</button></div></div>:<div style={{marginTop:6,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}><button onClick={()=>setShowDepotForm(true)} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:600,fontSize:11,display:"flex",alignItems:"center",gap:5}}>+ {T.facEnregistrerDepot}</button><span style={{fontSize:10,color:t.textMuted}}>{T===EN?"Records a payment already received from the client.":"Enregistre un paiement déjà reçu du client."}</span></div>)}</div></div>{emailModal&&<EmailComposeModal {...emailModal} fromEmail={apiConfig?.resendFrom||"noreply@balanceiq.ca"} apiConfig={apiConfig} onSuccess={async(to,meta)=>{
  setEmailModal(null);
  // After this handler's own save, so that save cannot overwrite the delivery record.
  setTimeout(()=>recordInvoiceEmail(to,meta),0);
  if(form.statut==="Brouillon"){
  const newStatut="Envoyée";
- setForm(p=>({...p,statut:newStatut}));
  if(savedId){
  const fz=freezeTotals(liveTotals);
  const doc={...form,statut:newStatut,id:savedId,numero:savedNumero,lignes,acomptes,...(isProforma?{}:{totauxCents:fz})};
- if(!isProforma)setForm(p=>({...p,totauxCents:fz}));
- saveFactures(factures.some(f=>f.id===savedId)?factures.map(f=>f.id===savedId?doc:f):[...factures,doc]);
- settleDepositsOnSend(savedId,savedNumero,doc);
- if(!isProforma&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients.find(c=>c.id===form.clientId)?.taxExempt);window.api.ledger.invoicePost({...revenueSource(lignes,form),invoiceId:savedId,invoiceDate:form.date||dk(new Date()),subtotalCents:fz.sousTotal,tpsCents:fz.tps,tvqCents:fz.tvq,totalCents:fz.total,taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(f=>f.id===savedId?{...f,glEntryId:res.entryId}:f));}).catch(e=>console.error('[ledger] invoice post failed',e));}
- }
+ const taxExempt=!!(clients.find(c=>c.id===form.clientId)?.taxExempt);
+ // Marking the draft as sent and posting it are one step; if the ledger refuses the invoice stays a draft.
+ const committed=await commitInvoice(doc,isProforma?'none':'post',factures.some(f=>f.id===savedId)?factures.map(f=>f.id===savedId?doc:f):[...factures,doc],{
+  post:isProforma?undefined:{...revenueSource(lignes,form),invoiceId:savedId,invoiceDate:form.date||dk(new Date()),subtotalCents:fz.sousTotal,tpsCents:fz.tps,tvqCents:fz.tvq,totalCents:fz.total,taxExempt}});
+ if(!committed)return;
+ setForm(p=>({...p,statut:newStatut,...(isProforma?{}:{totauxCents:fz}),...(committed.entryId?{glEntryId:committed.entryId}:{})}));
+ settleDepositsOnSend(savedId,savedNumero,committed.doc);
+ }else setForm(p=>({...p,statut:newStatut}));
  }
  }} onClose={()=>setEmailModal(null)}/>}
  {(()=>{const log=(factures.find(f=>f.id===savedId)||form).emailLog||[];return savedId&&!isProforma&&(form.statut!=="Brouillon"||log.length>0||reminderLog.length>0)?<InvoiceDeliveryTimeline log={log} reminders={reminderLog} en={T===EN} t={t}/>:null;})()}
@@ -5175,6 +5217,31 @@ function SectionTip({text}){
 }
 
 // ── First-visit tab banner ────────────────────────────────────────────────────
+// Shown at the top of Invoicing when the documents and the ledger disagree. Each finding is
+// written out in words; nothing is changed from here.
+function BooksCheckBanner({result,onDismiss}){
+ const t=useT();const T=useL();
+ const [open,setOpen]=useState(false);
+ const findings=result?.findings||[];
+ if(!findings.length)return null;
+ const money=c=>fmt((Number(c)||0)/100);
+ const line=f=>{
+  const d=f.detail||{};
+  return (T["booksFind_"+f.code]||f.code)
+   .replace("{numero}",f.numero||f.id)
+   .replace("{doc}",money(d.documentCents??d.amountCents))
+   .replace("{ledger}",money(d.ledgerCents));
+ };
+ return(<div style={{background:"rgba(239,68,68,0.06)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:10,padding:"10px 14px",marginBottom:4}}>
+  <div style={{display:"flex",alignItems:"center",gap:12}}>
+   <div style={{flex:1,fontWeight:700,fontSize:13,color:t.text}}>{T.booksCheckBanner.replace("{n}",String(findings.length))}</div>
+   <button onClick={()=>setOpen(o=>!o)} style={{background:"none",border:"1px solid rgba(239,68,68,0.35)",borderRadius:6,color:"#ef4444",fontSize:11,fontWeight:700,padding:"4px 10px",cursor:"pointer"}}>{open?T.booksCheckHide:T.booksCheckDetails}</button>
+   <button onClick={onDismiss} aria-label={T.booksCheckDismiss} title={T.booksCheckDismiss} style={{background:"none",border:"none",color:t.textMuted,fontSize:16,cursor:"pointer",lineHeight:1}}>×</button>
+  </div>
+  {open&&<ul style={{margin:"8px 0 0",paddingLeft:18,fontSize:12,color:t.textSub,lineHeight:1.6}}>{findings.map((f,i)=><li key={f.code+":"+f.id+":"+i}>{line(f)}</li>)}</ul>}
+ </div>);
+}
+
 function TabBanner({title,desc,settingsHint,dismissed,onDismiss}){
  const t=useT();const T=useL();
  if(dismissed)return null;
@@ -7013,6 +7080,7 @@ function AppInner(){
   const [companyPlanVerifiedAt,setCompanyPlanVerifiedAt]=useState(null);
   const [companyOrgConflict,setCompanyOrgConflict]=useState(null);
   const [facCreditNotes,setFacCreditNotes]=useState([]);
+  const [booksCheckResult,setBooksCheckResult]=useState(null);
   const [clientCredits,setClientCredits]=useState([]);
   const [facRecurrents,setFacRecurrents]=useState([]);
   const [invConfig,setInvConfig]=useState(DEFAULT_INV_CONFIG);
@@ -7068,8 +7136,10 @@ function AppInner(){
     try{const r14=await window.api.storage.get("dicann-doc-nums");if(r14?.value)setDocNums(prev=>({...DEFAULT_DOC_NUMS,...JSON.parse(r14.value)}))}catch(e){}
     try{const r15=await window.api.storage.get("dicann-fac-soumissions");if(r15?.value){const v=JSON.parse(r15.value);if(Array.isArray(v))setFacSoumissions(v);}}catch(e){}
     try{const r16=await window.api.storage.get("dicann-fac-commandes");if(r16?.value){const v=JSON.parse(r16.value);if(Array.isArray(v))setFacCommandes(v);}}catch(e){}
-    try{const r17=await window.api.storage.get("dicann-fac-factures");if(r17?.value){const v=JSON.parse(r17.value);if(Array.isArray(v)){facFacturesRef.current=v;setFacFactures(v);freezeSentInvoices();}}}catch(e){}
-    try{const r18=await window.api.storage.get("dicann-fac-creditnotes");if(r18?.value){const v=JSON.parse(r18.value);if(Array.isArray(v))setFacCreditNotes(v);}}catch(e){}
+    try{const v=await loadDocumentList(DOC_KIND_FACTURE,"dicann-fac-factures");if(Array.isArray(v)){facFacturesRef.current=v;setFacFactures(v);}}catch(e){}
+    try{const v=await loadDocumentList(DOC_KIND_CREDITNOTE,"dicann-fac-creditnotes");if(Array.isArray(v))setFacCreditNotes(v);}catch(e){}
+    try{await freezeSentInvoices();}catch(e){}
+    try{runBooksCheck();}catch(e){}
     try{const rCC=await window.api.storage.get(CLIENT_CREDITS_KEY);if(rCC?.value){const v=JSON.parse(rCC.value);if(Array.isArray(v)){clientCreditsRef.current=v;setClientCredits(v);}}}catch(e){}
     try{const r19=await window.api.storage.get("dicann-fac-recurrents");if(r19?.value){const v=JSON.parse(r19.value);if(Array.isArray(v))setFacRecurrents(v);}}catch(e){}
     try{const rIC=await window.api.storage.get("dicann-inv-config");if(rIC?.value){const p=JSON.parse(rIC.value);setInvConfig({...DEFAULT_INV_CONFIG,...p,items:p.items||DEFAULT_INV_CONFIG.items});}}catch(e){}
@@ -7593,14 +7663,23 @@ function AppInner(){
       if(cur.changed)saveFacFactures(prev=>backfillFrozenTotals(prev,r.totals).invoices,{silent:true});
     }catch(e){console.error('[ledger] freezing sent invoice totals failed',e);}
   };
+  // Compares the stored invoices, payments and credit notes with the ledger once after startup.
+  // The banner only appears when something differs.
+  const runBooksCheck=async()=>{
+    try{
+      const r=await window.api?.books?.check?.();
+      if(r&&Array.isArray(r.findings)&&r.findings.length)setBooksCheckResult(r);
+    }catch(e){console.error('[books] check failed',e);}
+  };
   const saveFacFactures=useCallback((listOrFn,opts)=>{
     const list=typeof listOrFn==='function'?listOrFn(facFacturesRef.current):listOrFn;
     if(!Array.isArray(list))return;
+    const prevList=facFacturesRef.current;
     facFacturesRef.current=list;
     setFacFactures(list);
-    const v=JSON.stringify(list);
-    window.api.storage.set("dicann-fac-factures",v).catch(saveFailed("dicann-fac-factures"));
-    schedulePush("dicann-fac-factures",v);
+    // alreadySaved: the document store already holds this list (invoices.commit saved it).
+    if(opts?.alreadySaved)schedulePush("dicann-fac-factures",JSON.stringify(list));
+    else persistDocumentList("dicann-fac-factures",DOC_KIND_FACTURE,prevList,list);
     if(!opts?.silent)trackEvent('feature_used:invoice_created');
   },[]);
   const facCreditNotesRef=useRef(facCreditNotes);
@@ -7608,11 +7687,10 @@ function AppInner(){
   const saveFacCreditNotes=useCallback(listOrFn=>{
     const list=typeof listOrFn==='function'?listOrFn(facCreditNotesRef.current):listOrFn;
     if(!Array.isArray(list))return;
+    const prevList=facCreditNotesRef.current;
     facCreditNotesRef.current=list;
     setFacCreditNotes(list);
-    const v=JSON.stringify(list);
-    window.api.storage.set("dicann-fac-creditnotes",v).catch(saveFailed("dicann-fac-creditnotes"));
-    schedulePush("dicann-fac-creditnotes",v);
+    persistDocumentList("dicann-fac-creditnotes",DOC_KIND_CREDITNOTE,prevList,list);
   },[]);
   // Customer credits (overpayments kept on the account): same shape of saver as the
   // credit notes above, so a ledger write-back can pass an updater function.
@@ -8547,6 +8625,7 @@ function AppInner(){
  {at("today","encaisse")&&<TabBanner title={T.bannerEncaisseTitle} desc={T.bannerEncaisseDesc} settingsHint={T.bannerEncaisseSettings} dismissed={dismissedBanners.has("encaisse")} onDismiss={()=>dismissBanner("encaisse")}/>}
  {at("today","intelligence")&&<TabBanner title={T.bannerIntelTitle} desc={T.bannerIntelDesc} settingsHint={T.bannerIntelSettings} dismissed={dismissedBanners.has("intelligence")} onDismiss={()=>dismissBanner("intelligence")}/>}
  {activeTab==="facturation"&&<TabBanner title={T.bannerFacTitle} desc={T.bannerFacDesc} settingsHint={T.bannerFacSettings} dismissed={dismissedBanners.has("facturation")} onDismiss={()=>dismissBanner("facturation")}/>}
+ {activeTab==="facturation"&&booksCheckResult&&<BooksCheckBanner result={booksCheckResult} onDismiss={()=>setBooksCheckResult(null)}/>}
  {at("today","previsions")&&previsionsEnabled&&<TabBanner title={T.bannerPrevTitle} desc={T.bannerPrevDesc} settingsHint={T.bannerPrevSettings} dismissed={dismissedBanners.has("previsions")} onDismiss={()=>dismissBanner("previsions")}/>}
  {at("operations","daily")&&(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}><div style={{display:"flex",alignItems:"center",gap:6}}><button onClick={()=>{const n=new Date(d);n.setDate(n.getDate()-1);setSelectedDate(dk(n))}} style={{background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.text,padding:"3px 8px",cursor:"pointer",fontSize:13}}>←</button><div><div style={{fontSize:15,fontWeight:700,textTransform:"capitalize",color:t.text,display:"flex",alignItems:"center",gap:6}}>{fmtD(d,T)}{isDayComplete&&<span style={{fontSize:9.5,fontWeight:700,color:"#16a34a",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:10,padding:"1px 7px",lineHeight:1.6}}>{T.statusDayComplete}</span>}{(()=>{if(closeStatus==='closed_clean')return<span style={{fontSize:9.5,fontWeight:700,color:"#16a34a",background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:10,padding:"1px 7px",lineHeight:1.6}}>{T.closeStatusClean}</span>;if(closeStatus==='closed_with_warnings')return<span style={{fontSize:9.5,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",border:"1px solid rgba(249,115,22,0.25)",borderRadius:10,padding:"1px 7px",lineHeight:1.6}}>{T.closeStatusWarnings}</span>;if(closeStatus==='in_progress')return<span style={{fontSize:9.5,fontWeight:600,color:t.textMuted,background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:10,padding:"1px 7px",lineHeight:1.6}}>{T.closeStatusInProgress}</span>;return null;})()}{editedAfterClose&&<span style={{fontSize:9,fontWeight:700,color:"#f59e0b",background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.25)",borderRadius:10,padding:"1px 6px",lineHeight:1.6}}>{T.closeStatusEditedAfter}</span>}</div><div style={{display:"flex",gap:3,marginTop:1,flexWrap:"wrap"}}>{holiday&&<span style={{fontSize:9,background:t.warnBg,color:t.warnText,padding:"1px 5px",borderRadius:8,fontWeight:600}}>{holiday}</span>}
  {today.weather&&<span style={{fontSize:9,background:"rgba(56,189,248,0.07)",color:"#38bdf8",padding:"1px 5px",borderRadius:8}}>{xlateWeather(today.weather,T)}{today.tempC!=null?` ${today.tempC}°C`:""}</span>}

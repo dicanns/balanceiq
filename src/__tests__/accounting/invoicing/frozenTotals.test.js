@@ -204,7 +204,8 @@ describe('FROZEN-004 invoicePostedTotals', () => {
 });
 
 describe('FROZEN-005 every poster freezes first and sends those cents', () => {
-  const callLines = APP.split('\n').filter((l) => /ledger\??\.invoicePost\??\.?\(\{/.test(l) || /\.invoicePost\(\{/.test(l));
+  // Direct posts, plus the editor's two posts that travel inside invoices.commit (the post: argument).
+  const callLines = APP.split('\n').filter((l) => /ledger\??\.invoicePost\??\.?\(\{/.test(l) || /\.invoicePost\(\{/.test(l) || /^\s*post:(isFinalize|isProforma)/.test(l));
 
   it('finds every posting call site in App.jsx', () => {
     expect(callLines.length).toBe(7);

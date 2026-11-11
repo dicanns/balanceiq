@@ -5,6 +5,16 @@ contextBridge.exposeInMainWorld('api', {
     get: (key) => ipcRenderer.invoke('storage:get', key),
     set: (key, value) => ipcRenderer.invoke('storage:set', key, value),
   },
+  documents: {
+    list: (kind) => ipcRenderer.invoke('documents:list', kind),
+    saveChanges: (kind, changes) => ipcRenderer.invoke('documents:saveChanges', kind, changes),
+  },
+  invoices: {
+    commit: (opts) => ipcRenderer.invoke('invoices:commit', opts),
+  },
+  books: {
+    check: () => ipcRenderer.invoke('books:check'),
+  },
   gas: {
     getPrice: (opts) => ipcRenderer.invoke('gas:getPrice', opts),
   },
