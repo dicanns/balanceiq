@@ -78,7 +78,7 @@ serve(async (req) => {
         .from('franchise-docs')
         .upload(storagePath, fileBytes, { contentType: mimeType || 'application/octet-stream', upsert: false });
 
-      if (uploadErr) return new Response(JSON.stringify({ error: uploadErr.message }), { status: 500, headers: corsHeaders });
+      if (uploadErr) { console.error('franchise-docs storage error:', uploadErr.message); return new Response(JSON.stringify({ error: 'storage_error' }), { status: 500, headers: corsHeaders }); }
 
       const { data: doc, error: insertErr } = await svc
         .from('franchise_documents')
@@ -86,7 +86,7 @@ serve(async (req) => {
         .select()
         .single();
 
-      if (insertErr) return new Response(JSON.stringify({ error: insertErr.message }), { status: 500, headers: corsHeaders });
+      if (insertErr) { console.error('franchise-docs storage error:', insertErr.message); return new Response(JSON.stringify({ error: 'storage_error' }), { status: 500, headers: corsHeaders }); }
       return ok({ ok: true, doc });
     }
 
@@ -122,7 +122,7 @@ serve(async (req) => {
         .from('franchise-docs')
         .createSignedUrl(storagePath, 300); // 5 min expiry
 
-      if (urlErr) return new Response(JSON.stringify({ error: urlErr.message }), { status: 500, headers: corsHeaders });
+      if (urlErr) { console.error('franchise-docs storage error:', urlErr.message); return new Response(JSON.stringify({ error: 'storage_error' }), { status: 500, headers: corsHeaders }); }
       return ok({ ok: true, url: urlData.signedUrl });
     }
 
@@ -137,7 +137,7 @@ serve(async (req) => {
         .select()
         .single();
 
-      if (annErr) return new Response(JSON.stringify({ error: annErr.message }), { status: 500, headers: corsHeaders });
+      if (annErr) { console.error('franchise-docs storage error:', annErr.message); return new Response(JSON.stringify({ error: 'storage_error' }), { status: 500, headers: corsHeaders }); }
       return ok({ ok: true, ann });
     }
 
@@ -154,6 +154,7 @@ serve(async (req) => {
     return new Response(JSON.stringify({ error: 'unknown_action' }), { status: 400, headers: corsHeaders });
 
   } catch (e) {
-    return new Response(JSON.stringify({ error: String(e) }), { status: 500, headers: corsHeaders });
+    console.error('franchise-docs error:', e);
+    return new Response(JSON.stringify({ error: 'server_error' }), { status: 500, headers: corsHeaders });
   }
 });

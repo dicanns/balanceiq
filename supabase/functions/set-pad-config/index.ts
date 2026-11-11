@@ -38,7 +38,7 @@ Deno.serve(async (req: Request) => {
   try {
     const { role } = await requireOrgMember(req, org_id);
     if (role !== 'admin' && role !== 'owner') {
-      return json({ error: 'forbidden', detail: 'admin or owner required' }, 403);
+      return json({ error: 'forbidden' }, 403);
     }
   } catch (resp) { return resp as Response; }
 
@@ -53,7 +53,7 @@ Deno.serve(async (req: Request) => {
 
   if (error) {
     console.error('set-pad-config DB error:', error);
-    return json({ error: 'db_error', detail: error.message }, 500);
+    return json({ error: 'db_error' }, 500);
   }
 
   console.log('PAD config saved for org:', org_id);

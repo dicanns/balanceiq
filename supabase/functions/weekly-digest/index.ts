@@ -1,5 +1,9 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+function escHtml(s: unknown) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 import { requireCronSecret } from '../_shared/cron.ts';
 
 const supabase = createClient(
@@ -74,12 +78,12 @@ serve(async (req: Request) => {
       .eq('payment_failed', true);
 
     const platformRows = Object.entries(platformCounts)
-      .map(([p, c]) => `<tr><td style="padding:4px 12px 4px 0">${p}</td><td style="padding:4px 0;font-weight:600">${c}</td></tr>`)
+      .map(([p, c]) => `<tr><td style="padding:4px 12px 4px 0">${escHtml(p)}</td><td style="padding:4px 0;font-weight:600">${c}</td></tr>`)
       .join('');
 
     const versionRows = Object.entries(versionCounts)
       .sort((a, b) => b[1] - a[1])
-      .map(([v, c]) => `<tr><td style="padding:4px 12px 4px 0">v${v}</td><td style="padding:4px 0;font-weight:600">${c}</td></tr>`)
+      .map(([v, c]) => `<tr><td style="padding:4px 12px 4px 0">v${escHtml(v)}</td><td style="padding:4px 0;font-weight:600">${c}</td></tr>`)
       .join('');
 
     const failedBanner = (failedPayments || 0) > 0
@@ -165,6 +169,6 @@ serve(async (req: Request) => {
     return new Response(JSON.stringify({ ok: true }), { headers: { 'Content-Type': 'application/json' } });
   } catch (err) {
     console.error('weekly-digest error:', err);
-    return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+    return new Response(JSON.stringify({ error: 'server_error' }), { status: 500 });
   }
 });

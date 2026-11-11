@@ -12,8 +12,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Server-side mapping: planKey → Stripe price ID.
-// Clients send planKey; the server resolves the price ID - clients never supply price IDs directly.
+// Server-side mapping: planKey -> Stripe price ID, for plans a customer can start on.
+// The per-location prices are NOT here: they are add-ons billed on top of an
+// existing Franchise subscription (see create-invitation), never a plan of their own.
 const PLAN_PRICES: Record<string, string> = {
   pro_monthly:                 'price_1TCLnfGcfc7VEkjZIMBbNl4n',
   pro_annual:                  'price_1TCLnmGcfc7VEkjZX2wv763a',
@@ -21,9 +22,12 @@ const PLAN_PRICES: Record<string, string> = {
   network_annual:              'price_1TCLkyGcfc7VEkjZZgwQGotm',
   franchise_monthly:           'price_1TCLpmGcfc7VEkjZTuaZCNwp',
   franchise_annual:            'price_1TCLq1Gcfc7VEkjZZK3UlWpz',
-  franchise_location_monthly:  'price_1TCLqxGcfc7VEkjZs19hWTOo',
-  franchise_location_annual:   'price_1TCLrZGcfc7VEkjZF2o6LLXs',
 };
+
+// The released desktop app sends a price id instead of a plan key. Accept it only
+// when it is one of the standalone prices above; anything else is refused.
+const ALLOWED_PRICE_IDS = new Set(Object.values(PLAN_PRICES));
+const TRIAL_DAYS = 30;
 
 const ALLOWED_REDIRECT_HOSTS = ['balanceiq.app', 'balanceiq.ca'];
 
@@ -31,6 +35,8 @@ function isAllowedRedirectUrl(url: string | undefined): boolean {
   if (!url) return true; // undefined → use server default
   try {
     const p = new URL(url);
+    // The desktop app returns through its own deep link.
+    if (p.protocol === 'balanceiq:') return true;
     if (p.hostname === 'localhost' || p.hostname === '127.0.0.1') return true;
     return p.protocol === 'https:' && ALLOWED_REDIRECT_HOSTS.some(h => p.hostname === h || p.hostname.endsWith('.' + h));
   } catch { return false; }
@@ -63,17 +69,19 @@ serve(async (req) => {
       });
     }
 
-    const { planKey, orgId, successUrl, cancelUrl } = await req.json();
+    const { planKey, priceId: requestedPriceId, orgId, successUrl, cancelUrl } = await req.json();
 
-    if (!planKey || !orgId) {
+    if ((!planKey && !requestedPriceId) || !orgId) {
       return new Response(JSON.stringify({ error: 'Missing planKey or orgId' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const priceId = PLAN_PRICES[planKey];
+    const priceId = planKey
+      ? PLAN_PRICES[String(planKey)]
+      : (ALLOWED_PRICE_IDS.has(String(requestedPriceId)) ? String(requestedPriceId) : undefined);
     if (!priceId) {
-      return new Response(JSON.stringify({ error: 'Invalid planKey' }), {
+      return new Response(JSON.stringify({ error: planKey ? 'Invalid planKey' : 'Invalid priceId' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -114,13 +122,18 @@ serve(async (req) => {
         .eq('id', orgId);
     }
 
+    // One free trial per organization: skip it if the customer ever had a subscription
+    // of any status (active, canceled, trialing...). A brand-new customer has none.
+    const prior = await stripe.subscriptions.list({ customer: customerId, status: 'all', limit: 1 });
+    const hadSubscription = prior.data.length > 0;
+
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: 'subscription',
       payment_method_collection: 'always',
       line_items: [{ price: priceId, quantity: 1 }],
       subscription_data: {
-        trial_period_days: 30,
+        ...(hadSubscription ? {} : { trial_period_days: TRIAL_DAYS }),
         metadata: { orgId, userId: user.id },
       },
       metadata: { orgId, userId: user.id },
@@ -134,7 +147,7 @@ serve(async (req) => {
 
   } catch (err) {
     console.error('create-checkout error:', err);
-    return new Response(JSON.stringify({ error: err.message }), {
+    return new Response(JSON.stringify({ error: 'checkout_failed' }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }

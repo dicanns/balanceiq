@@ -18,6 +18,8 @@ function isAllowedRedirectUrl(url: string | undefined): boolean {
   if (!url) return true;
   try {
     const p = new URL(url);
+    // The desktop app returns through its own deep link.
+    if (p.protocol === 'balanceiq:') return true;
     if (p.hostname === 'localhost' || p.hostname === '127.0.0.1') return true;
     return p.protocol === 'https:' && ALLOWED_REDIRECT_HOSTS.some(h => p.hostname === h || p.hostname.endsWith('.' + h));
   } catch { return false; }
@@ -94,7 +96,7 @@ serve(async (req) => {
 
   } catch (err) {
     console.error('create-portal error:', err);
-    return new Response(JSON.stringify({ error: err.message }), {
+    return new Response(JSON.stringify({ error: 'portal_failed' }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }

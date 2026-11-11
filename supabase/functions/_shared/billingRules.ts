@@ -3,6 +3,20 @@
 // must look like. Plain TypeScript with no remote imports, so the edge functions
 // and the Vitest suite share one definition.
 
+// Pre-authorized debit runs on the platform's own Stripe account, so it is off
+// unless the deployment sets PAD_ENABLED to exactly "true".
+export const padEnabled = (envValue?: string | null): boolean => envValue === 'true';
+
+// Plans that may use pre-authorized debit.
+export const PAD_PLANS = ['pro', 'franchise', 'network'];
+export const isPadPlan = (plan: string | null | undefined): boolean => PAD_PLANS.includes(String(plan ?? '').trim().toLowerCase());
+
+// Per organization, per calendar month (UTC): charge attempts and new mandates.
+export const PAD_MONTHLY_CHARGE_CAP = 200;
+export const PAD_MONTHLY_MANDATE_CAP = 100;
+export const monthStartIso = (now: Date = new Date()): string =>
+  new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+
 // Roles allowed to debit a customer, add or remove a billed franchise location,
 // or revoke a location's access.
 export const BILLING_ROLES = ['owner', 'admin'];

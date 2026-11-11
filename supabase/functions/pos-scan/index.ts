@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { getOrgForUser } from '../_shared/getOrgForUser.ts';
+import { readCappedJson, POS_SCAN_MONTHLY_LIMIT } from '../_shared/limits.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -62,7 +63,12 @@ serve(async (req) => {
   }
 
   try {
-    const { image, imageType, orgId } = await req.json();
+    // Size cap first: before any sign-in or database work.
+    const parsedBody = await readCappedJson(req);
+    if (!parsedBody.ok) {
+      return ok({ error: parsedBody.error, message: parsedBody.error === 'too_large' ? 'Image too large. Max 10 MB.' : 'Invalid request.' });
+    }
+    const { image, imageType, orgId } = parsedBody.body as { image?: string; imageType?: string; orgId?: string };
 
     if (!image || !imageType || !orgId) {
       return new Response(JSON.stringify({ error: 'missing_params', message: 'Missing image, imageType, or orgId.' }), {
@@ -111,6 +117,17 @@ serve(async (req) => {
     const plan = orgRow?.plan || 'free';
     if (plan !== 'pro' && plan !== 'franchise' && plan !== 'network') {
       return ok({ error: 'upgrade_required', message: 'Cloud POS scanning requires a Pro plan.' });
+    }
+
+    // Reserve one scan of this month's allowance before spending on the model.
+    const month = new Date().toISOString().slice(0, 7);
+    const { data: newCount, error: rpcErr } = await supabaseAdmin
+      .rpc('increment_usage_if_under_limit', {
+        p_table: 'pos_scan_usage', p_org_id: orgId, p_month: month, p_limit: POS_SCAN_MONTHLY_LIMIT,
+      });
+    if (rpcErr || newCount === null || newCount === -1) {
+      if (rpcErr) console.error('pos-scan quota error:', rpcErr.message);
+      return ok({ error: 'limit_reached', scansLimit: POS_SCAN_MONTHLY_LIMIT });
     }
 
     const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
@@ -163,6 +180,6 @@ serve(async (req) => {
 
   } catch (err) {
     console.error('pos-scan error:', err);
-    return ok({ error: 'unexpected', message: String(err) });
+    return ok({ error: 'unexpected', message: 'Unexpected error.' });
   }
 });

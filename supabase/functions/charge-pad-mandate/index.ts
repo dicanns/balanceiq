@@ -20,6 +20,7 @@ import { requireOrgMember } from '../_shared/auth.ts';
 import {
   canManageBilling, checkChargeRequest, maxChargeCents,
   chargeIdempotencyKey, isUniqueViolation, LIVE_CHARGE_STATUSES,
+  padEnabled, isPadPlan, PAD_MONTHLY_CHARGE_CAP, monthStartIso,
 } from '../_shared/billingRules.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, { apiVersion: '2024-04-10' });
@@ -39,6 +40,7 @@ function json(data: unknown, status = 200) {
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
+  if (!padEnabled(Deno.env.get('PAD_ENABLED'))) return json({ error: 'pad_disabled' }, 403);
 
   let body: Record<string, unknown>;
   try { body = await req.json(); }
@@ -65,6 +67,13 @@ Deno.serve(async (req: Request) => {
   );
 
   try {
+    // Paid plans only, and a monthly cap on charge attempts per organization.
+    const { data: orgRow } = await supabase.from('organizations').select('plan').eq('id', org_id).maybeSingle();
+    if (!isPadPlan(orgRow?.plan)) return json({ error: 'upgrade_required' }, 402);
+    const { count: attempts } = await supabase.from('pad_charges')
+      .select('id', { count: 'exact', head: true }).eq('org_id', org_id).gte('created_at', monthStartIso());
+    if ((attempts ?? 0) >= PAD_MONTHLY_CHARGE_CAP) return json({ error: 'monthly_cap_reached' }, 429);
+
     const { data: mandate, error: fetchErr } = await supabase
       .from('pad_mandates')
       .select('stripe_payment_method, stripe_customer_id, stripe_mandate_id, status, org_id')
@@ -141,9 +150,9 @@ Deno.serve(async (req: Request) => {
         .update({ status: 'failed', failure_reason: String(err?.message ?? e).slice(0, 500), updated_at: new Date().toISOString() })
         .eq('id', charge.id);
       if (err?.type === 'StripeCardError' || err?.code === 'payment_intent_authentication_failure') {
-        return json({ error: 'charge_failed', stripe_error: err?.message }, 422);
+        return json({ error: 'charge_failed' }, 422);
       }
-      return json({ error: 'server_error', detail: String(err?.message ?? e) }, 500);
+      return json({ error: 'server_error' }, 500);
     }
 
     // If this update does not land the row stays 'pending', which still blocks
@@ -163,6 +172,6 @@ Deno.serve(async (req: Request) => {
   } catch (e: unknown) {
     const err = e as { message?: string };
     console.error('charge-pad-mandate error:', err);
-    return json({ error: 'server_error', detail: String(err?.message ?? e) }, 500);
+    return json({ error: 'server_error' }, 500);
   }
 });

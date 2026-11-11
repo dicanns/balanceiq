@@ -7,11 +7,14 @@
  *
  * Flow:
  *   1. Read raw body + stripe-signature header
- *   2. Parse JSON (without verifying) to extract org_id from metadata
- *   3. Look up that org's webhook_secret from pad_config
- *   4. Verify Stripe signature - reject if invalid
- *   5. Process event
+ *   2. Try the platform signing secret first. If it verifies, the event is
+ *      Stripe's own and its org_id metadata can be trusted.
+ *   3. Otherwise look up the secret of the org the message CLAIMS, and verify
+ *      with it. The claim is only used to pick a candidate secret: an event
+ *      that verifies this way is trusted for that one org and nothing else.
+ *   4. Every database update is limited to rows of the event's org.
  */
+import { isUniqueViolation } from '../_shared/billingRules.ts';
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import Stripe from 'https://esm.sh/stripe@14';
@@ -25,23 +28,43 @@ function json(data: unknown, status = 200) {
   });
 }
 
-async function getWebhookSecret(supabase: ReturnType<typeof createClient>, orgId: string): Promise<string> {
-  if (!orgId) return Deno.env.get('STRIPE_WEBHOOK_SECRET_PAD') || Deno.env.get('STRIPE_WEBHOOK_SECRET') || '';
-  const { data } = await supabase
-    .from('pad_config')
-    .select('webhook_secret')
-    .eq('org_id', orgId)
-    .single();
-  if (data?.webhook_secret) return data.webhook_secret;
-  return Deno.env.get('STRIPE_WEBHOOK_SECRET_PAD') || Deno.env.get('STRIPE_WEBHOOK_SECRET') || '';
+const platformSecrets = (): string[] =>
+  [Deno.env.get('STRIPE_WEBHOOK_SECRET_PAD'), Deno.env.get('STRIPE_WEBHOOK_SECRET')].filter((x): x is string => !!x);
+
+async function orgSecret(supabase: ReturnType<typeof createClient>, orgId: string): Promise<string> {
+  if (!orgId) return '';
+  const { data } = await supabase.from('pad_config').select('webhook_secret').eq('org_id', orgId).maybeSingle();
+  return data?.webhook_secret || '';
 }
 
-function extractOrgId(body: string): string {
+// Org named by the (not yet trusted) message; used only to choose a secret to try.
+function claimedOrgId(body: string): string {
   try {
-    const parsed = JSON.parse(body);
-    return parsed?.data?.object?.metadata?.org_id || '';
+    const v = JSON.parse(body)?.data?.object?.metadata?.org_id;
+    return typeof v === 'string' ? v.slice(0, 100) : '';
   } catch {
     return '';
+  }
+}
+
+type Verified = { event: Stripe.Event; scope: 'platform' | 'org'; orgId: string };
+
+async function verify(supabase: ReturnType<typeof createClient>, body: string, sig: string): Promise<Verified | null> {
+  for (const secret of platformSecrets()) {
+    try {
+      const event = await stripe.webhooks.constructEventAsync(body, sig, secret);
+      const meta = (event.data.object as { metadata?: Record<string, string> })?.metadata;
+      return { event, scope: 'platform', orgId: meta?.org_id || '' };
+    } catch { /* try the next candidate */ }
+  }
+  const claimed = claimedOrgId(body);
+  const secret = await orgSecret(supabase, claimed);
+  if (!secret) return null;
+  try {
+    const event = await stripe.webhooks.constructEventAsync(body, sig, secret);
+    return { event, scope: 'org', orgId: claimed };
+  } catch {
+    return null;
   }
 }
 
@@ -52,9 +75,15 @@ async function markCharge(
   supabase: ReturnType<typeof createClient>,
   pi: Stripe.PaymentIntent,
   fields: Record<string, unknown>,
+  orgId: string,
+  platformSigned: boolean,
 ) {
   const update = { ...fields, stripe_payment_intent_id: pi.id, updated_at: new Date().toISOString() };
-  const query = supabase.from('pad_charges').update(update);
+  // Limited to the event's own org. Only a platform-signed event may omit the
+  // org (charges created before metadata carried it).
+  if (!orgId && !platformSigned) return;
+  const base = supabase.from('pad_charges').update(update);
+  const query = orgId ? base.eq('org_id', orgId) : base;
   const { error } = pi.metadata?.charge_id
     ? await query.eq('id', pi.metadata.charge_id)
     : await query.eq('stripe_payment_intent_id', pi.id);
@@ -72,29 +101,24 @@ Deno.serve(async (req: Request) => {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   );
 
-  const orgId = extractOrgId(body);
-  const webhookSecret = await getWebhookSecret(supabase, orgId);
-
-  if (!webhookSecret) {
-    console.error('No webhook secret found for org:', orgId || '(unknown)');
-    return json({ error: 'no_webhook_secret' }, 400);
-  }
-
-  let event: Stripe.Event;
-  try {
-    event = await stripe.webhooks.constructEventAsync(body, sig, webhookSecret);
-  } catch (e) {
-    console.error('Webhook signature verification failed for org:', orgId, e);
+  const verified = await verify(supabase, body, sig);
+  if (!verified) {
+    console.error('pad-webhook: signature verification failed');
     return json({ error: 'invalid_signature' }, 400);
   }
+  const { event, scope, orgId } = verified;
 
-  // Dedup: reject if this event ID was already processed
+  // Dedup: reject if this event ID was already processed. The key carries the
+  // scope so an org-signed message cannot use up another event's id.
   const { error: dedupErr } = await supabase
     .from('pad_webhook_events')
-    .insert({ event_id: event.id })
+    .insert({ event_id: `${scope === 'platform' ? 'platform' : 'org:' + orgId}:${event.id}` })
     .single();
   if (dedupErr) {
-    // Unique constraint violation = already processed
+    if (!isUniqueViolation(dedupErr)) {
+      console.error('pad-webhook dedup insert failed:', dedupErr);
+      return json({ error: 'server_error' }, 500);
+    }
     console.log('Duplicate webhook event ignored:', event.id);
     return json({ received: true, duplicate: true });
   }
@@ -106,7 +130,7 @@ Deno.serve(async (req: Request) => {
         if (session.mode !== 'setup') break;
 
         const mandateId = session.metadata?.mandate_id;
-        if (!mandateId) break;
+        if (!mandateId || !orgId) break;
 
         const setupIntentId = session.setup_intent as string;
         const customerId = session.customer as string;
@@ -144,7 +168,8 @@ Deno.serve(async (req: Request) => {
             last4: last4 || null,
             updated_at: new Date().toISOString(),
           })
-          .eq('id', mandateId);
+          .eq('id', mandateId)
+          .eq('org_id', orgId);
 
         console.log('PAD mandate activated:', mandateId, bankName, last4);
         break;
@@ -154,13 +179,14 @@ Deno.serve(async (req: Request) => {
         const pi = event.data.object as Stripe.PaymentIntent;
         const mandateId = pi.metadata?.mandate_id;
 
-        await markCharge(supabase, pi, { status: 'succeeded' });
+        await markCharge(supabase, pi, { status: 'succeeded' }, orgId, scope === 'platform');
 
-        if (mandateId) {
+        if (mandateId && orgId) {
           await supabase
             .from('pad_mandates')
             .update({ status: 'active', updated_at: new Date().toISOString() })
             .eq('id', mandateId)
+            .eq('org_id', orgId)
             .eq('status', 'nsf');
         }
 
@@ -175,9 +201,9 @@ Deno.serve(async (req: Request) => {
         const reason = pi.last_payment_error?.message || pi.last_payment_error?.code || 'payment_failed';
 
         // A failed charge releases the invoice so it can be charged again.
-        await markCharge(supabase, pi, { status: 'failed', failure_reason: reason });
+        await markCharge(supabase, pi, { status: 'failed', failure_reason: reason }, orgId, scope === 'platform');
 
-        if (mandateId) {
+        if (mandateId && orgId) {
           await supabase
             .from('pad_mandates')
             .update({
@@ -187,7 +213,8 @@ Deno.serve(async (req: Request) => {
               nsf_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
             })
-            .eq('id', mandateId);
+            .eq('id', mandateId)
+            .eq('org_id', orgId);
 
           console.log('PAD payment failed (NSF):', pi.id, 'mandate:', mandateId, 'invoice:', invoiceId, reason);
         }
@@ -196,7 +223,9 @@ Deno.serve(async (req: Request) => {
 
       case 'mandate.updated': {
         const mandate = event.data.object as Stripe.Mandate;
-        if (mandate.status === 'inactive') {
+        // A mandate object carries no org metadata, so only platform-signed events
+        // can cancel a mandate, and then by Stripe's own mandate id.
+        if (mandate.status === 'inactive' && scope === 'platform') {
           await supabase
             .from('pad_mandates')
             .update({ status: 'cancelled', updated_at: new Date().toISOString() })
@@ -214,6 +243,6 @@ Deno.serve(async (req: Request) => {
     return json({ received: true });
   } catch (e) {
     console.error('pad-webhook handler error:', e);
-    return json({ error: 'handler_error', detail: String(e) }, 500);
+    return json({ error: 'handler_error' }, 500);
   }
 });

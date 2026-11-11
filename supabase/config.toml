@@ -16,3 +16,36 @@ verify_jwt = false
 # forwards the code to the desktop app, which checks the state it issued.
 [functions.pos-oauth-callback]
 verify_jwt = false
+
+# The functions below also take calls without a gateway login check. Each does
+# its own: a signed-in member (requireOrgMember), a cron secret, a webhook
+# signature, or an unguessable link token.
+[functions.ai-intelligence]
+verify_jwt = false
+
+[functions.pos-scan]
+verify_jwt = false
+
+[functions.create-pad-mandate]
+verify_jwt = false
+
+[functions.set-pad-config]
+verify_jwt = false
+
+[functions.pad-webhook]
+verify_jwt = false
+
+[functions.pad-followup]
+verify_jwt = false
+
+[functions.weekly-digest]
+verify_jwt = false
+
+[functions.payment-alert]
+verify_jwt = false
+
+[functions.accept-quote]
+verify_jwt = false
+
+[functions.invoice-view]
+verify_jwt = false

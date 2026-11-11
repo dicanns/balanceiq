@@ -37,7 +37,9 @@ function ok(body: Record<string, unknown>) {
 function randomCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous chars (0/O, 1/I)
   let code = '';
-  for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  // crypto source; 256 is a multiple of 32, so taking the byte modulo 32 is unbiased.
+  const bytes = crypto.getRandomValues(new Uint8Array(8));
+  for (let i = 0; i < 8; i++) code += chars[bytes[i] % chars.length];
   return code;
 }
 
@@ -176,7 +178,8 @@ serve(async (req) => {
       .eq('status', 'pending');
     if (expireErr) {
       await undoBilling();
-      return ok({ error: 'update_failed', message: expireErr.message });
+      console.error('create-invitation expire failed:', expireErr.message);
+      return ok({ error: 'update_failed', message: 'Could not replace the invitation. Try again.' });
     }
 
     let inviteCode = '';
@@ -213,13 +216,14 @@ serve(async (req) => {
       if (isUniqueViolation(insertError)) {
         return ok({ error: 'invite_in_progress', message: 'An invitation for this location was just created. Refresh to see it.' });
       }
-      return ok({ error: 'insert_failed', message: insertError.message });
+      console.error('create-invitation insert failed:', insertError.message);
+      return ok({ error: 'insert_failed', message: 'Could not create the invitation. Try again.' });
     }
 
     return ok({ inviteCode, expiresAt, locationName });
 
   } catch (err) {
     console.error('create-invitation error:', err);
-    return ok({ error: 'unexpected', message: String(err) });
+    return ok({ error: 'unexpected', message: 'Unexpected error.' });
   }
 });

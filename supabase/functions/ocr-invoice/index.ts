@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { getOrgForUser } from '../_shared/getOrgForUser.ts';
+import { readCappedJson } from '../_shared/limits.ts';
 
 const OCR_MONTHLY_LIMIT = 100;
 
@@ -79,7 +80,12 @@ serve(async (req) => {
   }
 
   try {
-    const { imageBase64, imageType, orgId, ownApiKey } = await req.json();
+    // Size cap first: before any sign-in or database work.
+    const parsedBody = await readCappedJson(req);
+    if (!parsedBody.ok) {
+      return ok({ error: parsedBody.error, message: parsedBody.error === 'too_large' ? 'Image too large. Max 10 MB.' : 'Invalid request.' }, corsHeaders);
+    }
+    const { imageBase64, imageType, orgId, ownApiKey } = parsedBody.body as { imageBase64?: string; imageType?: string; orgId?: string; ownApiKey?: string };
 
     if (!imageBase64 || !imageType) {
       return ok({ error: 'missing_params', message: 'Missing imageBase64 or imageType.' }, corsHeaders);
@@ -177,7 +183,7 @@ serve(async (req) => {
       const errBody = await claudeRes.text();
       console.error('Claude API error:', claudeRes.status, errBody);
       // API failed - do NOT increment quota
-      return ok({ error: 'claude_error', message: `Erreur Anthropic (${claudeRes.status}): ${errBody.slice(0, 200)}` }, corsHeaders);
+      return ok({ error: 'claude_error', message: `Erreur Anthropic (${claudeRes.status})` }, corsHeaders);
     }
 
     const claudeData = await claudeRes.json();
@@ -196,6 +202,6 @@ serve(async (req) => {
   } catch (err) {
     console.error('ocr-invoice error:', err);
     const corsHeaders = getCorsHeaders(req);
-    return ok({ error: 'unexpected', message: String(err) }, corsHeaders);
+    return ok({ error: 'unexpected', message: 'Unexpected error.' }, corsHeaders);
   }
 });

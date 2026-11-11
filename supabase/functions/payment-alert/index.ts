@@ -7,6 +7,11 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 );
 
+
+function escHtml(s: unknown) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')!;
 const TO_EMAIL = 'info@dicanns.ca';
 
@@ -30,9 +35,9 @@ serve(async (req: Request) => {
 
     const rows = failedOrgs.map(org => `
       <tr>
-        <td style="padding:8px 16px 8px 0;font-size:13px">${org.name || org.id}</td>
-        <td style="padding:8px 16px 8px 0;font-size:13px;text-transform:uppercase;color:#6366f1">${org.plan}</td>
-        <td style="padding:8px 0;font-size:12px;color:#9ca3af">${org.stripe_customer_id || '-'}</td>
+        <td style="padding:8px 16px 8px 0;font-size:13px">${escHtml(org.name || org.id)}</td>
+        <td style="padding:8px 16px 8px 0;font-size:13px;text-transform:uppercase;color:#6366f1">${escHtml(org.plan)}</td>
+        <td style="padding:8px 0;font-size:12px;color:#9ca3af">${escHtml(org.stripe_customer_id || '-')}</td>
       </tr>
     `).join('');
 
@@ -95,6 +100,6 @@ serve(async (req: Request) => {
     });
   } catch (err) {
     console.error('payment-alert error:', err);
-    return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+    return new Response(JSON.stringify({ error: 'server_error' }), { status: 500 });
   }
 });

@@ -10,6 +10,10 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+function escHtml(s: unknown) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 import { requireOrgMember } from '../_shared/auth.ts';
 
 const corsHeaders = {
@@ -62,7 +66,7 @@ Deno.serve(async (req: Request) => {
 
     if (error) {
       console.error('pad-followup query error:', error);
-      return json({ error: 'db_error', detail: error.message }, 500);
+      return json({ error: 'db_error' }, 500);
     }
 
     let sent = 0;
@@ -77,7 +81,7 @@ Deno.serve(async (req: Request) => {
       const html = `
         <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
           <h2 style="color:#f97316">Rappel de prélèvement automatique (PAD)</h2>
-          <p>Bonjour ${name},</p>
+          <p>Bonjour ${escHtml(name)},</p>
           <p>Votre autorisation de prélèvement automatique (PAD/débit ACSS) est toujours en attente.
           Veuillez compléter l'enregistrement de vos informations bancaires pour activer les paiements automatiques.</p>
           <p>Si vous avez des questions, veuillez contacter votre fournisseur directement.</p>
@@ -107,6 +111,6 @@ Deno.serve(async (req: Request) => {
     return json({ sent, skipped });
   } catch (e) {
     console.error('pad-followup error:', e);
-    return json({ error: 'server_error', detail: String(e) }, 500);
+    return json({ error: 'server_error' }, 500);
   }
 });

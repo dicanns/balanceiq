@@ -19,6 +19,10 @@ function refuse(status: number, error: string, message: string) {
   });
 }
 
+const ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
+const MAX_ATTEMPTS_PER_USER = 10;
+const MAX_ATTEMPTS_PER_IP = 40;
+
 // Linking an organization under a franchisor changes who can read its data, so
 // only the organization's owner or admin may accept, every write is checked, and
 // the invitation is claimed first with a conditional update so two accepts of
@@ -38,6 +42,20 @@ serve(async (req) => {
     const token = authHeader.replace('Bearer ', '');
     const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
     if (authError || !user) return ok({ error: 'no_auth', message: 'Session expired.' });
+
+    // Attempt limit, per user and per address, counted in the database so it holds
+    // across function instances. Every try is logged, right or wrong. A shared
+    // office address can hit the address limit; the user limit is the tighter one.
+    const ip = (req.headers.get('cf-connecting-ip') || req.headers.get('x-forwarded-for') || 'unknown').split(',')[0].trim();
+    const since = new Date(Date.now() - ATTEMPT_WINDOW_MS).toISOString();
+    const [{ count: userTries }, { count: ipTries }] = await Promise.all([
+      supabaseAdmin.from('invitation_attempts').select('id', { count: 'exact', head: true }).eq('user_id', user.id).gte('created_at', since),
+      supabaseAdmin.from('invitation_attempts').select('id', { count: 'exact', head: true }).eq('ip', ip).gte('created_at', since),
+    ]);
+    if ((userTries ?? 0) >= MAX_ATTEMPTS_PER_USER || (ipTries ?? 0) >= MAX_ATTEMPTS_PER_IP) {
+      return refuse(429, 'too_many_attempts', 'Too many attempts. Try again later.');
+    }
+    await supabaseAdmin.from('invitation_attempts').insert({ user_id: user.id, ip });
 
     const { inviteCode, franchiseeOrgId } = await req.json();
     if (!inviteCode || !franchiseeOrgId) {

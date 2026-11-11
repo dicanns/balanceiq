@@ -13,6 +13,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import Stripe from 'https://esm.sh/stripe@14';
 import { requireOrgMember } from '../_shared/auth.ts';
+import { padEnabled, isPadPlan, PAD_MONTHLY_MANDATE_CAP, monthStartIso } from '../_shared/billingRules.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, { apiVersion: '2024-04-10' });
 
@@ -31,6 +32,7 @@ function json(data: unknown, status = 200) {
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
+  if (!padEnabled(Deno.env.get('PAD_ENABLED'))) return json({ error: 'pad_disabled' }, 403);
 
   try {
     const {
@@ -56,6 +58,13 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
+    // Paid plans only, and a monthly cap on new mandates per organization.
+    const { data: orgRow } = await supabase.from('organizations').select('plan').eq('id', org_id).maybeSingle();
+    if (!isPadPlan(orgRow?.plan)) return json({ error: 'upgrade_required' }, 402);
+    const { count: madeThisMonth } = await supabase.from('pad_mandates')
+      .select('id', { count: 'exact', head: true }).eq('org_id', org_id).gte('created_at', monthStartIso());
+    if ((madeThisMonth ?? 0) >= PAD_MONTHLY_MANDATE_CAP) return json({ error: 'monthly_cap_reached' }, 429);
+
     // Insert pending mandate record first so we have an ID for Stripe metadata
     const { data: mandate, error: insertErr } = await supabase
       .from('pad_mandates')
@@ -74,7 +83,7 @@ Deno.serve(async (req: Request) => {
 
     if (insertErr || !mandate) {
       console.error('pad_mandates insert error:', insertErr);
-      return json({ error: 'db_error', detail: insertErr?.message }, 500);
+      return json({ error: 'db_error' }, 500);
     }
 
     const mandateId = mandate.id as string;
@@ -108,12 +117,12 @@ Deno.serve(async (req: Request) => {
       .eq('id', mandateId);
     if (siErr) {
       console.error('create-pad-mandate: could not record setup intent', siErr);
-      return json({ error: 'mandate_not_recorded', detail: 'The mandate could not be saved. Please try again.' }, 500);
+      return json({ error: 'mandate_not_recorded' }, 500);
     }
 
     return json({ ok: true, checkout_url: session.url, mandate_id: mandateId });
   } catch (e) {
     console.error('create-pad-mandate error:', e);
-    return json({ error: 'server_error', detail: String(e?.message ?? e) }, 500);
+    return json({ error: 'server_error' }, 500);
   }
 });

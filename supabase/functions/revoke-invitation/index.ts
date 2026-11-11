@@ -100,7 +100,7 @@ serve(async (req) => {
           return ok({
             error: 'stripe_error',
             accessRevoked: true,
-            message: `Access was removed, but the $9/month billing could not be removed: ${msg}. Revoke again to retry.`,
+            message: 'Access was removed, but the $9/month billing could not be removed. Revoke again to retry.',
           });
         }
       }
@@ -128,6 +128,6 @@ serve(async (req) => {
 
   } catch (err) {
     console.error('revoke-invitation error:', err);
-    return ok({ error: 'unexpected', message: String(err) });
+    return ok({ error: 'unexpected', message: 'Unexpected error.' });
   }
 });

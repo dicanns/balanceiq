@@ -29,7 +29,25 @@ const PRICE_TO_PLAN: Record<string, string> = {
   'price_1TCLrZGcfc7VEkjZF2o6LLXs': 'franchise',   // Franchise Location $90/yr
 };
 
-async function setOrgPlan(orgId: string, plan: string, extra: Record<string, string> = {}) {
+// A price this function does not know grants nothing: it used to fall back to
+// Pro, so any new or mistyped price gave a paid plan.
+// Per-location prices are add-on items on a Franchise subscription. They never
+// decide the plan, so a subscription holding only a location price grants nothing.
+const LOCATION_PRICES = new Set(['price_1T9C8cGcfc7VEkjZxGdIU7tt', 'price_1TCLqxGcfc7VEkjZs19hWTOo', 'price_1TCLrZGcfc7VEkjZF2o6LLXs']);
+
+// The plan comes from the first item that is not a location add-on.
+function planForItems(sub: Stripe.Subscription): string | null {
+  const item = sub.items.data.find((i) => !LOCATION_PRICES.has(i.price?.id));
+  return planForPrice(item?.price?.id);
+}
+
+function planForPrice(priceId: string | undefined): string | null {
+  const plan = priceId ? PRICE_TO_PLAN[priceId] : undefined;
+  if (!plan) console.error(`Unknown price id, no plan granted: ${priceId}`);
+  return plan || null;
+}
+
+async function setOrgPlan(orgId: string, plan: string, extra: Record<string, string | boolean> = {}) {
   await supabase
     .from('organizations')
     .update({ plan, ...extra })
@@ -46,7 +64,7 @@ serve(async (req) => {
     event = await stripe.webhooks.constructEventAsync(body, sig!, webhookSecret!);
   } catch (err) {
     console.error('Webhook signature error:', err.message);
-    return new Response(`Webhook Error: ${err.message}`, { status: 400 });
+    return new Response('Webhook Error', { status: 400 });
   }
 
   try {
@@ -61,13 +79,13 @@ serve(async (req) => {
         const sub = await stripe.subscriptions.retrieve(session.subscription as string, {
           expand: ['items.data.price'],
         });
-        const priceId = sub.items.data[0]?.price?.id;
-        const plan = PRICE_TO_PLAN[priceId] || 'pro';
-
-        await setOrgPlan(orgId, plan, {
+        const plan = planForItems(sub);
+        const ids = {
           stripe_customer_id: session.customer as string,
           stripe_subscription_id: session.subscription as string,
-        });
+        };
+        if (plan) await setOrgPlan(orgId, plan, ids);
+        else await supabase.from('organizations').update(ids).eq('id', orgId);
 
         console.log(`checkout.session.completed: org ${orgId} → ${plan}`);
         break;
@@ -81,9 +99,10 @@ serve(async (req) => {
         const orgId = sub.metadata?.orgId;
         if (!orgId) break;
 
-        const priceId = sub.items.data[0]?.price?.id;
-        const plan = PRICE_TO_PLAN[priceId] || 'pro';
-        await setOrgPlan(orgId, plan);
+        const plan = planForItems(sub);
+        // A paid invoice ends a payment problem: the warning flag is cleared.
+        if (plan) await setOrgPlan(orgId, plan, { payment_failed: false });
+        else await supabase.from('organizations').update({ payment_failed: false }).eq('id', orgId);
         console.log(`invoice.paid: org ${orgId} plan kept active (${plan})`);
         break;
       }
@@ -121,9 +140,8 @@ serve(async (req) => {
         if (!orgId) break;
 
         if (sub.status === 'active' || sub.status === 'trialing') {
-          const priceId = sub.items.data[0]?.price?.id;
-          const plan = PRICE_TO_PLAN[priceId] || 'pro';
-          await setOrgPlan(orgId, plan);
+          const plan = planForItems(sub);
+          if (plan) await setOrgPlan(orgId, plan);
           console.log(`subscription.updated: org ${orgId} → ${plan} (${sub.status})`);
         } else if (sub.status === 'canceled' || sub.status === 'unpaid') {
           await setOrgPlan(orgId, 'free');
