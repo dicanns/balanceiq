@@ -1071,6 +1071,19 @@ async function loadWasteEntries(api, preset, today, ingIdMap) {
 
 // ─── LOAD DEMO DATA ───────────────────────────────────────────────────────────
 
+// Set by the loader, read by the main process (demoCompanyStatus, demoPurgeSqlite).
+const DEMO_COMPANY_KEY = 'balanceiq-demo-company';
+const DEMO_GUARD_MESSAGES = {
+  realData: {
+    fr: "Cette entreprise contient déjà de vraies données. Les données de démonstration les remplaceraient : créez une nouvelle entreprise pour essayer la démo.",
+    en: 'This company already holds real data. Demo data would replace it: create a new company to try the demo.',
+  },
+  notDemo: {
+    fr: "Cette entreprise n'a pas été remplie par la démo. Pour protéger vos vraies données, rien n'a été effacé.",
+    en: 'This company was not filled by the demo. To protect your real data, nothing was cleared.',
+  },
+};
+
 export async function loadDemoData(lang = 'fr', presetKey = 'qsr') {
   const api = window.api;
   const preset = DEMO_PRESETS[presetKey] || DEMO_PRESETS.qsr;
@@ -1082,6 +1095,14 @@ export async function loadDemoData(lang = 'fr', presetKey = 'qsr') {
   const allDates  = dateRange(startDate, endDate);
 
   try {
+    // Demo data replaces everything a company holds. A company with real books
+    // is never a place to load it; it goes in an empty company, which is then
+    // marked as a demo so that clearing it later is allowed.
+    const status = await api.demo?.status?.();
+    if (!status || (status.hasRealData && !status.isDemo)) {
+      return { success: false, message: DEMO_GUARD_MESSAGES.realData[lang === 'en' ? 'en' : 'fr'] };
+    }
+    await api.storage.set(DEMO_COMPANY_KEY, '1');
     // ─── Roster / config ──────────────────────────────────────────────────
     await api.storage.set('dicann-roster', JSON.stringify(preset.cashiers));
     await api.storage.set('dicann-emp-roster', JSON.stringify(preset.employees));
@@ -1213,9 +1234,15 @@ export async function loadDemoData(lang = 'fr', presetKey = 'qsr') {
 
 // ─── CLEAR DEMO DATA ──────────────────────────────────────────────────────────
 
-export async function clearDemoData() {
+export async function clearDemoData(lang = 'fr') {
   const api = window.api;
   try {
+    // Clearing empties the invoices, customers, daily closes, bank accounts and
+    // bills. Only a company the demo loader filled may be cleared.
+    const status = await api.demo?.status?.();
+    if (!status?.isDemo) {
+      return { success: false, message: DEMO_GUARD_MESSAGES.notDemo[lang === 'en' ? 'en' : 'fr'] };
+    }
     // Clear kv_store demo keys. Must mirror every key loadDemoData() writes -
     // anything missed here survives the clear and pollutes real data.
     const emptyObjKeys = [

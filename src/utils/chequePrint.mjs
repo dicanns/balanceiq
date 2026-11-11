@@ -113,7 +113,7 @@ function chequeBlock(ch, s, testMarks) {
   const F = CHEQUE_FIELDS;
   const at = (x, y, extra = '') => `position:absolute;left:${x}in;top:${y}in;${extra}`;
   const digits = dateDigits(ch.cheque_date, s.dateFormat)
-    .map((dg, i) => `<span style="${at(F.date.x + i * F.date.digitGap, F.date.y, 'width:0.2in;text-align:center')}">${dg}</span>`).join('');
+    .map((dg, i) => `<span style="${at(F.date.x + i * F.date.digitGap, F.date.y, 'width:0.2in;text-align:center')}">${esc(dg)}</span>`).join('');
   const guide = testMarks ? [F.date, F.words, F.amount, F.payee, F.memo]
     .map(f => `<span style="${at(f.x, f.y - 0.04, 'width:0.06in;height:0.06in;background:#e11;border-radius:50%')}"></span>`).join('') : '';
   return `${guide}${digits}

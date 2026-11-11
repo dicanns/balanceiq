@@ -4,6 +4,7 @@
 // again: the old books already counted it. The ledger posts Dr receivables /
 // Cr opening balance equity, and the sales exports leave it out.
 import { parseCsvLines, looksLikeHeader } from './importParse.mjs';
+import { stripMarkup } from './htmlSafe.mjs';
 
 export const OPENING_ROLES = ['client', 'numero', 'date', 'dateEcheance', 'montant', 'ignore'];
 
@@ -84,8 +85,8 @@ export function buildOpeningInvoices(rows, roles, { hasHeader = true, clients = 
   const data = hasHeader ? rows.slice(1) : rows;
   data.forEach((r, k) => {
     const row = k + (hasHeader ? 2 : 1);
-    const name = idx('client') >= 0 ? String(r[idx('client')] ?? '').trim() : '';
-    const numero = idx('numero') >= 0 ? String(r[idx('numero')] ?? '').trim() : '';
+    const name = idx('client') >= 0 ? stripMarkup(r[idx('client')]) : '';
+    const numero = idx('numero') >= 0 ? stripMarkup(r[idx('numero')]) : '';
     const date = idx('date') >= 0 ? parseDate(r[idx('date')]) : null;
     const due = idx('dateEcheance') >= 0 ? parseDate(r[idx('dateEcheance')]) : null;
     const amount = idx('montant') >= 0 ? parseAmount(r[idx('montant')]) : NaN;

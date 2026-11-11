@@ -37,14 +37,14 @@ function table(L, lang, section, withDetail) {
   const name = (r) => r.account_number ? `${r.account_number} · ${lang === 'en' ? (r.name_en || r.name_fr) : (r.name_fr || r.name_en)}` : '-';
   if (!section.rows.length) return `<p class="none">${L.none}</p>`;
   const rows = section.rows.map(r => `
-    <tr><td>${esc(name(r))}${r.itc_pct != null && Number(r.itc_pct) !== 100 ? ` <span class="sub">(${L.restricted(r.itc_pct)})</span>` : ''}</td>
-      <td class="n">${r.count}</td><td class="n">${money(r.net_cents)}</td><td class="n">${money(r.tps_cents)}</td><td class="n">${money(r.tvq_cents)}</td><td class="n b">${money(r.gross_cents)}</td></tr>
+    <tr><td>${esc(name(r))}${r.itc_pct != null && Number(r.itc_pct) !== 100 ? ` <span class="sub">(${L.restricted(Number(r.itc_pct) || 0)})</span>` : ''}</td>
+      <td class="n">${esc(r.count)}</td><td class="n">${money(r.net_cents)}</td><td class="n">${money(r.tps_cents)}</td><td class="n">${money(r.tvq_cents)}</td><td class="n b">${money(r.gross_cents)}</td></tr>
     ${withDetail ? r.items.map(i => `<tr class="d"><td>&nbsp;&nbsp;${esc(i.date)} · ${esc(i.description)}</td><td></td><td></td><td></td><td></td><td class="n">${money(i.cents)}</td></tr>`).join('') : ''}`).join('');
   const t = section.totals;
   return `<table>
     <thead><tr><th>${L.account}</th><th class="n">${L.count}</th><th class="n">${L.net}</th><th class="n">${L.tps}</th><th class="n">${L.tvq}</th><th class="n">${L.total}</th></tr></thead>
     <tbody>${rows}</tbody>
-    <tfoot><tr><td>${L.totals}</td><td class="n">${t.count}</td><td class="n">${money(t.net_cents)}</td><td class="n">${money(t.tps_cents)}</td><td class="n">${money(t.tvq_cents)}</td><td class="n b">${money(t.gross_cents)}</td></tr></tfoot>
+    <tfoot><tr><td>${L.totals}</td><td class="n">${esc(t.count)}</td><td class="n">${money(t.net_cents)}</td><td class="n">${money(t.tps_cents)}</td><td class="n">${money(t.tvq_cents)}</td><td class="n b">${money(t.gross_cents)}</td></tr></tfoot>
   </table>`;
 }
 
@@ -57,8 +57,8 @@ export function buildMonthlySummaryHtml(summary, { lang = 'fr', companyName = ''
       <h2>${esc(a.name)}</h2>
       <h3>${L.expenses}</h3>${table(L, lang, a.expenses, withDetail)}
       <h3>${L.inflows}</h3>${table(L, lang, a.inflows, withDetail)}
-      ${a.transfers.count ? `<p class="note">${L.transfersNote(a.transfers.count, money(a.transfers.cents))}</p>` : ''}
-      ${a.uncategorized.length ? `<h3 class="warn">${L.uncategorized} (${a.uncategorized.length})</h3><p class="note warn">${L.uncatNote}</p>
+      ${a.transfers.count ? `<p class="note">${L.transfersNote(Number(a.transfers.count) || 0, money(a.transfers.cents))}</p>` : ''}
+      ${a.uncategorized.length ? `<h3 class="warn">${L.uncategorized} (${Number(a.uncategorized.length)})</h3><p class="note warn">${L.uncatNote}</p>
         <table><thead><tr><th>${L.date}</th><th>${L.description}</th><th class="n">${L.amount}</th></tr></thead><tbody>
         ${a.uncategorized.map(u => `<tr><td>${esc(u.date)}</td><td>${esc(u.description)}</td><td class="n">${money(u.cents)}</td></tr>`).join('')}</tbody></table>` : ''}
     </section>`).join('');

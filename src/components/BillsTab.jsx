@@ -41,6 +41,10 @@ const UI = {
     delete: 'Supprimer',
     errPeriodClosed: 'Cette période comptable est fermée. Rouvrez-la dans le Grand livre, ou datez la facture dans une période ouverte.',
     errBillLinked: 'Cette facture est réglée par une ligne de relevé. Détachez la ligne dans Banque avant de changer ses montants.',
+    errPaidByCheque: "Cette facture est réglée par un chèque du registre. Annulez d'abord le chèque dans Banque > Chèques.",
+    errChequeCleared: "Cette facture est réglée par un chèque déjà encaissé. Détachez d'abord le chèque de sa ligne de relevé.",
+    errSharedPayment: "La ligne de relevé qui règle cette facture en règle aussi d'autres. Détachez la ligne dans Banque d'abord.",
+    errAlreadyMatched: 'Cette ligne de relevé est déjà associée à un chèque ou à une autre facture.',
     errSave: (code) => `Enregistrement refusé : ${code}`,
     errPaidByLine: 'Ce paiement vient d\'une ligne de relevé. Détachez la ligne dans Banque pour l\'annuler.',
     settleTitle: (name, amt) => `Marquer payée : ${name} · ${amt}`,
@@ -126,6 +130,10 @@ const UI = {
     delete: 'Delete',
     errPeriodClosed: 'That accounting period is closed. Reopen it in the Ledger, or date the bill in an open period.',
     errBillLinked: 'This bill is settled by a statement line. Unlink the line in Bank before changing its amounts.',
+    errPaidByCheque: 'This bill is settled by a cheque in the register. Void the cheque first in Bank > Cheques.',
+    errChequeCleared: 'This bill is settled by a cheque that has cleared. Unlink the cheque from its statement line first.',
+    errSharedPayment: 'The statement line that settles this bill settles others too. Unlink the line in Bank first.',
+    errAlreadyMatched: 'This statement line is already matched to a cheque or to another bill.',
     errSave: (code) => `Could not save: ${code}`,
     errPaidByLine: 'This payment comes from a statement line. Unlink the line in Bank to undo it.',
     settleTitle: (name, amt) => `Mark paid: ${name} · ${amt}`,
@@ -497,6 +505,10 @@ export default function BillsTab({ lang = 'fr' }) {
     const code = String(r?.error || '');
     if (code === 'period_closed' || code.startsWith('ERR_PERIOD_CLOSED')) return T.errPeriodClosed;
     if (code === 'bill_linked') return T.errBillLinked;
+    if (code === 'paid_by_cheque') return T.errPaidByCheque;
+    if (code === 'cheque_cleared') return T.errChequeCleared;
+    if (code === 'shared_payment') return T.errSharedPayment;
+    if (code === 'already_matched') return T.errAlreadyMatched;
     return T.errSave(code || '?');
   };
 
@@ -611,7 +623,7 @@ export default function BillsTab({ lang = 'fr' }) {
     setBusy(true); setError('');
     try {
       const r = await window.api.supplierBills.payByBankTx(txId, attach.billId);
-      if (r?.ok === false) { setError(String(r.error || '')); return; }
+      if (r?.ok === false) { setError(refusalText(r)); return; }
       setAttach(null);
       await load();
     } catch (e) { setError(String(e?.message ?? e)); }

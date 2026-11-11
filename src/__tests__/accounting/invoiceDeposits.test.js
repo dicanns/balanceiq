@@ -65,8 +65,8 @@ describe('DEPOSIT ledger wiring', () => {
   const FE = APP.slice(APP.indexOf('function FactureEditor('), APP.indexOf('\nfunction EncaissementEditor('));
 
   it('DEPOSIT-008 receipts go to 2500 and applications take 2500 to receivables, idempotently', () => {
-    expect(MAIN).toMatch(/ipcMain\.handle\('ledger:deposit:post'/);
-    expect(MAIN).toMatch(/ipcMain\.handle\('ledger:deposit:apply'/);
+    expect(MAIN).toMatch(/ledgerHandle\('ledger:deposit:post'/);
+    expect(MAIN).toMatch(/ledgerHandle\('ledger:deposit:apply'/);
     expect(MAIN).toMatch(/ipcMain\.handle\('ledger:deposit:reverse'/);
     expect(MAIN).toMatch(/glFindEntryBySource\('deposit', depositId\)/);
     expect(MAIN).toMatch(/glFindEntryBySource\('deposit_apply', depositId\)/);

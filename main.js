@@ -35,7 +35,7 @@ const {
   syncQueuePush, syncQueuePeek, syncQueueDelete, syncQueueIncrementAttempts, syncQueueLength,
   auditInsert, auditQuery, getDeviceId,
   snapshotSave, snapshotGetByDate, snapshotGetLatest, snapshotListDates,
-  forecastClearAll, demoPurgeSqlite,
+  forecastClearAll, demoPurgeSqlite, demoCompanyStatus,
   forecastProductsGetAll, forecastProductUpsert,
   forecastSalesGetForDate, forecastSalesGetForProduct, forecastSalesGetRange, forecastSalesUpsert, forecastSalesDeleteForDate,
   forecastImportsGetAll, forecastImportLog, forecastImportDelete, forecastImportMarkReplaced,
@@ -763,14 +763,30 @@ ipcMain.handle('backup:openDir', () => {
   shell.openPath(dir);
 });
 
+// Print / PDF windows render generated HTML that can contain imported text. They get
+// no script, a sandbox, no navigation, no popups and no permissions. They use their own
+// in-memory session so the permission handlers below never touch the main window.
+function hardenPrintWindow(win) {
+  try {
+    win.webContents.on('will-navigate', (e) => e.preventDefault());
+    win.webContents.on('will-redirect', (e) => e.preventDefault());
+    win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    const ses = win.webContents.session;
+    ses.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
+    ses.setPermissionCheckHandler(() => false);
+  } catch (_) {}
+}
+const PRINT_WEB_PREFERENCES = { nodeIntegration: false, contextIsolation: true, sandbox: true, javascript: false, partition: 'balanceiq-print' };
+
 // IPC handler - render HTML to PDF bytes (base64) using Chromium's print engine
 ipcMain.handle('pdf:toPDF', async (event, html) => {
   const tmpFile = path.join(os.tmpdir(), `balanceiq-topdf-${Date.now()}.html`);
   fs.writeFileSync(tmpFile, html, 'utf-8');
   const pdfWin = new BrowserWindow({
     width: 900, height: 1200, show: false,
-    webPreferences: { nodeIntegration: false, contextIsolation: true },
+    webPreferences: PRINT_WEB_PREFERENCES,
   });
+  hardenPrintWindow(pdfWin);
   try {
     await pdfWin.loadFile(tmpFile);
     const pdfData = await pdfWin.webContents.printToPDF({
@@ -795,8 +811,9 @@ ipcMain.handle('pdf:print', async (event, html, opts = {}) => {
   const printWin = new BrowserWindow({
     width: 900, height: 1100,
     title: 'BalanceIQ - Impression',
-    webPreferences: { nodeIntegration: false, contextIsolation: true },
+    webPreferences: PRINT_WEB_PREFERENCES,
   });
+  hardenPrintWindow(printWin);
   await printWin.loadFile(tmpFile);
   // exact: cheques on pre-printed stock, where a default margin or "fit to page"
   // would move every field. Letter size, no margins, no scaling, no headers.
@@ -1608,6 +1625,7 @@ ipcMain.handle('file:showInFolder', (_event, filePath) => {
 // ── FORECAST IPC ──
 ipcMain.handle('forecast:clearAll', () => forecastClearAll());
 ipcMain.handle('demo:purgeSqlite', () => demoPurgeSqlite());
+ipcMain.handle('demo:status', () => demoCompanyStatus());
 ipcMain.handle('forecast:products:getAll', () => forecastProductsGetAll());
 ipcMain.handle('forecast:products:upsert', (_e, p) => forecastProductUpsert(p));
 
@@ -1914,7 +1932,7 @@ const PAYMENT_MODE_ACCOUNT = {
   'Autre':                '1010',
 };
 
-ipcMain.handle('ledger:payment:post', async (_e, {
+ledgerHandle('ledger:payment:post', async (_e, {
   paymentId, invoiceId, paymentDate, amountCents, mode, invoiceNumber,
 }) => {
   try {
@@ -2028,7 +2046,7 @@ function postDepositReceipt({ depositId, invoiceNumber, depositDate, amountCents
   return { ok: true, entryId, account: cashNum };
 }
 
-ipcMain.handle('ledger:deposit:post', async (_e, { depositId, invoiceNumber, depositDate, amountCents, mode } = {}) => {
+ledgerHandle('ledger:deposit:post', async (_e, { depositId, invoiceNumber, depositDate, amountCents, mode } = {}) => {
   try {
     if (!depositId || !amountCents || amountCents <= 0 || !depositDate) return { ok: false, error: 'invalid_deposit' };
     return postDepositReceipt({ depositId, invoiceNumber, depositDate, amountCents, mode });
@@ -2037,7 +2055,7 @@ ipcMain.handle('ledger:deposit:post', async (_e, { depositId, invoiceNumber, dep
   }
 });
 
-ipcMain.handle('ledger:deposit:apply', async (_e, { depositId, invoiceNumber, depositDate, applyDate, amountCents, mode } = {}) => {
+ledgerHandle('ledger:deposit:apply', async (_e, { depositId, invoiceNumber, depositDate, applyDate, amountCents, mode } = {}) => {
   try {
     if (!depositId || !amountCents || amountCents <= 0 || !applyDate) return { ok: false, error: 'invalid_deposit' };
     // A deposit recorded before this version never had its receipt posted.
@@ -2091,6 +2109,51 @@ const { ledgerSplit } = require('./src/services/ledgerSplit.js');
 // The amounts are spread so they add up exactly to the revenue the split gives.
 // deduction: a chain's remittance deduction, booked against Sales returns and
 // allowances instead of the products' accounts.
+// A posting the ledger refuses must not pass unseen: the document would exist
+// for the customer and not in the books. Every posting handler goes through
+// here; a refusal comes back as { ok:false } and the operator is told, once per
+// burst (a batch can fail many times for the same reason).
+let _ledgerFailureShownAt = 0;
+function notifyLedgerFailure(res) {
+  const error = String(res?.detail || res?.error || '');
+  if (/^invalid_|^no_/.test(String(res?.error || ''))) return;      // nothing to post, not a refusal
+  if (Date.now() - _ledgerFailureShownAt < 5000) return;
+  _ledgerFailureShownAt = Date.now();
+  const closed = /PERIOD_CLOSED/.test(error);
+  const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+  const box = { type: 'warning', buttons: ['OK'], title: 'BalanceIQ', message: tm(closed ? 'ledgerClosedPeriod' : 'ledgerPostFailed'), detail: closed ? '' : error };
+  (win ? dialog.showMessageBox(win, box) : dialog.showMessageBox(box)).catch(() => {});
+}
+function ledgerHandle(channel, fn) {
+  ipcMain.handle(channel, async (...args) => {
+    let res;
+    try { res = await fn(...args); }
+    catch (err) { res = { ok: false, error: 'post_failed', detail: String(err?.message ?? err) }; }
+    if (res && res.ok === false) notifyLedgerFailure(res);
+    return res;
+  });
+}
+
+// Whether a date falls in a month that has been closed (a year-end close locks
+// every month of the year). Asked before a document is saved as sent.
+ipcMain.handle('ledger:period:isClosed', (_e, date) => {
+  try {
+    const d = String(date || '').slice(0, 10);
+    return periodList({}).some(p => p.status === 'closed' && p.start_date <= d && d <= p.end_date);
+  } catch (_) { return false; }
+});
+
+// An invoice carried over from the previous software keeps that nature for good.
+// The screen says so when it posts; the stored invoice is asked too, so a path
+// that forgets cannot book it as a sale.
+function storedInvoiceIsOpening(invoiceId) {
+  try {
+    const r = storageGet('dicann-fac-factures');
+    const list = r?.value ? JSON.parse(r.value) : [];
+    return Array.isArray(list) && list.some(f => f && String(f.id) === String(invoiceId) && f.openingBalance === true);
+  } catch (_) { return false; }
+}
+
 function revenueAccountLines(doc, revenueCents, accounts, { debit = false, memo = 'Revenus' } = {}) {
   const { planRevenue } = require('./src/utils/revenueSplit.mjs');
   const read = (key) => { try { const r = storageGet(key); const v = r?.value ? JSON.parse(r.value) : []; return Array.isArray(v) ? v : []; } catch (_) { return []; } };
@@ -2098,7 +2161,7 @@ function revenueAccountLines(doc, revenueCents, accounts, { debit = false, memo 
   return plan.map(p => ({ account_id: p.account_id, debit_cents: debit ? p.cents : 0, credit_cents: debit ? 0 : p.cents, memo }));
 }
 
-ipcMain.handle('ledger:invoice:post', async (_e, {
+ledgerHandle('ledger:invoice:post', async (_e, {
   invoiceId, invoiceDate, subtotalCents, tpsCents, tvqCents, totalCents, taxExempt,
   lignes, remiseGlobale, remiseGlobaleType, openingBalance,
 }) => {
@@ -2126,7 +2189,7 @@ ipcMain.handle('ledger:invoice:post', async (_e, {
   // An invoice carried over from the previous software: owed to the business,
   // but counted as revenue (and taxed) there, not here. The receivable comes in
   // against opening balance equity, the same place every pre-BalanceIQ figure goes.
-  if (openingBalance) {
+  if (openingBalance || storedInvoiceIsOpening(invoiceId)) {
     const opening = find('3400');
     if (!opening) return { ok: false, error: 'missing_coa_accounts', detail: 'Compte 3400 introuvable' };
     const cents = Math.round(Number(totalCents) || 0);
@@ -2172,7 +2235,24 @@ ipcMain.handle('ledger:invoice:post', async (_e, {
   return { ok: true, entryId };
 });
 
-ipcMain.handle('ledger:creditnote:post', async (_e, {
+// Take an invoice back out of the ledger: returned to draft for correction, or
+// voided. Looked up by the invoice itself, not by an entry id the screen holds,
+// so a stale id cannot leave the entry posted. A closed period refuses, and the
+// screen must then keep the invoice as it was.
+ipcMain.handle('ledger:invoice:unpost', async (_e, { invoiceId, reason } = {}) => {
+  try {
+    if (!invoiceId) return { ok: false, error: 'invalid_invoice' };
+    const entry = glFindEntryBySource('invoice', String(invoiceId));
+    if (!entry) return { ok: true, reversed: false };
+    if (entry.status === 'draft') { glDeleteDraft(entry.id); return { ok: true, reversed: false, deletedDraft: true }; }
+    glReverseEntry(entry.id, reason || 'Facture retiree du grand livre');
+    return { ok: true, reversed: true, entryId: entry.id };
+  } catch (err) {
+    return { ok: false, error: String(err?.message ?? err) };
+  }
+});
+
+ledgerHandle('ledger:creditnote:post', async (_e, {
   creditNoteId, creditNoteDate, subtotalCents, tpsCents, tvqCents, totalCents, taxExempt,
   lignes, deduction, openingBalance,
 }) => {

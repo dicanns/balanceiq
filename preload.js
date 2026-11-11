@@ -78,6 +78,7 @@ contextBridge.exposeInMainWorld('api', {
   },
   demo: {
     purgeSqlite: () => ipcRenderer.invoke('demo:purgeSqlite'),
+    status: () => ipcRenderer.invoke('demo:status'),
   },
   forecast: {
     clearAll: () => ipcRenderer.invoke('forecast:clearAll'),
@@ -261,6 +262,8 @@ contextBridge.exposeInMainWorld('api', {
       list:    (opts)                   => ipcRenderer.invoke('ledger:entry:list', opts),
     },
     invoicePost:    (opts) => ipcRenderer.invoke('ledger:invoice:post', opts),
+    invoiceUnpost:  (opts) => ipcRenderer.invoke('ledger:invoice:unpost', opts),
+    periodIsClosed: (date) => ipcRenderer.invoke('ledger:period:isClosed', date),
     depositPost:    (opts) => ipcRenderer.invoke('ledger:deposit:post', opts),
     depositApply:   (opts) => ipcRenderer.invoke('ledger:deposit:apply', opts),
     depositReverse: (opts) => ipcRenderer.invoke('ledger:deposit:reverse', opts),

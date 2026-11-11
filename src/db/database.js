@@ -2298,9 +2298,32 @@ function forecastClearAll(_db) {
 //
 // Deliberately conservative: only rows that carry an unambiguous demo marker are
 // removed. Anything the user could plausibly have created by hand is left alone.
+// kv_store key the demo loader must set (to '1') when it fills a company with demo
+// data. Tables below with no per-row demo marker are only emptied when it is set.
+const DEMO_COMPANY_KEY = 'balanceiq-demo-company';
+// Where a company stands for the demo tools: whether it was filled by the demo
+// loader, and whether it holds books that are not demo data. Loading a demo
+// refuses a company with real books; clearing refuses one that is not a demo.
+function demoCompanyStatus(_db) {
+  const db = _db || getDb();
+  const kv = (k) => { try { return db.prepare('SELECT value FROM kv_store WHERE key = ?').get(k)?.value ?? null; } catch (_) { return null; } };
+  const n = (sql) => { try { return db.prepare(sql).get().n; } catch (_) { return 0; } };
+  const filled = (k) => { try { const v = JSON.parse(kv(k) || 'null'); return Array.isArray(v) ? v.length > 0 : !!v && Object.keys(v).length > 0; } catch (_) { return false; } };
+  const isDemo = kv(DEMO_COMPANY_KEY) === '1';
+  const hasBooks = n(`SELECT COUNT(*) AS n FROM bank_accounts`) > 0
+    || n(`SELECT COUNT(*) AS n FROM supplier_bills`) > 0
+    || n(`SELECT COUNT(*) AS n FROM journal_entries WHERE COALESCE(source_type,'') NOT IN ('demo','opening_balance')`) > 0
+    || filled('dicann-fac-factures') || filled('dicann-fac-clients') || filled('dicann-v7');
+  return { isDemo, hasRealData: hasBooks && !isDemo };
+}
+
 function demoPurgeSqlite(_db) {
   const db = _db || getDb();
   const removed = {};
+  let isDemoCompany = false;
+  try {
+    isDemoCompany = db.prepare('SELECT value FROM kv_store WHERE key = ?').get(DEMO_COMPANY_KEY)?.value === '1';
+  } catch (_) { /* no kv_store: not flagged */ }
   const has = (name) => !!db.prepare(
     `SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?`
   ).get(name);
@@ -2321,6 +2344,10 @@ function demoPurgeSqlite(_db) {
       del('journal_entries',
         `DELETE FROM journal_entries WHERE source_type IN ('demo','opening_balance')`);
     }
+
+    // The rest has no per-row demo marker, so deleting it would also delete real
+    // books. It only runs for a company flagged as a demo company.
+    if (!isDemoCompany) return;
 
     // Accounting seed tables - these are populated exclusively by the demo seeder.
     del('bank_transactions',      `DELETE FROM bank_transactions`);
@@ -2355,8 +2382,11 @@ function demoPurgeSqlite(_db) {
     del('learned_patterns',     `DELETE FROM learned_patterns`);
     del('learning_insights',    `DELETE FROM learning_insights`);
     del('prediction_accuracy',  `DELETE FROM prediction_accuracy`);
+    // The company is empty now, so it stops being a demo company.
+    db.prepare('DELETE FROM kv_store WHERE key = ?').run(DEMO_COMPANY_KEY);
   })();
 
+  if (!isDemoCompany) return { ok: false, error: 'not_demo_company', removed };
   return { ok: true, removed };
 }
 
@@ -3169,6 +3199,9 @@ function glDraftEntry({ entry_date, description, source_type = 'manual', source_
   const uuid = _getDeviceUuid(_db);
   const year = new Date(entry_date).getUTCFullYear();
   const period = _ensurePeriod(db, entry_date, location_id);
+  // A closed period takes no new entry, draft included: a draft written there
+  // could never be posted, and a stray draft blocks the year from closing.
+  if (period && period.status === 'closed') throw new Error('ERR_PERIOD_CLOSED_POST');
   const entryNumber = _nextEntryNumber(db, year);
 
   return db.transaction(() => {
@@ -5042,14 +5075,34 @@ function bankStatementsList(bankAccountId, _db) {
 
 // ── CTI/RTI INPUT TAX CREDITS ─────────────────────────────────────────────────
 
-function _dayVenteNet(dayData) {
-  if (!dayData?.cashes) return 0;
-  return dayData.cashes.reduce((s, c) => {
-    if (c.finalCash != null && c.float != null) {
-      return s + (c.interac || 0) + (c.livraisons || 0) + (c.deposits || 0) + (c.finalCash || 0) - (c.float || 0);
+// Federal and Quebec sales tax rates used by the register sales split below.
+const REGISTER_TPS_RATE = 0.05;
+const REGISTER_TVQ_RATE = 0.09975;
+
+// One day of the daily close, split into sales before tax and the tax in them.
+// Money counted in the register (card terminal, cash, deliveries, deposits)
+// already includes tax, so it is never multiplied by the rates: the tax is
+// backed out of it. When the POS figures typed into the close are present
+// (posVentes is the sales before tax, posTPS and posTVQ the tax) they are used
+// as typed, the same figures the P&L reads, so the return and the P&L agree.
+function _dayRegisterSales(dayData) {
+  const out = { net: 0, tps: 0, tvq: 0 };
+  if (!dayData?.cashes) return out;
+  const divisor = 1 + REGISTER_TPS_RATE + REGISTER_TVQ_RATE;
+  for (const c of dayData.cashes) {
+    if (c.posVentes != null && Number.isFinite(Number(c.posVentes))) {
+      const net = Number(c.posVentes) || 0;
+      out.net += net;
+      out.tps += c.posTPS != null ? (Number(c.posTPS) || 0) : net * REGISTER_TPS_RATE;
+      out.tvq += c.posTVQ != null ? (Number(c.posTVQ) || 0) : net * REGISTER_TVQ_RATE;
+    } else if (c.finalCash != null && c.float != null) {
+      const incl = (c.interac || 0) + (c.livraisons || 0) + (c.deposits || 0) + (c.finalCash || 0) - (c.float || 0);
+      out.net += incl / divisor;
+      out.tps += incl * REGISTER_TPS_RATE / divisor;
+      out.tvq += incl * REGISTER_TVQ_RATE / divisor;
     }
-    return s;
-  }, 0);
+  }
+  return out;
 }
 
 function _monthsInRange(periodStart, periodEnd) {
@@ -5084,7 +5137,7 @@ function taxPeriodCompute(periodStart, periodEnd, _db) {
     const daysInMonth = new Date(parseInt(my), parseInt(mm), 0).getDate();
 
     // Revenue from daily POS data
-    let monthRev = 0;
+    let monthRev = 0, monthTps = 0, monthTvq = 0;
     let plData = {};
     try {
       const r = db.prepare(`SELECT value FROM kv_store WHERE key=?`).get(`dicann-pl-${month}`);
@@ -5092,17 +5145,23 @@ function taxPeriodCompute(periodStart, periodEnd, _db) {
     } catch (_) {}
 
     if (plData._revenueOverride != null) {
+      // A revenue typed over the month is a figure before tax (the P&L line).
       monthRev = plData._revenueOverride;
+      monthTps = monthRev * REGISTER_TPS_RATE;
+      monthTvq = monthRev * REGISTER_TVQ_RATE;
     } else {
       for (let d = 1; d <= daysInMonth; d++) {
         const key = `${my}-${mm}-${String(d).padStart(2, '0')}`;
-        monthRev += _dayVenteNet(liveData[key]);
+        const day = _dayRegisterSales(liveData[key]);
+        monthRev += day.net;
+        monthTps += day.tps;
+        monthTvq += day.tvq;
       }
     }
 
     plRevenue += monthRev;
-    tpsCollected += monthRev * 0.05;
-    tvqCollected += monthRev * 0.09975;
+    tpsCollected += monthTps;
+    tvqCollected += monthTvq;
 
     // CTI/RTI from bill entries with tax fields
     const allKeys = Object.keys(plData);
@@ -5756,9 +5815,48 @@ function supplierBillMarkPaid(id, { payment_date, payment_method = null, bank_tr
   return db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(id);
 }
 
+// What stands in the way of un-paying or deleting a bill that was paid another
+// way than by hand: a live (not void) cheque that paid it, or a statement line
+// that also paid other bills. Returns an error object, or null when clear.
+function _billPaymentBlocker(db, bill) {
+  const cheque = db.prepare(`SELECT id, status, bill_ids FROM cheques WHERE status<>'void' AND bill_ids LIKE ?`)
+    .all(`%${Number(bill.id)}%`)
+    .find(c => _jsonList(c.bill_ids).map(Number).includes(Number(bill.id)));
+  if (cheque) return { ok: false, error: cheque.status === 'cleared' ? 'cheque_cleared' : 'paid_by_cheque', chequeId: cheque.id };
+  if (bill.bank_transaction_id) {
+    const others = db.prepare(`SELECT COUNT(*) AS n FROM supplier_bills WHERE bank_transaction_id=? AND id<>?`)
+      .get(bill.bank_transaction_id, bill.id).n;
+    if (others) return { ok: false, error: 'shared_payment', bankTransactionId: bill.bank_transaction_id };
+  }
+  return null;
+}
+
+// Puts the statement line that paid a bill back to unmatched and unwinds the
+// payment entry it posted, so no line keeps pointing at the bill.
+function _releaseBillBankLine(db, bill) {
+  if (!bill.bank_transaction_id) return;
+  const tx = db.prepare(`SELECT matched_entity_type FROM bank_transactions WHERE id=?`).get(bill.bank_transaction_id);
+  if (!tx || tx.matched_entity_type !== 'supplier_bill') return;
+  _reverseBankTransactionEntry(db, bill.bank_transaction_id);
+  db.prepare(
+    `UPDATE bank_transactions SET match_status='unmatched', matched_entity_type=NULL, matched_entity_id=NULL, coa_account_id=NULL WHERE id=?`
+  ).run(bill.bank_transaction_id);
+}
+
 function supplierBillMarkUnpaid(id, _db) {
   const db = _db || getDb();
-  db.prepare(`UPDATE supplier_bills SET paid=0, payment_date=NULL, payment_method=NULL, bank_transaction_id=NULL, paid_from_bank_account_id=NULL WHERE id=?`).run(id);
+  const bill = db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(id);
+  if (!bill) return null;
+  const blocker = _billPaymentBlocker(db, bill);
+  if (blocker) return blocker;
+  try {
+    db.transaction(() => {
+      _releaseBillBankLine(db, bill);
+      db.prepare(`UPDATE supplier_bills SET paid=0, payment_date=NULL, payment_method=NULL, bank_transaction_id=NULL, paid_from_bank_account_id=NULL WHERE id=?`).run(id);
+    })();
+  } catch (e) {
+    return { ok: false, error: String(e.message || e) };
+  }
   return db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(id);
 }
 
@@ -5928,7 +6026,10 @@ function supplierBillUnsettle(id, _db) {
         if (pay.status === 'draft') glDeleteDraft(pay.id, db);
         else glReverseEntry(pay.id, 'Paiement fournisseur annule', db);
       }
-      return { ok: true, ...supplierBillMarkUnpaid(id, db) };
+      // A refusal (paid by a cheque, a shared line) must undo the reversal above.
+      const res = supplierBillMarkUnpaid(id, db);
+      if (res && res.ok === false) throw new Error(res.error);
+      return { ok: true, ...res };
     })();
   } catch (e) {
     return { ok: false, error: String(e.message || e) };
@@ -6006,8 +6107,11 @@ function supplierBillDelete(id, _db) {
   const db = _db || getDb();
   const bill = db.prepare(`SELECT * FROM supplier_bills WHERE id=?`).get(id);
   if (!bill) return { ok: false, error: 'bill_not_found' };
+  const blocker = _billPaymentBlocker(db, bill);
+  if (blocker) return blocker;
   try {
     return db.transaction(() => {
+      _releaseBillBankLine(db, bill);
       supplierBillUnpost(id, 'Facture fournisseur supprimee', db);
       // Its filed documents go with it; the caller removes the files themselves.
       const documents = db.prepare(
@@ -6084,6 +6188,12 @@ function supplierBillPayByBankTransaction(txId, billIds, _db) {
     if (!bill) return { ok: false, error: 'bill_not_found' };
     if (bill.paid) return { ok: false, error: 'bill_already_paid' };
     bills.push(bill);
+  }
+  // A line already matched to a cheque, an invoice or another bill's payment is
+  // not free to settle this bill as well: it would be counted as two payments.
+  if (tx.matched_entity_type) {
+    const sharedWithBill = db.prepare(`SELECT 1 FROM supplier_bills WHERE bank_transaction_id=?`).get(txId);
+    if (tx.matched_entity_type !== 'supplier_bill' || sharedWithBill) return { ok: false, error: 'already_matched' };
   }
 
   const ap = db.prepare(`SELECT * FROM chart_of_accounts WHERE account_number='2010'`).get();
@@ -8512,7 +8622,7 @@ module.exports = {
   auditInsert, auditQuery, getDeviceId,
   snapshotSave, snapshotGetByDate, snapshotGetLatest, snapshotListDates,
   forecastClearAll,
-  demoPurgeSqlite,
+  demoPurgeSqlite, demoCompanyStatus,
   forecastProductsGetAll, forecastProductUpsert,
   forecastSalesGetForDate, forecastSalesGetForProduct, forecastSalesGetRange, forecastSalesUpsert, forecastSalesDeleteForDate,
   forecastImportsGetAll, forecastImportLog, forecastImportDelete, forecastImportMarkReplaced,

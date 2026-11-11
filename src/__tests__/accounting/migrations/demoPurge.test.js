@@ -110,6 +110,7 @@ describe('DEMO-PURGE-001 clear demo data empties the ledger', () => {
 
   it('reports what it removed', () => {
     postDemoEntry('demo');
+    db.prepare(`INSERT INTO kv_store (key, value) VALUES ('balanceiq-demo-company','1')`).run();
     const res = demoPurgeSqlite(db);
     expect(res.ok).toBe(true);
     expect(res.removed.journal_entries).toBe(1);
@@ -175,5 +176,40 @@ describe('DEMO-PURGE-002 forecast product delete no longer raises SQL logic erro
     }
     expect(() => db.prepare(`DELETE FROM forecast_products`).run()).not.toThrow();
     expect(db.prepare(`SELECT COUNT(*) c FROM fts_forecast_products`).get().c).toBe(0);
+  });
+});
+
+describe('DEMO-PURGE-003 a real company is never wiped', () => {
+  function seedRealBooks() {
+    const cash = accId('1010', 'Cash', 'asset');
+    db.prepare(`INSERT INTO bank_accounts (name, account_type, coa_account_id, opening_balance, opening_date) VALUES ('Chequing','bank',?,0,'2026-01-01')`).run(cash);
+    db.prepare(`INSERT INTO bank_transactions (bank_account_id, transaction_date, description, amount) VALUES (1,'2026-09-01','Real line',-50)`).run();
+    db.prepare(`INSERT INTO supplier_bills (month_key, supplier_name, amount, bill_date) VALUES ('2026-09','Real supplier',50,'2026-09-01')`).run();
+  }
+  const n = (t) => db.prepare(`SELECT COUNT(*) c FROM ${t}`).get().c;
+
+  it('refuses to clear unmarked tables when the company is not flagged as demo', () => {
+    seedRealBooks();
+    postDemoEntry('demo');
+    const res = demoPurgeSqlite(db);
+    expect(res.ok).toBe(false);
+    expect(res.error).toBe('not_demo_company');
+    expect(n('bank_accounts')).toBe(1);
+    expect(n('bank_transactions')).toBe(1);
+    expect(n('supplier_bills')).toBe(1);
+    // Rows that carry the demo marker are still safe to remove.
+    expect(n('journal_entries')).toBe(0);
+  });
+
+  it('clears everything for a flagged demo company, then drops the flag', () => {
+    seedRealBooks();
+    db.prepare(`INSERT INTO kv_store (key, value) VALUES ('balanceiq-demo-company','1')`).run();
+    const res = demoPurgeSqlite(db);
+    expect(res.ok).toBe(true);
+    expect(n('bank_accounts')).toBe(0);
+    expect(n('supplier_bills')).toBe(0);
+    expect(db.prepare(`SELECT 1 FROM kv_store WHERE key='balanceiq-demo-company'`).get()).toBeUndefined();
+    // A second clear on the now-real company refuses.
+    expect(demoPurgeSqlite(db).error).toBe('not_demo_company');
   });
 });

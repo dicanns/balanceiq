@@ -1013,7 +1013,7 @@ export default function BanqueTab({ lang = 'fr', t: theme, companyName = '' }) {
     if (!payingTx || !payPicked.length) return;
     try {
       const r = await window.api.supplierBills.payByBankTx(payingTx.id, payPicked);
-      if (r?.ok === false) { setPayError(String(r.error || '')); return; }
+      if (r?.ok === false) { setPayError(r.error === 'already_matched' ? (lang === 'en' ? 'This statement line is already matched to a cheque or to another bill. Unlink it first.' : 'Cette ligne de relevé est déjà associée à un chèque ou à une autre facture. Détachez-la d\'abord.') : String(r.error || '')); return; }
       setPayingTx(null); setPayPicked([]);
       await loadTransactions();
     } catch (e) { setPayError(String(e?.message ?? e)); }

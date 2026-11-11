@@ -45,6 +45,7 @@ describe('FK-002 the demo purge', () => {
       tps_paid: 0, tvq_paid: 0, coa_account_id: acc('6100').id,
     }, db);
     db.prepare(`INSERT INTO supplier_payments (supplier_bill_id, amount, payment_date) VALUES (?, 100, '2026-08-10')`).run(id);
+    db.prepare(`INSERT INTO kv_store (key, value) VALUES ('balanceiq-demo-company', '1')`).run();
     expect(() => demoPurgeSqlite(db)).not.toThrow();
     expect(db.prepare(`SELECT COUNT(*) AS n FROM supplier_payments`).get().n).toBe(0);
     // The real bill's entry is not demo data; its period must survive the purge.
