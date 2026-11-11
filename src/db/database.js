@@ -7537,15 +7537,20 @@ function syncQueueLength() {
 
 // ── Backup / Restore helpers ─────────────────────────────────────────────────
 
-function getAllTablesForBackup(_db) {
-  const db = _db || getDb();
-  const schemaVersion = db.pragma('user_version', { simple: true });
-  // Identify virtual table names so we can exclude their shadow tables
+// Tables written once and never changed or removed. A restore adds the backup's
+// rows to them and removes nothing: the history of what happened, restores
+// included, outlives any restore.
+const APPEND_ONLY_TABLES = ['audit_log', 'daily_snapshots'];
+// Keys that belong to this machine, not to the books: a restore leaves them as
+// they are. Credentials were never in the backup in the first place.
+const MACHINE_KV_KEYS = ['balanceiq-device-id'];
+
+function _backupTableNames(db) {
   const virtualNames = new Set(
     db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND sql LIKE 'CREATE VIRTUAL%'`)
       .all().map(r => r.name)
   );
-  const tables = db.prepare(
+  return db.prepare(
     `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND (sql NOT LIKE 'CREATE VIRTUAL%')`
   ).all().map(r => r.name).filter(name => {
     // Exclude FTS shadow tables (named as <virtual_table>_<suffix>)
@@ -7554,9 +7559,28 @@ function getAllTablesForBackup(_db) {
     }
     return true;
   });
+}
+
+// The database's own structure, so a backup made before an update can be
+// rebuilt as it was and carried forward by the migrations (see _upgradeBackup).
+function _schemaForBackup(db) {
+  const virtualNames = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND sql LIKE 'CREATE VIRTUAL%'`)
+    .all().map(r => r.name);
+  const isShadow = (name) => virtualNames.some(vt => name.startsWith(vt + '_'));
+  const order = { table: 0, index: 1, trigger: 2, view: 3 };
+  return db.prepare(`SELECT type, name, tbl_name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%'`)
+    .all()
+    .filter(r => !isShadow(r.name) && !(r.type !== 'table' && isShadow(r.tbl_name)))
+    .sort((a, b) => (order[a.type] ?? 9) - (order[b.type] ?? 9))
+    .map(r => ({ type: r.type, name: r.name, sql: r.sql }));
+}
+
+function getAllTablesForBackup(_db) {
+  const db = _db || getDb();
+  const schemaVersion = db.pragma('user_version', { simple: true });
   const sqlite = {};
-  for (const t of tables) {
-    sqlite[t] = db.prepare(`SELECT * FROM ${t}`).all();
+  for (const t of _backupTableNames(db)) {
+    sqlite[t] = db.prepare(`SELECT * FROM "${t}"`).all();
   }
   // A backup is a file that travels: credentials never go in it. The API
   // configuration loses its secret fields and credential-only keys are left out.
@@ -7565,46 +7589,135 @@ function getAllTablesForBackup(_db) {
       .filter(row => !SECRET_KV_KEYS.includes(row.key))
       .map(row => (row.key === 'dicann-api-config' ? { ...row, value: stripApiConfigSecrets(row.value) } : row));
   }
-  return { schemaVersion, sqlite };
+  return { schemaVersion, schema: _schemaForBackup(db), sqlite };
 }
 
-function restoreAllTablesFromBackup(data, expectedSchemaVersion, _db) {
-  const db = _db || getDb();
-  const currentVersion = expectedSchemaVersion ?? db.pragma('user_version', { simple: true });
-  if (data.schemaVersion !== currentVersion) {
-    const err = new Error(`schema_version_mismatch`);
+// Guard triggers refuse what a restore has to do: an entry's lines arrive one at
+// a time, so the balance check fired on the first line of every posted entry,
+// and posted lines and the audit log refuse to be replaced. They are lifted for
+// the restore only, inside its transaction, and put back exactly as they were;
+// what they protect is then checked once, on the finished result.
+function _liftGuardTriggers(db) {
+  const guards = db.prepare(`SELECT name, sql FROM sqlite_master WHERE type='trigger' AND sql LIKE '%RAISE(%'`).all();
+  for (const g of guards) db.exec(`DROP TRIGGER IF EXISTS "${g.name}"`);
+  return () => { for (const g of guards) db.exec(g.sql); };
+}
+
+function _unbalancedPostedEntries(db) {
+  return db.prepare(
+    `SELECT je.id FROM journal_entries je JOIN journal_lines jl ON jl.entry_id = je.id
+      WHERE je.status = 'posted' GROUP BY je.id HAVING SUM(jl.debit_cents) <> SUM(jl.credit_cents)`
+  ).all().length;
+}
+
+// Writes the backup's rows into db, replacing what each table holds. Run inside
+// a transaction with foreign keys off; the caller checks the result.
+function _replaceRows(db, sqlite) {
+  const existing = new Set(_backupTableNames(db));
+  for (const [table, rawRows] of Object.entries(sqlite || {})) {
+    if (!existing.has(table)) {
+      const err = new Error('backup_table_unknown');
+      err.table = table;
+      throw err;
+    }
+    let rows = Array.isArray(rawRows) ? rawRows : [];
+    if (table === 'kv_store') {
+      // Credentials and this machine's own keys stay; everything else is the backup's.
+      const keep = [...SECRET_KV_KEYS, ...MACHINE_KV_KEYS];
+      let current = {};
+      try { current = JSON.parse(db.prepare(`SELECT value FROM kv_store WHERE key='dicann-api-config'`).get()?.value || '{}'); } catch (_) { current = {}; }
+      rows = rows.filter(r => !keep.includes(r.key)).map(r =>
+        r.key === 'dicann-api-config' ? { ...r, value: JSON.stringify(mergeApiConfigSecrets(r.value, current)) } : r);
+      db.prepare(`DELETE FROM kv_store WHERE key NOT IN (${keep.map(() => '?').join(',')})`).run(...keep);
+    } else if (!APPEND_ONLY_TABLES.includes(table)) {
+      db.prepare(`DELETE FROM "${table}"`).run();
+    }
+    const verb = APPEND_ONLY_TABLES.includes(table) ? 'INSERT OR IGNORE' : 'INSERT';
+    const stmts = new Map();
+    for (const row of rows) {
+      const cols = Object.keys(row);
+      const key = cols.join('\u0001');
+      if (!stmts.has(key)) {
+        stmts.set(key, db.prepare(
+          `${verb} INTO "${table}" (${cols.map(c => `"${c}"`).join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`));
+      }
+      stmts.get(key).run(...cols.map(c => row[c]));
+    }
+  }
+}
+
+// A backup made by an older version: rebuild its database as it was, from the
+// structure it carries, and let the migrations bring it to today's version.
+// Backups written before they carried their structure cannot be rebuilt.
+function _upgradeBackup(data, currentVersion) {
+  if (!Array.isArray(data.schema) || !data.schema.length) {
+    const err = new Error('schema_version_mismatch');
     err.backupVersion = data.schemaVersion;
     err.currentVersion = currentVersion;
     throw err;
   }
+  const tmp = new Database(':memory:');
+  try {
+    for (const obj of data.schema) tmp.exec(obj.sql);
+    tmp.pragma(`user_version = ${Number(data.schemaVersion) || 0}`);
+    const restoreGuards = _liftGuardTriggers(tmp);
+    tmp.transaction(() => { _replaceRows(tmp, data.sqlite); restoreGuards(); })();
+    runMigrations(tmp);
+    if (tmp.pragma('user_version', { simple: true }) !== currentVersion) {
+      const err = new Error('schema_version_mismatch');
+      err.backupVersion = data.schemaVersion;
+      err.currentVersion = currentVersion;
+      throw err;
+    }
+    // Only the rows come forward; anything the migrations seeded counts as data.
+    const sqlite = {};
+    for (const t of _backupTableNames(tmp)) sqlite[t] = tmp.prepare(`SELECT * FROM "${t}"`).all();
+    return { ...data, schemaVersion: currentVersion, sqlite };
+  } finally {
+    tmp.close();
+  }
+}
+
+/**
+ * Restore a backup made by getAllTablesForBackup into db. Every table in the
+ * backup is replaced by the backup's rows - a restore, not a merge - except the
+ * append-only history (audit log, daily snapshots), which keeps what it has and
+ * gains the backup's rows. Credentials and this machine's id stay. All or
+ * nothing: the result must balance (every posted entry) and hold no orphan
+ * before it commits.
+ *
+ * A backup from an older version is carried forward by the migrations when it
+ * records its structure; one from a newer version is refused.
+ */
+function restoreAllTablesFromBackup(data, _expectedSchemaVersion, _db) {
+  const db = _db || getDb();
+  const currentVersion = db.pragma('user_version', { simple: true });
+  const backupVersion = Number(data?.schemaVersion);
+  if (!data || typeof data.sqlite !== 'object' || !Number.isFinite(backupVersion)) throw new Error('backup_invalid');
+  if (backupVersion > currentVersion) {
+    const err = new Error('schema_version_newer');
+    err.backupVersion = backupVersion;
+    err.currentVersion = currentVersion;
+    throw err;
+  }
+  const payload = backupVersion < currentVersion ? _upgradeBackup(data, currentVersion) : data;
+
   // A backup lists tables in no particular order, so children can arrive before
-  // their parents; and INSERT OR REPLACE is a delete plus an insert, which under
-  // enforcement would cascade a journal entry's lines away. Enforcement is
-  // suspended around the restore - the pragma is a no-op inside a transaction,
-  // so it is set outside - and the result is checked before it commits.
+  // their parents. Enforcement is suspended around the restore - the pragma is a
+  // no-op inside a transaction, so it is set outside - and the result is checked
+  // before it commits.
   const wasOn = db.pragma('foreign_keys', { simple: true }) === 1;
   if (wasOn) db.pragma('foreign_keys = OFF');
   try {
     db.transaction(() => {
-      for (const [table, rawRows] of Object.entries(data.sqlite || {})) {
-        let rows = rawRows;
-        // Credentials were never in the backup: what this machine holds stays.
-        if (table === 'kv_store' && Array.isArray(rows)) {
-          rows = rows.filter(r => !SECRET_KV_KEYS.includes(r.key)).map(r => {
-            if (r.key !== 'dicann-api-config') return r;
-            let current = {};
-            try { current = JSON.parse(db.prepare(`SELECT value FROM kv_store WHERE key=?`).get(r.key)?.value || '{}'); } catch (_) { current = {}; }
-            return { ...r, value: JSON.stringify(mergeApiConfigSecrets(r.value, current)) };
-          });
-        }
-        if (!rows || rows.length === 0) continue;
-        const cols = Object.keys(rows[0]);
-        const colList = cols.join(', ');
-        const placeholders = cols.map(() => '?').join(', ');
-        const stmt = db.prepare(`INSERT OR REPLACE INTO "${table}" (${colList}) VALUES (${placeholders})`);
-        for (const row of rows) {
-          stmt.run(...cols.map(c => row[c]));
-        }
+      const restoreGuards = _liftGuardTriggers(db);
+      _replaceRows(db, payload.sqlite);
+      restoreGuards();
+      const unbalanced = _unbalancedPostedEntries(db);
+      if (unbalanced) {
+        const err = new Error('unbalanced_entries');
+        err.entries = unbalanced;
+        throw err;
       }
       const violations = db.pragma('foreign_key_check');
       if (violations.length) {
@@ -7616,6 +7729,16 @@ function restoreAllTablesFromBackup(data, expectedSchemaVersion, _db) {
   } finally {
     if (wasOn) db.pragma('foreign_keys = ON');
   }
+  return { ok: true, upgradedFrom: backupVersion < currentVersion ? backupVersion : null };
+}
+
+// A copy of the whole database file, consistent even while the app is open
+// (VACUUM INTO writes a fresh, compacted file from one read transaction).
+function backupDatabaseFile(destPath, _db) {
+  const db = _db || getDb();
+  if (fs.existsSync(destPath)) throw new Error('backup_file_exists');
+  db.prepare('VACUUM INTO ?').run(destPath);
+  return destPath;
 }
 
 // ── Close Assurance ──────────────────────────────────────────────────────────
@@ -8384,7 +8507,7 @@ module.exports = {
   supplierBillRepairTaxAccounts,
   SECRET_CONFIG_FIELDS, stripApiConfigSecrets, mergeApiConfigSecrets,
   storageGet, storageSet, storageGetAll, storageGetByPrefix,
-  getAllTablesForBackup, restoreAllTablesFromBackup,
+  getAllTablesForBackup, restoreAllTablesFromBackup, backupDatabaseFile,
   syncQueuePush, syncQueuePeek, syncQueueDelete, syncQueueIncrementAttempts, syncQueueLength,
   auditInsert, auditQuery, getDeviceId,
   snapshotSave, snapshotGetByDate, snapshotGetLatest, snapshotListDates,

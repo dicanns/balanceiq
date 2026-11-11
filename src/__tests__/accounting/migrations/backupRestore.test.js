@@ -198,13 +198,13 @@ describe('MIG-007-B full SQLite backup and restore across accounting tables', ()
     expect(JSON.parse(kvRow.value)).toEqual({ test: 1 });
   });
 
-  it('refuses restore when schemaVersion mismatches', () => {
+  it('refuses a backup from a newer version than the app', () => {
     const backup = getAllTablesForBackup(db1);
-    backup.schemaVersion = 9999; // simulate stale backup
+    backup.schemaVersion = 9999; // written by a later version of the app
 
     db2 = buildAccountingDb();
 
     expect(() => restoreAllTablesFromBackup(backup, db1.pragma('user_version', { simple: true }), db2))
-      .toThrow('schema_version_mismatch');
+      .toThrow('schema_version_newer');
   });
 });

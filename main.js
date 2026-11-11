@@ -31,7 +31,7 @@ const {
   supplierBillPost, supplierBillUnpost, supplierBillPostPayment, supplierBillSubledger,
   supplierBillRepairTaxAccounts,
   bankNeedsCategorizingCount, firstRunFacts,
-  getAllTablesForBackup, restoreAllTablesFromBackup,
+  getAllTablesForBackup, restoreAllTablesFromBackup, backupDatabaseFile,
   syncQueuePush, syncQueuePeek, syncQueueDelete, syncQueueIncrementAttempts, syncQueueLength,
   auditInsert, auditQuery, getDeviceId,
   snapshotSave, snapshotGetByDate, snapshotGetLatest, snapshotListDates,
@@ -489,19 +489,21 @@ function getPosCredentialsMeta() {
   return safe;
 }
 
-async function performAutoBackup() {
-  const dir = BACKUP_DIR();
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+// The name the books go by: the company registry's, else the one typed in the
+// company profile. A backup carries it so a restore can say whose data it holds.
+function activeCompanyName() {
+  if (ACTIVE_COMPANY?.name) return ACTIVE_COMPANY.name;
+  try { return JSON.parse(storageGet('dicann-company-info')?.value || '{}').nom || ''; } catch (_) { return ''; }
+}
 
-  const today = new Date().toISOString().slice(0, 10);
-  const filepath = path.join(dir, `balanceiq-${today}.json`);
-  if (fs.existsSync(filepath)) return; // already backed up today
-
-  const { schemaVersion, sqlite } = getAllTablesForBackup();
+function buildBackupData() {
+  const { schemaVersion, schema, sqlite } = getAllTablesForBackup();
   const all = storageGetAll();
-
   const data = {
     schemaVersion,
+    schema,
+    company: { id: ACTIVE_COMPANY?.id || null, name: activeCompanyName() },
+    appVersion: app.getVersion(),
     legacy: {
       liveData:  all['dicann-v7']          || {},
       roster:    all['dicann-roster']       || [],
@@ -513,14 +515,23 @@ async function performAutoBackup() {
     sqlite,
     createdAt: new Date().toISOString(),
   };
-
   Object.entries(all).forEach(([key, val]) => {
     if (key.startsWith('dicann-pl-')) {
       data.legacy.plData[key.replace('dicann-pl-', '')] = val;
     }
   });
+  return data;
+}
 
-  fs.writeFileSync(filepath, JSON.stringify(data, null, 2), 'utf-8');
+async function performAutoBackup() {
+  const dir = BACKUP_DIR();
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+  const today = new Date().toISOString().slice(0, 10);
+  const filepath = path.join(dir, `balanceiq-${today}.json`);
+  if (fs.existsSync(filepath)) return; // already backed up today
+
+  fs.writeFileSync(filepath, JSON.stringify(buildBackupData(), null, 2), 'utf-8');
 
   // Delete backups older than BACKUP_KEEP_DAYS
   try {
@@ -533,6 +544,26 @@ async function performAutoBackup() {
       });
   } catch (_) {}
 }
+
+// A full backup saved where the operator chooses: a USB key, a cloud folder,
+// anywhere off this Mac. Same file as the daily one, so it restores the same way.
+ipcMain.handle('backup:export', async () => {
+  const win = BrowserWindow.getFocusedWindow();
+  const stamp = new Date().toISOString().slice(0, 10);
+  const safeName = (activeCompanyName() || 'BalanceIQ').replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'BalanceIQ';
+  const { canceled, filePath } = await dialog.showSaveDialog(win, {
+    title: tm('backupExportTitle'),
+    defaultPath: path.join(app.getPath('documents'), `${safeName} - balanceiq-${stamp}.json`),
+    filters: [{ name: 'BalanceIQ Backup', extensions: ['json'] }],
+  });
+  if (canceled || !filePath) return { cancelled: true };
+  try {
+    fs.writeFileSync(filePath, JSON.stringify(buildBackupData(), null, 2), 'utf-8');
+    return { success: true, path: filePath };
+  } catch (e) {
+    return { error: `${tm('backupExportFailed')} ${e.message}` };
+  }
+});
 
 // IPC handlers - daily snapshots (append-only, never update/delete)
 ipcMain.handle('snapshot:save', (event, date, data) => {
@@ -617,51 +648,86 @@ ipcMain.handle('backup:restore', async () => {
     return { error: tm('restoreInvalid') };
   }
 
+  const currentName = activeCompanyName();
+  let backupName = '';
   if (isNewFormat) {
     const { schemaVersion: currentVersion } = getAllTablesForBackup();
-    if (data.schemaVersion !== currentVersion) {
-      return {
-        error: `Version de schéma incompatible (backup: ${data.schemaVersion}, app: ${currentVersion}). Mettez à jour l'application avant de restaurer.`,
-      };
+    if (data.schemaVersion > currentVersion) return { error: tm('restoreNewer') };
+    if (data.schemaVersion < currentVersion && !(Array.isArray(data.schema) && data.schema.length)) return { error: tm('restoreTooOld') };
+    backupName = data.company?.name || '';
+    if (!backupName) {
+      try {
+        const row = (data.sqlite.kv_store || []).find(r => r.key === 'dicann-company-info');
+        backupName = row ? (JSON.parse(row.value).nom || '') : '';
+      } catch (_) { backupName = ''; }
+    }
+    // Another company's backup would replace these books with that company's.
+    const norm = (n) => String(n || '').trim().toLowerCase();
+    if (backupName && currentName && norm(backupName) !== norm(currentName)) {
+      const { response } = await dialog.showMessageBox(win, {
+        type: 'warning',
+        buttons: [tm('cancel'), tm('restoreAnyway')],
+        defaultId: 0,
+        cancelId: 0,
+        title: tm('restoreConfirmTitle'),
+        message: tm('restoreOtherCompany').replace('{backup}', backupName).replace('{current}', currentName),
+      });
+      if (response === 0) return { cancelled: true };
     }
   }
 
+  const when = (data.createdAt || '').slice(0, 10);
   const { response } = await dialog.showMessageBox(win, {
     type: 'warning',
     buttons: [tm('cancel'), tm('restore')],
-    defaultId: 1,
+    defaultId: 0,
     cancelId: 0,
     title: tm('restoreConfirmTitle'),
     message: tm('restoreConfirmMessage'),
+    detail: [currentName ? `${tm('restoreCompany')} ${currentName}` : '', when ? `${tm('restoreBackupOf')} ${when}` : '', tm('restoreSafetyCopy')]
+      .filter(Boolean).join('\n'),
   });
 
   if (response === 0) return { cancelled: true };
 
-  const legacy = isNewFormat ? (data.legacy || {}) : data;
-
-  if (legacy.liveData !== undefined)  storageSet('dicann-v7', JSON.stringify(legacy.liveData));
-  if (legacy.roster !== undefined)    storageSet('dicann-roster', JSON.stringify(legacy.roster));
-  if (legacy.empRoster !== undefined) storageSet('dicann-emp-roster', JSON.stringify(legacy.empRoster));
-  if (legacy.suppliers !== undefined) storageSet('dicann-suppliers-v2', JSON.stringify(legacy.suppliers));
-  if (legacy.apiConfig) {
-    // A backup written since v1.50 carries no credentials, so a plain overwrite
-    // would log the operator out of Stripe and Resend. Keep what is already here.
-    let currentCfg = {};
-    try { currentCfg = JSON.parse(storageGet('dicann-api-config')?.value || '{}'); } catch { /* no config yet */ }
-    storageSet('dicann-api-config', JSON.stringify(mergeApiConfigSecrets(legacy.apiConfig, currentCfg)));
-  }
-  if (legacy.plData) {
-    Object.entries(legacy.plData).forEach(([month, val]) => {
-      storageSet(`dicann-pl-${month}`, JSON.stringify(val));
-    });
+  // The books as they are now, kept before anything is replaced.
+  try {
+    const dir = BACKUP_DIR();
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
+    backupDatabaseFile(path.join(dir, `before-restore-${stamp}.db`));
+  } catch (e) {
+    console.error('backup:restore safety copy failed:', e);
+    return { error: `${tm('restoreSafetyCopyFailed')} ${e.message}` };
   }
 
-  if (isNewFormat && data.sqlite) {
+  if (isNewFormat) {
+    // The backup's own tables hold everything, the window storage included; the
+    // legacy block repeats part of it for older versions and is not replayed.
     try {
-      restoreAllTablesFromBackup(data, data.schemaVersion);
+      restoreAllTablesFromBackup(data);
     } catch (e) {
       console.error('backup:restore sqlite error:', e);
-      return { error: `Erreur lors de la restauration SQLite: ${e.message}` };
+      const known = { unbalanced_entries: 'restoreErrUnbalanced', foreign_key_violations: 'restoreErrOrphans', schema_version_newer: 'restoreNewer', schema_version_mismatch: 'restoreTooOld' };
+      return { error: known[e.message] ? tm(known[e.message]) : `${tm('restoreFailed')} ${e.message}` };
+    }
+  } else {
+    const legacy = data;
+    if (legacy.liveData !== undefined)  storageSet('dicann-v7', JSON.stringify(legacy.liveData));
+    if (legacy.roster !== undefined)    storageSet('dicann-roster', JSON.stringify(legacy.roster));
+    if (legacy.empRoster !== undefined) storageSet('dicann-emp-roster', JSON.stringify(legacy.empRoster));
+    if (legacy.suppliers !== undefined) storageSet('dicann-suppliers-v2', JSON.stringify(legacy.suppliers));
+    if (legacy.apiConfig) {
+      // A backup written since v1.50 carries no credentials, so a plain overwrite
+      // would log the operator out of Stripe and Resend. Keep what is already here.
+      let currentCfg = {};
+      try { currentCfg = JSON.parse(storageGet('dicann-api-config')?.value || '{}'); } catch { /* no config yet */ }
+      storageSet('dicann-api-config', JSON.stringify(mergeApiConfigSecrets(legacy.apiConfig, currentCfg)));
+    }
+    if (legacy.plData) {
+      Object.entries(legacy.plData).forEach(([month, val]) => {
+        storageSet(`dicann-pl-${month}`, JSON.stringify(val));
+      });
     }
   }
 

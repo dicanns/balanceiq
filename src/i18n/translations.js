@@ -1363,7 +1363,9 @@ export const FR = {
  cfgTestInProgress:"Test en cours…",
 
  // ── CONFIG - DATA ──
- cfgBackupJSON: "Backup JSON",
+ cfgBackupJSON: "Enregistrer une sauvegarde",
+ cfgBackupJSONHint: "Sauvegarde complète des livres, à garder ailleurs que sur ce Mac (clé USB, dossier infonuagique).",
+ cfgBackupSaved: (p) => `✓ Sauvegarde enregistrée : ${p}`,
  cfgRestoreBackup: "Restaurer depuis backup",
  cfgOpenFolder: "Ouvrir le dossier",
  cfgAutoBackup: "Sauvegardes automatiques",
@@ -3859,7 +3861,9 @@ export const EN = {
  cfgTestInProgress:"Testing…",
 
  // ── CONFIG - DATA ──
- cfgBackupJSON: "Backup JSON",
+ cfgBackupJSON: "Save a backup",
+ cfgBackupJSONHint: "A full backup of the books, to keep somewhere other than this Mac (USB key, cloud folder).",
+ cfgBackupSaved: (p) => `✓ Backup saved: ${p}`,
  cfgRestoreBackup: "Restore from Backup",
  cfgOpenFolder: "Open Folder",
  cfgAutoBackup: "Auto Backups",

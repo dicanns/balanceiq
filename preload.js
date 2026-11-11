@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('api', {
   },
   backup: {
     restore: () => ipcRenderer.invoke('backup:restore'),
+    export: () => ipcRenderer.invoke('backup:export'),
     getInfo: () => ipcRenderer.invoke('backup:getInfo'),
     openDir: () => ipcRenderer.invoke('backup:openDir'),
   },
