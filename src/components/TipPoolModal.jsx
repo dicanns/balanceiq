@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { calcTipPool } from '../utils/calculations.js';
+import { escapeHtml as esc } from '../utils/htmlSafe.mjs';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 const fmt = (n) =>(n ?? 0).toLocaleString('fr-CA', { style: 'currency', currency: 'CAD' });
@@ -268,12 +269,12 @@ export default function TipPoolModal({ lang = 'fr', date, dailyEmployees = [], s
 
   function doPrint() {
     const rows = (results || employees).map(e =>
-      `<tr><td>${e.name}</td><td>${e.hours || '-'}</td><td>${fmt(e.share)}</td></tr>`
+      `<tr><td>${esc(e.name)}</td><td>${esc(e.hours || '-')}</td><td>${fmt(e.share)}</td></tr>`
     ).join('');
     const html = `<html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;padding:20px;font-size:13px}
       h2{color:#f97316}table{width:100%;border-collapse:collapse;margin-top:12px}
       th,td{border:1px solid #ccc;padding:6px 10px;text-align:left}
-      th{background:#f3f4f6}tfoot td{font-weight:bold;background:#f9fafb}</style></head><body><h2>${T.title}</h2><p><strong>${T.date}:</strong>${date} &nbsp;<strong>${T.totalTips}:</strong>${fmt(parseFloat(totalTips)||0)}</p><p><strong>${T.method}:</strong>${T['method'+method.charAt(0).toUpperCase()+method.slice(1)]||method}</p><table><thead><tr><th>${T.name}</th><th>${T.hours}</th><th>${T.share}</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="2">${T.total}</td><td>${fmt(parseFloat(totalTips)||0)}</td></tr></tfoot></table>${notes ? `<p><em>${notes}</em></p>` : ''}</body></html>`;
+      th{background:#f3f4f6}tfoot td{font-weight:bold;background:#f9fafb}</style></head><body><h2>${T.title}</h2><p><strong>${T.date}:</strong>${esc(date)} &nbsp;<strong>${T.totalTips}:</strong>${fmt(parseFloat(totalTips)||0)}</p><p><strong>${T.method}:</strong>${T['method'+method.charAt(0).toUpperCase()+method.slice(1)]||esc(method)}</p><table><thead><tr><th>${T.name}</th><th>${T.hours}</th><th>${T.share}</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="2">${T.total}</td><td>${fmt(parseFloat(totalTips)||0)}</td></tr></tfoot></table>${notes ? `<p><em>${esc(notes)}</em></p>` : ''}</body></html>`;
     if (window.api?.pdf?.print) window.api.pdf.print(html);
     else { const w = window.open('', '_blank'); w.document.write(html); w.print(); }
   }

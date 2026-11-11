@@ -178,8 +178,12 @@ function buildFPZ500HTML(period, T, lang, company = {}) {
   const tvqColl    = period.tvq_collected || 0;
   const tvqItr     = period.tvq_rti || 0;
   const tvqNet     = tvqColl - tvqItr;
-  const totalDue   = Math.max(0, tpsNet) + Math.max(0, tvqNet);
-  const totalRef   = Math.max(0, -tpsNet) + Math.max(0, -tvqNet);
+  // One return, one figure: a GST refund comes off the QST owing and the other
+  // way round. Adding the two sides separately showed an amount to pay and a
+  // refund at once.
+  const netBoth    = tpsNet + tvqNet;
+  const totalDue   = Math.max(0, netBoth);
+  const totalRef   = Math.max(0, -netBoth);
 
   const row = (box, label, value, sign = '') => `
     <tr>
@@ -197,7 +201,7 @@ function buildFPZ500HTML(period, T, lang, company = {}) {
     </tr>`;
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
-<title>FPZ-500.IF - ${period.period_start} to ${period.period_end}</title>
+<title>FPZ-500.IF - ${esc(period.period_start)} to ${esc(period.period_end)}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font:12px/1.5 Arial,sans-serif;color:#222;padding:26px;max-width:700px}
@@ -222,7 +226,7 @@ td{padding:6px 4px;border-bottom:1px solid #eee;vertical-align:middle}
 </style></head><body>
 <h1>${isFr ? 'Déclaration combinée TPS/TVQ - FPZ-500.IF' : 'Combined GST/QST return - FPZ-500.IF'}</h1>
 <div class="meta">
-  <span><strong>${isFr ? 'Période' : 'Period'}:</strong> ${period.period_start} &rarr; ${period.period_end}</span>
+  <span><strong>${isFr ? 'Période' : 'Period'}:</strong> ${esc(period.period_start)} &rarr; ${esc(period.period_end)}</span>
   <span><strong>${isFr ? 'Généré le' : 'Generated'}:</strong> ${today}</span>
 </div>
 ${company.nom || company.numeroTPS || company.numeroTVQ ? `<div class="meta">
@@ -264,7 +268,7 @@ ${(period.tps_collected || 0) === 0 && (period.tvq_collected || 0) === 0 ? `<div
 ${period.status === 'filed' ? `<h2>${isFr ? 'Déclaration produite' : 'Filing submitted'}</h2>
 <table>
 <tr><td class="lbl">${T.filedAt}</td><td class="val">${period.filed_at ? new Date(period.filed_at).toLocaleDateString(isFr ? 'fr-CA' : 'en-CA') : '-'}</td></tr>
-${period.confirmation_number ? `<tr><td class="lbl">${T.confirmNum}</td><td class="val">${period.confirmation_number}</td></tr>` : ''}
+${period.confirmation_number ? `<tr><td class="lbl">${T.confirmNum}</td><td class="val">${esc(period.confirmation_number)}</td></tr>` : ''}
 </table>` : ''}
 
 <p class="foot">BalanceIQ &nbsp;|&nbsp; ${isFr ? 'Boîtes 110, 111, 210 et 211 à remplir manuellement si vous avez versé des acomptes ou demandé d\'autres remboursements.' : 'Boxes 110, 111, 210 and 211 are yours to fill in if you paid instalments or claimed other rebates.'}</p>

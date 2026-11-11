@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { escapeHtml as esc } from '../utils/htmlSafe.mjs';
 
 // Helper: compute net sales for a day from raw caisse data
 function dayVenteNet(dayData) {
@@ -144,8 +145,8 @@ td:not(:first-child){text-align:right}
 @media print{body{padding:10px}h2{page-break-before:auto}}</style></head><body>`;
 
   // Cover
-  h += `<div class="cover"><h1>${titleYE}</h1><p class="sub">${co.name || 'BalanceIQ'} &nbsp;|&nbsp; ${fiscalLabel} &nbsp;|&nbsp; ${lang === 'en' ? 'Generated' : 'Généré le'} ${today}</p>${co.address ? `<p class="sub">${co.address}</p>` : ''}
-  ${co.tps ? `<p class="sub">TPS: ${co.tps}${co.tvq ? ` &nbsp;|&nbsp; TVQ: ${co.tvq}` : ''}</p>` : ''}</div><div class="disclaimer">${lang === 'en'
+  h += `<div class="cover"><h1>${titleYE}</h1><p class="sub">${esc(co.name || 'BalanceIQ')} &nbsp;|&nbsp; ${esc(fiscalLabel)} &nbsp;|&nbsp; ${lang === 'en' ? 'Generated' : 'Généré le'} ${today}</p>${co.address ? `<p class="sub">${esc(co.address)}</p>` : ''}
+  ${co.tps ? `<p class="sub">TPS: ${esc(co.tps)}${co.tvq ? ` &nbsp;|&nbsp; TVQ: ${esc(co.tvq)}` : ''}</p>` : ''}</div><div class="disclaimer">${lang === 'en'
     ? 'Operational estimates only - always validate with your accountant.'
     : 'Estimations opérationnelles seulement - toujours valider avec votre comptable.'}</div>`;
 
@@ -154,7 +155,7 @@ td:not(:first-child){text-align:right}
 
   rows.forEach(r => {
     const npClass = r.np >= 0 ? 'g' : 'r';
-    h += `<tr><td>${r.monthLabel}</td><td>${fmt(r.revenue)}</td><td>${r.fpPct}%</td><td>${r.labPct}%</td><td>${fmt(r.expT)}</td><td class="${npClass}">${fmt(r.np)} (${r.npPct}%)</td></tr>`;
+    h += `<tr><td>${esc(r.monthLabel)}</td><td>${fmt(r.revenue)}</td><td>${r.fpPct}%</td><td>${r.labPct}%</td><td>${fmt(r.expT)}</td><td class="${npClass}">${fmt(r.np)} (${r.npPct}%)</td></tr>`;
   });
 
   h += `<tr class="tot"><td>${lang === 'en' ? 'TOTAL' : 'TOTAL'}</td><td>${fmt(totRev)}</td><td>${fmtPct(totFP, totRev)}</td><td>${fmtPct(totLab, totRev)}</td><td>${fmt(totExp)}</td><td class="${totNP >= 0 ? 'g' : 'r'}">${fmt(totNP)} (${fmtPct(totNP, totRev)})</td></tr></table>`;
@@ -169,7 +170,7 @@ td:not(:first-child){text-align:right}
     invoices.forEach(f => {
       const total = (f.subtotalHT || 0) + (f.tps || 0) + (f.tvq || 0);
       invTot += total; invDue += f.montantDu || 0;
-      h += `<tr><td>${f.numero || '-'}</td><td>${f.date || '-'}</td><td>${f.clientNom || '-'}</td><td>${fmt(f.subtotalHT || 0)}</td><td>${fmt(f.tps || 0)}</td><td>${fmt(f.tvq || 0)}</td><td>${fmt(total)}</td><td class="${(f.montantDu || 0) >0.01 ? 'r' : 'g'}">${fmt(f.montantDu || 0)}</td><td>${f.statut || '-'}</td></tr>`;
+      h += `<tr><td>${esc(f.numero || '-')}</td><td>${esc(f.date || '-')}</td><td>${esc(f.clientNom || '-')}</td><td>${fmt(f.subtotalHT || 0)}</td><td>${fmt(f.tps || 0)}</td><td>${fmt(f.tvq || 0)}</td><td>${fmt(total)}</td><td class="${(f.montantDu || 0) >0.01 ? 'r' : 'g'}">${fmt(f.montantDu || 0)}</td><td>${esc(f.statut || '-')}</td></tr>`;
     });
     h += `<tr class="tot"><td colspan="6">${lang === 'en' ? 'TOTAL' : 'TOTAL'}</td><td>${fmt(invTot)}</td><td class="r">${fmt(invDue)}</td><td></td></tr>`;
     h += `</table>`;
@@ -201,7 +202,7 @@ td:not(:first-child){text-align:right}
     h += `<table><tr><th>${lang === 'en' ? 'Supplier' : 'Fournisseur'}</th><th>${lang === 'en' ? 'Annual total' : 'Total annuel'}</th><th>%</th></tr>`;
     const supEntries = Object.entries(supTotals).sort((a, b) => b[1] - a[1]);
     supEntries.forEach(([name, total]) => {
-      h += `<tr><td>${name}</td><td>${fmt(total)}</td><td>${totFP > 0 ? (total / totFP * 100).toFixed(1) + '%' : '-'}</td></tr>`;
+      h += `<tr><td>${esc(name)}</td><td>${fmt(total)}</td><td>${totFP > 0 ? (total / totFP * 100).toFixed(1) + '%' : '-'}</td></tr>`;
     });
     h += `<tr class="tot"><td>${lang === 'en' ? 'TOTAL F&P' : 'TOTAL F&P'}</td><td>${fmt(totFP)}</td><td>100%</td></tr></table>`;
   }
@@ -299,7 +300,7 @@ td:not(:first-child){text-align:right}
 .disclaimer{font-size:10px;color:#888;border-left:3px solid #f97316;padding:6px 10px;margin:12px 0;background:#fff8f0}
 .note{font-size:10px;color:#b45309;margin-top:8px;font-style:italic}</style></head><body>`;
 
-  h += `<h1>${titleTax}</h1><p class="sub">${lang === 'en' ? 'Period' : 'Période'}: ${fiscalStart} → ${fiscalEnd} &nbsp;|&nbsp; ${lang === 'en' ? 'Generated' : 'Généré le'} ${today}</p><div class="disclaimer">${disclaimer}</div>`;
+  h += `<h1>${titleTax}</h1><p class="sub">${lang === 'en' ? 'Period' : 'Période'}: ${esc(fiscalStart)} → ${esc(fiscalEnd)} &nbsp;|&nbsp; ${lang === 'en' ? 'Generated' : 'Généré le'} ${today}</p><div class="disclaimer">${disclaimer}</div>`;
 
   h += `<h2>TPS ${lang === 'en' ? '(GST)' : '(TPS)'}</h2><table><tr><th>${lang === 'en' ? 'Quarter' : 'Trimestre'}</th><th>${lang === 'en' ? 'Revenue' : 'Revenus'}</th><th>${lang === 'en' ? 'TPS Collected (5%)' : 'TPS collectée (5%)'}</th><th>${lang === 'en' ? 'Input Credits *' : 'Crédits intrants *'}</th><th>${lang === 'en' ? 'Net Owing' : 'Net à remettre'}</th></tr>`;
 
@@ -308,7 +309,7 @@ td:not(:first-child){text-align:right}
     : `<span style="color:#b45309;font-style:italic">${lang === 'en' ? 'none' : 'aucun'}</span>`;
 
   qRows.forEach(q => {
-    h += `<tr><td><strong>${q.label}</strong></td><td>${fmt(q.rev)}</td><td>${fmt(q.tpsC)}</td><td style="text-align:right">${ctiCell(q.tpsCti)}</td><td><strong>${fmt(q.tpsNet)}</strong></td></tr>`;
+    h += `<tr><td><strong>${esc(q.label)}</strong></td><td>${fmt(q.rev)}</td><td>${fmt(q.tpsC)}</td><td style="text-align:right">${ctiCell(q.tpsCti)}</td><td><strong>${fmt(q.tpsNet)}</strong></td></tr>`;
   });
 
   h += `<tr class="tot"><td>TOTAL</td><td>${fmt(totRev)}</td><td>${fmt(totTpsC)}</td><td style="text-align:right">${ctiCell(totTpsCti)}</td><td>${fmt(totTpsN)}</td></tr></table>`;
@@ -316,7 +317,7 @@ td:not(:first-child){text-align:right}
   h += `<h2>TVQ ${lang === 'en' ? '(QST)' : '(TVQ)'}</h2><table><tr><th>${lang === 'en' ? 'Quarter' : 'Trimestre'}</th><th>${lang === 'en' ? 'Revenue' : 'Revenus'}</th><th>${lang === 'en' ? 'TVQ Collected (9.975%)' : 'TVQ collectée (9,975%)'}</th><th>${lang === 'en' ? 'Input Credits (RTI)' : 'Crédits intrants (RTI)'}</th><th>${lang === 'en' ? 'Net Owing' : 'Net à remettre'}</th></tr>`;
 
   qRows.forEach(q => {
-    h += `<tr><td><strong>${q.label}</strong></td><td>${fmt(q.rev)}</td><td>${fmt(q.tvqC)}</td><td style="text-align:right">${ctiCell(q.tvqRti)}</td><td><strong>${fmt(q.tvqNet)}</strong></td></tr>`;
+    h += `<tr><td><strong>${esc(q.label)}</strong></td><td>${fmt(q.rev)}</td><td>${fmt(q.tvqC)}</td><td style="text-align:right">${ctiCell(q.tvqRti)}</td><td><strong>${fmt(q.tvqNet)}</strong></td></tr>`;
   });
 
   h += `<tr class="tot"><td>TOTAL</td><td>${fmt(totRev)}</td><td>${fmt(totTvqC)}</td><td style="text-align:right">${ctiCell(totTvqRti)}</td><td>${fmt(totTvqN)}</td></tr></table>`;

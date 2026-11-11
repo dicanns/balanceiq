@@ -1,0 +1,18 @@
+# Deploy settings for the edge functions. Without this file, whether a function
+# asks for a login token at the gateway was whatever the last deploy command
+# happened to set, and two functions that outside services call were left
+# refusing them.
+#
+# verify_jwt = false is only for functions called by something that cannot hold
+# a BalanceIQ login: each one checks its caller itself.
+
+project_id = "etiwnesxjypdwhxqnqqq"
+
+# Stripe signs every event; the function verifies stripe-signature.
+[functions.stripe-webhook]
+verify_jwt = false
+
+# Square, Clover and Shopify send the browser here after consent. The page only
+# forwards the code to the desktop app, which checks the state it issued.
+[functions.pos-oauth-callback]
+verify_jwt = false

@@ -14,7 +14,10 @@ function ledgerSplit({ totalCents, tpsCents, tvqCents, taxExempt, hasTps = true,
   const int = (v) => (Number.isFinite(Number(v)) ? Math.round(Number(v)) : 0);
   const total = int(totalCents);
   if (total < 0) return { ok: false, error: 'negative_total' };
-  if (taxExempt) return { ok: true, totalCents: total, revenueCents: total, tpsCents: 0, tvqCents: 0 };
+  // An exemption is already in the figures: a fully exempt customer arrives with
+  // both taxes at zero, one exempt from a single tax with the other still to
+  // book. The flag alone used to push every tax into revenue.
+  void taxExempt;
   // A tax with no account to post to cannot be split out; it stays in revenue,
   // as it always did, rather than leaving the entry short.
   const tps = hasTps ? Math.max(0, int(tpsCents)) : 0;

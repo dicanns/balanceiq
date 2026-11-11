@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   dueReminders, fillReminderTemplate, REMINDER_VARIABLES, DEFAULT_REMINDER_TEXT,
 } from '../services/invoiceReminders.js';
+import { escapeHtml as esc } from '../utils/htmlSafe.mjs';
 
 // Invoicing > Reminders. Reminder emails for overdue invoices.
 //
@@ -100,7 +101,6 @@ const localToday = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
-const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const blankStep = () => ({ days_after_due: 7, subject_fr: '', subject_en: '', body_fr: '', body_en: '', attach_pdf: 1 });
 
 export default function RemindersTab({

@@ -3012,8 +3012,21 @@ function coaRename(id, { name_fr, name_en }, _db) {
   return true;
 }
 
-function coaArchive(id) {
-  getDb().prepare(`UPDATE chart_of_accounts SET is_archived = 1 WHERE id = ?`).run(id);
+// An account still in use cannot be hidden: it must hold no balance and no
+// unpaid supplier bill must be headed for it.
+function coaArchive(id, _db) {
+  const db = _db || getDb();
+  const bal = db.prepare(
+    `SELECT COALESCE(SUM(jl.debit_cents - jl.credit_cents), 0) AS b, COUNT(*) AS n
+       FROM journal_lines jl JOIN journal_entries je ON je.id = jl.entry_id
+      WHERE jl.account_id = ? AND je.status = 'posted'`
+  ).get(id);
+  if (bal && bal.b !== 0) throw new Error('ERR_COA_IN_USE');
+  const bills = db.prepare(
+    `SELECT COUNT(*) AS n FROM supplier_bills WHERE coa_account_id = ? AND COALESCE(paid, 0) = 0`
+  ).get(id);
+  if (bills && bills.n > 0) throw new Error('ERR_COA_IN_USE');
+  db.prepare(`UPDATE chart_of_accounts SET is_archived = 1 WHERE id = ?`).run(id);
   return true;
 }
 
@@ -3222,16 +3235,23 @@ function glDraftEntry({ entry_date, description, source_type = 'manual', source_
 }
 
 // Update a draft entry's lines (replaces all lines).
-function glUpdateDraft(entryId, { entry_date, description, lines = [] }) {
-  const db = getDb();
+function glUpdateDraft(entryId, { entry_date, description, lines = [] }, _db) {
+  const db = _db || getDb();
   const entry = db.prepare(`SELECT * FROM journal_entries WHERE id=?`).get(entryId);
   if (!entry) throw new Error('ERR_ENTRY_NOT_FOUND');
   if (entry.status !== 'draft') throw new Error('ERR_ENTRY_NOT_DRAFT');
+  // Moving a draft into a closed period would get round the close.
+  let periodId = entry.period_id;
+  if (entry_date && entry_date !== entry.entry_date) {
+    const target = _ensurePeriod(db, entry_date, entry.location_id);
+    if (target && target.status === 'closed') throw new Error('ERR_PERIOD_CLOSED_POST');
+    if (target) periodId = target.id;
+  }
 
   return db.transaction(() => {
     const updates = [];
     const vals = [];
-    if (entry_date) { updates.push('entry_date=?'); vals.push(entry_date); }
+    if (entry_date) { updates.push('entry_date=?', 'period_id=?'); vals.push(entry_date, periodId); }
     if (description !== undefined) { updates.push('description=?'); vals.push(description || null); }
     if (updates.length) { vals.push(entryId); db.prepare(`UPDATE journal_entries SET ${updates.join(',')} WHERE id=?`).run(...vals); }
 
@@ -4260,8 +4280,16 @@ function bankTransactionsList(bankAccountId, { dateFrom, dateTo, statusFilter, l
   `).all(...params);
 }
 
+// A line on a reconciled statement is part of a closed reconciliation: it is
+// changed only after the reconciliation is reopened.
+function _assertLineNotReconciled(db, txId) {
+  const row = db.prepare(`SELECT reconciled FROM bank_transactions WHERE id=?`).get(txId);
+  if (row && row.reconciled) throw new Error('ERR_TRANSACTION_RECONCILED');
+}
+
 function bankTransactionUnmatch(txId, _db) {
   const db = _db || getDb();
+  _assertLineNotReconciled(db, txId);
   db.transaction(() => {
     // Clearing the classification must also unwind whatever it posted.
     _reverseBankTransactionEntry(db, txId);
@@ -4528,6 +4556,7 @@ function _transferDecision(db, txId, coaAccountId) {
 
 function bankTransactionCategorize(txId, coaAccountId, notes, tax, _db) {
   const db = _db || getDb();
+  _assertLineNotReconciled(db, txId);
   // A deposit put to receivables when exactly one invoice cheque in the register
   // is that amount: it is that cheque clearing. Linking books the same nothing
   // (the invoice payment already did) and takes the cheque off the outstanding list.
@@ -5172,7 +5201,8 @@ function taxPeriodCompute(periodStart, periodEnd, _db) {
       for (const bill of bills) {
         const tps = parseFloat(bill.tps_paid) || 0;
         const tvq = parseFloat(bill.tvq_paid) || 0;
-        const pct = (parseFloat(bill.business_use_pct) || 100) / 100;
+        const bizPct = parseFloat(bill.business_use_pct);
+        const pct = (Number.isFinite(bizPct) ? bizPct : 100) / 100;
         if (tps > 0 || tvq > 0) {
           tpsCti += tps * pct;
           tvqRti += tvq * pct;
@@ -5894,7 +5924,10 @@ function supplierBillPost(billId, _db) {
   const totalCents = Math.round((Number(bill.amount) || 0) * 100);
   if (!totalCents) return { ok: false, error: 'zero_amount' };
 
-  const claimPct = target.itc_pct == null ? 100 : Number(target.itc_pct);
+  // Tax is claimed only on the business share of the bill; 0% means no claim.
+  const bizRaw = parseFloat(bill.business_use_pct);
+  const bizPct = Number.isFinite(bizRaw) ? Math.min(100, Math.max(0, bizRaw)) : 100;
+  const claimPct = (target.itc_pct == null ? 100 : Number(target.itc_pct)) * bizPct / 100;
   const scale = (v) => Math.round(((Number(v) || 0) * 100 * claimPct) / 100);
   let tpsCents = scale(bill.tps_paid);
   let tvqCents = scale(bill.tvq_paid);
@@ -7280,19 +7313,31 @@ function recurringHistoryList(ruleId) {
 }
 
 function _computeNextRun(frequency, from, day_of_month, day_of_week) {
-  const d = new Date(from);
+  // Dates are plain calendar days: work in UTC throughout so a local time zone
+  // never shifts them, and clamp the day to the length of the target month.
+  const base = new Date(String(from).slice(0, 10) + 'T00:00:00Z');
+  const y = base.getUTCFullYear(), m = base.getUTCMonth(), day = base.getUTCDate();
+  const addMonths = (n) => {
+    const total = m + n;
+    const ty = y + Math.floor(total / 12);
+    const tm = ((total % 12) + 12) % 12;
+    const last = new Date(Date.UTC(ty, tm + 1, 0)).getUTCDate();
+    const want = Number(day_of_month) > 0 ? Number(day_of_month) : day;
+    return new Date(Date.UTC(ty, tm, Math.min(want, last)));
+  };
+  let d;
   switch (frequency) {
-    case 'daily':     d.setDate(d.getDate() + 1); break;
-    case 'weekly':    d.setDate(d.getDate() + 7); break;
-    case 'biweekly':  d.setDate(d.getDate() + 14); break;
-    case 'monthly': {
-      d.setMonth(d.getMonth() + 1);
-      if (day_of_month) { d.setDate(Math.min(day_of_month, new Date(d.getFullYear(), d.getMonth()+1, 0).getDate())); }
+    case 'daily':     d = new Date(base.getTime() + 86400000); break;
+    case 'weekly':    d = new Date(base.getTime() + 7 * 86400000); break;
+    case 'biweekly':  d = new Date(base.getTime() + 14 * 86400000); break;
+    case 'monthly':   d = addMonths(1); break;
+    case 'quarterly': d = addMonths(3); break;
+    case 'annual': {
+      const last = new Date(Date.UTC(y + 1, m + 1, 0)).getUTCDate();
+      d = new Date(Date.UTC(y + 1, m, Math.min(day, last)));
       break;
     }
-    case 'quarterly': d.setMonth(d.getMonth() + 3); break;
-    case 'annual':    d.setFullYear(d.getFullYear() + 1); break;
-    default:          d.setMonth(d.getMonth() + 1);
+    default:          d = addMonths(1);
   }
   return d.toISOString().slice(0, 10);
 }
@@ -7744,8 +7789,17 @@ function _replaceRows(db, sqlite) {
     }
     const verb = APPEND_ONLY_TABLES.includes(table) ? 'INSERT OR IGNORE' : 'INSERT';
     const stmts = new Map();
+    // Only columns the table really has: a backup file is outside input, and a
+    // column name is written into the statement.
+    const known = new Set(db.prepare(`PRAGMA table_info("${table}")`).all().map(c => c.name));
     for (const row of rows) {
       const cols = Object.keys(row);
+      const bad = cols.find(c => !known.has(c));
+      if (bad !== undefined) {
+        const err = new Error('backup_column_unknown');
+        err.table = table;
+        throw err;
+      }
       const key = cols.join('\u0001');
       if (!stmts.has(key)) {
         stmts.set(key, db.prepare(
@@ -8689,7 +8743,7 @@ module.exports = {
   vaultAttach, vaultList, vaultListAll, vaultSearch, vaultDelete, vaultGetOrphans, vaultReassign, vaultGetStats,
   recurringRuleList, recurringRuleCreate, recurringRuleUpdate, recurringRuleDeactivate,
   recurringPendingList, recurringApprove, recurringSkip, recurringHistoryList,
-  recurringCheckDue, recurringPendingCount,
+  recurringCheckDue, recurringPendingCount, _computeNextRun,
   reminderLadderList, reminderLadderCreate, reminderLadderUpdate, reminderLadderDelete,
   reminderStepList, reminderStepCreate, reminderStepUpdate, reminderStepDelete,
   reminderLogList, reminderLogCreate, reminderCheckDue,

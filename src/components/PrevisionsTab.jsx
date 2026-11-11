@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { downloadWorkbook, readSheetRows } from '../utils/spreadsheet.js';
 import { normalizeStatementDate, detectNumericDateOrder, parseStatementAmount, looksLikeSheetHeader } from '../utils/importParse.mjs';
 import { trackEvent } from '../services/telemetry.js';
+import { escapeHtml as esc } from '../utils/htmlSafe.mjs';
 
 // ── Tooltip component ─────────────────────────────────────────────────────────
 function PrevTip({ text, children, align = 'center' }) {
@@ -1133,17 +1134,17 @@ function ProductionListView({ products, allSales, weatherMap, learnedPatterns = 
     const title = `${T.prevListTitle} - ${formatDateShort(startDate,lang)} → ${formatDateShort(endDate,lang)}`;
     let rows = '';
     generated.list.forEach(item => {
-      rows += `<tr><td>${item.product.name}</td><td>${formatDateShort(item.date,lang)}</td><td>${item.forecast}</td><td>${item.onHand||0}</td><td><strong>${item.toMake}</strong></td></tr>`;
+      rows += `<tr><td>${esc(item.product.name)}</td><td>${formatDateShort(item.date,lang)}</td><td>${item.forecast}</td><td>${item.onHand||0}</td><td><strong>${item.toMake}</strong></td></tr>`;
     });
     generated.batchItems.forEach(item => {
-      rows += `<tr><td>${item.product.name}</td><td>${T.prevListBatch}${item.product.shelf_life_days}${T.prevListDays}</td><td>${item.total}</td><td>${item.onHand}</td><td><strong>${item.toMake}</strong></td></tr>`;
+      rows += `<tr><td>${esc(item.product.name)}</td><td>${T.prevListBatch}${item.product.shelf_life_days}${T.prevListDays}</td><td>${item.total}</td><td>${item.onHand}</td><td><strong>${item.toMake}</strong></td></tr>`;
     });
 
     let weatherSection = '';
     if (generated.weatherAnnotations.length > 0) {
       weatherSection = `<h2 style="font-size:13px;margin-top:28px;margin-bottom:8px">${T.prevListWeatherAnno}</h2><ul style="font-size:12px;padding-left:18px;margin:0">`;
       generated.weatherAnnotations.forEach(a => {
-        weatherSection += `<li>${a.icon} ${formatDateShort(a.date,lang)} ${a.temp}°C - ${a.product.name}<strong>${a.pctStr}</strong>vs base</li>`;
+        weatherSection += `<li>${a.icon} ${formatDateShort(a.date,lang)} ${a.temp}°C - ${esc(a.product.name)}<strong>${a.pctStr}</strong>vs base</li>`;
       });
       weatherSection += '</ul>';
     }
@@ -1153,14 +1154,14 @@ function ProductionListView({ products, allSales, weatherMap, learnedPatterns = 
       adjSection = `<h2 style="font-size:13px;margin-top:28px;margin-bottom:8px">${T.prevListAdjTitle}</h2><table><thead><tr><th>${T.prevColProduct}</th><th>${T.prevListAdjCurrent}</th><th>${T.prevListAdjSuggested}</th><th>${T.prevListAdjDiff}</th><th>${T.prevListAdjReason}</th></tr></thead><tbody>`;
       generated.adjustments.forEach(a => {
         const diffStr = (a.diff >= 0 ? '+' : '') + a.diff;
-        adjSection += `<tr><td>${a.product.name}${a.isBatch?' (batch)':''}</td><td>${a.baseQty}</td><td>${a.avgPredicted}</td><td>${diffStr}</td><td>${a.reason}</td></tr>`;
+        adjSection += `<tr><td>${esc(a.product.name)}${a.isBatch?' (batch)':''}</td><td>${a.baseQty}</td><td>${a.avgPredicted}</td><td>${diffStr}</td><td>${a.reason}</td></tr>`;
       });
       const savings = generated.adjustments.filter(a=>a.diff<0).reduce((sum,a)=>sum+Math.abs(a.diff),0);
       adjSection += `</tbody></table>`;
       if (savings > 0) adjSection += `<p style="font-size:11px;color:#f97316;margin-top:8px">${T.prevListSavingsTotal(savings, T.prevColProduct)}</p>`;
     }
 
-    return `<html><head><meta charset="utf-8"><title>${title}</title><style>body{font-family:'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif;margin:32px;color:#111}h1{font-size:18px;margin-bottom:4px}h2{color:#374151}p{font-size:12px;color:#666;margin-bottom:20px}table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px}th{background:#f3f4f6;padding:8px 10px;text-align:left;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.5px}td{padding:8px 10px;border-bottom:1px solid #e5e7eb}strong{color:#f97316;font-size:15px}@media print{body{margin:16px}}</style></head><body><h1>${title}</h1><table><thead><tr><th>${T.prevColProduct}</th><th>${T.prevColDate}</th><th>${T.prevListForecast}</th><th>${T.prevListOnHand}</th><th>${T.prevListToMake}</th></tr></thead><tbody>${rows}</tbody></table>${weatherSection}${adjSection}</body></html>`;
+    return `<html><head><meta charset="utf-8"><title>${esc(title)}</title><style>body{font-family:'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif;margin:32px;color:#111}h1{font-size:18px;margin-bottom:4px}h2{color:#374151}p{font-size:12px;color:#666;margin-bottom:20px}table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px}th{background:#f3f4f6;padding:8px 10px;text-align:left;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.5px}td{padding:8px 10px;border-bottom:1px solid #e5e7eb}strong{color:#f97316;font-size:15px}@media print{body{margin:16px}}</style></head><body><h1>${esc(title)}</h1><table><thead><tr><th>${T.prevColProduct}</th><th>${T.prevColDate}</th><th>${T.prevListForecast}</th><th>${T.prevListOnHand}</th><th>${T.prevListToMake}</th></tr></thead><tbody>${rows}</tbody></table>${weatherSection}${adjSection}</body></html>`;
   };
 
   const inp = { background:t.inputBg, border:`1px solid ${t.inputBorder}`, borderRadius:5, color:'inherit', fontSize:12, padding:'5px 8px', outline:'none', fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif" };

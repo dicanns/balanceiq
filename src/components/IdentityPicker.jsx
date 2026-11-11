@@ -29,6 +29,7 @@ export default function IdentityPicker({
     name_required: fr ? 'Nom requis.' : 'Name required.',
     pin_format:    fr ? 'Le NIP doit etre 4 chiffres.' : 'PIN must be 4 digits.',
     invalid_pin:   fr ? 'NIP invalide.' : 'Invalid PIN.',
+    pin_locked:    fr ? 'Trop d\'essais. Reessayez dans une minute.' : 'Too many attempts. Try again in a minute.',
     not_signed_in: fr ? 'Non connecte.' : 'Not signed in.',
     role_insufficient: fr ? 'Role insuffisant (gerant requis).' : 'Insufficient role (manager required).',
     unknown_method: fr ? 'Methode inconnue.' : 'Unknown method.',

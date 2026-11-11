@@ -92,6 +92,14 @@ describe('SECRET-004 cloud sync', () => {
     expect(JSON.parse(withoutSecrets('dicann-api-config', { resendKey: 'x', stripeSecretKey: 'y', padWebhookSecret: 'z', plan: 'pro' }))).toEqual({ plan: 'pro' });
     expect(withoutSecrets('dicann-fac-clients', '[]')).toBe('[]');
   });
+
+  it('treats the user\'s own AI key as a credential: encrypted at rest, never synced', () => {
+    expect(JSON.parse(withoutSecrets('dicann-api-config', { anthropicApiKey: 'sk-ant-test', plan: 'pro' }))).toEqual({ plan: 'pro' });
+    const store = createSecretStore(fake());
+    const stored = store.protectValue('dicann-api-config', JSON.stringify({ anthropicApiKey: 'sk-ant-test', plan: 'pro' }));
+    expect(stored).not.toMatch(/sk-ant-test/);
+    expect(JSON.parse(stored).plan).toBe('pro');
+  });
 });
 
 describe('SECRET-005 main-process wiring', () => {

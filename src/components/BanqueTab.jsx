@@ -55,6 +55,7 @@ const UI = {
       ERR_CSV_NO_COLUMNS:               'Impossible de reconnaître les colonnes de ce fichier: aucune date trouvée. Exportez le relevé en CSV depuis votre institution, sans le modifier.',
       ERR_STATEMENT_NOT_FOUND:          'Relevé introuvable.',
       ERR_STATEMENT_ALREADY_RECONCILED: 'Ce relevé est déjà réconcilié.',
+      ERR_TRANSACTION_RECONCILED:       'Cette ligne fait partie d\'un relevé réconcilié. Rouvrez le relevé avant de la modifier.',
       ERR_RECONCILE_VARIANCE:           (ecart) => `Écart de ${Number(ecart).toFixed(2)} $ - réconciliez toutes les transactions avant de clôturer.`,
       ERR_NO_OPENING_BALANCE:           'Ce compte n\'a aucun solde d\'ouverture à comptabiliser.',
       ERR_MISSING_COA:                  'Compte du plan comptable manquant (3400 ou le compte GL lié).',
@@ -303,6 +304,7 @@ const UI = {
       ERR_CSV_NO_COLUMNS:               'The columns in this file could not be recognized: no date found. Export the statement as CSV from your institution without editing it.',
       ERR_STATEMENT_NOT_FOUND:          'Statement not found.',
       ERR_STATEMENT_ALREADY_RECONCILED: 'This statement is already reconciled.',
+      ERR_TRANSACTION_RECONCILED:       'This line belongs to a reconciled statement. Reopen the statement before changing it.',
       ERR_RECONCILE_VARIANCE:           (ecart) => `Variance of $${Number(ecart).toFixed(2)} - reconcile all transactions before closing.`,
       ERR_NO_OPENING_BALANCE:           'This account has no opening balance to post.',
       ERR_MISSING_COA:                  'Chart of accounts entry missing (3400, or the account\'s own GL account).',
@@ -1060,14 +1062,14 @@ export default function BanqueTab({ lang = 'fr', t: theme, companyName = '' }) {
       setCategorizingTx(null);
       loadTransactions();
       loadRecPreview();
-    } catch (_) {}
+    } catch (e) { window.alert(tErr(e)); }
   };
 
   const unmatch = async (txId) => {
     try {
       await window.api.bank.transactions.unmatch(txId);
       loadTransactions();
-    } catch (_) {}
+    } catch (e) { window.alert(tErr(e)); }
   };
 
   // ── Reconciliation ──────────────────────────────────────────────────────────

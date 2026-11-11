@@ -230,9 +230,28 @@ function getSupabaseAnonKey() {
   return (_supabaseAnonKey || process.env.VITE_SUPABASE_ANON_KEY || '').replace(/\s/g, '');
 }
 
+// A mailto: link only opens the mail app with a draft: recipients plus the
+// subject, body, cc and bcc fields. Any other field (an attachment path, for
+// example) is refused.
+const MAILTO_FIELDS = ['subject', 'body', 'cc', 'bcc'];
+function isMailtoSafe(parsed, raw) {
+  if (typeof raw !== 'string' || raw.length > 20000 || /[\r\n]/.test(raw)) return false;
+  let to;
+  try { to = decodeURIComponent(parsed.pathname || ''); } catch { return false; }
+  const addrOk = (a) => /^[^\s@<>,;"]+@[^\s@<>,;"]+$/.test(a.trim());
+  if (to && !to.split(/[;,]/).filter(Boolean).every(addrOk)) return false;
+  for (const [k, v] of parsed.searchParams) {
+    const key = k.toLowerCase();
+    if (!MAILTO_FIELDS.includes(key)) return false;
+    if ((key === 'cc' || key === 'bcc') && v && !v.split(/[;,]/).filter(Boolean).every(addrOk)) return false;
+  }
+  return true;
+}
+
 function isUrlSafe(urlString) {
   try {
     const parsed = new URL(urlString);
+    if (parsed.protocol === 'mailto:') return isMailtoSafe(parsed, urlString);
     if (!ALLOWED_URL_SCHEMES.includes(parsed.protocol)) return false;
     // Exact match only - no endsWith/suffix matching.
     return ALLOWED_URL_DOMAINS.includes(parsed.hostname);
@@ -1187,6 +1206,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
       // Its own web storage per additional company: its own sign-in, its own plan.
       ...(companies.partitionFor(ACTIVE_COMPANY) ? { partition: companies.partitionFor(ACTIVE_COMPANY) } : {}),
     },
@@ -1208,6 +1228,14 @@ function createWindow() {
     event.preventDefault();
     if (isUrlSafe(url)) shell.openExternal(url);
   });
+  if (app.isPackaged) {
+    win.webContents.on('devtools-opened', () => win.webContents.closeDevTools());
+    win.webContents.on('before-input-event', (event, input) => {
+      const k = String(input.key || '').toLowerCase();
+      const inspect = input.key === 'F12' || ((input.control || input.meta) && input.shift && (k === 'i' || k === 'j' || k === 'c')) || (input.meta && input.alt && k === 'i');
+      if (inspect) event.preventDefault();
+    });
+  }
   win.webContents.session.setPermissionRequestHandler((_wc, permission, callback) => {
     callback(permission === 'notifications');
   });
@@ -1567,7 +1595,9 @@ ipcMain.handle('docs:download', async (_event, { url, filename }) => {
     let parsedUrl;
     try { parsedUrl = new URL(url); } catch { return { error: 'Invalid URL' }; }
     if (parsedUrl.protocol !== 'https:') return { error: 'Only https URLs are allowed' };
-    if (!parsedUrl.hostname.endsWith('.supabase.co')) return { error: 'Only Supabase storage URLs are allowed' };
+    let ownHost = '';
+    try { ownHost = new URL(getSupabaseUrl()).hostname; } catch { /* none */ }
+    if (!ownHost || parsedUrl.hostname !== ownHost) return { error: 'Only BalanceIQ storage URLs are allowed' };
     if (!parsedUrl.pathname.startsWith('/storage/v1/object/sign/')) return { error: 'Only signed storage URLs are allowed' };
 
     const downloadsDir = app.getPath('downloads');
@@ -1603,6 +1633,11 @@ ipcMain.handle('docs:download', async (_event, { url, filename }) => {
   }
 });
 
+// File types that run code when opened. They can be saved, never launched from
+// inside the app.
+const LAUNCHABLE_EXT = /\.(app|command|exe|msi|bat|cmd|com|scr|pif|ps1|psm1|vbs|vbe|js|jse|wsf|wsh|jar|sh|bash|zsh|csh|pkg|dmg|iso|lnk|url|webloc|terminal|workflow|action|scpt|scptd|applescript|appex|dylib|so|dll|reg|hta|cpl|msc|docm|xlsm|pptm|settingcontent-ms|desktop|run|bin|deb|rpm|appimage)$/i;
+const isLaunchableFile = (p) => LAUNCHABLE_EXT.test(String(p || '').trim().replace(/[. ]+$/, ''));
+
 ipcMain.handle('file:openDownloaded', async (_event, filePath) => {
   // Verify the file is actually inside the downloads directory (defense in depth).
   const downloadsDir = app.getPath('downloads');
@@ -1610,6 +1645,7 @@ ipcMain.handle('file:openDownloaded', async (_event, filePath) => {
   if (!resolved.startsWith(downloadsDir + path.sep) && resolved !== downloadsDir) {
     throw new Error('Cannot open files outside downloads directory');
   }
+  if (isLaunchableFile(resolved)) throw new Error('This file type cannot be opened from BalanceIQ. Use Show in folder.');
   return shell.openPath(resolved);
 });
 
@@ -1749,6 +1785,17 @@ app.whenReady().then(() => {
       .catch(e => console.log('PDF_SELFTEST_FAIL ' + e.message))
       .finally(() => app.exit(0));
     return;
+  }
+  // The installed app has no View menu and no developer tools. The menu keeps
+  // the editing shortcuts, window controls and (on macOS) the app menu; role
+  // items take their labels from the operating system's language.
+  if (app.isPackaged) {
+    const tpl = [
+      ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
+      { role: 'editMenu' },
+      { role: 'windowMenu' },
+    ];
+    Menu.setApplicationMenu(Menu.buildFromTemplate(tpl));
   }
   createWindow();
 
@@ -3004,6 +3051,7 @@ ipcMain.handle('vault:open', (_e, docId) => {
   const abs = resolveVaultPath(doc.file_path);
   if (!abs) return { ok: false, error: 'Invalid document path' };
   if (!fs.existsSync(abs)) return { ok: false, error: 'File not found on disk' };
+  if (isLaunchableFile(abs)) return { ok: false, error: 'This file type cannot be opened from BalanceIQ' };
   shell.openPath(abs);
   return { ok: true };
 });
@@ -3015,6 +3063,7 @@ ipcMain.handle('vault:openById', (_e, docId) => {
   const abs = resolveVaultPath(doc.file_path);
   if (!abs) return { ok: false, error: 'Invalid document path' };
   if (!fs.existsSync(abs)) return { ok: false, error: 'File not found on disk' };
+  if (isLaunchableFile(abs)) return { ok: false, error: 'This file type cannot be opened from BalanceIQ' };
   shell.openPath(abs);
   return { ok: true };
 });
@@ -3421,13 +3470,17 @@ ipcMain.handle('ledger:exportAcomba', (_e, opts = {}) => {
   const format = opts.format || 'acomba';
   let csv = '';
   let rowCount = 0;
+  // Free text from the books goes into a spreadsheet or an import file: no tabs
+  // or line breaks inside a field, and nothing a spreadsheet would run as a formula.
+  const flat = (v) => String(v == null ? '' : v).replace(/[\t\r\n]+/g, ' ');
+  const cell = (v) => { const t = flat(v); return /^[=+\-@]/.test(t) ? "'" + t : t; };
 
   if (format === 'acomba') {
     csv = 'Date,No. compte,Description,Débit,Crédit,Projet,Taxe\n';
     for (const r of rows) {
       const debit  = r.debit_cents  > 0 ? (r.debit_cents  / 100).toFixed(2) : '';
       const credit = r.credit_cents > 0 ? (r.credit_cents / 100).toFixed(2) : '';
-      const desc   = (r.line_memo || r.description || '').replace(/"/g, '""');
+      const desc   = cell(r.line_memo || r.description || '').replace(/"/g, '""');
       csv += `${r.entry_date},${r.account_number},"${desc}",${debit},${credit},,\n`;
       rowCount++;
     }
@@ -3436,8 +3489,8 @@ ipcMain.handle('ledger:exportAcomba', (_e, opts = {}) => {
     for (const r of rows) {
       const debit  = (r.debit_cents  / 100).toFixed(2);
       const credit = (r.credit_cents / 100).toFixed(2);
-      const acctName = (r.account_name_fr || '').replace(/"/g, '""');
-      const desc = (r.description || '').replace(/"/g, '""');
+      const acctName = cell(r.account_name_fr || '').replace(/"/g, '""');
+      const desc = cell(r.description || '').replace(/"/g, '""');
       csv += `${r.entry_number || r.entry_id},${r.entry_date},${r.account_number},"${acctName}",${debit},${credit},"${desc}"\n`;
       rowCount++;
     }
@@ -3446,11 +3499,11 @@ ipcMain.handle('ledger:exportAcomba', (_e, opts = {}) => {
     let prevEntryId = null;
     for (const r of rows) {
       const isFirst = r.entry_id !== prevEntryId;
-      const amount = ((r.debit_cents - r.credit_cents) / 100).toFixed(2);
-      const acctName = r.account_name_en || r.account_name_fr || '';
-      const tag = isFirst ? 'TRNS' : 'SPL';
-      csv += `${tag}\tGENERAL JOURNAL\t${r.entry_date}\t${acctName}\t${amount}\t${r.description || ''}\n`;
       if (isFirst && prevEntryId !== null) csv += 'ENDTRNS\n';
+      const amount = ((r.debit_cents - r.credit_cents) / 100).toFixed(2);
+      const acctName = flat(r.account_name_en || r.account_name_fr || '');
+      const tag = isFirst ? 'TRNS' : 'SPL';
+      csv += `${tag}\tGENERAL JOURNAL\t${r.entry_date}\t${acctName}\t${amount}\t${flat(r.description)}\n`;
       prevEntryId = r.entry_id;
       rowCount++;
     }
@@ -3549,17 +3602,19 @@ ipcMain.handle('identity:users:setPin',     (_e, opts) => {
 // Verified-actor tokens (see identityCore.createActorRegistry): a transition or
 // approval claiming a PIN or signed-in verification must carry the token that
 // verification issued.
+let _pinFailures = 0, _pinLockLevel = 0, _pinLockedUntil = 0;
 const actorRegistry = createActorRegistry();
 const withVerifiedActor = (opts) => actorRegistry.trust(opts);
 
-ipcMain.handle('identity:verify', (_e, opts) => {
-  const { method, name, pin, cloudUser, requiredRole } = opts || {};
+ipcMain.handle('identity:verify', async (_e, opts) => {
+  const { method, name, pin, requiredRole } = opts || {};
   let actor = null;
   if (method === 'typed_name') {
     if (!name?.trim()) return { ok: false, error: 'name_required' };
     actor = { name: name.trim(), role: null, identity_method: 'typed_name' };
   } else if (method === 'pin') {
     if (!/^\d{4}$/.test(String(pin ?? ''))) return { ok: false, error: 'pin_format' };
+    if (Date.now() < _pinLockedUntil) return { ok: false, error: 'pin_locked', retry_after_ms: _pinLockedUntil - Date.now() };
     const users = localUserListWithHashes();
     for (const u of users) {
       if (!u.pin_hash || !u.pin_salt) continue;
@@ -3568,10 +3623,25 @@ ipcMain.handle('identity:verify', (_e, opts) => {
         break;
       }
     }
-    if (!actor) return { ok: false, error: 'invalid_pin' };
+    if (!actor) {
+      // Five wrong PINs in a row lock PIN checks for a minute, doubling each time.
+      if (++_pinFailures >= 5) {
+        _pinLockLevel = Math.min(_pinLockLevel + 1, 6);
+        _pinLockedUntil = Date.now() + 60000 * (2 ** (_pinLockLevel - 1));
+        _pinFailures = 0;
+      }
+      return { ok: false, error: 'invalid_pin' };
+    }
+    _pinFailures = 0; _pinLockLevel = 0;
   } else if (method === 'cloud_user') {
-    if (!cloudUser?.email) return { ok: false, error: 'not_signed_in' };
-    actor = { name: cloudUser.email, role: cloudUser.role || 'manager', identity_method: 'cloud_user' };
+    // The signed-in user is whoever Supabase says owns the session token; the
+    // email and role the screen sends are not trusted.
+    const base = getSupabaseUrl(), anon = getSupabaseAnonKey();
+    if (!_accessToken || !base || !anon) return { ok: false, error: 'not_signed_in' };
+    const res = await netRequest({ method: 'GET', url: `${base}/auth/v1/user`, headers: { apikey: anon, Authorization: `Bearer ${_accessToken}` } });
+    const email = res.status === 200 && typeof res.body?.email === 'string' ? res.body.email.trim() : '';
+    if (!email) return { ok: false, error: 'not_signed_in' };
+    actor = { name: email, role: 'manager', identity_method: 'cloud_user' };
   } else {
     return { ok: false, error: 'unknown_method' };
   }

@@ -57,7 +57,10 @@ describe('AUDIT-LEDGER-001 the split balances by construction', () => {
     expect(absorbed).toBeGreaterThan(1000);
   });
   it('an exempt invoice is all revenue; a tax with no account stays in revenue; nonsense is refused', () => {
-    expect(ledgerSplit({ totalCents: 5749, tpsCents: 250, tvqCents: 499, taxExempt: true })).toMatchObject({ revenueCents: 5749, tpsCents: 0, tvqCents: 0 });
+    // The exemption is in the figures: fully exempt arrives with no tax, and a
+    // customer exempt from one tax only still has the other one booked as tax.
+    expect(ledgerSplit({ totalCents: 5000, tpsCents: 0, tvqCents: 0, taxExempt: true })).toMatchObject({ revenueCents: 5000, tpsCents: 0, tvqCents: 0 });
+    expect(ledgerSplit({ totalCents: 5250, tpsCents: 250, tvqCents: 0, taxExempt: true })).toMatchObject({ revenueCents: 5000, tpsCents: 250, tvqCents: 0 });
     expect(ledgerSplit({ totalCents: 5749, tpsCents: 250, tvqCents: 499, hasTvq: false })).toMatchObject({ revenueCents: 5499, tpsCents: 250, tvqCents: 0 });
     expect(ledgerSplit({ totalCents: 100, tpsCents: 80, tvqCents: 80 }).ok).toBe(false);
     expect(ledgerSplit({ totalCents: -1 }).ok).toBe(false);

@@ -1,5 +1,6 @@
 // EcocontributionTab.jsx - ÉEQ packaging fee calculator (Franchise tier)
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { escapeHtml as esc } from '../utils/htmlSafe.mjs';
 
 const MATERIAL_CATEGORIES = [
   { id: 'corrugated',          labelFr: 'Carton ondulé / Kraft',                  labelEn: 'Corrugated cardboard / Kraft' },
@@ -154,7 +155,7 @@ export default function EcocontributionTab({ t, T, lang }) {
     const disclaimer = lang === 'en' ? DISCLAIMER_EN : DISCLAIMER_FR;
     const flatNote = lang === 'en' ? FLAT_FEE_NOTE_EN : FLAT_FEE_NOTE_FR;
     const title = lang === 'en' ? `Annual ÉEQ Declaration - Estimate ${reportYear}` : `Déclaration annuelle ÉEQ - Estimation ${reportYear}`;
-    const rows = catRows.filter(c => c.weightTonnes > 0).map(c => `<tr><td>${c.label}</td><td>${fmtNum(c.weightKg, 2)} kg</td><td>${fmtNum(c.weightTonnes, 4)} t</td><td>${fmtCA(c.rateTonne)}/t${c.malusPct > 0 ? ` (+${c.malusPct}% malus)` : ''}</td><td><strong>${fmtCA(c.netFee)}</strong></td></tr>`).join('');
+    const rows = catRows.filter(c => c.weightTonnes > 0).map(c => `<tr><td>${esc(c.label)}</td><td>${fmtNum(c.weightKg, 2)} kg</td><td>${fmtNum(c.weightTonnes, 4)} t</td><td>${fmtCA(c.rateTonne)}/t${c.malusPct > 0 ? ` (+${c.malusPct}% malus)` : ''}</td><td><strong>${fmtCA(c.netFee)}</strong></td></tr>`).join('');
     return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:'Helvetica Neue',sans-serif;color:#1a1a1a;padding:32px;font-size:13px;}
   h1{font-size:20px;font-weight:800;color:#f97316;margin-bottom:4px;}
   .sub{font-size:11px;color:#888;margin-bottom:24px;}
@@ -163,7 +164,7 @@ export default function EcocontributionTab({ t, T, lang }) {
   td{padding:7px 10px;border-bottom:1px solid #eee;font-size:12px;}
   .total{font-size:22px;font-weight:900;color:#f97316;margin-bottom:8px;}
   .disc{font-size:10px;color:#888;border:1px solid #ddd;padding:10px 14px;border-radius:4px;margin-top:20px;line-height:1.6;}
-  .flat{font-size:11px;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;padding:10px 14px;border-radius:4px;margin-bottom:16px;line-height:1.6;}</style></head><body><h1>${title}</h1><p class="sub">${lang === 'en' ? 'Generated' : 'Généré le'} ${new Date().toLocaleDateString('fr-CA')} · ${config.num_quebec_locations} ${lang === 'en' ? 'Quebec location(s)' : 'succursale(s) au Québec'} · ${lang === 'en' ? 'Takeout/delivery' : 'Pour emporter/livraison'}: ${config.takeout_percentage}%</p>${showFlatFeeNote ? `<p class="flat">${flatNote}</p>` : ''}<table><thead><tr><th>${lang === 'en' ? 'Material category' : 'Catégorie de matière'}</th><th>${lang === 'en' ? 'Total kg' : 'Total kg'}</th><th>${lang === 'en' ? 'Total tonnes' : 'Total tonnes'}</th><th>${lang === 'en' ? 'Rate/tonne' : 'Taux/tonne'}</th><th>${lang === 'en' ? 'Net fee' : 'Frais nets'}</th></tr></thead><tbody>${rows || `<tr><td colspan="5" style="text-align:center;color:#888">${lang === 'en' ? 'No data' : 'Aucune donnée'}</td></tr>`}</tbody><tfoot><tr style="font-weight:700;background:#f9f9f9"><td>${lang === 'en' ? 'TOTAL' : 'TOTAL'}</td><td></td><td>${fmtNum(totalTonnes, 4)} t</td><td></td><td>${fmtCA(totalFee)}</td></tr></tfoot></table><p class="disc">${disclaimer}</p></body></html>`;
+  .flat{font-size:11px;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;padding:10px 14px;border-radius:4px;margin-bottom:16px;line-height:1.6;}</style></head><body><h1>${esc(title)}</h1><p class="sub">${lang === 'en' ? 'Generated' : 'Généré le'} ${new Date().toLocaleDateString('fr-CA')} · ${esc(config.num_quebec_locations)} ${lang === 'en' ? 'Quebec location(s)' : 'succursale(s) au Québec'} · ${lang === 'en' ? 'Takeout/delivery' : 'Pour emporter/livraison'}: ${esc(config.takeout_percentage)}%</p>${showFlatFeeNote ? `<p class="flat">${flatNote}</p>` : ''}<table><thead><tr><th>${lang === 'en' ? 'Material category' : 'Catégorie de matière'}</th><th>${lang === 'en' ? 'Total kg' : 'Total kg'}</th><th>${lang === 'en' ? 'Total tonnes' : 'Total tonnes'}</th><th>${lang === 'en' ? 'Rate/tonne' : 'Taux/tonne'}</th><th>${lang === 'en' ? 'Net fee' : 'Frais nets'}</th></tr></thead><tbody>${rows || `<tr><td colspan="5" style="text-align:center;color:#888">${lang === 'en' ? 'No data' : 'Aucune donnée'}</td></tr>`}</tbody><tfoot><tr style="font-weight:700;background:#f9f9f9"><td>${lang === 'en' ? 'TOTAL' : 'TOTAL'}</td><td></td><td>${fmtNum(totalTonnes, 4)} t</td><td></td><td>${fmtCA(totalFee)}</td></tr></tfoot></table><p class="disc">${disclaimer}</p></body></html>`;
   };
 
   if (loading) return<div style={{ padding: 40, color: th.textMuted, textAlign: 'center' }}>{T.loading}</div>;

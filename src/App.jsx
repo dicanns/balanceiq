@@ -243,13 +243,14 @@ const DEFAULT_INV_CONFIG={
  ]
 };
 const DEFAULT_EXPENSE_ITEMS=[{id:"hydro",label:"Hydro"},{id:"gazNat",label:"Gaz Nat/Prop"},{id:"allocAuto",label:"Alloc. d'auto"},{id:"depenseAuto",label:"Dépense Auto"},{id:"cell",label:"Cell"},{id:"telInternet",label:"Tel/Internet"},{id:"fraisProf",label:"Frais Prof"},{id:"assurances",label:"Assurances"},{id:"adPromo",label:"Ad & Promo"},{id:"dons",label:"Dons"},{id:"taxMuni",label:"Tax Muni"},{id:"permisGov",label:"Permis Gov't"},{id:"loyer",label:"Loyer"},{id:"csst",label:"CSST"},{id:"reparations",label:"Réparations"},{id:"equipDecor",label:"Équipement/Décor"}];
+// Numbers follow the seeded chart of accounts (chart_of_accounts migration).
 const DEFAULT_GL_ACCOUNTS={
- revenue:"4000",tps:"2310",tvq:"2315",
- ar:"1100",bank:"1000",fp:"5100",labour:"5200",
- hydro:"6100",gazNat:"6110",loyer:"6120",csst:"6130",
- telephone:"6140",internet:"6150",assurances:"6160",
- entretien:"6170",fournitures:"6180",publicite:"6190",
- transport:"6200",autre:"6210",badDebt:"6430",openingEquity:"3400",
+ revenue:"4000",tps:"2100",tvq:"2110",
+ ar:"1100",bank:"1010",fp:"5000",labour:"6000",
+ hydro:"6110",gazNat:"6120",loyer:"6100",csst:"6020",
+ telephone:"6130",internet:"6140",assurances:"6500",
+ entretien:"6200",fournitures:"6610",publicite:"6300",
+ transport:"6800",autre:"6900",badDebt:"6430",openingEquity:"3400",
 };
 const BLANK_CASH={cashierId:"",posVentes:null,posTPS:null,posTVQ:null,posLivraisons:null,float:null,interac:null,livraisons:null,deposits:null,finalCash:null,pmtVisa:null,pmtMastercard:null,pmtDebit:null,pmtAmex:null,pmtOther:null,pmtTips:null,pmtGiftCard:null};
 const BLANK_EMP={name:"",hours:null,wage:null};
@@ -744,7 +745,7 @@ function GlanceCard({liveData,computeDay,closedDays,getCloseStatus,encaisseData,
       if(prevClosing!==null&&prevClosing!==0)setYdEncPos(prevClosing);
     }catch(_){}
     // Count P&L invoices this month
-    const month=new Date().toISOString().slice(0,7);
+    const month=dk(new Date()).slice(0,7);
     window.api.storage.get(`dicann-pl-${month}`).then(r=>{
       if(!r?.value){setPlCount(0);return;}
       try{const pl=JSON.parse(r.value);let c=0;Object.keys(pl).forEach(k=>{if(k.endsWith('_bills')&&Array.isArray(pl[k]))c+=pl[k].length;});setPlCount(c);}catch(_){setPlCount(0);}
@@ -1423,8 +1424,8 @@ function ComptabiliteExport({factures,clients,produits,categories,companyInfo,on
     for(const cid of clientIds){
       const cl=clients.find(c=>c.id===cid);
       const facs=factures.filter(f=>f.clientId===cid&&!["Annulée","Brouillon"].includes(f.statut)&&f.documentType!=="proforma");
-      let soldOuv=0;if(dateFrom){for(const f of facs){if(f.date>=dateFrom)continue;const tot=computeSoumTotals(f.lignes||[],f).total;const pBefore=(f.paiements||[]).filter(p=>p.date<dateFrom).reduce((s,p)=>s+(p.montant||0),0);soldOuv+=tot-pBefore;}}
-      const facture=facs.filter(f=>(!dateFrom||f.date>=dateFrom)&&(!dateTo||f.date<=dateTo)).reduce((s,f)=>s+computeSoumTotals(f.lignes||[],f).total,0);
+      let soldOuv=0;if(dateFrom){for(const f of facs){if(f.date>=dateFrom)continue;const tot=invoiceTotalsFor(f,clients).total;const pBefore=(f.paiements||[]).filter(p=>p.date<dateFrom).reduce((s,p)=>s+(p.montant||0),0);soldOuv+=tot-pBefore;}}
+      const facture=facs.filter(f=>(!dateFrom||f.date>=dateFrom)&&(!dateTo||f.date<=dateTo)).reduce((s,f)=>s+invoiceTotalsFor(f,clients).total,0);
       const credited=facs.reduce((s,f)=>s+(f.paiements||[]).filter(p=>(p.fromCredit||p.badDebt)&&(!dateFrom||p.date>=dateFrom)&&(!dateTo||p.date<=dateTo)).reduce((ss,p)=>ss+(p.montant||0),0),0);
       const encaisse=facs.reduce((s,f)=>s+(f.paiements||[]).filter(p=>isCashPayment(p)&&(!dateFrom||p.date>=dateFrom)&&(!dateTo||p.date<=dateTo)).reduce((ss,p)=>ss+(p.montant||0),0),0);
       const soldFerm=soldOuv+facture-credited-encaisse;
@@ -1443,7 +1444,7 @@ function ComptabiliteExport({factures,clients,produits,categories,companyInfo,on
     for(const fac of facs){
       const cl=clients.find(c=>c.id===fac.clientId);
       const clName=cl?.entreprise||"";
-      const totals=computeSoumTotals(fac.lignes||[],fac);
+      const totals=invoiceTotalsFor(fac,clients);
       if(fac.openingBalance){
         data.push([fac.date,"VE",fac.numero,`Solde d'ouverture - ${fac.numero}`,GL.openingEquity,"",totals.total.toFixed(2),clName]);
         data.push([fac.date,"VE",fac.numero,`Ctes clients - ${fac.numero}`,GL.ar,totals.total.toFixed(2),"",clName]);
@@ -1490,7 +1491,7 @@ function ComptabiliteExport({factures,clients,produits,categories,companyInfo,on
     for(const fac of facs){
       const cl=clients.find(c=>c.id===fac.clientId);
       const clName=cl?.entreprise||"";
-      const totals=computeSoumTotals(fac.lignes||[],fac);
+      const totals=invoiceTotalsFor(fac,clients);
       if(fac.openingBalance){
         data.push([fac.date,fac.numero,`Opening balance - ${fac.numero}`,GL.openingEquity,"Opening Balance Equity","",totals.total.toFixed(2)]);
         data.push([fac.date,fac.numero,`A/R - ${fac.numero} - ${clName}`,GL.ar,"Accounts Receivable",totals.total.toFixed(2),""]);
@@ -1538,7 +1539,7 @@ function ComptabiliteExport({factures,clients,produits,categories,companyInfo,on
     const{hdr:hdr3,data:data3}=buildGLRows();
     if(!data1.length&&!data2.length&&!data3.length){setMsg("Aucune donnée dans cette période.");return;}
     const now=new Date().toLocaleDateString("fr-CA");
-    const totFac=data1.reduce((s,r)=>s+(r[14]||0),0);
+    const totFac=data1.reduce((s,r)=>s+(r[15]||0),0);
     const totEnc=data2.reduce((s,r)=>s+(r[5]||0),0);
     const totSold=data3.reduce((s,r)=>s+(r[6]||0),0);
     const summaryData=[
@@ -1582,8 +1583,8 @@ function ComptabiliteExport({factures,clients,produits,categories,companyInfo,on
  for(const cid of clientIds){
  const cl=clients.find(c=>c.id===cid);
  const facs=factures.filter(f=>f.clientId===cid&&!["Annulée","Brouillon"].includes(f.statut));
- let soldOuv=0;if(dateFrom){for(const f of facs){if(f.date>=dateFrom)continue;const tot=computeSoumTotals(f.lignes||[],f).total;const pBefore=(f.paiements||[]).filter(p=>p.date<dateFrom).reduce((s,p)=>s+(p.montant||0),0);soldOuv+=tot-pBefore;}}
- const facture=facs.filter(f=>(!dateFrom||f.date>=dateFrom)&&(!dateTo||f.date<=dateTo)).reduce((s,f)=>s+computeSoumTotals(f.lignes||[],f).total,0);
+ let soldOuv=0;if(dateFrom){for(const f of facs){if(f.date>=dateFrom)continue;const tot=invoiceTotalsFor(f,clients).total;const pBefore=(f.paiements||[]).filter(p=>p.date<dateFrom).reduce((s,p)=>s+(p.montant||0),0);soldOuv+=tot-pBefore;}}
+ const facture=facs.filter(f=>(!dateFrom||f.date>=dateFrom)&&(!dateTo||f.date<=dateTo)).reduce((s,f)=>s+invoiceTotalsFor(f,clients).total,0);
  const credited=facs.reduce((s,f)=>s+(f.paiements||[]).filter(p=>(p.fromCredit||p.badDebt)&&(!dateFrom||p.date>=dateFrom)&&(!dateTo||p.date<=dateTo)).reduce((ss,p)=>ss+(p.montant||0),0),0);
  const encaisse=facs.reduce((s,f)=>s+(f.paiements||[]).filter(p=>isCashPayment(p)&&(!dateFrom||p.date>=dateFrom)&&(!dateTo||p.date<=dateTo)).reduce((ss,p)=>ss+(p.montant||0),0),0);
  const soldFerm=soldOuv+facture-credited-encaisse;
@@ -1623,7 +1624,7 @@ function ComptabiliteExport({factures,clients,produits,categories,companyInfo,on
 const TYPE_PILL={soumission:{label:"S",bg:"rgba(59,130,246,0.12)",color:"#3b82f6"},commande:{label:"C",bg:"rgba(139,92,246,0.12)",color:"#8b5cf6"},facture:{label:"F",bg:"rgba(249,115,22,0.12)",color:"#f97316"},creditnote:{label:"NC",bg:"rgba(239,68,68,0.1)",color:"#ef4444"},proforma:{label:"PF",bg:"rgba(167,139,250,0.12)",color:"#a78bfa"}};
 function getStatutColor(doc){if(doc._type==="soumission")return STATUT_SOUM_C[doc.statut]||"#6b7280";if(doc._type==="commande")return STATUT_CMD_C[doc.statut]||"#6b7280";if(doc._type==="facture"||doc._type==="creditnote")return STATUT_FAC_C[doc.statut]||STATUT_NC_C[doc.statut]||"#6b7280";return"#6b7280";}
 function getStatutColorFn(type,statut){if(type==="soumission")return STATUT_SOUM_C[statut]||"#6b7280";if(type==="commande")return STATUT_CMD_C[statut]||"#6b7280";if(type==="facture")return STATUT_FAC_C[statut]||"#6b7280";if(type==="creditnote")return STATUT_NC_C[statut]||"#6b7280";return"#6b7280";}
-function getDocSolde(doc){if(doc._type==="facture"){const paye=(doc.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);return Math.max(0,computeSoumTotals(doc.lignes||[],doc).total-paye);}return null;}
+function getDocSolde(doc,clients){if(doc._type==="facture"){const paye=(doc.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);return Math.max(0,invoiceTotalsFor(doc,clients).total-paye);}return null;}
 function FacturationDashboard({soumissions,commandes,factures,creditNotes,clients,produits,categories,companyInfo,showUpgradePrompt,openDoc,glAccounts}){
   const t=useT();
   const T=useL();
@@ -1644,9 +1645,9 @@ function FacturationDashboard({soumissions,commandes,factures,creditNotes,client
   const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:11,padding:"4px 7px",outline:"none"};
   const stats=useMemo(()=>{
     const _fac=(Array.isArray(factures)?factures:[]).filter(f=>f.documentType!=="proforma");
-    const factureCeMois=_fac.filter(f=>f.date?.startsWith(thisMonth)&&f.statut!=="Annulée").reduce((s,f)=>s+computeSoumTotals(f.lignes||[],f).total,0);
+    const factureCeMois=_fac.filter(f=>f.date?.startsWith(thisMonth)&&f.statut!=="Annulée").reduce((s,f)=>s+invoiceTotalsFor(f,clients).total,0);
     const encaisseCeMois=_fac.reduce((s,f)=>(s+(f.paiements||[]).filter(p=>p.date?.startsWith(thisMonth)).reduce((ps,p)=>ps+(p.montant||0),0)),0);
-    const enSouffrance=_fac.filter(f=>!CLOSED_INVOICE_STATUSES.includes(f.statut)).reduce((s,f)=>{const paye=(f.paiements||[]).reduce((ps,p)=>ps+(p.montant||0),0);return s+Math.max(0,computeSoumTotals(f.lignes||[],f).total-paye);},0);
+    const enSouffrance=_fac.filter(f=>!CLOSED_INVOICE_STATUSES.includes(f.statut)).reduce((s,f)=>{const paye=(f.paiements||[]).reduce((ps,p)=>ps+(p.montant||0),0);return s+Math.max(0,invoiceTotalsFor(f,clients).total-paye);},0);
     const enRetard=_fac.filter(f=>["Envoyée","Payée partiellement"].includes(f.statut)&&f.dateEcheance&&f.dateEcheance<today).length;
     return{factureCeMois,encaisseCeMois,enSouffrance,enRetard};
   },[factures,thisMonth,today]);
@@ -1661,7 +1662,7 @@ function FacturationDashboard({soumissions,commandes,factures,creditNotes,client
       if(sortCol==="numero")return sortDir*(a.numero||"").localeCompare(b.numero||"");
       if(sortCol==="date")return sortDir*(a.date||"").localeCompare(b.date||"");
       if(sortCol==="client"){const ca=clients.find(c=>c.id===a.clientId)?.entreprise||"";const cb=clients.find(c=>c.id===b.clientId)?.entreprise||"";return sortDir*ca.localeCompare(cb,"fr");}
-      if(sortCol==="total")return sortDir*(computeSoumTotals(b.lignes||[],b).total-computeSoumTotals(a.lignes||[],a).total);
+      if(sortCol==="total")return sortDir*(invoiceTotalsFor(b,clients).total-invoiceTotalsFor(a,clients).total);
       if(sortCol==="statut")return sortDir*(a.statut||"").localeCompare(b.statut||"");
       return 0;
     });
@@ -1669,7 +1670,7 @@ function FacturationDashboard({soumissions,commandes,factures,creditNotes,client
   const filteredMain=useMemo(()=>filtered.filter(d=>!d.ppParentId),[filtered]);
   const exportCSV=()=>{
     const rows=[["#","Type","Date","Client","Total","Statut","Solde"]];
-    for(const d of filtered){const cl=clients.find(c=>c.id===d.clientId);const total=computeSoumTotals(d.lignes||[],d).total;const solde=getDocSolde(d);rows.push([d.numero||"",TYPE_PILL[d._type]?.label||"",d.date||"",cl?.entreprise||"",total.toFixed(2),d.statut||"",solde!=null?solde.toFixed(2):"-"]);}
+    for(const d of filtered){const cl=clients.find(c=>c.id===d.clientId);const total=invoiceTotalsFor(d,clients).total;const solde=getDocSolde(d,clients);rows.push([d.numero||"",TYPE_PILL[d._type]?.label||"",d.date||"",cl?.entreprise||"",total.toFixed(2),d.statut||"",solde!=null?solde.toFixed(2):"-"]);}
     const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
  const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`documents-${today}.csv`;a.click();URL.revokeObjectURL(url);
  };
@@ -1681,7 +1682,7 @@ function FacturationDashboard({soumissions,commandes,factures,creditNotes,client
   if(!canUse('creditLimits'))return[];
   const _fac=Array.isArray(factures)?factures:[];
   return(Array.isArray(clients)?clients:[]).filter(c=>c.credit_limit_enabled&&c.credit_limit>0).map(c=>{
-   const openAR=_fac.filter(f=>f.clientId===c.id&&!CLOSED_INVOICE_STATUSES.includes(f.statut)).reduce((s,f)=>{const tot=computeSoumTotals(f.lignes||[],f).total;const paid=(f.paiements||[]).reduce((ps,p)=>ps+(p.montant||0),0);return s+Math.max(0,tot-paid);},0);
+   const openAR=_fac.filter(f=>f.clientId===c.id&&!CLOSED_INVOICE_STATUSES.includes(f.statut)).reduce((s,f)=>{const tot=invoiceTotalsFor(f,clients).total;const paid=(f.paiements||[]).reduce((ps,p)=>ps+(p.montant||0),0);return s+Math.max(0,tot-paid);},0);
    return{...c,openAR,pct:openAR/(c.credit_limit||1)};
   }).filter(c=>c.pct>=0.8).sort((a,b)=>b.pct-a.pct);
  },[factures,clients]);
@@ -1693,11 +1694,11 @@ function FacturationDashboard({soumissions,commandes,factures,creditNotes,client
  ?<div style={{textAlign:"center",padding:"32px 0",color:t.textMuted,fontSize:12}}>{T.facNoDocuments}</div>:<div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}><thead><tr style={{borderBottom:`2px solid ${t.dividerMid}`}}><th style={{padding:"5px 8px",textAlign:"left",width:24}}/><th style={{padding:"5px 8px",textAlign:"left"}}><SH col="numero">#</SH></th><th style={{padding:"5px 8px",textAlign:"left"}}><SH col="date">Date</SH></th><th style={{padding:"5px 8px",textAlign:"left"}}><SH col="client">Client</SH></th><th style={{padding:"5px 8px",textAlign:"right"}}><SH col="total"align="right">Total</SH></th><th style={{padding:"5px 8px",textAlign:"left"}}><SH col="statut">{T.colStatus}</SH></th><th style={{padding:"5px 8px",textAlign:"right"}}>{T.colBalance}</th></tr></thead><tbody>{filteredMain.map(doc=>{
  const pill=TYPE_PILL[doc._type];
  const cl=clients.find(c=>c.id===doc.clientId);
- const total=computeSoumTotals(doc.lignes||[],doc).total;
- const solde=getDocSolde(doc);
+ const total=invoiceTotalsFor(doc,clients).total;
+ const solde=getDocSolde(doc,clients);
  const sc=getStatutColorFn(doc._type,doc.statut);
  const isOverdue=doc._type==="facture"&&["Envoyée","Payée partiellement"].includes(doc.statut)&&doc.dateEcheance&&doc.dateEcheance<today;
- return(<React.Fragment key={doc.id}><tr onClick={()=>openDoc(doc._type,doc.clientId,doc)} style={{borderBottom:`1px solid ${t.divider}`,cursor:"pointer",transition:"background 0.1s"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(249,115,22,0.04)"} onMouseLeave={e=>e.currentTarget.style.background=""}><td style={{padding:"6px 8px"}}><div style={{display:"flex",alignItems:"center",gap:4}}>{ppChildrenMap[doc.id]&&<button onClick={e=>{e.stopPropagation();setExpandedPPs(s=>{const n=new Set(s);n.has(doc.id)?n.delete(doc.id):n.add(doc.id);return n;});}} style={{background:"none",border:"none",cursor:"pointer",padding:0,fontSize:9,color:"#f97316",lineHeight:1,flexShrink:0,opacity:0.8}}>{expandedPPs.has(doc.id)?"▼":"▶"}</button>}<span style={{fontSize:9,fontWeight:800,padding:"2px 5px",borderRadius:4,background:pill?.bg,color:pill?.color,letterSpacing:"0.3px"}}>{pill?.label}</span></div></td><td style={{padding:"6px 8px",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontWeight:600,color:t.text,fontSize:11}}>{doc.numero||<span style={{color:t.textDim,fontStyle:"italic"}}>Brouillon</span>}{doc._type==="facture"&&(()=>{const rs=reminderStats[String(doc.id)];const b=emailBadge(doc,rs?.count||0,!!rs?.failed);return b?<span title={b.problem?(T===EN?"An email about this invoice had a problem - open the invoice to see":"Un courriel au sujet de cette facture a eu un problème - ouvrez la facture pour voir"):(T===EN?`${b.count} email${b.count===1?"":"s"} sent - open the invoice to see`:`${b.count} courriel${b.count===1?"":"s"} envoyé${b.count===1?"":"s"} - ouvrez la facture pour voir`)} style={{marginLeft:6,fontSize:10.5,fontWeight:700,color:b.problem?"#ef4444":"#38bdf8",whiteSpace:"nowrap"}}>✉{b.count>1?` ${b.count}`:""}</span>:null;})()}</td><td style={{padding:"6px 8px",color:t.textSub,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{doc.date||"-"}</td><td style={{padding:"6px 8px",color:t.text,fontWeight:500}}>{cl?.entreprise||<span style={{color:t.textDim,fontStyle:"italic"}}>Sans client</span>}</td><td style={{padding:"6px 8px",textAlign:"right",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:doc._type==="creditnote"?"#ef4444":t.textSub}}>{doc._type==="creditnote"?"("+fmt(total)+")":fmt(total)}</td><td style={{padding:"6px 8px"}}><span style={{fontSize:9.5,fontWeight:700,padding:"2px 7px",borderRadius:10,background:`${sc}18`,color:sc}}>{T.facStatuts?.[isOverdue?"En retard":doc.statut]||doc.statut}</span></td><td style={{padding:"6px 8px",textAlign:"right",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:solde!=null&&solde>0.005?"#f97316":t.textDim,fontWeight:solde!=null&&solde>0.005?700:400}}>{solde!=null?(solde>0.005?fmt(solde):"-"):"-"}</td></tr>{ppChildrenMap[doc.id]&&expandedPPs.has(doc.id)&&ppChildrenMap[doc.id].map(cf=>{const cfTot=computeSoumTotals(cf.lignes||[],cf).total;const cfSolde=getDocSolde(cf);const cfSc=getStatutColorFn("facture",cf.statut);const cfCl=clients.find(c=>c.id===cf.clientId);return(<tr key={cf.id} onClick={()=>openDoc("facture",cf.clientId,cf)} style={{borderBottom:`1px solid ${t.divider}`,cursor:"pointer",background:"rgba(249,115,22,0.035)",borderLeft:"3px solid rgba(249,115,22,0.4)"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(249,115,22,0.07)"} onMouseLeave={e=>e.currentTarget.style.background="rgba(249,115,22,0.035)"}><td style={{padding:"3px 8px 3px 20px"}}><span style={{fontSize:9,color:"#f97316",opacity:0.5}}>└</span></td><td style={{padding:"3px 8px",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}><div style={{display:"flex",alignItems:"center",gap:5}}><span style={{fontSize:8,fontWeight:800,padding:"1px 5px",borderRadius:3,background:"rgba(249,115,22,0.15)",color:"#f97316",letterSpacing:"0.3px",whiteSpace:"nowrap"}}>{T===EN?"INST.":"VERS."} {cf.ppIndex}/{cf.ppTotal}</span><span style={{fontSize:10,fontWeight:600,color:t.text}}>{cf.numero||<span style={{color:t.textDim,fontStyle:"italic"}}>Brouillon</span>}</span></div></td><td style={{padding:"3px 8px",color:t.textSub,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontSize:10}}>{cf.date||"-"}</td><td style={{padding:"3px 8px",color:t.textSub,fontSize:10}}>{cfCl?.entreprise||<span style={{color:t.textDim,fontStyle:"italic"}}>Sans client</span>}</td><td style={{padding:"3px 8px",textAlign:"right",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:t.textSub,fontSize:10}}>{fmt(cfTot)}</td><td style={{padding:"3px 8px"}}><span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,background:`${cfSc}18`,color:cfSc}}>{T.facStatuts?.[cf.statut]||cf.statut}</span></td><td style={{padding:"3px 8px",textAlign:"right",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:cfSolde!=null&&cfSolde>0.005?"#f97316":t.textDim,fontWeight:cfSolde!=null&&cfSolde>0.005?700:400,fontSize:10}}>{cfSolde!=null?(cfSolde>0.005?fmt(cfSolde):"-"):"-"}</td></tr>);})}</React.Fragment>);
+ return(<React.Fragment key={doc.id}><tr onClick={()=>openDoc(doc._type,doc.clientId,doc)} style={{borderBottom:`1px solid ${t.divider}`,cursor:"pointer",transition:"background 0.1s"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(249,115,22,0.04)"} onMouseLeave={e=>e.currentTarget.style.background=""}><td style={{padding:"6px 8px"}}><div style={{display:"flex",alignItems:"center",gap:4}}>{ppChildrenMap[doc.id]&&<button onClick={e=>{e.stopPropagation();setExpandedPPs(s=>{const n=new Set(s);n.has(doc.id)?n.delete(doc.id):n.add(doc.id);return n;});}} style={{background:"none",border:"none",cursor:"pointer",padding:0,fontSize:9,color:"#f97316",lineHeight:1,flexShrink:0,opacity:0.8}}>{expandedPPs.has(doc.id)?"▼":"▶"}</button>}<span style={{fontSize:9,fontWeight:800,padding:"2px 5px",borderRadius:4,background:pill?.bg,color:pill?.color,letterSpacing:"0.3px"}}>{pill?.label}</span></div></td><td style={{padding:"6px 8px",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontWeight:600,color:t.text,fontSize:11}}>{doc.numero||<span style={{color:t.textDim,fontStyle:"italic"}}>Brouillon</span>}{doc._type==="facture"&&(()=>{const rs=reminderStats[String(doc.id)];const b=emailBadge(doc,rs?.count||0,!!rs?.failed);return b?<span title={b.problem?(T===EN?"An email about this invoice had a problem - open the invoice to see":"Un courriel au sujet de cette facture a eu un problème - ouvrez la facture pour voir"):(T===EN?`${b.count} email${b.count===1?"":"s"} sent - open the invoice to see`:`${b.count} courriel${b.count===1?"":"s"} envoyé${b.count===1?"":"s"} - ouvrez la facture pour voir`)} style={{marginLeft:6,fontSize:10.5,fontWeight:700,color:b.problem?"#ef4444":"#38bdf8",whiteSpace:"nowrap"}}>✉{b.count>1?` ${b.count}`:""}</span>:null;})()}</td><td style={{padding:"6px 8px",color:t.textSub,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{doc.date||"-"}</td><td style={{padding:"6px 8px",color:t.text,fontWeight:500}}>{cl?.entreprise||<span style={{color:t.textDim,fontStyle:"italic"}}>Sans client</span>}</td><td style={{padding:"6px 8px",textAlign:"right",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:doc._type==="creditnote"?"#ef4444":t.textSub}}>{doc._type==="creditnote"?"("+fmt(total)+")":fmt(total)}</td><td style={{padding:"6px 8px"}}><span style={{fontSize:9.5,fontWeight:700,padding:"2px 7px",borderRadius:10,background:`${sc}18`,color:sc}}>{T.facStatuts?.[isOverdue?"En retard":doc.statut]||doc.statut}</span></td><td style={{padding:"6px 8px",textAlign:"right",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:solde!=null&&solde>0.005?"#f97316":t.textDim,fontWeight:solde!=null&&solde>0.005?700:400}}>{solde!=null?(solde>0.005?fmt(solde):"-"):"-"}</td></tr>{ppChildrenMap[doc.id]&&expandedPPs.has(doc.id)&&ppChildrenMap[doc.id].map(cf=>{const cfTot=invoiceTotalsFor(cf,clients).total;const cfSolde=getDocSolde(cf,clients);const cfSc=getStatutColorFn("facture",cf.statut);const cfCl=clients.find(c=>c.id===cf.clientId);return(<tr key={cf.id} onClick={()=>openDoc("facture",cf.clientId,cf)} style={{borderBottom:`1px solid ${t.divider}`,cursor:"pointer",background:"rgba(249,115,22,0.035)",borderLeft:"3px solid rgba(249,115,22,0.4)"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(249,115,22,0.07)"} onMouseLeave={e=>e.currentTarget.style.background="rgba(249,115,22,0.035)"}><td style={{padding:"3px 8px 3px 20px"}}><span style={{fontSize:9,color:"#f97316",opacity:0.5}}>└</span></td><td style={{padding:"3px 8px",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}><div style={{display:"flex",alignItems:"center",gap:5}}><span style={{fontSize:8,fontWeight:800,padding:"1px 5px",borderRadius:3,background:"rgba(249,115,22,0.15)",color:"#f97316",letterSpacing:"0.3px",whiteSpace:"nowrap"}}>{T===EN?"INST.":"VERS."} {cf.ppIndex}/{cf.ppTotal}</span><span style={{fontSize:10,fontWeight:600,color:t.text}}>{cf.numero||<span style={{color:t.textDim,fontStyle:"italic"}}>Brouillon</span>}</span></div></td><td style={{padding:"3px 8px",color:t.textSub,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontSize:10}}>{cf.date||"-"}</td><td style={{padding:"3px 8px",color:t.textSub,fontSize:10}}>{cfCl?.entreprise||<span style={{color:t.textDim,fontStyle:"italic"}}>Sans client</span>}</td><td style={{padding:"3px 8px",textAlign:"right",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:t.textSub,fontSize:10}}>{fmt(cfTot)}</td><td style={{padding:"3px 8px"}}><span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:10,background:`${cfSc}18`,color:cfSc}}>{T.facStatuts?.[cf.statut]||cf.statut}</span></td><td style={{padding:"3px 8px",textAlign:"right",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:cfSolde!=null&&cfSolde>0.005?"#f97316":t.textDim,fontWeight:cfSolde!=null&&cfSolde>0.005?700:400,fontSize:10}}>{cfSolde!=null?(cfSolde>0.005?fmt(cfSolde):"-"):"-"}</td></tr>);})}</React.Fragment>);
  })}</tbody></table><div style={{fontSize:10,color:t.textDim,marginTop:6,textAlign:"right"}}>{filtered.length} document{filtered.length!==1?"s":""}</div></div>}</div>);
 }
 
@@ -1747,7 +1748,7 @@ function buildEtatDeCompteHTML({client,factures,creditNotes,dateFrom,dateTo,comp
  // Build transaction list in date order
  const txns=[];
  for(const fac of factures.filter(f=>f.clientId===client?.id&&!["Annulée","Brouillon"].includes(f.statut)&&f.documentType!=="proforma")){
- const tot=computeSoumTotals(fac.lignes,fac).total;
+ const tot=invoiceTotalsFor(fac,[client]).total;
  if(fac.date>=dateFrom&&fac.date<=dateTo)txns.push({date:fac.date,type:L.txInvoice,ref:fac.numero,debit:tot,credit:0});
  for(const p of (fac.paiements||[])){
  // A credit note applied to this invoice is already on the statement as its own line.
@@ -1756,7 +1757,7 @@ function buildEtatDeCompteHTML({client,factures,creditNotes,dateFrom,dateTo,comp
  }
  }
  for(const cn of (creditNotes||[]).filter(c=>c.clientId===client?.id&&!["Annulée"].includes(c.statut))){
- const tot=computeSoumTotals(cn.lignes,cn).total;
+ const tot=invoiceTotalsFor(cn,[client]).total;
  if(cn.date>=dateFrom&&cn.date<=dateTo)txns.push({date:cn.date,type:L.txCredit,ref:cn.numero,debit:0,credit:tot});
  }
  txns.sort((a,b)=>a.date.localeCompare(b.date));
@@ -1773,14 +1774,14 @@ function buildEtatDeCompteHTML({client,factures,creditNotes,dateFrom,dateTo,comp
  let courant=0,j30=0,j60=0,j90=0;
  for(const fac of factures.filter(f=>f.clientId===client?.id&&!CLOSED_INVOICE_STATUSES.includes(f.statut)&&f.documentType!=="proforma")){
  const paye=(fac.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);
- const solde=computeSoumTotals(fac.lignes,fac).total-paye;
+ const solde=invoiceTotalsFor(fac,[client]).total-paye;
  if(solde<=0.005)continue;
  let days=0;if(fac.dateEcheance){const due=new Date(fac.dateEcheance+"T12:00:00");days=Math.floor((asOfDate-due)/86400000);}
  if(days<=0)courant+=solde;else if(days<=30)j30+=solde;else if(days<=60)j60+=solde;else j90+=solde;
  }
  const totalDu=courant+j30+j60+j90;
  // The same standing the statement email quotes: outstanding, available credit, balance owed, deposits held.
- const st=accountStanding({clientId:client?.id,factures,creditNotes:creditNotes||[],asOf:dateTo,totalOf:d=>computeSoumTotals(d.lignes||[],d).total});
+ const st=accountStanding({clientId:client?.id,factures,creditNotes:creditNotes||[],asOf:dateTo,totalOf:d=>invoiceTotalsFor(d,[client]).total});
  const m2=v=>`$${(Number(v)||0).toFixed(2)}`;
  const standingRows=[[L.outstanding,m2(st.outstanding),"#1a1a1a"],...(st.creditsAvailable>0.005?[[L.creditsAvailable,`-${m2(st.creditsAvailable)}`,"#16a34a"]]:[]),[L.balanceOwed,m2(st.balanceOwed),"#1a1a1a"]];
  const standingBox=`<div style="margin:12px 0 0 auto;max-width:340px;border:1px solid #eee;border-radius:4px;padding:8px 12px">${standingRows.map(([k,v,c],i)=>`<div style="display:flex;justify-content:space-between;gap:12px;${i===standingRows.length-1?"border-top:1px solid #ddd;margin-top:3px;padding-top:6px;font-weight:700;font-size:14px":"padding:3px 0;font-size:12px"}"><span>${k}</span><span style="color:${c};font-family:monospace">${v}</span></div>`).join("")}${st.depositsHeld>0.005?`<div style="font-size:11px;color:#555;margin-top:6px">${L.depositsHeld}: ${m2(st.depositsHeld)}</div>`:""}</div>`;
@@ -1803,7 +1804,7 @@ function EtatDeCompteViewer({clientId,clientOverride,clients,factures,creditNote
  const openStatementEmail=()=>{
   if(!client)return;
   const isEN=client.langue==="English";
-  const st=accountStanding({clientId:client.id,factures,creditNotes:creditNotes||[],asOf:dateTo,totalOf:d=>computeSoumTotals(d.lignes||[],d).total});
+  const st=accountStanding({clientId:client.id,factures,creditNotes:creditNotes||[],asOf:dateTo,totalOf:d=>invoiceTotalsFor(d,clients).total});
   const m=v=>(Number(v)||0).toLocaleString(isEN?"en-CA":"fr-CA",{style:"currency",currency:"CAD"});
   const who=client.contact||client.entreprise||"";
   const lines=isEN
@@ -1836,7 +1837,7 @@ function AgingReport({factures,clients,creditNotes,companyInfo,apiConfig,showUpg
  const byClient={};
  for(const fac of factures.filter(f=>!CLOSED_INVOICE_STATUSES.includes(f.statut)&&f.documentType!=="proforma")){
  const paye=(fac.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);
- const solde=computeSoumTotals(fac.lignes,fac).total-paye;
+ const solde=invoiceTotalsFor(fac,clients).total-paye;
  if(solde<=0.005)continue;
  if(!byClient[fac.clientId])byClient[fac.clientId]={courant:0,j30:0,j60:0,j90:0,factures:[]};
  let days=0;
@@ -1894,7 +1895,7 @@ function AgingReport({factures,clients,creditNotes,companyInfo,apiConfig,showUpg
  const attachments=[];
  for(const fac of row.factures){
   try{
-   const facHtml=buildFactureHTML({numero:fac.numero,date:fac.date,dateEcheance:fac.dateEcheance,statut:fac.statut,client:row.client,referenceClient:fac.referenceClient,lignes:fac.lignes||[],notes:fac.notes,totals:computeSoumTotals(fac.lignes||[],fac),companyInfo,invoiceTemplate,montantPaye:(fac.paiements||[]).reduce((s,p)=>s+(p.montant||0),0),acomptes:fac.acomptes||[]});
+   const facHtml=buildFactureHTML({numero:fac.numero,date:fac.date,dateEcheance:fac.dateEcheance,statut:fac.statut,client:row.client,referenceClient:fac.referenceClient,lignes:fac.lignes||[],notes:fac.notes,totals:invoiceTotalsFor(fac,clients),companyInfo,invoiceTemplate,montantPaye:(fac.paiements||[]).reduce((s,p)=>s+(p.montant||0),0),acomptes:fac.acomptes||[]});
    const pdfRes=await window.api.pdf.toPDF(facHtml);
    const b64=pdfRes?.data;
    if(b64)attachments.push({filename:`${isEN?"Invoice":"Facture"}-${fac.numero||"draft"}.pdf`,content:b64,type:"application/pdf",disposition:"attachment"});
@@ -2026,7 +2027,7 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
    for(const f of missing){
     try{
      const taxExempt=!!(clients?.find(c=>c.id===f.clientId)?.taxExempt);
-     const ft=computeSoumTotals(f.lignes||[],f);
+     const ft=computeSoumTotals(f.lignes||[],{...f,...clientExemptOpts(clients?.find(c=>c.id===f.clientId))});
      const res=await window.api.ledger.invoicePost({...revenueSource(f.lignes,f),invoiceId:f.id,invoiceDate:f.date,subtotalCents:Math.round((ft.sousTotal||0)*100),tpsCents:Math.round((ft.tpsTotal||0)*100),tvqCents:Math.round((ft.tvqTotal||0)*100),totalCents:Math.round((ft.total||0)*100),taxExempt});
      if(res?.ok&&res.entryId)done[f.id]=res.entryId;
     }catch(e){console.error('[ledger] backfill failed',f.numero,e);}
@@ -2194,7 +2195,7 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
  {subTab==="vieillissement"&&<AgingReport factures={factures} clients={clients} creditNotes={creditNotes} companyInfo={companyInfo} apiConfig={apiConfig} showUpgradePrompt={showUpgradePrompt} invoiceTemplate={invoiceTemplate}/>}
 
  {/* Rappels automatiques */}
- {subTab==="rappels"&&<RemindersTab factures={factures} clients={clients} companyInfo={companyInfo} apiConfig={apiConfig} isPro={canUse('customTemplates')} showUpgradePrompt={showUpgradePrompt} lang={T===EN?"en":"fr"} t={t} invoiceBalance={(fac)=>Math.max(0,computeSoumTotals(fac.lignes||[],fac).total-(fac.paiements||[]).reduce((a,p)=>a+(p.montant||0),0))} buildInvoiceHtml={(fac,cl)=>buildFactureHTML({numero:fac.numero,date:fac.date,dateEcheance:fac.dateEcheance,statut:fac.statut,client:cl,referenceClient:fac.referenceClient,lignes:fac.lignes||[],notes:fac.notes,totals:computeSoumTotals(fac.lignes||[],fac),companyInfo,invoiceTemplate,montantPaye:(fac.paiements||[]).reduce((a,p)=>a+(p.montant||0),0),acomptes:fac.acomptes||[]})}/>}
+ {subTab==="rappels"&&<RemindersTab factures={factures} clients={clients} companyInfo={companyInfo} apiConfig={apiConfig} isPro={canUse('customTemplates')} showUpgradePrompt={showUpgradePrompt} lang={T===EN?"en":"fr"} t={t} invoiceBalance={(fac)=>Math.max(0,invoiceTotalsFor(fac,clients).total-(fac.paiements||[]).reduce((a,p)=>a+(p.montant||0),0))} buildInvoiceHtml={(fac,cl)=>buildFactureHTML({numero:fac.numero,date:fac.date,dateEcheance:fac.dateEcheance,statut:fac.statut,client:cl,referenceClient:fac.referenceClient,lignes:fac.lignes||[],notes:fac.notes,totals:invoiceTotalsFor(fac,clients),companyInfo,invoiceTemplate,montantPaye:(fac.paiements||[]).reduce((a,p)=>a+(p.montant||0),0),acomptes:fac.acomptes||[]})}/>}
 
  {/* Categories */}
  {subTab==="categories"&&(<div style={{display:"flex",flexDirection:"column",gap:8}}>{/* Header row */}<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}><div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:13.5,fontWeight:700,color:t.text}}>{T.factCategories}</span><span style={{fontSize:11,color:t.textMuted}}>{T.catActiveCount(categories.filter(c=>c.actif!==false).length)}</span></div><div style={{display:"flex",gap:6,alignItems:"center"}}><button onClick={()=>setSortAZ(s=>!s)} style={{fontSize:10,padding:"3px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600}}>
@@ -2264,7 +2265,7 @@ function SubtotalDiscountRows({form,upd,totals,disabled,inputS,t,T}){
 function recurringLine(l){const taxed=l.taxable!==false;return{...l,id:l.id||Date.now().toString(36)+Math.random().toString(36).slice(2),tps:l.tps!=null?!!l.tps:taxed,tvq:l.tvq!=null?!!l.tvq:taxed};}
 // Royalty invoices made before v1.96 were stored in their own shape (status,
 // total, qty, prix). These read both, so old and new ones add up together.
-const royaltyInvTotal=f=>Array.isArray(f?.lignes)&&f.lignes.some(l=>l&&l.prixUnitaire!=null)?computeSoumTotals(f.lignes,f).total:(f?.total||0);
+const royaltyInvTotal=f=>Array.isArray(f?.lignes)&&f.lignes.some(l=>l&&l.prixUnitaire!=null)?invoiceTotalsFor(f).total:(f?.total||0);
 const royaltyInvPaid=f=>f?.status==="paid"||f?.statut==="Payée"?royaltyInvTotal(f):(f?.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);
 function newLigne(){return{id:Date.now().toString(36)+Math.random().toString(36).slice(2),produitId:"",description:"",quantite:1,prixUnitaire:0,remise:0,tps:true,tvq:true};}
 // The subtotal discount as one row of a line-by-line export, so the rows of an
@@ -2295,6 +2296,15 @@ function subtotalRowsHtml(totals,fc,subtotalLabel,discountLabel,afterLabel){
  if(!(totals.remiseGlobaleMontant>0))return`<div class="tr"><span>${subtotalLabel}</span><span>${fc(totals.sousTotal)}</span></div>`;
  const pct=totals.remiseGlobaleTaux!=null?` (${escapeHtml(totals.remiseGlobaleTaux)}%)`:"";
  return`<div class="tr"><span>${subtotalLabel}</span><span>${fc(totals.sousTotalBrut)}</span></div><div class="tr"style="color:#16a34a"><span>${discountLabel}${pct}</span><span>−${fc(totals.remiseGlobaleMontant)}</span></div><div class="tr"style="border-top:1px solid #ddd;padding-top:4px"><span>${afterLabel}</span><span>${fc(totals.sousTotal)}</span></div>`;
+}
+// Options that make computeSoumTotals honour a customer's tax exemption, the
+// same way the invoice editor does.
+function clientExemptOpts(client){
+ return client?.taxExempt?{exemptFromTps:client.exemptFromTps!==false,exemptFromTvq:client.exemptFromTvq!==false}:{};
+}
+// Totals of an invoice-like document with its customer's tax exemption applied.
+function invoiceTotalsFor(doc,clients){
+ return computeSoumTotals(doc.lignes||[],{...doc,...clientExemptOpts(clients?.find(c=>c.id===doc.clientId))});
 }
 function computeSoumTotals(lignes,taxExemptOpts){
  // Delegates to the shared definition so the ledger, the control-account check
@@ -2737,7 +2747,7 @@ function CommandeEditor({showBack,commande,clients,produits,companyInfo,docNums,
  {!locked&&(showDepotForm
  ?<div style={{borderTop:`1px solid ${t.dividerMid}`,paddingTop:8,marginTop:4,display:"flex",flexDirection:"column",gap:5}}><div style={{fontSize:11,fontWeight:700,color:t.text}}>{T.facRecordDeposit}</div><input type="date"value={depotForm.date} onChange={e=>setDepotForm(p=>({...p,date:e.target.value}))} style={{...inputS,fontSize:11}}/><input type="number"value={depotForm.montant} onChange={e=>setDepotForm(p=>({...p,montant:e.target.value}))} placeholder="Montant"style={{...inputS,fontSize:11}}/><select value={depotForm.mode} onChange={e=>setDepotForm(p=>({...p,mode:e.target.value}))} style={{...inputS,fontSize:11}}>
  {MODES_PAIEMENT.map(m=><option key={m} value={m}>{m}</option>)}</select><input value={depotForm.reference} onChange={e=>setDepotForm(p=>({...p,reference:e.target.value}))} placeholder={T.facRefOptional} style={{...inputS,fontSize:11}}/><div style={{display:"flex",gap:6}}><button onClick={addDepot} style={{flex:1,padding:"4px 0",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>{T.save}</button><button onClick={()=>setShowDepotForm(false)} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>{T.cancel}</button></div></div>:<div style={{marginTop:6}}><button onClick={()=>{if(!canUse('depositTracking')){if(showUpgradePrompt)showUpgradePrompt('depositTracking');return;}setShowDepotForm(true);}} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${canUse('depositTracking')?"rgba(249,115,22,0.3)":t.cardBorder}`,background:canUse('depositTracking')?"rgba(249,115,22,0.07)":t.section,color:canUse('depositTracking')?"#f97316":t.textDim,cursor:"pointer",fontWeight:600,fontSize:11,display:"flex",alignItems:"center",gap:5}}>{T.facRecordDeposit}{!canUse('depositTracking')&&<span style={{fontSize:9,fontWeight:700,color:"#6b7280",background:"rgba(255,255,255,0.06)",padding:"1px 5px",borderRadius:4}}>Pro</span>}</button><div style={{fontSize:10,color:t.textMuted,marginTop:3}}>{T===EN?"Records a cash payment already received from the client.":"Enregistre un paiement déjà reçu du client."}</div></div>)}</div></div>
- {savedId&&<DepositScheduleSection commandeId={savedId} totals={totals} factures={factures} saveFactures={saveFactures} clients={clients} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} invoiceTemplate={invoiceTemplate} showUpgradePrompt={showUpgradePrompt}/>}
+ {savedId&&<DepositScheduleSection commandeId={savedId} clientId={form.clientId} totals={totals} factures={factures} saveFactures={saveFactures} clients={clients} docNums={docNums} saveDocNums={saveDocNums} companyInfo={companyInfo} invoiceTemplate={invoiceTemplate} showUpgradePrompt={showUpgradePrompt}/>}
  {emailModal&&<EmailComposeModal {...emailModal} fromEmail={apiConfig?.resendFrom||"noreply@balanceiq.ca"} apiConfig={apiConfig} onSuccess={to=>{setEmailModal(null);}} onClose={()=>setEmailModal(null)}/>}</div>);
 }
 
@@ -3009,8 +3019,8 @@ function FactureEditor({showBack,facture,clients,produits,companyInfo,docNums,sa
   for(const a of deps||[]){
    if(a.glEntryId||!(a.montant>0))continue;
    window.api.ledger.depositPost({depositId:a.id,invoiceNumber:numero,depositDate:a.date||dk(new Date()),amountCents:Math.round((a.montant||0)*100),mode:a.mode})
-    .then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(f=>f.id===id?{...f,acomptes:(f.acomptes||[]).map(x=>x.id===a.id?{...x,glEntryId:res.entryId}:x)}:f));})
-    .catch(()=>{});
+    .then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(f=>f.id===id?{...f,acomptes:(f.acomptes||[]).map(x=>x.id===a.id?{...x,glEntryId:res.entryId}:x)}:f));else if(res&&res.ok===false)alert(T.facDepositNotPosted+(res.error?`\n(${res.error})`:""));})
+    .catch(()=>{alert(T.facDepositNotPosted);});
   }
  };
  const settleDepositsOnSend=(id,numero,doc)=>{
@@ -3133,7 +3143,9 @@ function FactureEditor({showBack,facture,clients,produits,companyInfo,docNums,sa
   if(ppForm.installments<2||ppForm.installments>36){alert(T===EN?"Installments must be between 2 and 36.":"Le nombre de versements doit être entre 2 et 36.");return;}
   setPpGenerating(true);
   try{
-   const installAmt=totals.total/ppForm.installments;
+   // Whole cents per instalment; the last one absorbs the rounding so the parts add up to the total.
+   const totalCents=Math.round(totals.total*100);
+   const baseCents=Math.floor(totalCents/ppForm.installments);
    const childFacs=[];
    for(let i=0;i<ppForm.installments;i++){
     const startD=new Date(ppForm.startDate+"T12:00:00");
@@ -3144,7 +3156,7 @@ function FactureEditor({showBack,facture,clients,produits,companyInfo,docNums,sa
     const dueStr=dk(dueD);
     const childId=Date.now().toString(36)+Math.random().toString(36).slice(2)+(i);
     const childNum=generateDocNum(docNums,"facture",docNums.facture+i,client?.code);
-    const childFac={id:childId,numero:childNum,date:dk(new Date()),dateEcheance:dueStr,clientId:form.clientId,statut:"Brouillon",lignes:[{id:childId+"l",description:`${T.ppInstallmentOf||"Versement"} ${i+1}/${ppForm.installments} - ${savedNumero}`,quantite:1,prixUnitaire:installAmt,tps:false,tvq:false,remise:0}],notes:"",paiements:[],ppParentId:savedId,ppIndex:i+1,ppTotal:ppForm.installments,documentType:"facture"};
+    const childFac={id:childId,numero:childNum,date:dk(new Date()),dateEcheance:dueStr,clientId:form.clientId,statut:"Brouillon",lignes:[{id:childId+"l",description:`${T.ppInstallmentOf||"Versement"} ${i+1}/${ppForm.installments} - ${savedNumero}`,quantite:1,prixUnitaire:(i===ppForm.installments-1?totalCents-baseCents*(ppForm.installments-1):baseCents)/100,tps:false,tvq:false,remise:0}],notes:"",paiements:[],ppParentId:savedId,ppIndex:i+1,ppTotal:ppForm.installments,documentType:"facture"};
     childFacs.push(childFac);
     if(window.api?.docnum)window.api.docnum.register("facture",childNum,childId);
    }
@@ -3165,10 +3177,12 @@ function FactureEditor({showBack,facture,clients,produits,companyInfo,docNums,sa
  if(!stripeKey){alert(T===EN?"Enter your Stripe secret key in Settings.":"Entrez votre clé secrète Stripe dans les Paramètres.");return;}
  setStripeWorking(true);setStripeStatus(null);
  try{
- const amountCents=Math.round(totals.total*100);
+ // Charge what is still owed, not the invoice total: payments and deposits already received are deducted.
+ const amountCents=Math.round(soldeDu*100);
+ if(amountCents<=0){alert(T===EN?"Nothing is owed on this invoice.":"Aucun solde à payer sur cette facture.");setStripeWorking(false);return;}
  const {sessionId,url}=await window.api.stripe.createCheckout({secretKey:stripeKey,invoiceId:savedId,invoiceNum:savedNumero||"",amountCents,clientEmail:client?.courriel||undefined});
  setStripeSession({sessionId,url});
- const updated=factures.map(f=>f.id===savedId?{...f,stripeSessionId:sessionId,stripePaymentUrl:url}:f);
+ const updated=factures.map(f=>f.id===savedId?{...f,stripeSessionId:sessionId,stripePaymentUrl:url,stripeAmount:amountCents/100}:f);
  saveFactures(updated);
  }catch(e){alert((T===EN?"Stripe error: ":"Erreur Stripe: ")+e.message);}
  setStripeWorking(false);
@@ -3187,9 +3201,13 @@ function FactureEditor({showBack,facture,clients,produits,companyInfo,docNums,sa
  const doApplyStripePayment=()=>{
  const _stripePayId=Date.now().toString();
  const _stripePayDate=dk(new Date());
- const updated=factures.map(f=>f.id===savedId?{...f,statut:"Payée",paiements:[...(f.paiements||[]),{id:_stripePayId,date:_stripePayDate,montant:totals.total,mode:"Stripe",reference:stripeSession.sessionId}]}:f);
+ // Record what the link charged (the balance when it was created), never more than is still owed.
+ const _stripeAmt=Math.min(factures.find(f=>f.id===savedId)?.stripeAmount||soldeDu,Math.max(0,soldeDu));
+ if(!(_stripeAmt>0))return;
+ const _stripePay={id:_stripePayId,date:_stripePayDate,montant:_stripeAmt,mode:"Stripe",reference:stripeSession.sessionId};
+ const updated=factures.map(f=>f.id===savedId?{...f,paiements:[...(f.paiements||[]),_stripePay],statut:statusAfterPayments({paiements:[...(f.paiements||[]),_stripePay]},totals.total-totalAcomptes,f.statut)}:f);
  // Bridge phase 1: Stripe settles to the bank, so this credits AR like any other payment.
- window.api?.ledger?.paymentPost?.({paymentId:_stripePayId,invoiceId:savedId,paymentDate:_stripePayDate,amountCents:Math.round((totals.total||0)*100),mode:"Stripe"}).catch(()=>{});
+ window.api?.ledger?.paymentPost?.({paymentId:_stripePayId,invoiceId:savedId,paymentDate:_stripePayDate,amountCents:Math.round(_stripeAmt*100),mode:"Stripe"}).then(res=>{if(res&&res.ok===false)alert(T.facPaymentNotPosted+(res.error?`\n(${res.error})`:""));}).catch(()=>{alert(T.facPaymentNotPosted);});
  saveFactures(updated);
  setStripeStatus(null);
  };
@@ -3279,7 +3297,7 @@ function FactureEditor({showBack,facture,clients,produits,companyInfo,docNums,sa
  return(<div style={{display:"flex",flexDirection:"column",gap:10}}>{quickProductFor&&<QuickProductModal en={T===EN} t={t} categories={categories} produits={produits} saveCategories={saveCategories} saveProduits={saveProduits} genCode={genProdCode} units={UNITES_MESURE} unitLabel={u=>T.prodUnites?.[u]||u} initial={lignes.find(x=>x.id===quickProductFor)||{}} onClose={()=>setQuickProductFor(null)} onCreated={p=>{applyProd(quickProductFor,p);setQuickProductFor(null);}}/>}{facture?.ppParentId&&(()=>{const parentFac=factures.find(f=>f.id===facture.ppParentId);return(<div style={{background:"rgba(249,115,22,0.08)",border:"1px solid rgba(249,115,22,0.35)",borderRadius:7,padding:"7px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}><span style={{fontSize:12,fontWeight:700,color:"#f97316"}}>📋 {T===EN?"Installment":"Versement"} {facture.ppIndex}/{facture.ppTotal}{parentFac?` - ${parentFac.numero}`:""}</span>{parentFac&&onOpenDoc&&<button onClick={()=>onOpenDoc("facture",parentFac.clientId,parentFac)} style={{padding:"4px 12px",borderRadius:6,border:"1px solid rgba(249,115,22,0.3)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700,fontSize:11}}>{T===EN?"View parent invoice":"Voir la facture principale"}</button>}</div>);})()}{isProforma&&<div style={{background:"rgba(167,139,250,0.1)",border:"1px solid rgba(167,139,250,0.35)",borderRadius:7,padding:"7px 12px",display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}><div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap",flex:1}}><span style={{fontSize:12,fontWeight:700,color:"#a78bfa"}}>📋 {T.proformaLabel||"PROFORMA"}</span><span style={{fontSize:11,color:"rgba(167,139,250,0.8)"}}>{T===EN?"Preliminary document - no accounting effect.":"Document préliminaire - aucun effet comptable."}</span><details><summary style={{listStyle:"none",cursor:"pointer",userSelect:"none",outline:"none",display:"inline-flex",alignItems:"center",gap:4,fontSize:10}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,borderRadius:"50%",background:"#7c3aed",fontSize:10,fontWeight:900,flexShrink:0,color:"#fff",lineHeight:1}}>?</span></summary><div style={{marginTop:6,padding:"10px 12px",background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:7,fontSize:11,color:t.text,display:"flex",flexDirection:"column",gap:4,minWidth:260}}><div style={{fontWeight:700,marginBottom:2,color:t.text}}>{T===EN?"When to use a proforma:":"Quand utiliser une proforma :"}</div>{(T===EN?["Customs - shows value/description before goods cross a border","Pre-payment request - client needs internal approval before you officially invoice","Price confirmation - locked estimate before work starts","Internal sign-off - client's finance team needs a document to raise a cheque"]:["Douane - valeur et description avant que la marchandise traverse la frontière","Prépaiement - le client attend une approbation interne avant la facturation officielle","Confirmation de prix - devis verrouillé avant le début des travaux","Approbation interne - le service financier du client a besoin d'un document"]).map((line,i)=><div key={i} style={{display:"flex",gap:6,color:t.textSub}}><span style={{color:"#a78bfa",fontWeight:700}}>·</span><span>{line}</span></div>)}<div style={{marginTop:4,borderTop:`1px solid ${t.divider}`,paddingTop:4,fontSize:10,color:t.textMuted,fontStyle:"italic"}}>{T===EN?"Click \"Convert to invoice\" when ready - the proforma stays on file but never affects your AR or revenue totals.":"Cliquez \"Convertir en facture\" quand prêt - la proforma reste au dossier mais n'affecte jamais vos comptes."}</div></div></details></div>{savedId&&onConvertProforma&&<button onClick={()=>{if(window.confirm(T.proformaConvertConfirm||"Convertir cette proforma en facture officielle?"))onConvertProforma({...form,id:savedId,numero:savedNumero,lignes,acomptes});}} style={{padding:"4px 12px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#a78bfa,#7c3aed)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>{T.proformaConvert||"Convertir en facture"}</button>}</div>}{creditLimitBanner&&<div style={{background:creditLimitBanner==='block'?"rgba(239,68,68,0.08)":"rgba(245,158,11,0.08)",border:`1px solid ${creditLimitBanner==='block'?"rgba(239,68,68,0.35)":"rgba(245,158,11,0.35)"}`,borderRadius:7,padding:"8px 12px",display:"flex",flexDirection:"column",gap:6}}><div style={{fontSize:12,fontWeight:700,color:creditLimitBanner==='block'?"#ef4444":"#d97706"}}>{creditLimitBanner==='block'?T.creditLimitBlockBanner(fmt(openAR+totals.total),fmt(client?.credit_limit||0)):T.creditLimitWarnBanner(fmt(openAR+totals.total),fmt(client?.credit_limit||0))}</div>{creditLimitBanner==='block'&&!creditLimitOverrideGranted&&<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}><input value={creditLimitOverrideInput} onChange={e=>setCreditLimitOverrideInput(e.target.value)} type="password" placeholder={T.creditLimitOverridePH} style={{...{background:"rgba(239,68,68,0.06)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:5,color:"#ef4444",fontSize:11,padding:"4px 8px",outline:"none"},width:160}}/><button onClick={async()=>{const hash=await window.api?.storage?.get('credit-limit-override-hash');const entered=creditLimitOverrideInput;const sha=async s=>{const b=new TextEncoder().encode(s);const h=await crypto.subtle.digest('SHA-256',b);return Array.from(new Uint8Array(h)).map(x=>x.toString(16).padStart(2,'0')).join('');};const h=await sha(entered);if(hash?.value&&h===hash.value){setCreditLimitOverrideGranted(true);setCreditLimitBanner(null);}else{alert(T.creditLimitOverrideFail);}}} style={{padding:"4px 10px",borderRadius:5,border:"none",background:"rgba(239,68,68,0.15)",color:"#ef4444",cursor:"pointer",fontWeight:700,fontSize:11}}>{T.creditLimitOverride}</button></div>}{creditLimitBanner==='warn'&&<div style={{display:"flex",gap:6}}><button onClick={()=>{setCreditLimitBanner(null);setTimeout(doSave,0);}} style={{padding:"4px 12px",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>{T.save}</button><button onClick={()=>setCreditLimitBanner(null)} style={{padding:"4px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>{T.cancel}</button></div>}</div>}<div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>{showBack!==false&&(onBackToClient?<><button onClick={onBackToList} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToList}</button><button onClick={onBackToClient} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToClient}</button></>:<button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.back}</button>)}<span style={{fontSize:14,fontWeight:700,color:isProforma?"#a78bfa":t.text}}>{savedNumero||(isNew?(isProforma?(T.proformaNew||"Nouvelle proforma"):T.facNouvelleFacture):facture?.numero)}</span>{isProforma&&<span style={{fontSize:9,fontWeight:800,color:"#a78bfa",background:"rgba(167,139,250,0.15)",borderRadius:10,padding:"2px 8px",letterSpacing:"0.5px",textTransform:"uppercase"}}>Proforma</span>}{!isProforma&&<span style={{fontSize:10,fontWeight:700,color:SC[displayStatut]||t.textMuted,background:"rgba(0,0,0,0.06)",borderRadius:10,padding:"2px 8px"}}>{T.facStatuts?.[displayStatut]||displayStatut}{isOverdue&&" "}</span>}<div style={{flex:1}}/><button onClick={doSave} style={{padding:"5px 14px",borderRadius:6,border:"none",background:isProforma?"linear-gradient(135deg,#a78bfa,#7c3aed)":"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T.save}</button>{flash&&<span style={{fontSize:11,color:"#22c55e",fontWeight:600}}>{T.saved}</span>}<button onClick={doPrint} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>{T.print}</button><button onClick={openEmailModal} disabled={!client?.courriel} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:!client?.courriel?t.textDim:t.textSub,cursor:!client?.courriel?"default":"pointer",fontWeight:600,fontSize:11,opacity:!client?.courriel?0.5:1}}>{T.send}</button>{!isProforma&&<button onClick={()=>savedId&&onEnregistrerPaiement&&onEnregistrerPaiement(factures.find(f=>f.id===savedId)||{...form,id:savedId})} disabled={!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?t.cardBorder:"rgba(249,115,22,0.3)"}`,background:!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?t.section:"rgba(249,115,22,0.07)",color:!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?t.textDim:"#f97316",cursor:!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?"default":"pointer",fontWeight:600,fontSize:11,opacity:!savedId||!onEnregistrerPaiement||["Payée","Annulée"].includes(form.statut)?0.4:1}}>{T.facRecordPayment}</button>}{!isProforma&&<button onClick={()=>savedId&&onCreditNote&&onCreditNote(factures.find(f=>f.id===savedId)||{...form,id:savedId})} disabled={!savedId||!onCreditNote||["Annulée"].includes(form.statut)} style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${!savedId||!onCreditNote||["Annulée"].includes(form.statut)?t.cardBorder:"rgba(239,68,68,0.3)"}`,background:!savedId||!onCreditNote||["Annulée"].includes(form.statut)?t.section:"rgba(239,68,68,0.07)",color:!savedId||!onCreditNote||["Annulée"].includes(form.statut)?t.textDim:"#ef4444",cursor:!savedId||!onCreditNote||["Annulée"].includes(form.statut)?"default":"pointer",fontWeight:600,fontSize:11,opacity:!savedId||!onCreditNote||["Annulée"].includes(form.statut)?0.4:1}}>{T.facCreateCreditNote}</button>}{savedId&&!["Annulée","Payée","Créditée"].includes(form.statut)&&(
  confirmDel
  ?<><span style={{fontSize:11,color:"#ef4444"}}>{T===EN?"Void this invoice?":"Annuler ce document?"}</span><button onClick={doDelete} style={{padding:"4px 10px",borderRadius:5,border:"none",background:"#ef4444",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>{T===EN?"Void invoice":"Annuler la facture"}</button><button onClick={()=>setConfirmDel(false)} style={{padding:"4px 8px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>{T.back||"Revenir"}</button></>:<button onClick={()=>setConfirmDel(true)} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:600,fontSize:11}}>{T===EN?"Void":"Annuler"}</button>)}
- {stripeKey&&savedId&&!["Annulée","Payée"].includes(form.statut)&&(stripeSession?<><span style={{fontSize:10,fontWeight:700,color:"#22c55e",background:"rgba(34,197,94,0.1)",borderRadius:8,padding:"2px 8px"}}>{T.stripePaymentLinkBadge||"Lien Stripe"}</span><button onClick={doCheckStripe} disabled={stripeWorking} style={{padding:"4px 9px",borderRadius:5,border:"1px solid rgba(99,102,241,0.3)",background:"rgba(99,102,241,0.07)",color:"#6366f1",cursor:stripeWorking?"default":"pointer",fontSize:10,fontWeight:600,opacity:stripeWorking?0.5:1}}>{stripeWorking?(T.stripeCheckWorking||"…"):(T.stripeCheckPayment||"Vérifier")}</button></>:<button onClick={doGenStripeLink} disabled={stripeWorking} style={{padding:"4px 10px",borderRadius:5,border:"1px solid rgba(99,102,241,0.3)",background:"rgba(99,102,241,0.07)",color:"#6366f1",cursor:stripeWorking?"default":"pointer",fontSize:10,fontWeight:600,opacity:stripeWorking?0.5:1}}>{stripeWorking?(T.stripeGenLinkWorking||"…"):(T.stripeGenLink||"Lien Stripe")}</button>)}
+ {stripeKey&&savedId&&!["Annulée","Payée","Créditée",WRITTEN_OFF].includes(form.statut)&&(stripeSession?<><span style={{fontSize:10,fontWeight:700,color:"#22c55e",background:"rgba(34,197,94,0.1)",borderRadius:8,padding:"2px 8px"}}>{T.stripePaymentLinkBadge||"Lien Stripe"}</span><button onClick={doCheckStripe} disabled={stripeWorking} style={{padding:"4px 9px",borderRadius:5,border:"1px solid rgba(99,102,241,0.3)",background:"rgba(99,102,241,0.07)",color:"#6366f1",cursor:stripeWorking?"default":"pointer",fontSize:10,fontWeight:600,opacity:stripeWorking?0.5:1}}>{stripeWorking?(T.stripeCheckWorking||"…"):(T.stripeCheckPayment||"Vérifier")}</button></>:<button onClick={doGenStripeLink} disabled={stripeWorking} style={{padding:"4px 10px",borderRadius:5,border:"1px solid rgba(99,102,241,0.3)",background:"rgba(99,102,241,0.07)",color:"#6366f1",cursor:stripeWorking?"default":"pointer",fontSize:10,fontWeight:600,opacity:stripeWorking?0.5:1}}>{stripeWorking?(T.stripeGenLinkWorking||"…"):(T.stripeGenLink||"Lien Stripe")}</button>)}
 {padMandate&&savedId&&soldeDu>0&&!["Annulée","Payée"].includes(form.statut)&&<button onClick={doChargePad} disabled={padCharging} style={{padding:"4px 10px",borderRadius:5,border:"1px solid rgba(22,163,74,0.3)",background:"rgba(22,163,74,0.07)",color:"#16a34a",cursor:padCharging?"default":"pointer",fontSize:10,fontWeight:700,opacity:padCharging?0.5:1}}>{padCharging?(T.padChargeWorking||"…"):(T.padChargeNow||"PAD")}</button>}
  </div>
  {stripeStatus==="paid"&&<div style={{background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.3)",borderRadius:6,padding:"8px 12px",fontSize:12,color:"#16a34a",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}><span>✓ {T.stripeSessionPaid||"Payé via Stripe"}</span><button onClick={doApplyStripePayment} style={{padding:"4px 12px",borderRadius:5,border:"none",background:"#16a34a",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:11}}>{T===EN?"Mark as Paid":"Marquer comme payée"}</button></div>}
@@ -3366,7 +3384,7 @@ function FactureEditor({showBack,facture,clients,produits,companyInfo,docNums,sa
  {(()=>{const log=(factures.find(f=>f.id===savedId)||form).emailLog||[];return savedId&&!isProforma&&(form.statut!=="Brouillon"||log.length>0||reminderLog.length>0)?<InvoiceDeliveryTimeline log={log} reminders={reminderLog} en={T===EN} t={t}/>:null;})()}
  {!isProforma&&savedId&&<BadDebtPanel form={form} setForm={setForm} savedId={savedId} savedNumero={savedNumero} totals={totals} soldeDu={soldeDu} factures={factures} saveFactures={saveFactures} inputS={inputS} t={t} T={T}/>}
  {/* Payment Plan */}
- {!isProforma&&canUse("paymentPlans")&&savedId&&(<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12,marginTop:4}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:hasPpPlan||ppOpen?8:0}}><div style={{fontSize:12,fontWeight:700,color:t.text}}>{T.ppToggle||"Plan de paiement"}</div>{!hasPpPlan&&<button onClick={()=>setPpOpen(o=>!o)} style={{fontSize:10,padding:"3px 9px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>{ppOpen?(T.cancel||"Annuler"):`+ ${T.ppConfigure||"Configurer"}`}</button>}{ppPlan&&ppPlan.status==="active"&&<button onClick={async()=>{if(!window.confirm(T.ppCancelConfirm||"Annuler ce plan de paiement?"))return;if(window.api?.paymentPlan)await window.api.paymentPlan.cancel(savedId);setPpPlan(p=>({...p,status:"cancelled"}));}} style={{fontSize:10,padding:"3px 9px",borderRadius:5,border:"1px solid rgba(239,68,68,0.25)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:700}}>{T.ppCancel||"Annuler le plan"}</button>}</div>{hasPpPlan&&(<div style={{background:ppPlan?.status==="cancelled"?"rgba(239,68,68,0.07)":"rgba(34,197,94,0.07)",border:`1px solid ${ppPlan?.status==="cancelled"?"rgba(239,68,68,0.2)":"rgba(34,197,94,0.2)"}`,borderRadius:6,padding:"7px 10px",fontSize:11}}><div style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:6}}><span style={{fontWeight:700,color:ppPlan?.status==="cancelled"?"#ef4444":"#22c55e"}}>{ppPlan?.status==="cancelled"?(T.ppPlanCancelled||"Plan annulé"):(T.ppPlanActive||"Plan actif")}</span><span style={{color:t.textSub}}>{ppPlan?`${ppPlan.total_installments} ${T.ppInstallments||"versements"} · ${ppPlan.cadence==="weekly"?(T.ppCadenceWeekly||"Hebdomadaire"):ppPlan.cadence==="biweekly"?(T.ppCadenceBiweekly||"Aux 2 semaines"):(T.ppCadenceMonthly||"Mensuel")} · ${ppPlan.start_date}`:`${existingChildFacs.length} ${T.ppInstallments||"versements"}`}</span></div><div style={{fontSize:10,color:t.textMuted,marginTop:3}}>{T.ppEarlyPayNote||"Le client peut payer en avance. Chaque versement est une facture indépendante."}</div>{existingChildFacs.length>0&&<div style={{marginTop:7,display:"flex",flexDirection:"column",gap:3}}>{existingChildFacs.map(cf=>{const cfTot=computeSoumTotals(cf.lignes||[],cf).total;return(<div key={cf.id} onClick={()=>onOpenDoc&&onOpenDoc("facture",cf.clientId,cf)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 7px",borderRadius:4,background:"rgba(255,255,255,0.04)",cursor:onOpenDoc?"pointer":"default",gap:8}}><span style={{fontSize:10,fontWeight:700,color:"#f97316",whiteSpace:"nowrap"}}>{T===EN?"Inst.":"Vers."} {cf.ppIndex}/{cf.ppTotal}</span><span style={{fontSize:10,fontWeight:600,color:t.text,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{cf.numero}</span><span style={{fontSize:10,color:t.textMuted,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{cf.dateEcheance||cf.date}</span><span style={{fontSize:10,fontWeight:700,color:t.textSub,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",marginLeft:"auto"}}>{fmt(cfTot)}</span></div>);})}</div>}</div>)}{ppOpen&&!hasPpPlan&&(<div style={{display:"flex",flexDirection:"column",gap:8,marginTop:4}}><div style={{display:"flex",gap:6,flexWrap:"wrap"}}><div style={{flex:"0 0 100px"}}><div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.ppInstallments||"Versements"}</div><input type="number" min="2" max="36" value={ppForm.installments} onChange={e=>setPpForm(p=>({...p,installments:parseInt(e.target.value)||2}))} style={{...inputS,width:"100%",boxSizing:"border-box"}}/></div><div style={{flex:"1 1 130px"}}><div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.ppCadence||"Fréquence"}</div><select value={ppForm.cadence} onChange={e=>setPpForm(p=>({...p,cadence:e.target.value}))} style={{...inputS,width:"100%",boxSizing:"border-box"}}><option value="weekly">{T.ppCadenceWeekly||"Hebdomadaire"}</option><option value="biweekly">{T.ppCadenceBiweekly||"Aux 2 semaines"}</option><option value="monthly">{T.ppCadenceMonthly||"Mensuel"}</option></select></div><div style={{flex:"1 1 130px"}}><div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.ppStartDate||"Date du 1er versement"}</div><input type="date" value={ppForm.startDate} onChange={e=>setPpForm(p=>({...p,startDate:e.target.value}))} style={{...inputS,width:"100%",boxSizing:"border-box"}}/></div></div><div style={{fontSize:11,color:t.textSub}}>≈ {fmt(totals.total/Math.max(1,ppForm.installments))} / {ppForm.cadence==="weekly"?(T.ppCadenceWeekly||"semaine"):ppForm.cadence==="biweekly"?(T.ppCadenceBiweekly||"2 sem"):(T.ppCadenceMonthly||"mois")}</div><button onClick={doGeneratePlan} disabled={ppGenerating} style={{alignSelf:"flex-start",padding:"5px 14px",borderRadius:6,border:"none",background:ppGenerating?"rgba(255,255,255,0.05)":"linear-gradient(135deg,#f97316,#ea580c)",color:ppGenerating?t.textDim:"#fff",cursor:ppGenerating?"default":"pointer",fontWeight:700,fontSize:11}}>{ppGenerating?(T.ppGenerating||"Génération…"):(T.ppGenerate||"Générer le plan")}</button></div>)}</div>)}</div>);
+ {!isProforma&&canUse("paymentPlans")&&savedId&&(<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12,marginTop:4}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:hasPpPlan||ppOpen?8:0}}><div style={{fontSize:12,fontWeight:700,color:t.text}}>{T.ppToggle||"Plan de paiement"}</div>{!hasPpPlan&&<button onClick={()=>setPpOpen(o=>!o)} style={{fontSize:10,padding:"3px 9px",borderRadius:5,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.07)",color:"#f97316",cursor:"pointer",fontWeight:700}}>{ppOpen?(T.cancel||"Annuler"):`+ ${T.ppConfigure||"Configurer"}`}</button>}{ppPlan&&ppPlan.status==="active"&&<button onClick={async()=>{if(!window.confirm(T.ppCancelConfirm||"Annuler ce plan de paiement?"))return;if(window.api?.paymentPlan)await window.api.paymentPlan.cancel(savedId);setPpPlan(p=>({...p,status:"cancelled"}));}} style={{fontSize:10,padding:"3px 9px",borderRadius:5,border:"1px solid rgba(239,68,68,0.25)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer",fontWeight:700}}>{T.ppCancel||"Annuler le plan"}</button>}</div>{hasPpPlan&&(<div style={{background:ppPlan?.status==="cancelled"?"rgba(239,68,68,0.07)":"rgba(34,197,94,0.07)",border:`1px solid ${ppPlan?.status==="cancelled"?"rgba(239,68,68,0.2)":"rgba(34,197,94,0.2)"}`,borderRadius:6,padding:"7px 10px",fontSize:11}}><div style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:6}}><span style={{fontWeight:700,color:ppPlan?.status==="cancelled"?"#ef4444":"#22c55e"}}>{ppPlan?.status==="cancelled"?(T.ppPlanCancelled||"Plan annulé"):(T.ppPlanActive||"Plan actif")}</span><span style={{color:t.textSub}}>{ppPlan?`${ppPlan.total_installments} ${T.ppInstallments||"versements"} · ${ppPlan.cadence==="weekly"?(T.ppCadenceWeekly||"Hebdomadaire"):ppPlan.cadence==="biweekly"?(T.ppCadenceBiweekly||"Aux 2 semaines"):(T.ppCadenceMonthly||"Mensuel")} · ${ppPlan.start_date}`:`${existingChildFacs.length} ${T.ppInstallments||"versements"}`}</span></div><div style={{fontSize:10,color:t.textMuted,marginTop:3}}>{T.ppEarlyPayNote||"Le client peut payer en avance. Chaque versement est une facture indépendante."}</div>{existingChildFacs.length>0&&<div style={{marginTop:7,display:"flex",flexDirection:"column",gap:3}}>{existingChildFacs.map(cf=>{const cfTot=invoiceTotalsFor(cf,clients).total;return(<div key={cf.id} onClick={()=>onOpenDoc&&onOpenDoc("facture",cf.clientId,cf)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 7px",borderRadius:4,background:"rgba(255,255,255,0.04)",cursor:onOpenDoc?"pointer":"default",gap:8}}><span style={{fontSize:10,fontWeight:700,color:"#f97316",whiteSpace:"nowrap"}}>{T===EN?"Inst.":"Vers."} {cf.ppIndex}/{cf.ppTotal}</span><span style={{fontSize:10,fontWeight:600,color:t.text,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{cf.numero}</span><span style={{fontSize:10,color:t.textMuted,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{cf.dateEcheance||cf.date}</span><span style={{fontSize:10,fontWeight:700,color:t.textSub,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",marginLeft:"auto"}}>{fmt(cfTot)}</span></div>);})}</div>}</div>)}{ppOpen&&!hasPpPlan&&(<div style={{display:"flex",flexDirection:"column",gap:8,marginTop:4}}><div style={{display:"flex",gap:6,flexWrap:"wrap"}}><div style={{flex:"0 0 100px"}}><div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.ppInstallments||"Versements"}</div><input type="number" min="2" max="36" value={ppForm.installments} onChange={e=>setPpForm(p=>({...p,installments:parseInt(e.target.value)||2}))} style={{...inputS,width:"100%",boxSizing:"border-box"}}/></div><div style={{flex:"1 1 130px"}}><div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.ppCadence||"Fréquence"}</div><select value={ppForm.cadence} onChange={e=>setPpForm(p=>({...p,cadence:e.target.value}))} style={{...inputS,width:"100%",boxSizing:"border-box"}}><option value="weekly">{T.ppCadenceWeekly||"Hebdomadaire"}</option><option value="biweekly">{T.ppCadenceBiweekly||"Aux 2 semaines"}</option><option value="monthly">{T.ppCadenceMonthly||"Mensuel"}</option></select></div><div style={{flex:"1 1 130px"}}><div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{T.ppStartDate||"Date du 1er versement"}</div><input type="date" value={ppForm.startDate} onChange={e=>setPpForm(p=>({...p,startDate:e.target.value}))} style={{...inputS,width:"100%",boxSizing:"border-box"}}/></div></div><div style={{fontSize:11,color:t.textSub}}>≈ {fmt(totals.total/Math.max(1,ppForm.installments))} / {ppForm.cadence==="weekly"?(T.ppCadenceWeekly||"semaine"):ppForm.cadence==="biweekly"?(T.ppCadenceBiweekly||"2 sem"):(T.ppCadenceMonthly||"mois")}</div><button onClick={doGeneratePlan} disabled={ppGenerating} style={{alignSelf:"flex-start",padding:"5px 14px",borderRadius:6,border:"none",background:ppGenerating?"rgba(255,255,255,0.05)":"linear-gradient(135deg,#f97316,#ea580c)",color:ppGenerating?t.textDim:"#fff",cursor:ppGenerating?"default":"pointer",fontWeight:700,fontSize:11}}>{ppGenerating?(T.ppGenerating||"Génération…"):(T.ppGenerate||"Générer le plan")}</button></div>)}</div>)}</div>);
 }
 
 // ── ENCAISSEMENT ──
@@ -3410,13 +3428,13 @@ function EncaissementEditor({showBack,clientId,factureId,initialDeposit=false,cl
 
  // ── Single-invoice helpers (free) ──
  const selFac=factures.find(f=>f.id===selId);
- const selTotals=selFac?computeSoumTotals(selFac.lignes,selFac):{total:0};
+ const selTotals=selFac?invoiceTotalsFor(selFac,clients):{total:0};
  const dejaPaye=selFac?(selFac.paiements||[]).reduce((s,p)=>s+(p.montant||0),0):0;
  const solde=selTotals.total-dejaPaye;
 
  // ── Bulk helpers (pro) ──
  const selectedFacs=useMemo(()=>unpaid.filter(f=>selMap[f.id]),[unpaid,selMap]);
- const totalSoldeSelected=useMemo(()=>selectedFacs.reduce((s,f)=>{const tot=computeSoumTotals(f.lignes,f).total;const dp=(f.paiements||[]).reduce((a,p)=>a+(p.montant||0),0);return s+(tot-dp);},0),[selectedFacs]);
+ const totalSoldeSelected=useMemo(()=>selectedFacs.reduce((s,f)=>{const tot=invoiceTotalsFor(f,clients).total;const dp=(f.paiements||[]).reduce((a,p)=>a+(p.montant||0),0);return s+(tot-dp);},0),[selectedFacs]);
  const totalMontant=parseFloat(form.montant)||0;
  const totalAlloue=useMemo(()=>Object.values(allocations).reduce((s,v)=>s+(parseFloat(v)||0),0),[allocations]);
  const restant=totalMontant-totalAlloue;
@@ -3440,7 +3458,7 @@ function EncaissementEditor({showBack,clientId,factureId,initialDeposit=false,cl
  }
  for(const f of selectedFacs){
  if(next[f.id]!==undefined)continue;
- const tot=computeSoumTotals(f.lignes,f).total;
+ const tot=invoiceTotalsFor(f,clients).total;
  const dp=(f.paiements||[]).reduce((a,p)=>a+(p.montant||0),0);
  const sol=Math.max(0,tot-dp);
  const give=Math.max(0,Math.min(sol,remaining));
@@ -3459,7 +3477,7 @@ function EncaissementEditor({showBack,clientId,factureId,initialDeposit=false,cl
  const preview=[];
  [...unpaid].sort((a,b)=>(a.date||'').localeCompare(b.date||'')).forEach(f=>{
  if(remaining<=0.005)return;
- const tot=computeSoumTotals(f.lignes,f).total;
+ const tot=invoiceTotalsFor(f,clients).total;
  const dp=(f.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);
  const sol=tot-dp;
  const apply=Math.min(remaining,sol);
@@ -3491,7 +3509,7 @@ function EncaissementEditor({showBack,clientId,factureId,initialDeposit=false,cl
  const numero=fmtDocNum(docNums.prefix,"E",encNum);
  const paiement={id,numero,date:form.date,montant,mode:form.mode,reference:form.reference,note:form.note,...(form.isDeposit?{isDeposit:true}:{})};
  const dp=(fac.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);
- const newSolde=computeSoumTotals(fac.lignes,fac).total-dp-montant;
+ const newSolde=invoiceTotalsFor(fac,clients).total-dp-montant;
  const newStatut=newSolde<=0.005?"Payée":"Payée partiellement";
  const updFac={...fac,paiements:[...(fac.paiements||[]),paiement],statut:newStatut};
  // Bridge phase 1: credit accounts receivable so the ledger tracks the invoice
@@ -3502,7 +3520,8 @@ function EncaissementEditor({showBack,clientId,factureId,initialDeposit=false,cl
    paymentDate:paiement.date, amountCents:Math.round((montant||0)*100), mode:paiement.mode,
  }).then(res=>{
    if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(f=>f.id===fac.id?{...f,paiements:(f.paiements||[]).map(pp=>pp.id===id?{...pp,glEntryId:res.entryId}:pp)}:f));
- }).catch(()=>{});
+   else if(res&&res.ok===false)alert(T.facPaymentNotPosted+(res.error?`\n(${res.error})`:""));
+ }).catch(()=>{alert(T.facPaymentNotPosted);});
  logCreate('payment','paiement',id,{...paiement,factureId:fac.id,factureNumero:fac.numero});
  logUpdate('invoice','facture',fac.id,'statut',fac.statut,newStatut);
  return{updFactures:updFactures.map(f=>f.id===fac.id?updFac:f),paiement,updFac,numero};
@@ -3531,7 +3550,7 @@ function EncaissementEditor({showBack,clientId,factureId,initialDeposit=false,cl
  let encNum=docNums.encaissement;
  const results=[];
  toApply.forEach(f=>{
- const cap=computeSoumTotals(f.lignes,f).total-(f.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);
+ const cap=invoiceTotalsFor(f,clients).total-(f.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);
  const montant=Math.min(parseFloat(allocations[f.id])||0,cap);
  if(montant<=0)return;
  const{updFactures:uf,paiement,updFac,numero}=_applyPayment(updFactures,f,montant,encNum++);
@@ -3558,7 +3577,7 @@ function EncaissementEditor({showBack,clientId,factureId,initialDeposit=false,cl
  return(<div style={{display:"flex",flexDirection:"column",gap:10}}><div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>{showBack!==false&&(onBackToClient?<><button onClick={onBackToList} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToList}</button><button onClick={onBackToClient} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToClient}</button></>:<button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.back}</button>)}<span style={{fontSize:14,fontWeight:700,color:t.text}}>{T.facRecordPayment}</span>{client&&<span style={{fontSize:12,color:t.textMuted}}>- {client.entreprise}</span>}
  {isBulk&&<span style={{fontSize:9.5,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"2px 7px",borderRadius:8}}>PRO · Multi-factures</span>}</div>{/* ① Invoice selector */}<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><span style={{fontSize:12,fontWeight:700,color:t.text}}>① {T===EN?(isBulk?"Choose invoices":"Choose the invoice"):(isBulk?"Choisir les factures":"Choisir la facture")}</span>{unpaid.length>0&&<button onClick={handleAutoApply} disabled={!totalMontant} style={{padding:"3px 10px",borderRadius:5,border:"none",background:totalMontant?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:totalMontant?"#fff":t.textDim,cursor:totalMontant?"pointer":"default",fontWeight:700,fontSize:10,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T===EN?"Auto-apply":"Auto-appliquer"}{!isAutoApply&&<span style={{fontSize:8,marginLeft:4,opacity:0.7}}>PRO</span>}</button>}</div>{unpaid.length===0
  ?<div style={{textAlign:"center",padding:"16px 0",color:t.textMuted,fontSize:12}}>{T.facNoUnpaidClient}</div>:<div style={{display:"flex",flexDirection:"column",gap:4}}><div style={{display:"grid",gridTemplateColumns:isBulk?colsPro:colsFree,gap:6,padding:"2px 6px",borderBottom:`1px solid ${t.dividerMid}`}}>{(isBulk?["",T.facNumInvoice,"Date",T.colTotal,T.colBalance,T.facColApply]:["",T.facNumInvoice,"Date",T.colTotal,T.facColPaid,T.colBalance]).map((h,i)=><span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i>=3?"right":"left"}}>{h}</span>)}</div>{unpaid.map(f=>{
- const tot=computeSoumTotals(f.lignes,f).total;
+ const tot=invoiceTotalsFor(f,clients).total;
  const dp=(f.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);
  const sol=tot-dp;
  const isSel=isBulk?!!selMap[f.id]:selId===f.id;
@@ -3754,7 +3773,7 @@ function NoteDeCreditEditor({showBack,creditNote,clients,factures,companyInfo,do
  const stLbl=st=>T.facStatuts?.[st]||st;
  const taxCol=form.taxPerLine?"76px":"50px";
  const linkedFac=factures.find(f=>f.id===form.factureId);
- const facTotalAmt=linkedFac?computeSoumTotals(linkedFac.lignes,linkedFac).total:0;
+ const facTotalAmt=linkedFac?invoiceTotalsFor(linkedFac,clients).total:0;
  const ownNumero=savedId?(creditNotes.find(n=>n.id===savedId)?.numero||null):null;
  const alreadyCredited=linkedFac?(linkedFac.paiements||[]).filter(p=>p.fromCredit&&!(ownNumero&&p.reference===ownNumero)).reduce((s,p)=>s+(p.montant||0),0):0;
  const remainingCredit=Math.max(0,facTotalAmt-alreadyCredited);
@@ -3785,7 +3804,7 @@ function NoteDeCreditEditor({showBack,creditNote,clients,factures,companyInfo,do
      if(!rev?.ok){alert(T===EN?"The ledger entry could not be reversed, so the credit note was not cancelled.":"L'écriture n'a pas pu être contrepassée : la note de crédit n'a pas été annulée.");return;}
     }
     saveCreditNotes(prev=>prev.map(n=>n.id===id?{...rec,glEntryId:null}:n));
-    saveFactures(prev=>unapplyCredit(rec,prev,f=>computeSoumTotals(f.lignes||[],f).total));
+    saveFactures(prev=>unapplyCredit(rec,prev,f=>invoiceTotalsFor(f,clients).total));
     logUpdate('invoice','note_de_credit',id,'statut',prevStatut,'Annulée');
     setSaved(true);setTimeout(()=>setSaved(false),2000);
    }catch(e){alert(String(e?.message||e));}
@@ -3821,7 +3840,8 @@ function NoteDeCreditEditor({showBack,creditNote,clients,factures,companyInfo,do
  taxExempt:_cnExempt,
  }).then(res=>{
  if(res?.ok&&res.entryId)saveCreditNotes(prev=>prev.map(n=>n.id===id?{...n,glEntryId:res.entryId}:n));
- }).catch(()=>{});
+ else if(res&&res.ok===false)alert(T.facCreditNoteNotPosted+(res.error?`\n(${res.error})`:""));
+ }).catch(()=>{alert(T.facCreditNoteNotPosted);});
  }
  if(form.factureId&&linkedFac&&creditAmount>0){
  const pId=Date.now().toString()+"c";
@@ -3874,14 +3894,14 @@ function NoteDeCreditEditor({showBack,creditNote,clients,factures,companyInfo,do
  };
  const savedRec=savedId?creditNotes.find(n=>n.id===savedId):null;
  const creditLeft=savedRec?creditRemaining(savedRec,totals.total,factures):0;
- const openForCredit=useMemo(()=>factures.filter(f=>f.clientId===form.clientId&&f.documentType!=="proforma"&&!CLOSED_INVOICE_STATUSES.includes(f.statut)).map(f=>({f,owed:invoiceBalance(f,computeSoumTotals(f.lignes||[],f).total)})).filter(x=>x.owed>0.005),[factures,form.clientId]);
+ const openForCredit=useMemo(()=>factures.filter(f=>f.clientId===form.clientId&&f.documentType!=="proforma"&&!CLOSED_INVOICE_STATUSES.includes(f.statut)).map(f=>({f,owed:invoiceBalance(f,invoiceTotalsFor(f,clients).total)})).filter(x=>x.owed>0.005),[factures,form.clientId]);
  const [applyTo,setApplyTo]=useState("");
  const [applyAmt,setApplyAmt]=useState("");
  const [applyMsg,setApplyMsg]=useState("");
  const doApply=()=>{
   const target=factures.find(f=>f.id===applyTo);
   if(!savedRec||!target)return;
-  const res=applyCreditToInvoice({creditNote:savedRec,creditTotal:totals.total,invoice:target,invoiceTotal:computeSoumTotals(target.lignes||[],target).total,factures,amount:parseFloat(applyAmt)||creditLeft,date:dk(new Date()),label:T===EN?"Credit note":"Note de crédit"});
+  const res=applyCreditToInvoice({creditNote:savedRec,creditTotal:totals.total,invoice:target,invoiceTotal:invoiceTotalsFor(target,clients).total,factures,amount:parseFloat(applyAmt)||creditLeft,date:dk(new Date()),label:T===EN?"Credit note":"Note de crédit"});
   if(res.error){setApplyMsg(T===EN?"Nothing to apply: the credit or the invoice has no balance left.":"Rien à appliquer : la note ou la facture n'a plus de solde.");return;}
   saveFactures(prev=>prev.map(f=>f.id===target.id?res.invoice:f));
   saveCreditNotes(prev=>prev.map(n=>n.id===savedRec.id?res.creditNote:n));
@@ -3947,7 +3967,7 @@ function NoteDeCreditEditor({showBack,creditNote,clients,factures,companyInfo,do
 }
 
 // ── SPRINT 9 - DEPOSIT SCHEDULE ──
-function DepositScheduleSection({commandeId,totals,factures,saveFactures,clients,docNums,saveDocNums,companyInfo,invoiceTemplate,showUpgradePrompt}){
+function DepositScheduleSection({commandeId,clientId,totals,factures,saveFactures,clients,docNums,saveDocNums,companyInfo,invoiceTemplate,showUpgradePrompt}){
  const t=useT();
  const T=useL();
  const isPro=canUse('customTemplates');
@@ -3980,9 +4000,9 @@ function DepositScheduleSection({commandeId,totals,factures,saveFactures,clients
    const tps=beforeTax*tpsPct,tvq=beforeTax*tvqPct;
    const newId=Date.now().toString();
    const num=fmtDocNum(docNums?.prefix||"BIQ","F",docNums?.facture||1);
-   const depFac={id:newId,clientId:sched.commande_id,numero:num,date:todayStr,dateEcheance:"",statut:"Envoyée",notes:sched.label,lignes:[{id:"1",description:sched.label,quantite:1,prixUnitaire:parseFloat(beforeTax.toFixed(2)),tps:true,tvq:true,remise:0}],paiements:[],sourceType:"commande_acompte",isDepositInvoice:true,parentCommandeId:sched.commande_id};
+   const depClient=clients?.find(c=>c.id===clientId);const depFac={id:newId,clientId:clientId||"",numero:num,date:todayStr,dateEcheance:depClient?calcDateEcheance(todayStr,depClient.conditionsPaiement,depClient.nbJours):"",statut:"Envoyée",notes:sched.label,lignes:[{id:"1",description:sched.label,quantite:1,prixUnitaire:parseFloat(beforeTax.toFixed(2)),tps:true,tvq:true,remise:0}],paiements:[],sourceType:"commande_acompte",isDepositInvoice:true,parentCommandeId:sched.commande_id};
    saveFactures([...factures,depFac]);
-   if(!depFac.glEntryId&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients?.find(c=>c.id===depFac.clientId)?.taxExempt);const dTot=computeSoumTotals(depFac.lignes||[],depFac);window.api.ledger.invoicePost({...revenueSource(depFac.lignes,depFac),invoiceId:depFac.id,invoiceDate:depFac.date,subtotalCents:Math.round((dTot.sousTotal||0)*100),tpsCents:Math.round((dTot.tpsTotal||0)*100),tvqCents:Math.round((dTot.tvqTotal||0)*100),totalCents:Math.round((dTot.total||0)*100),taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(f=>f.id===depFac.id?{...f,glEntryId:res.entryId}:f));}).catch(e=>console.error('[ledger] invoice post failed',e));}
+   if(!depFac.glEntryId&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients?.find(c=>c.id===depFac.clientId)?.taxExempt);const dTot=computeSoumTotals(depFac.lignes||[],{...depFac,...clientExemptOpts(clients?.find(c=>c.id===depFac.clientId))});window.api.ledger.invoicePost({...revenueSource(depFac.lignes,depFac),invoiceId:depFac.id,invoiceDate:depFac.date,subtotalCents:Math.round((dTot.sousTotal||0)*100),tpsCents:Math.round((dTot.tpsTotal||0)*100),tvqCents:Math.round((dTot.tvqTotal||0)*100),totalCents:Math.round((dTot.total||0)*100),taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(f=>f.id===depFac.id?{...f,glEntryId:res.entryId}:f));}).catch(e=>console.error('[ledger] invoice post failed',e));}
    if(saveDocNums&&docNums)saveDocNums({...docNums,facture:(docNums.facture||1)+1});
    await window.api.deposits.markGenerated(sched.id,newId);
    setSchedules(prev=>prev.map(s=>s.id===sched.id?{...s,status:'generated',generated_invoice_id:newId}:s));
@@ -4018,14 +4038,14 @@ function InterestConfigSection({showUpgradePrompt,factures,saveFactures,clients,
   const graceMs=cfg.grace*86400000;
   const today=new Date(todayStr+"T12:00:00");
   return(factures||[]).filter(f=>{
-   if(f.statut==="Payée"||f.statut==="Annulée"||f.isInterest)return false;
+   if(f.statut==="Payée"||f.statut==="Annulée"||f.statut==="Brouillon"||f.documentType==="proforma"||f.isInterest)return false;
    if(!f.dateEcheance)return false;
    if(factures.some(x=>x.isInterest&&x.parentFactureId===f.id&&x.statut!=="Annulée"))return false;
    const client=clients?.find(c=>c.id===f.clientId);
    if(client?.interestEnabled===false)return false;
    const due=new Date(f.dateEcheance+"T12:00:00");
    if((today-due)<=graceMs)return false;
-   const totals=computeSoumTotals(f.lignes||[],f);
+   const totals=computeSoumTotals(f.lignes||[],{...f,...clientExemptOpts(client)});
    const paid=(f.paiements||[]).reduce((s,p)=>s+(parseFloat(p.montant)||0),0);
    const balance=totals.total-paid;
    if(balance<=0.01)return false;
@@ -4036,7 +4056,7 @@ function InterestConfigSection({showUpgradePrompt,factures,saveFactures,clients,
    return{...f,_client:client2?.entreprise||"-",_balance:balance,_interestAmt:rounded};
   }).map(f=>{
    const client=clients?.find(c=>c.id===f.clientId);
-   const totals=computeSoumTotals(f.lignes||[],f);
+   const totals=computeSoumTotals(f.lignes||[],{...f,...clientExemptOpts(client)});
    const paid=(f.paiements||[]).reduce((s,p)=>s+(parseFloat(p.montant)||0),0);
    const balance=totals.total-paid;
    const amt=cfg.method==="compound"?balance*Math.pow(1+cfg.rate/100,1)-balance:balance*(cfg.rate/100);
@@ -4055,16 +4075,19 @@ function InterestConfigSection({showUpgradePrompt,factures,saveFactures,clients,
   let encNum=docNums?.facture||1;
   const newFacs=[...factures];
   const generated=[];const newIntFacs=[];
+  const intStamp=Date.now().toString();
   for(const fac of toGenerate){
-   const newId=Date.now().toString()+(Math.random()*1000|0);
+   // Batch-unique id: the same millisecond can serve several invoices.
+   const newId=intStamp+"-"+fac.id;
    const num=fmtDocNum(docNums?.prefix||"BIQ","F",encNum++);
-   const intFac={id:newId,clientId:fac.clientId,numero:num,date:todayStr,dateEcheance:"",statut:"Envoyée",isInterest:true,parentFactureId:fac.id,notes:cfg.message||`Intérêts sur facture ${fac.numero} (${cfg.rate}%/mois)`,lignes:[{id:"1",description:`Intérêts sur ${fac.numero} - ${cfg.rate}%/mois`,quantite:1,prixUnitaire:fac._interestAmt,tps:false,tvq:false,remise:0}],paiements:[]};
+   const intClient=clients?.find(c=>c.id===fac.clientId);
+   const intFac={id:newId,clientId:fac.clientId,numero:num,date:todayStr,dateEcheance:intClient?calcDateEcheance(todayStr,intClient.conditionsPaiement,intClient.nbJours):"",statut:"Envoyée",isInterest:true,parentFactureId:fac.id,notes:cfg.message||`Intérêts sur facture ${fac.numero} (${cfg.rate}%/mois)`,lignes:[{id:"1",description:`Intérêts sur ${fac.numero} - ${cfg.rate}%/mois`,quantite:1,prixUnitaire:fac._interestAmt,tps:false,tvq:false,remise:0}],paiements:[]};
    newFacs.push(intFac);newIntFacs.push(intFac);
    generated.push({num,client:fac._client,amt:fac._interestAmt});
   }
   saveFactures(newFacs);
   if(saveDocNums&&docNums)saveDocNums({...docNums,facture:encNum});
-  for(const f of newIntFacs){if(!f.glEntryId&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients?.find(c=>c.id===f.clientId)?.taxExempt);const ft=computeSoumTotals(f.lignes||[],f);window.api.ledger.invoicePost({...revenueSource(f.lignes,f),invoiceId:f.id,invoiceDate:f.date,subtotalCents:Math.round((ft.sousTotal||0)*100),tpsCents:Math.round((ft.tpsTotal||0)*100),tvqCents:Math.round((ft.tvqTotal||0)*100),totalCents:Math.round((ft.total||0)*100),taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(fa=>fa.id===f.id?{...fa,glEntryId:res.entryId}:fa));}).catch(e=>console.error('[ledger] invoice post failed',e));}}
+  for(const f of newIntFacs){if(!f.glEntryId&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients?.find(c=>c.id===f.clientId)?.taxExempt);const ft=computeSoumTotals(f.lignes||[],{...f,...clientExemptOpts(clients?.find(c=>c.id===f.clientId))});window.api.ledger.invoicePost({...revenueSource(f.lignes,f),invoiceId:f.id,invoiceDate:f.date,subtotalCents:Math.round((ft.sousTotal||0)*100),tpsCents:Math.round((ft.tpsTotal||0)*100),tvqCents:Math.round((ft.tvqTotal||0)*100),totalCents:Math.round((ft.total||0)*100),taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(fa=>fa.id===f.id?{...fa,glEntryId:res.entryId}:fa));}).catch(e=>console.error('[ledger] invoice post failed',e));}}
   setPreview(null);setResult(generated);
  };
  return(<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:14}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}><span style={{fontSize:13,fontWeight:700,color:t.text}}>{T.interestTitle||"Intérêts sur retard"}</span>{isPro?<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"1px 6px",borderRadius:6}}>PRO</span>:<span style={{fontSize:9,fontWeight:700,color:"#6b7280",background:"rgba(255,255,255,0.06)",padding:"1px 6px",borderRadius:6}}>Pro</span>}</div>
@@ -4138,7 +4161,7 @@ function RecurringTab({clientId,recurrents,saveRecurrents,produits,showUpgradePr
  {form.lignes.length>1&&<button onClick={()=>rmLigne(i)} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:14,lineHeight:1}}>×</button>}</div>))}<button onClick={addLigne} style={{fontSize:9.5,color:"#f97316",background:"none",border:"none",cursor:"pointer",fontWeight:600,marginBottom:8}}>{T.facAjouterLigne}</button><div style={{display:"flex",gap:6}}><button onClick={saveNew} disabled={!form.lignes[0]?.description?.trim()} style={{padding:"5px 14px",borderRadius:5,border:"none",background:form.lignes[0]?.description?.trim()?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:form.lignes[0]?.description?.trim()?"#fff":t.textDim,cursor:form.lignes[0]?.description?.trim()?"pointer":"default",fontWeight:700,fontSize:11}}>{T.save}</button><button onClick={()=>setAdding(false)} style={{padding:"5px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>{T.cancel}</button></div></div>)}
  {myRecs.length===0&&!adding&&<div style={{textAlign:"center",padding:"16px 0",color:t.textMuted,fontSize:11}}>{T.noRecurringConfigured}</div>}
  {myRecs.map(r=>{
- const tot=computeSoumTotals(r.lignes,r).total;
+ const tot=invoiceTotalsFor(r).total;
  const today=dk(new Date());
  const due=isRecurringDue(r,today);
  return(<div key={r.id} style={{background:t.section,border:`1px solid ${due?"rgba(249,115,22,0.3)":t.cardBorder}`,borderRadius:7,padding:"8px 10px",opacity:r.actif?1:0.5}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:4}}><div><span style={{fontSize:11,fontWeight:700,color:t.text}}>{r.lignes[0]?.description||"-"}</span>{r.lignes.length>1&&<span style={{fontSize:9.5,color:t.textMuted,marginLeft:4}}>+{r.lignes.length-1} ligne{r.lignes.length-1>1?"s":""}</span>}<div style={{fontSize:10,color:t.textMuted,marginTop:2}}>{r.frequence} · Jour {r.jourFacturation} · {fmt(tot)}{r.autoEnvoyer?" · Auto-envoi":""} {r.dateFin?`· Fin ${r.dateFin}`:""}</div>{r.lastGenerated&&<div style={{fontSize:9.5,color:t.textDim}}>Dernière génération: {r.lastGenerated}</div>}</div><div style={{display:"flex",gap:4,alignItems:"center"}}>{due&&<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"2px 7px",borderRadius:8}}>À générer</span>}<button onClick={()=>toggleActif(r.id)} style={{fontSize:9.5,padding:"2px 7px",borderRadius:4,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer"}}>{r.actif?"Désactiver":"Activer"}</button><button onClick={()=>deleteRec(r.id)} style={{fontSize:9.5,padding:"2px 7px",borderRadius:4,border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.07)",color:"#ef4444",cursor:"pointer"}}>{T.delete}</button></div></div></div>);
@@ -4166,7 +4189,7 @@ function RecurringGenerateModal({recurrents,saveRecurrents,factures,saveFactures
  // tps and tvq, so those lines were billed with no tax at all.
  lignes:rec.lignes.map(l=>recurringLine(l)),
  date:today,
- dateEcheance:"",
+ dateEcheance:calcDateEcheance(today,clients.find(c=>c.id===rec.clientId)?.conditionsPaiement,clients.find(c=>c.id===rec.clientId)?.nbJours),
  statut:"Envoyée",
  notes:"",
  paiements:[],
@@ -4188,16 +4211,16 @@ function RecurringGenerateModal({recurrents,saveRecurrents,factures,saveFactures
  }
  }
  saveFactures(updFactures);
- for(const f of newRecFacs){if(!f.glEntryId&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients?.find(c=>c.id===f.clientId)?.taxExempt);const ft=computeSoumTotals(f.lignes||[],f);window.api.ledger.invoicePost({...revenueSource(f.lignes,f),invoiceId:f.id,invoiceDate:f.date,subtotalCents:Math.round((ft.sousTotal||0)*100),tpsCents:Math.round((ft.tpsTotal||0)*100),tvqCents:Math.round((ft.tvqTotal||0)*100),totalCents:Math.round((ft.total||0)*100),taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(fa=>fa.id===f.id?{...fa,glEntryId:res.entryId}:fa));}).catch(e=>console.error('[ledger] invoice post failed',e));}}
+ for(const f of newRecFacs){if(!f.glEntryId&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients?.find(c=>c.id===f.clientId)?.taxExempt);const ft=computeSoumTotals(f.lignes||[],{...f,...clientExemptOpts(clients?.find(c=>c.id===f.clientId))});window.api.ledger.invoicePost({...revenueSource(f.lignes,f),invoiceId:f.id,invoiceDate:f.date,subtotalCents:Math.round((ft.sousTotal||0)*100),tpsCents:Math.round((ft.tpsTotal||0)*100),tvqCents:Math.round((ft.tvqTotal||0)*100),totalCents:Math.round((ft.total||0)*100),taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(fa=>fa.id===f.id?{...fa,glEntryId:res.entryId}:fa));}).catch(e=>console.error('[ledger] invoice post failed',e));}}
  saveDocNums({...docNums,facture:encNum});
  saveRecurrents(newRecs);
  setGenerating(false);
  setResults(done);
  };
  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{background:"#1a1d26",border:"1px solid rgba(249,115,22,0.3)",borderRadius:12,padding:24,maxWidth:540,width:"90%",maxHeight:"80vh",overflowY:"auto"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><span style={{fontSize:14,fontWeight:700,color:"#fff"}}>{T.recurringTitle}</span><button onClick={onClose} style={{background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:16}}>×</button></div>{results
- ?(<div><div style={{fontSize:12,color:"#22c55e",fontWeight:700,marginBottom:12}}>{results.length} facture{results.length!==1?"s":""} créée{results.length!==1?"s":""}</div>{results.map(({fac,client,emailSent,emailError})=>(<div key={fac.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#9ca3af",borderTop:"1px solid rgba(255,255,255,0.05)",padding:"5px 0"}}><span>{fac.numero} - {client?.entreprise||"-"}{emailSent&&<span style={{fontSize:9,color:"#22c55e",marginLeft:6}}>{T.recurringEmailSent}</span>}{emailError&&<span title={emailError} style={{fontSize:9,color:"#ef4444",marginLeft:6}}>{T.recurringEmailFailed}</span>}</span><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:"#f97316"}}>{fmt(computeSoumTotals(fac.lignes,fac).total)}</span></div>))}<button onClick={onClose} style={{marginTop:16,padding:"7px 20px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T.close}</button></div>)
+ ?(<div><div style={{fontSize:12,color:"#22c55e",fontWeight:700,marginBottom:12}}>{results.length} facture{results.length!==1?"s":""} créée{results.length!==1?"s":""}</div>{results.map(({fac,client,emailSent,emailError})=>(<div key={fac.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#9ca3af",borderTop:"1px solid rgba(255,255,255,0.05)",padding:"5px 0"}}><span>{fac.numero} - {client?.entreprise||"-"}{emailSent&&<span style={{fontSize:9,color:"#22c55e",marginLeft:6}}>{T.recurringEmailSent}</span>}{emailError&&<span title={emailError} style={{fontSize:9,color:"#ef4444",marginLeft:6}}>{T.recurringEmailFailed}</span>}</span><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:"#f97316"}}>{fmt(invoiceTotalsFor(fac,clients).total)}</span></div>))}<button onClick={onClose} style={{marginTop:16,padding:"7px 20px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T.close}</button></div>)
  :(<div>{due.length===0
- ?<div style={{textAlign:"center",padding:"20px 0",color:"#9ca3af",fontSize:12}}>{T.noRecurringPending}</div>:<div>{due.map(r=>{const client=clients.find(c=>c.id===r.clientId);return(<div key={r.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#9ca3af",borderTop:"1px solid rgba(255,255,255,0.05)",padding:"6px 0"}}><div><span style={{color:"#fff",fontWeight:600}}>{client?.entreprise||"-"}</span><span style={{color:"#6b7280",marginLeft:8}}>{r.lignes[0]?.description}</span>{r.autoEnvoyer&&<span style={{fontSize:9,color:"#f97316",marginLeft:6}}>Auto-envoi</span>}</div><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:"#f97316",fontWeight:700}}>{fmt(computeSoumTotals(r.lignes,r).total)}</span></div>);})}<div style={{display:"flex",gap:8,marginTop:16}}><button onClick={doGenerate} disabled={generating} style={{padding:"7px 20px",borderRadius:6,border:"none",background:generating?"rgba(255,255,255,0.1)":"linear-gradient(135deg,#f97316,#ea580c)",color:generating?"#6b7280":"#fff",cursor:generating?"default":"pointer",fontWeight:700,fontSize:12,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{generating?"Génération…":`Créer ${due.length} facture${due.length!==1?"s":""}`}</button><button onClick={onClose} style={{padding:"7px 14px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:"#9ca3af",cursor:"pointer",fontSize:12}}>{T.cancel}</button></div></div>}</div>)}</div></div>);
+ ?<div style={{textAlign:"center",padding:"20px 0",color:"#9ca3af",fontSize:12}}>{T.noRecurringPending}</div>:<div>{due.map(r=>{const client=clients.find(c=>c.id===r.clientId);return(<div key={r.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#9ca3af",borderTop:"1px solid rgba(255,255,255,0.05)",padding:"6px 0"}}><div><span style={{color:"#fff",fontWeight:600}}>{client?.entreprise||"-"}</span><span style={{color:"#6b7280",marginLeft:8}}>{r.lignes[0]?.description}</span>{r.autoEnvoyer&&<span style={{fontSize:9,color:"#f97316",marginLeft:6}}>Auto-envoi</span>}</div><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:"#f97316",fontWeight:700}}>{fmt(invoiceTotalsFor(r,clients).total)}</span></div>);})}<div style={{display:"flex",gap:8,marginTop:16}}><button onClick={doGenerate} disabled={generating} style={{padding:"7px 20px",borderRadius:6,border:"none",background:generating?"rgba(255,255,255,0.1)":"linear-gradient(135deg,#f97316,#ea580c)",color:generating?"#6b7280":"#fff",cursor:generating?"default":"pointer",fontWeight:700,fontSize:12,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{generating?"Génération…":`Créer ${due.length} facture${due.length!==1?"s":""}`}</button><button onClick={onClose} style={{padding:"7px 14px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:"#9ca3af",cursor:"pointer",fontSize:12}}>{T.cancel}</button></div></div>}</div>)}</div></div>);
 }
 
 function ClientProfile({client,saveClient,onBack,onNewDoc,onOpenDoc,soumissions,commandes,factures,creditNotes,companyInfo,invoiceTemplate,inputS,t,recurrents,saveRecurrents,showUpgradePrompt,apiConfig}){
@@ -4256,11 +4279,11 @@ function ClientProfile({client,saveClient,onBack,onNewDoc,onOpenDoc,soumissions,
  const cFac=useMemo(()=>[...(factures||[]).filter(f=>f.clientId===cId)].sort((a,b)=>(b.date||"").localeCompare(a.date||"")),[factures,cId]);
  // This customer's credit notes and what is left of each, so a credit that was
  // saved without an invoice can be found and applied.
- const cNC=useMemo(()=>[...(creditNotes||[]).filter(n=>n.clientId===cId)].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(n=>{const tot=computeSoumTotals(n.lignes||[],n).total;return{...n,_total:tot,_left:creditRemaining(n,tot,factures||[])};}),[creditNotes,factures,cId]);
+ const cNC=useMemo(()=>[...(creditNotes||[]).filter(n=>n.clientId===cId)].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(n=>{const tot=invoiceTotalsFor(n,[client]).total;return{...n,_total:tot,_left:creditRemaining(n,tot,factures||[])};}),[creditNotes,factures,cId]);
  const cCmd=useMemo(()=>[...(commandes||[]).filter(f=>f.clientId===cId)].sort((a,b)=>(b.date||"").localeCompare(a.date||"")),[commandes,cId]);
  const cSou=useMemo(()=>[...(soumissions||[]).filter(f=>f.clientId===cId)].sort((a,b)=>(b.date||"").localeCompare(a.date||"")),[soumissions,cId]);
  const cPaiements=useMemo(()=>{const rows=[];for(const f of cFac){for(const p of f.paiements||[]){if(isCashPayment(p))rows.push({...p,factureNumero:f.numero,factureId:f.id});}}return rows.sort((a,b)=>(b.date||"").localeCompare(a.date||""));},[cFac]);
- const soldeDu=useMemo(()=>cFac.filter(f=>!CLOSED_INVOICE_STATUSES.includes(f.statut)).reduce((s,f)=>{const paye=(f.paiements||[]).reduce((ps,p)=>ps+(p.montant||0),0);return s+Math.max(0,computeSoumTotals(f.lignes||[],f).total-paye);},(0)),[cFac]);
+ const soldeDu=useMemo(()=>cFac.filter(f=>!CLOSED_INVOICE_STATUSES.includes(f.statut)).reduce((s,f)=>{const paye=(f.paiements||[]).reduce((ps,p)=>ps+(p.montant||0),0);return s+Math.max(0,invoiceTotalsFor(f,[client]).total-paye);},(0)),[cFac]);
  const SC=(type,statut)=>type==="soumission"?STATUT_SOUM_C[statut]||"#6b7280":type==="commande"?STATUT_CMD_C[statut]||"#6b7280":STATUT_FAC_C[statut]||"#6b7280";
  const rowS={display:"grid",gap:6,padding:"6px 6px",borderBottom:`1px solid ${t.divider}`,cursor:"pointer",alignItems:"center"};
  const EmptyMsg=()=><div style={{textAlign:"center",padding:"20px 0",color:t.textMuted,fontSize:11}}>{T===EN?"No records.":"Aucun enregistrement."}</div>;
@@ -4304,12 +4327,12 @@ function ClientProfile({client,saveClient,onBack,onNewDoc,onOpenDoc,soumissions,
  </div>}
 </div>
 {/* History tabs */}<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}><div style={{display:"flex",gap:1,borderBottom:`1px solid ${t.dividerMid}`,marginBottom:10,overflowX:"auto"}}>{HISTORY_TABS.map(ht=>(<button key={ht.id} onClick={()=>setProfileTab(ht.id)} style={{background:"none",border:"none",color:profileTab===ht.id?"#f97316":t.textMuted,fontSize:11,fontWeight:600,padding:"4px 10px",cursor:"pointer",borderBottom:profileTab===ht.id?"2px solid #f97316":"2px solid transparent",whiteSpace:"nowrap"}}>{ht.label}</button>))}</div>{/* Factures */}
- {profileTab==="factures"&&(cFac.length===0?<EmptyMsg/>:<div><div style={{display:"grid",gridTemplateColumns:"90px 80px 1fr 80px 80px",gap:6,padding:"2px 6px",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:2}}>{[T.facNumInvoice,"Date",T.colStatus,T.colTotal,T.colBalance].map((h,i)=><span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i>=3?"right":"left"}}>{h}</span>)}</div>{cFac.map(f=>{const tot=computeSoumTotals(f.lignes||[],f).total;const paye=(f.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);const sol=Math.max(0,tot-paye);const sc=STATUT_FAC_C[f.statut]||"#6b7280";const isOD=["Envoyée","Payée partiellement"].includes(f.statut)&&f.dateEcheance&&f.dateEcheance<dk(new Date());return(
+ {profileTab==="factures"&&(cFac.length===0?<EmptyMsg/>:<div><div style={{display:"grid",gridTemplateColumns:"90px 80px 1fr 80px 80px",gap:6,padding:"2px 6px",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:2}}>{[T.facNumInvoice,"Date",T.colStatus,T.colTotal,T.colBalance].map((h,i)=><span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i>=3?"right":"left"}}>{h}</span>)}</div>{cFac.map(f=>{const tot=invoiceTotalsFor(f,[client]).total;const paye=(f.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);const sol=Math.max(0,tot-paye);const sc=STATUT_FAC_C[f.statut]||"#6b7280";const isOD=["Envoyée","Payée partiellement"].includes(f.statut)&&f.dateEcheance&&f.dateEcheance<dk(new Date());return(
  <div key={f.id} onClick={()=>onOpenDoc&&onOpenDoc("facture",f.clientId,f)} style={{...rowS,gridTemplateColumns:"90px 80px 1fr 80px 80px"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(249,115,22,0.04)"} onMouseLeave={e=>e.currentTarget.style.background=""}><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontSize:11,fontWeight:600,color:t.text}}>{f.numero||"-"}</span><span style={{fontSize:11,color:t.textSub,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{f.date||"-"}</span><span style={{fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:8,background:`${sc}18`,color:sc,width:"fit-content"}}>{T.facStatuts?.[isOD?"En retard":f.statut]||f.statut}</span><span style={{fontSize:11,textAlign:"right",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:t.textSub}}>{fmt(tot)}</span><span style={{fontSize:11,textAlign:"right",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontWeight:sol>0.005?700:400,color:sol>0.005?"#f97316":t.textDim}}>{sol>0.005?fmt(sol):"-"}</span></div>);})}</div>)}
  {/* Commandes */}
- {profileTab==="commandes"&&(cCmd.length===0?<EmptyMsg/>:<div><div style={{display:"grid",gridTemplateColumns:"100px 80px 1fr 90px",gap:6,padding:"2px 6px",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:2}}>{[T.facNumOrder,"Date",T.colStatus,T.colTotal].map((h,i)=><span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i===3?"right":"left"}}>{h}</span>)}</div>{cCmd.map(d=>{const tot=computeSoumTotals(d.lignes||[],d).total;const sc=STATUT_CMD_C[d.statut]||"#6b7280";return(<div key={d.id} onClick={()=>onOpenDoc&&onOpenDoc("commande",d.clientId,d)} style={{...rowS,gridTemplateColumns:"100px 80px 1fr 90px"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(249,115,22,0.04)"} onMouseLeave={e=>e.currentTarget.style.background=""}><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontSize:11,fontWeight:600,color:t.text}}>{d.numero||"-"}</span><span style={{fontSize:11,color:t.textSub,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{d.date||"-"}</span><span style={{fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:8,background:`${sc}18`,color:sc,width:"fit-content"}}>{T.facStatuts?.[d.statut]||d.statut}</span><span style={{fontSize:11,textAlign:"right",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:t.textSub}}>{fmt(tot)}</span></div>);})}</div>)}
+ {profileTab==="commandes"&&(cCmd.length===0?<EmptyMsg/>:<div><div style={{display:"grid",gridTemplateColumns:"100px 80px 1fr 90px",gap:6,padding:"2px 6px",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:2}}>{[T.facNumOrder,"Date",T.colStatus,T.colTotal].map((h,i)=><span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i===3?"right":"left"}}>{h}</span>)}</div>{cCmd.map(d=>{const tot=invoiceTotalsFor(d,[client]).total;const sc=STATUT_CMD_C[d.statut]||"#6b7280";return(<div key={d.id} onClick={()=>onOpenDoc&&onOpenDoc("commande",d.clientId,d)} style={{...rowS,gridTemplateColumns:"100px 80px 1fr 90px"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(249,115,22,0.04)"} onMouseLeave={e=>e.currentTarget.style.background=""}><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontSize:11,fontWeight:600,color:t.text}}>{d.numero||"-"}</span><span style={{fontSize:11,color:t.textSub,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{d.date||"-"}</span><span style={{fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:8,background:`${sc}18`,color:sc,width:"fit-content"}}>{T.facStatuts?.[d.statut]||d.statut}</span><span style={{fontSize:11,textAlign:"right",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:t.textSub}}>{fmt(tot)}</span></div>);})}</div>)}
  {/* Soumissions */}
- {profileTab==="soumissions"&&(cSou.length===0?<EmptyMsg/>:<div><div style={{display:"grid",gridTemplateColumns:"100px 80px 1fr 90px",gap:6,padding:"2px 6px",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:2}}>{[T.facNumQuote,"Date",T.colStatus,T.colTotal].map((h,i)=><span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i===3?"right":"left"}}>{h}</span>)}</div>{cSou.map(d=>{const tot=computeSoumTotals(d.lignes||[],d).total;const sc=STATUT_SOUM_C[d.statut]||"#6b7280";return(<div key={d.id} onClick={()=>onOpenDoc&&onOpenDoc("soumission",d.clientId,d)} style={{...rowS,gridTemplateColumns:"100px 80px 1fr 90px"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(249,115,22,0.04)"} onMouseLeave={e=>e.currentTarget.style.background=""}><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontSize:11,fontWeight:600,color:t.text}}>{d.numero||"-"}</span><span style={{fontSize:11,color:t.textSub,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{d.date||"-"}</span><div style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:8,background:`${sc}18`,color:sc,width:"fit-content"}}>{T.facStatuts?.[d.statut]||d.statut}</span>{(d.commandeId||d.factureId)&&<span style={{fontSize:9,color:"#f97316",fontWeight:600}}>{d.commandeNumero||d.factureNumero}</span>}</div><span style={{fontSize:11,textAlign:"right",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:t.textSub}}>{fmt(tot)}</span></div>);})}</div>)}
+ {profileTab==="soumissions"&&(cSou.length===0?<EmptyMsg/>:<div><div style={{display:"grid",gridTemplateColumns:"100px 80px 1fr 90px",gap:6,padding:"2px 6px",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:2}}>{[T.facNumQuote,"Date",T.colStatus,T.colTotal].map((h,i)=><span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i===3?"right":"left"}}>{h}</span>)}</div>{cSou.map(d=>{const tot=invoiceTotalsFor(d,[client]).total;const sc=STATUT_SOUM_C[d.statut]||"#6b7280";return(<div key={d.id} onClick={()=>onOpenDoc&&onOpenDoc("soumission",d.clientId,d)} style={{...rowS,gridTemplateColumns:"100px 80px 1fr 90px"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(249,115,22,0.04)"} onMouseLeave={e=>e.currentTarget.style.background=""}><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontSize:11,fontWeight:600,color:t.text}}>{d.numero||"-"}</span><span style={{fontSize:11,color:t.textSub,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{d.date||"-"}</span><div style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:8,background:`${sc}18`,color:sc,width:"fit-content"}}>{T.facStatuts?.[d.statut]||d.statut}</span>{(d.commandeId||d.factureId)&&<span style={{fontSize:9,color:"#f97316",fontWeight:600}}>{d.commandeNumero||d.factureNumero}</span>}</div><span style={{fontSize:11,textAlign:"right",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:t.textSub}}>{fmt(tot)}</span></div>);})}</div>)}
  {/* Encaissements */}
  {profileTab==="credits"&&(cNC.length===0?<EmptyMsg/>:<div><div style={{display:"grid",gridTemplateColumns:"90px 80px 1fr 90px 90px 80px",gap:6,padding:"2px 6px",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:2}}>{["#","Date",T===EN?"Reason":"Raison","Total",T===EN?"Not applied":"Non appliqué",T.colStatus].map((h,i)=><span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i===3||i===4?"right":"left"}}>{h}</span>)}</div>{cNC.map(n=>(<div key={n.id} onClick={()=>onOpenDoc&&onOpenDoc("creditnote",n.clientId,n)} style={{...rowS,gridTemplateColumns:"90px 80px 1fr 90px 90px 80px"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(249,115,22,0.04)"} onMouseLeave={e=>e.currentTarget.style.background=""}><span style={{fontVariantNumeric:"tabular-nums",fontSize:11,fontWeight:600,color:t.text}}>{n.numero||"-"}</span><span style={{fontSize:11,color:t.textSub,fontVariantNumeric:"tabular-nums"}}>{n.date||"-"}</span><span style={{fontSize:11,color:t.textSub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{n.raison||"-"}</span><span style={{fontSize:11,textAlign:"right",fontVariantNumeric:"tabular-nums",color:"#ef4444",fontWeight:700}}>({fmt(n._total)})</span><span style={{fontSize:11,textAlign:"right",fontVariantNumeric:"tabular-nums",color:n._left>0.005?"#f59e0b":t.textMuted,fontWeight:n._left>0.005?700:400}}>{n._left>0.005?fmt(n._left):"-"}</span><span style={{fontSize:10,fontWeight:700,color:STATUT_NC_C[n.statut]||t.textMuted}}>{T.facStatuts?.[n.statut]||n.statut}</span></div>))}<div style={{fontSize:10,color:t.textMuted,marginTop:6}}>{T===EN?"Open a credit note to apply what is left to an invoice.":"Ouvrez une note de crédit pour appliquer ce qui reste à une facture."}</div></div>)}
  {profileTab==="encaissements"&&(cPaiements.length===0?<EmptyMsg/>:<div><div style={{display:"grid",gridTemplateColumns:"90px 80px 90px 1fr 80px",gap:6,padding:"2px 6px",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:2}}>{[T===EN?"# Receipt":"# Reçu","Date",T===EN?"Amount":"Montant","Mode",T===EN?"# Invoice":"# Facture"].map((h,i)=><span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i===2?"right":"left"}}>{h}</span>)}</div>{cPaiements.map(p=>(<div key={p.id} onClick={()=>{const f=cFac.find(f=>f.id===p.factureId);if(f&&onOpenDoc)onOpenDoc("facture",f.clientId,f);}} style={{...rowS,gridTemplateColumns:"90px 80px 90px 1fr 80px"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(249,115,22,0.04)"} onMouseLeave={e=>e.currentTarget.style.background=""}><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",fontSize:11,color:t.text}}>{p.numero||"-"}</span><span style={{fontSize:11,color:t.textSub,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{p.date||"-"}</span><span style={{fontSize:11,textAlign:"right",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:"#22c55e",fontWeight:700}}>{fmt(p.montant)}</span><span style={{fontSize:11,color:t.textSub}}>{p.mode||"-"}{p.isDeposit&&<span style={{marginLeft:5,fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.12)",borderRadius:3,padding:"1px 4px"}}>{T===EN?"Deposit":"Acompte"}</span>}</span><span style={{fontSize:11,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:t.textMuted}}>{p.factureNumero||"-"}</span></div>))}</div>)}
@@ -4335,7 +4358,7 @@ function ClientsSection({clients,saveClients,onNewDoc,onOpenDoc,soumissions,comm
  const balances=useMemo(()=>{
   const asOf=dk(new Date());const out={};
   for(const c of (Array.isArray(clients)?clients:[])){
-   try{out[c.id]=accountStanding({clientId:c.id,factures:factures||[],creditNotes:creditNotes||[],asOf,totalOf:d=>computeSoumTotals(d.lignes||[],d).total}).balanceOwed;}catch(_){out[c.id]=0;}
+   try{out[c.id]=accountStanding({clientId:c.id,factures:factures||[],creditNotes:creditNotes||[],asOf,totalOf:d=>invoiceTotalsFor(d,clients).total}).balanceOwed;}catch(_){out[c.id]=0;}
   }
   return out;
  },[clients,factures,creditNotes]);
@@ -4893,7 +4916,7 @@ const _firedAlerts=new Set();
 function checkAndFireAlerts(monthlyData,locations,alertConfig){
  if(!alertConfig?.enabled)return;
  const cfg=alertConfig.alerts||{};
- const today=new Date().toISOString().slice(0,10);
+ const today=dk(new Date());
  for(const loc of locations){
  if(loc.statut==='inactive')continue;
  const d=monthlyData[loc.id];
@@ -5289,7 +5312,7 @@ function MesSuccursalesTab({myLinkedLocations,activeMUOLocationId,setActiveMUOLo
  const results={};
  for(const loc of myLinkedLocations){
  try{
- const today=new Date().toISOString().slice(0,10);
+ const today=dk(new Date());
  const{data}=await _supabaseClient.from('synced_data')
  .select('key,value,updated_at')
  .eq('org_id',loc.franchisee_org_id)
@@ -5299,7 +5322,7 @@ function MesSuccursalesTab({myLinkedLocations,activeMUOLocationId,setActiveMUOLo
  if(!data||!data.length){results[loc.location_id]={synced:false};continue;}
  // Parse daily entries to sum sales
  let todaySales=null,weekSales=0,monthSales=0;
- const weekAgo=new Date(Date.now()-7*24*3600*1000).toISOString().slice(0,10);
+ const weekAgo=dk(new Date(Date.now()-7*24*3600*1000));
  const monthStart=today.slice(0,7)+'-01';
  for(const row of data){
  try{
@@ -5826,7 +5849,7 @@ function DelinquencyPanel({facFactures,facClients,locations,royaltyConfig,apiCon
  return _ff
  .filter(f=>f.tags?.includes("redevance")&&(f.statut==="Envoyée"||f.statut==="Payée partiellement"))
  .map(f=>{
- const invDate=new Date((f.date||new Date().toISOString().slice(0,10))+"T12:00:00");
+ const invDate=new Date((f.date||dk(new Date()))+"T12:00:00");
  const dueDate=new Date(invDate);dueDate.setDate(invDate.getDate()+gracePeriod);
  const daysOverdue=Math.max(0,Math.floor((today-dueDate)/(1000*60*60*24)));
  const loc=_locs.find(l=>l.clientId===f.clientId);
@@ -5863,7 +5886,7 @@ function DelinquencyPanel({facFactures,facClients,locations,royaltyConfig,apiCon
  const from=apiConfig.resendFrom||'noreply@balanceiq.ca';
  const cc=royaltyConfig?.reminderEmail?[royaltyConfig.reminderEmail]:[];
  await window.api.email.sendResend({apiKey:apiConfig.resendKey,from,to,subject:`Rappel ${inv.daysOverdue}j - Redevances #${invoiceRef}`,html,cc,attachments:[]});
- const today2=new Date().toISOString().slice(0,10);
+ const today2=dk(new Date());
  const updated={...remindersSent,[inv.id]:{...(remindersSent[inv.id]||{}),manual:today2,[days]:today2}};
  await saveReminders(updated);
  }catch(e){alert('Erreur lors de l\'envoi: '+(e?.message||String(e)));}
@@ -6135,7 +6158,7 @@ function AuditViewer(){
  const rows=filtered.map(r=>[r.timestamp,r.device_id,r.module,r.action,r.record_type,r.record_id,r.field_name||"",r.old_value||"",r.new_value||"",r.reason||""].map(v=>`"${String(v||"").replace(/"/g,'""')}"`).join(",")).join("\n");
     const blob=new Blob([BOM+hdr+rows],{type:"text/csv;charset=utf-8"});
     const url=URL.createObjectURL(blob);const a=document.createElement("a");
-    a.href=url;a.download=`audit-${new Date().toISOString().slice(0,10)}.csv`;
+    a.href=url;a.download=`audit-${dk(new Date())}.csv`;
     document.body.appendChild(a);a.click();document.body.removeChild(a);
   };
 
@@ -6882,8 +6905,8 @@ function AppInner(){
     try{
       const tmpl=await window.api.checklist.getTemplates();
       setChecklistTemplates(tmpl);
-      const d31=new Date(Date.now()-31*24*3600*1000).toISOString().slice(0,10);
-      const tod=new Date().toISOString().slice(0,10);
+      const d31=dk(new Date(Date.now()-31*24*3600*1000));
+      const tod=dk(new Date());
       const entries=await window.api.checklist.getEntriesRange(d31,tod);
       const byDate={};
       entries.forEach(e=>{if(!byDate[e.date])byDate[e.date]=[];byDate[e.date].push(e);});
@@ -6999,7 +7022,7 @@ function AppInner(){
   const sendFlashReport=useCallback(async(cfg,ld,cdDays)=>{
     try{
       const yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);
-      const ydk=yesterday.toISOString().slice(0,10);
+      const ydk=dk(yesterday);
       const yRaw=ld[ydk];if(!yRaw||!Object.keys(yRaw).length)return;
       const cashes=yRaw.cashes||[];
       let posVN=0,manVN=0,posTPS_=0,posTVQ_=0,anyD=false,closedCnt=0;
@@ -7023,16 +7046,16 @@ function AppInner(){
       let wtdSales=0,wtdDays_=0;const wtdVals=[];
       for(let i=0;i<=6;i++){
         const d_=new Date(mon);d_.setDate(mon.getDate()+i);if(d_>yesterday)break;
-        const dk_=d_.toISOString().slice(0,10);const day_=ld[dk_];
+        const dk_=dk(d_);const day_=ld[dk_];
         let s=0;if(day_&&Object.keys(day_).length){const cs=day_.cashes||[];let pv=0,mv=0;cs.forEach(c=>{pv+=c.posVentes||0;const mc=c.interac!=null&&c.finalCash!=null;mv+=mc?(c.interac||0)+(c.finalCash||0)+(c.deposits||0):0;});s=cs.some(c=>c.posVentes!=null)?pv:mv;}
         wtdVals.push(s);if(s>0){wtdSales+=s;wtdDays_++;}
       }
       // Same day last week (PRO WoW)
       const prevWeekD_=new Date(yesterday);prevWeekD_.setDate(yesterday.getDate()-7);
-      const prevDk_=prevWeekD_.toISOString().slice(0,10);
+      const prevDk_=dk(prevWeekD_);
       const prevRaw=ld[prevDk_];let prevDay_=null;
       if(prevRaw){const pcs=prevRaw.cashes||[];let pv=0,mv=0;pcs.forEach(c=>{pv+=c.posVentes||0;const mc=c.interac!=null&&c.finalCash!=null;mv+=mc?(c.interac||0)+(c.finalCash||0)+(c.deposits||0):0;});const s=pcs.some(c=>c.posVentes!=null)?pv:mv;if(s>0)prevDay_={anyData:true,venteNet:s};}
-      const isPro=canUse('cloudSync');
+      const isPro=canUse('cloudBackup');
       const flashLang_=cfg.flashLang||lang;
       const html=buildFlashReportHTML({
         date:ydk,day:{venteNet,total,anyData:anyD,labourCost:labC,labourPct:labP,cashes},
@@ -7059,7 +7082,7 @@ function AppInner(){
         // Check if already shown today
         const lastSeen=(await window.api.storage.get('balanceiq-flash-seen'))?.value||'';
         const yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);
-        const ydk=yesterday.toISOString().slice(0,10);
+        const ydk=dk(yesterday);
         if(lastSeen===ydk)return;
         // Build report data from yesterday's liveData
         const yRaw=liveData[ydk];if(!yRaw||!Object.keys(yRaw).length)return;
@@ -7084,14 +7107,14 @@ function AppInner(){
         let wtdSales_=0,wtdDays__=0;
         for(let i=0;i<=6;i++){
           const d_=new Date(mon_);d_.setDate(mon_.getDate()+i);if(d_>yesterday)break;
-          const dk_=d_.toISOString().slice(0,10);const dr=liveData[dk_];
+          const dk_=dk(d_);const dr=liveData[dk_];
           if(dr&&Object.keys(dr).length){const cs=dr.cashes||[];let pv=0,mv=0;cs.forEach(c=>{pv+=c.posVentes||0;const mc=c.interac!=null&&c.finalCash!=null;mv+=mc?(c.interac||0)+(c.finalCash||0)+(c.deposits||0):0;});const s=cs.some(c=>c.posVentes!=null)?pv:mv;if(s>0){wtdSales_+=s;wtdDays__++;}}
         }
         const reportData={date:ydk,venteNet:venteNet_,total:total_,wtdSales:wtdSales_,wtdDays:wtdDays__,closedCount:closedCnt,totalRegs:totalRegs_,isClosed:!!(closedDays||{})[ydk],labourCost:labC_,labourPct:labP_,cashes:cashes_,closePatterns:closePatterns||[]};
         setFlashReport(reportData);
         await window.api.storage.set('balanceiq-flash-seen',ydk);
         // PRO + Resend: also send by email
-        if(canUse('cloudSync')&&apiConfig.resendKey&&(apiConfig.flashEmail||apiConfig.reportEmail)){
+        if(canUse('cloudBackup')&&apiConfig.resendKey&&(apiConfig.flashEmail||apiConfig.reportEmail)){
           sendFlashReport(apiConfig,liveData,closedDays);
         }
       }catch(_){}
@@ -7107,7 +7130,7 @@ function AppInner(){
     const timer=setTimeout(async()=>{
       try{
         const gracePeriod=royaltyConfig?.gracePeriod??15;
-        const todayStr=new Date().toISOString().slice(0,10);
+        const todayStr=dk(new Date());
         const remRaw=await window.api.storage.get('balanceiq-royalty-reminders').catch(()=>null);
         const sent=remRaw?.value?JSON.parse(remRaw.value):{};
         let changed=false;
@@ -8771,7 +8794,7 @@ function AppInner(){
  </div>
 </div>}
 </>)}</CfgCard>
-{/* Daily Flash Report */}<CfgCard id="flashReport" title={T.flashReportTitle} cfgExpanded={cfgExpanded} onToggle={toggleCfg}><div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{T.flashReportHint}</div><label style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,cursor:"pointer"}}><input type="checkbox" checked={!!apiConfig.flashEnabled} onChange={e=>{const nc={...apiConfig,flashEnabled:e.target.checked};setApiConfig(nc);saveApiCfg(nc);}}/><span style={{fontSize:13,color:t.text,fontWeight:600}}>{T.flashEnabled}</span></label><div style={{marginBottom:10}}><div style={{fontSize:12,color:t.textMuted,marginBottom:3}}>{T.flashTimeLabel}</div><input type="time" value={apiConfig.flashTime||"07:00"} onChange={e=>{const nc={...apiConfig,flashTime:e.target.value};setApiConfig(nc);saveApiCfg(nc);}} style={{...inputStyle,width:120}}/></div>{/* Email section - PRO only */}<div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${t.cardBorder}`}}><div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}><span style={{fontSize:12,fontWeight:700,color:t.text}}>{lang==='fr'?"Par courriel":"By email"}</span><span style={{fontSize:9,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",padding:"1px 6px",borderRadius:8,fontWeight:700,letterSpacing:"0.5px"}}>PRO</span></div>{!canUse('cloudSync')?(<div style={{fontSize:11,color:t.textMuted,padding:"6px 8px",background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5}}>{lang==='en'?"Automatic email delivery is a Pro feature. Upgrade to also receive your flash report by email every morning.":"L'envoi par courriel est une fonctionnalité Pro. Passez à Pro pour recevoir votre rapport flash par courriel chaque matin."}</div>):(<>{!apiConfig.resendKey&&(<div style={{fontSize:11,color:"#f59e0b",marginBottom:8,padding:"5px 8px",background:"rgba(245,158,11,0.06)",border:"1px solid rgba(245,158,11,0.2)",borderRadius:5}}>{T.flashRequiresResend}</div>)}<div style={{marginBottom:8}}><div style={{fontSize:12,color:t.textMuted,marginBottom:3}}>{T.flashEmailLabel}</div><input value={apiConfig.flashEmail||""} onChange={e=>{const nc={...apiConfig,flashEmail:e.target.value};setApiConfig(nc);saveApiCfg(nc);}} placeholder={apiConfig.reportEmail||"vous@exemple.ca"} style={{...inputStyle,width:"100%",boxSizing:"border-box"}}/></div><div style={{display:"flex",alignItems:"center",gap:8}}><button onClick={async()=>{
+{/* Daily Flash Report */}<CfgCard id="flashReport" title={T.flashReportTitle} cfgExpanded={cfgExpanded} onToggle={toggleCfg}><div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{T.flashReportHint}</div><label style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,cursor:"pointer"}}><input type="checkbox" checked={!!apiConfig.flashEnabled} onChange={e=>{const nc={...apiConfig,flashEnabled:e.target.checked};setApiConfig(nc);saveApiCfg(nc);}}/><span style={{fontSize:13,color:t.text,fontWeight:600}}>{T.flashEnabled}</span></label><div style={{marginBottom:10}}><div style={{fontSize:12,color:t.textMuted,marginBottom:3}}>{T.flashTimeLabel}</div><input type="time" value={apiConfig.flashTime||"07:00"} onChange={e=>{const nc={...apiConfig,flashTime:e.target.value};setApiConfig(nc);saveApiCfg(nc);}} style={{...inputStyle,width:120}}/></div>{/* Email section - PRO only */}<div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${t.cardBorder}`}}><div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}><span style={{fontSize:12,fontWeight:700,color:t.text}}>{lang==='fr'?"Par courriel":"By email"}</span><span style={{fontSize:9,background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",padding:"1px 6px",borderRadius:8,fontWeight:700,letterSpacing:"0.5px"}}>PRO</span></div>{!canUse('cloudBackup')?(<div style={{fontSize:11,color:t.textMuted,padding:"6px 8px",background:t.section,border:`1px solid ${t.cardBorder}`,borderRadius:5}}>{lang==='en'?"Automatic email delivery is a Pro feature. Upgrade to also receive your flash report by email every morning.":"L'envoi par courriel est une fonctionnalité Pro. Passez à Pro pour recevoir votre rapport flash par courriel chaque matin."}</div>):(<>{!apiConfig.resendKey&&(<div style={{fontSize:11,color:"#f59e0b",marginBottom:8,padding:"5px 8px",background:"rgba(245,158,11,0.06)",border:"1px solid rgba(245,158,11,0.2)",borderRadius:5}}>{T.flashRequiresResend}</div>)}<div style={{marginBottom:8}}><div style={{fontSize:12,color:t.textMuted,marginBottom:3}}>{T.flashEmailLabel}</div><input value={apiConfig.flashEmail||""} onChange={e=>{const nc={...apiConfig,flashEmail:e.target.value};setApiConfig(nc);saveApiCfg(nc);}} placeholder={apiConfig.reportEmail||"vous@exemple.ca"} style={{...inputStyle,width:"100%",boxSizing:"border-box"}}/></div><div style={{display:"flex",alignItems:"center",gap:8}}><button onClick={async()=>{
                         if(!apiConfig.resendKey){setFlashTestStatus({err:"Clé Resend manquante."});return;}
                         const to=(apiConfig.flashEmail||apiConfig.reportEmail||'').trim();
                         if(!to){setFlashTestStatus({err:"Adresse courriel requise."});return;}
@@ -8828,7 +8851,7 @@ function AppInner(){
                         else alert(''+(r.message||'Error'));
                       }} style={{padding:"7px 14px",borderRadius:8,border:"1px solid rgba(239,68,68,0.4)",background:"rgba(239,68,68,0.06)",color:"#ef4444",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>
                          {lang==='en'?'Clear demo data':'Effacer les démos'}</button>)}</div><div style={{fontSize:10,color:t.textMuted,marginTop:5}}>{lang==='en'?'90 days • 3 months P&L • 8 clients • bakery forecasts':'90 jours • 3 mois P&L • 8 clients • prévisions boulangerie'}</div></div></div></CfgCard>{/* ── CLOUD ACCOUNT + SUBSCRIPTION (grouped) ── */}
-            {!canUse('cloudSync')&&!cloudUser&&<UpgradeHint promptKey="config_cloud_sync" message={T.upgPromptCloudSync} icon="" t={t}/>}<CloudAccountSection cloudUser={cloudUser} syncStatus={syncStatus} onSignIn={handleCloudSignIn} onSignUp={handleCloudSignUp} onSignOut={handleCloudSignOut} onResetPassword={handleCloudResetPassword} onRefreshPlan={handleRefreshPlan} t={t} T={T}/><SubscriptionSection cloudUser={cloudUser} activePlan={activePlan} orgId={getCloudOrgId()} onPlanRefreshed={p=>{setPlan(p);setActivePlan(p);}} t={t} T={T}/>
+            {!canUse('cloudBackup')&&!cloudUser&&<UpgradeHint promptKey="config_cloud_sync" message={T.upgPromptCloudSync} icon="" t={t}/>}<CloudAccountSection cloudUser={cloudUser} syncStatus={syncStatus} onSignIn={handleCloudSignIn} onSignUp={handleCloudSignUp} onSignOut={handleCloudSignOut} onResetPassword={handleCloudResetPassword} onRefreshPlan={handleRefreshPlan} t={t} T={T}/><SubscriptionSection cloudUser={cloudUser} activePlan={activePlan} orgId={getCloudOrgId()} onPlanRefreshed={p=>{setPlan(p);setActivePlan(p);}} t={t} T={T}/>
             {/* ── JOIN FRANCHISE NETWORK (restaurant/franchisee mode only) ── */}
             {appMode!=="franchiseur"&&<JoinNetworkCard cloudUser={cloudUser} franchiseeOrgId={getCloudOrgId()} t={t} T={T}/>}
             {/* ── PRÉVISIONS MODULE TOGGLE ── */}<CfgCard id="previsions" title={T.prevTitle} cfgExpanded={cfgExpanded} onToggle={toggleCfg}><div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{T.prevDesc}</div><div style={{display:"flex",alignItems:"center",gap:10}}><button onClick={async()=>{const v=!previsionsEnabled;setPrevisionsEnabled(v);await window.api.storage.set("balanceiq-previsions-enabled",v?"1":"0");if(v&&activeTab!=="previsions"){}}} style={{padding:"5px 18px",borderRadius:20,border:`1px solid ${previsionsEnabled?"#f97316":t.cardBorder}`,background:previsionsEnabled?"rgba(249,115,22,0.15)":t.section,color:previsionsEnabled?"#f97316":t.textSub,cursor:"pointer",fontWeight:700,fontSize:12,transition:"all 0.15s"}}>{previsionsEnabled?T.prevToggleOn:T.prevToggleOff}</button>{previsionsEnabled&&<span style={{fontSize:11,color:"#22c55e"}}>{lang==="en"?"Tab active in main navigation":"Onglet actif dans la navigation principale"}</span>}</div></CfgCard>{/* ── SECTION TOOLTIPS TOGGLE ── */}<CfgCard id="sectionTooltips" title={T.showTooltipsLabel} cfgExpanded={cfgExpanded} onToggle={toggleCfg}><div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{T.showTooltipsDesc}</div><button onClick={async()=>{const v=!showSectionTooltips;setShowSectionTooltips(v);await window.api.storage.set("balanceiq-section-tooltips",v?"1":"0");}} style={{padding:"5px 18px",borderRadius:20,border:`1px solid ${showSectionTooltips?"#f97316":t.cardBorder}`,background:showSectionTooltips?"rgba(249,115,22,0.15)":t.section,color:showSectionTooltips?"#f97316":t.textSub,cursor:"pointer",fontWeight:700,fontSize:12,transition:"all 0.15s"}}>{showSectionTooltips?T.showTooltipsOn:T.showTooltipsOff}</button></CfgCard>{/* ── TODAY-AT-A-GLANCE TOGGLE ── */}<CfgCard id="glanceCard" title={T.glanceConfigLabel} cfgExpanded={cfgExpanded} onToggle={toggleCfg}><div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{T.glanceConfigHint}</div><div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}><button onClick={()=>{const v=apiConfig.glanceEnabled===false;const nc={...apiConfig,glanceEnabled:v};setApiConfig(nc);saveApiCfg(nc);}} style={{padding:"5px 18px",borderRadius:20,border:`1px solid ${apiConfig.glanceEnabled!==false?"#f97316":t.cardBorder}`,background:apiConfig.glanceEnabled!==false?"rgba(249,115,22,0.15)":t.section,color:apiConfig.glanceEnabled!==false?"#f97316":t.textSub,cursor:"pointer",fontWeight:700,fontSize:12,transition:"all 0.15s"}}>{apiConfig.glanceEnabled!==false?T.prevToggleOn:T.prevToggleOff}</button>{apiConfig.glanceEnabled!==false&&glanceDismissedDate===todayKey&&<button onClick={()=>{setGlanceDismissedDate(null);window.api.storage.set("balanceiq-glance-date","").catch(saveFailed("balanceiq-glance-date"));}} style={{padding:"5px 14px",borderRadius:20,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontSize:11}}>{lang==='fr'?'Afficher maintenant':'Show now'}</button>}</div></CfgCard>{/* ── ONBOARDING GUIDE ── */}<CfgCard id="onboardingCard" title={lang==='fr'?'Guide de démarrage':'Getting Started Guide'} cfgExpanded={cfgExpanded} onToggle={toggleCfg}><div style={{fontSize:11,color:t.textMuted,marginBottom:10}}>{lang==='fr'?`Progression: ${obDone}/${obItems.length} étapes complétées.`:`Progress: ${obDone}/${obItems.length} steps completed.`}</div><div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}><button onClick={()=>setShowObChecklist(true)} style={{padding:"5px 14px",borderRadius:20,border:"1px solid rgba(249,115,22,0.35)",background:"rgba(249,115,22,0.08)",color:"#f97316",cursor:"pointer",fontSize:11,fontWeight:700}}>
