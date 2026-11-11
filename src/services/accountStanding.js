@@ -3,7 +3,8 @@
 // PDF and the statement email all share:
 //
 //   invoices outstanding    what is still unpaid on sent invoices, by age
-//   credits available       credit notes not yet applied to an invoice
+//   credits available       credit notes not yet applied to an invoice, plus
+//                           customer credits (overpayments kept on the account)
 //   balance owed            outstanding less available credit
 //   deposits held           deposits taken on invoices not yet sent (2500)
 //
@@ -12,6 +13,7 @@
 // and only the rest counts as available credit.
 
 import { CLOSED_INVOICE_STATUSES } from '../utils/invoiceStatus.mjs';
+import { creditAvailableCents } from '../utils/clientCredits.mjs';
 
 const DAY = 86400000;
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -22,7 +24,7 @@ const CLOSED = CLOSED_INVOICE_STATUSES;
  * totalOf(document) -> the document's total, computed the way the rest of the app
  * computes it. asOf is YYYY-MM-DD.
  */
-export function accountStanding({ clientId, factures = [], creditNotes = [], asOf, totalOf }) {
+export function accountStanding({ clientId, factures = [], creditNotes = [], clientCredits = [], asOf, totalOf }) {
   const asOfMs = Date.parse(`${asOf}T12:00:00`);
   const mine = (factures || []).filter(f => f && f.clientId === clientId && f.documentType !== 'proforma');
   const aging = { current: 0, d30: 0, d60: 0, d90: 0 };
@@ -49,6 +51,14 @@ export function accountStanding({ clientId, factures = [], creditNotes = [], asO
     if (!cn || cn.clientId !== clientId || cn.statut === 'Annulée') continue;
     const remaining = round2((Number(totalOf(cn)) || 0) - (applied.get(cn.numero) || 0));
     if (remaining > 0.005) credits.push({ numero: cn.numero || '', remaining });
+  }
+
+  // An applied customer credit is already a payment row on its invoice, so only
+  // what is still available counts here (cents to dollars at this boundary).
+  for (const cc of clientCredits || []) {
+    if (!cc || cc.clientId !== clientId) continue;
+    const remaining = creditAvailableCents(cc) / 100;
+    if (remaining > 0.005) credits.push({ numero: cc.reference || '', remaining, clientCredit: true, creditId: cc.id });
   }
 
   const outstanding = round2(aging.current + aging.d30 + aging.d60 + aging.d90);

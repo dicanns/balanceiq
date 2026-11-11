@@ -268,6 +268,8 @@ contextBridge.exposeInMainWorld('api', {
     depositPost:    (opts) => ipcRenderer.invoke('ledger:deposit:post', opts),
     depositApply:   (opts) => ipcRenderer.invoke('ledger:deposit:apply', opts),
     depositReverse: (opts) => ipcRenderer.invoke('ledger:deposit:reverse', opts),
+    creditApply:        (opts) => ipcRenderer.invoke('ledger:credit:apply', opts),
+    creditApplyReverse: (opts) => ipcRenderer.invoke('ledger:credit:applyReverse', opts),
     paymentPost:    (opts) => ipcRenderer.invoke('ledger:payment:post', opts),
     paymentReverse: (opts) => ipcRenderer.invoke('ledger:payment:reverse', opts),
     creditNotePost: (opts) => ipcRenderer.invoke('ledger:creditnote:post', opts),

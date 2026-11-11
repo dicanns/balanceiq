@@ -11,10 +11,11 @@ export const WRITTEN_OFF = 'Radiée';
 export const CLOSED_INVOICE_STATUSES = ['Payée', 'Créditée', WRITTEN_OFF, 'Annulée', 'Brouillon'];
 
 // A row in an invoice's paiements is money received unless it is a credit note
-// applied to it (fromCredit) or the bad-debt write-off (badDebt). Both settle
-// the balance; neither came through the bank.
+// applied to it (fromCredit), a customer credit applied to it (fromClientCredit,
+// an overpayment kept on the account) or the bad-debt write-off (badDebt). Each
+// settles the balance; none came through the bank.
 export function isCashPayment(p) {
-  return !!p && !p.fromCredit && !p.badDebt;
+  return !!p && !p.fromCredit && !p.fromClientCredit && !p.badDebt;
 }
 
 // One definition of "overdue" for the dashboard, the lists, the editor badge and

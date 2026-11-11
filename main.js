@@ -2154,6 +2154,50 @@ ledgerHandle('ledger:deposit:apply', async (_e, { depositId, invoiceNumber, depo
   }
 });
 
+// Customer credits (an overpayment kept on the customer's account). The money was
+// received into 2500 when the credit was created (ledger:deposit:post, keyed by the
+// credit id), so applying it to an invoice only moves 2500 against receivables:
+// the receipt is deliberately NOT posted here. Idempotent on the application id.
+ledgerHandle('ledger:credit:apply', async (_e, { applicationId, invoiceNumber, applyDate, amountCents } = {}) => {
+  try {
+    if (!applicationId || !amountCents || amountCents <= 0 || !applyDate) return { ok: false, error: 'invalid_credit_application' };
+    const existing = glFindEntryBySource('credit_apply', applicationId);
+    if (existing) return { ok: true, entryId: existing.id, alreadyPosted: true };
+    const accounts = coaList();
+    const find = (num) => accounts.find(a => a.account_number === num);
+    const deposits = find('2500');
+    const ar = find('1100');
+    if (!deposits || !ar) return { ok: false, error: 'missing_coa_accounts', detail: '2500 / 1100' };
+    const label = `Crédit client appliqué ${invoiceNumber || ''}`.trim();
+    const { entryId } = glDraftEntry({
+      entry_date: applyDate,
+      description: label,
+      source_type: 'credit_apply',
+      source_id: String(applicationId),
+      lines: [
+        { account_id: deposits.id, debit_cents: amountCents, credit_cents: 0, memo: label },
+        { account_id: ar.id, debit_cents: 0, credit_cents: amountCents, memo: 'Comptes clients' },
+      ],
+    });
+    glPostEntry(entryId);
+    return { ok: true, entryId };
+  } catch (err) {
+    return { ok: false, error: 'post_failed', detail: String(err?.message ?? err) };
+  }
+});
+
+ledgerHandle('ledger:credit:applyReverse', async (_e, { applicationId, reason } = {}) => {
+  try {
+    const entry = glFindEntryBySource('credit_apply', applicationId);
+    if (!entry) return { ok: true, nothingToReverse: true };
+    if (entry.status === 'draft') { glDeleteDraft(entry.id); return { ok: true, deletedDraft: true }; }
+    const res = glReverseEntry(entry.id, reason || 'Crédit client retiré');
+    return { ok: true, ...res };
+  } catch (err) {
+    return { ok: false, error: 'reverse_failed', detail: String(err?.message ?? err) };
+  }
+});
+
 ipcMain.handle('ledger:deposit:reverse', async (_e, { depositId, reason } = {}) => {
   try {
     const out = {};

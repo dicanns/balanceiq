@@ -66,6 +66,7 @@ import CompanyPlanGate from './components/CompanyPlanGate.jsx';
 import RemindersTab from './components/RemindersTab.jsx';
 import ClientReminderPicker from './components/ClientReminderPicker.jsx';
 import { accountStanding } from './services/accountStanding.js';
+import { CLIENT_CREDITS_KEY, CLIENT_CREDIT_MODE, CLIENT_CREDIT_MODE_LABELS, CLIENT_CREDIT_SOURCE_OVERPAYMENT, clientAvailableCents, creditAvailableCents, applyCredits, addApplication, removeApplication, setApplicationEntry, findCreditByPayment, findCreditByApplication, creditsForFacture } from './utils/clientCredits.mjs';
 import { newEmailLogEntry, needsStatusCheck, needsViewCheck, applyDeliveryUpdates, emailWorklistItems, emailBadge } from './services/emailTracking.js';
 import { companyAccess, COMPANY_PLAN_VERIFIED_KEY, PAID_PLANS } from './services/companyAccess.js';
 import { shouldRecalcDueDate } from './utils/invoiceDueDate.js';
@@ -185,6 +186,9 @@ const LIGHT = {
 const ThemeCtx = createContext(LIGHT);
 const useT = () => useContext(ThemeCtx);
 const LangCtx = createContext(FR);
+// Customer credits (overpayments kept on the account) and their saver, shared by the
+// payment screen, the invoice editor, statements and the customer list.
+const ClientCreditsCtx = createContext({credits:[],saveCredits:()=>{}});
 const useL = () => useContext(LangCtx);
 
 // ── CONSTANTS ──
@@ -1392,7 +1396,7 @@ function ComptabiliteExport({creditNotes,factures,clients,produits,categories,co
       const facs=factures.filter(f=>f.clientId===cid&&!["Annulée","Brouillon"].includes(f.statut)&&f.documentType!=="proforma");
       let soldOuv=0;if(dateFrom){for(const f of facs){if(f.date>=dateFrom)continue;const tot=invoiceTotalsFor(f,clients).total;const pBefore=(f.paiements||[]).filter(p=>p.date<dateFrom).reduce((s,p)=>s+(p.montant||0),0);soldOuv+=tot-pBefore;}}
       const facture=facs.filter(f=>(!dateFrom||f.date>=dateFrom)&&(!dateTo||f.date<=dateTo)).reduce((s,f)=>s+invoiceTotalsFor(f,clients).total,0);
-      const credited=facs.reduce((s,f)=>s+(f.paiements||[]).filter(p=>(p.fromCredit||p.badDebt)&&(!dateFrom||p.date>=dateFrom)&&(!dateTo||p.date<=dateTo)).reduce((ss,p)=>ss+(p.montant||0),0),0);
+      const credited=facs.reduce((s,f)=>s+(f.paiements||[]).filter(p=>(p.fromCredit||p.fromClientCredit||p.badDebt)&&(!dateFrom||p.date>=dateFrom)&&(!dateTo||p.date<=dateTo)).reduce((ss,p)=>ss+(p.montant||0),0),0);
       const encaisse=facs.reduce((s,f)=>s+(f.paiements||[]).filter(p=>isCashPayment(p)&&(!dateFrom||p.date>=dateFrom)&&(!dateTo||p.date<=dateTo)).reduce((ss,p)=>ss+(p.montant||0),0),0);
       const soldFerm=soldOuv+facture-credited-encaisse;
       if(soldOuv===0&&facture===0&&credited===0&&encaisse===0)continue;
@@ -1448,7 +1452,7 @@ function ComptabiliteExport({creditNotes,factures,clients,produits,categories,co
     for(const fac of factures){
       const cl=clients.find(c=>c.id===fac.clientId);
       for(const p of fac.paiements||[]){
-        if(p.fromCredit)continue;
+        if(p.fromCredit||p.fromClientCredit)continue; // applied credits settle the invoice, no bank receipt
         if(dateFrom&&p.date<dateFrom)continue;
         if(dateTo&&p.date>dateTo)continue;
         const amt=(p.montant||0);
@@ -1512,7 +1516,7 @@ function ComptabiliteExport({creditNotes,factures,clients,produits,categories,co
     for(const fac of factures){
       const cl=clients.find(c=>c.id===fac.clientId);
       for(const p of fac.paiements||[]){
-        if(p.fromCredit)continue;
+        if(p.fromCredit||p.fromClientCredit)continue; // applied credits settle the invoice, no bank receipt
         if(dateFrom&&p.date<dateFrom)continue;
         if(dateTo&&p.date>dateTo)continue;
         const amt=(p.montant||0);
@@ -1585,7 +1589,7 @@ function ComptabiliteExport({creditNotes,factures,clients,produits,categories,co
  const facs=factures.filter(f=>f.clientId===cid&&!["Annulée","Brouillon"].includes(f.statut));
  let soldOuv=0;if(dateFrom){for(const f of facs){if(f.date>=dateFrom)continue;const tot=invoiceTotalsFor(f,clients).total;const pBefore=(f.paiements||[]).filter(p=>p.date<dateFrom).reduce((s,p)=>s+(p.montant||0),0);soldOuv+=tot-pBefore;}}
  const facture=facs.filter(f=>(!dateFrom||f.date>=dateFrom)&&(!dateTo||f.date<=dateTo)).reduce((s,f)=>s+invoiceTotalsFor(f,clients).total,0);
- const credited=facs.reduce((s,f)=>s+(f.paiements||[]).filter(p=>(p.fromCredit||p.badDebt)&&(!dateFrom||p.date>=dateFrom)&&(!dateTo||p.date<=dateTo)).reduce((ss,p)=>ss+(p.montant||0),0),0);
+ const credited=facs.reduce((s,f)=>s+(f.paiements||[]).filter(p=>(p.fromCredit||p.fromClientCredit||p.badDebt)&&(!dateFrom||p.date>=dateFrom)&&(!dateTo||p.date<=dateTo)).reduce((ss,p)=>ss+(p.montant||0),0),0);
  const encaisse=facs.reduce((s,f)=>s+(f.paiements||[]).filter(p=>isCashPayment(p)&&(!dateFrom||p.date>=dateFrom)&&(!dateTo||p.date<=dateTo)).reduce((ss,p)=>ss+(p.montant||0),0),0);
  const soldFerm=soldOuv+facture-credited-encaisse;
  if(soldOuv===0&&facture===0&&credited===0&&encaisse===0)continue;
@@ -1703,7 +1707,7 @@ function FacturationDashboard({soumissions,commandes,factures,creditNotes,client
 }
 
 // ── ÉTAT DE COMPTE ──
-function buildEtatDeCompteHTML({client,factures,creditNotes,dateFrom,dateTo,companyInfo,invoiceTemplate={},lang}){
+function buildEtatDeCompteHTML({client,factures,creditNotes,clientCredits=[],dateFrom,dateTo,companyInfo,invoiceTemplate={},lang}){
  const docLang=lang||(client?.langue==="English"?"en":"fr");
  const isEN=docLang==="en";
  const L={
@@ -1730,6 +1734,7 @@ function buildEtatDeCompteHTML({client,factures,creditNotes,dateFrom,dateTo,comp
    txPayment:      isEN?"Payment":"Paiement",
    txWriteOff:     isEN?"Written off (bad debt)":"Radiée (créance irrécouvrable)",
    txCredit:       isEN?"Credit Note":"Note de crédit",
+   txClientCredit: isEN?"Customer credit (overpayment)":"Crédit client (paiement en trop)",
    txDeposit:      isEN?"Deposit":"Acompte",
    outstanding:    isEN?"Invoices outstanding":"Factures impayées",
    creditsAvailable:isEN?"Credits available":"Crédits disponibles",
@@ -1754,12 +1759,18 @@ function buildEtatDeCompteHTML({client,factures,creditNotes,dateFrom,dateTo,comp
  for(const p of (fac.paiements||[])){
  // A credit note applied to this invoice is already on the statement as its own line.
  if(p.fromCredit)continue;
+ if(p.fromClientCredit)continue; // its own line (customer credit) is below
  if(p.date<=dateTo)txns.push({date:p.date,type:p.badDebt?L.txWriteOff:p.isDeposit?L.txDeposit:L.txPayment,ref:p.numero||p.reference||"-",debit:0,credit:p.montant||0});
  }
  }
  for(const cn of (creditNotes||[]).filter(c=>c.clientId===client?.id&&!["Annulée"].includes(c.statut))){
  const tot=invoiceTotalsFor(cn,[client]).total;
  if(cn.date<=dateTo)txns.push({date:cn.date,type:L.txCredit,ref:cn.numero,debit:0,credit:tot});
+ }
+ // A customer credit (overpayment kept on the account) is a line of its own for its full
+ // amount; applying it to an invoice adds no second line.
+ for(const cc of (clientCredits||[]).filter(c=>c.clientId===client?.id)){
+ if(cc.date<=dateTo)txns.push({date:cc.date,type:L.txClientCredit,ref:cc.reference||"-",debit:0,credit:(cc.amountCents||0)/100});
  }
  txns.sort((a,b)=>a.date.localeCompare(b.date));
  // Everything before the start date is carried as one "Balance forward" line, so the
@@ -1787,7 +1798,7 @@ function buildEtatDeCompteHTML({client,factures,creditNotes,dateFrom,dateTo,comp
  }
  const totalDu=courant+j30+j60+j90;
  // The same standing the statement email quotes: outstanding, available credit, balance owed, deposits held.
- const st=accountStanding({clientId:client?.id,factures,creditNotes:creditNotes||[],asOf:dateTo,totalOf:d=>invoiceTotalsFor(d,[client]).total});
+ const st=accountStanding({clientId:client?.id,factures,creditNotes:creditNotes||[],clientCredits:(clientCredits||[]).filter(c=>(c.date||"")<=dateTo),asOf:dateTo,totalOf:d=>invoiceTotalsFor(d,[client]).total});
  const m2=v=>`$${(Number(v)||0).toFixed(2)}`;
  const standingRows=[[L.outstanding,m2(st.outstanding),"#1a1a1a"],...(st.creditsAvailable>0.005?[[L.creditsAvailable,`-${m2(st.creditsAvailable)}`,"#16a34a"]]:[]),[L.balanceOwed,m2(st.balanceOwed),"#1a1a1a"]];
  const standingBox=`<div style="margin:12px 0 0 auto;max-width:340px;border:1px solid #eee;border-radius:4px;padding:8px 12px">${standingRows.map(([k,v,c],i)=>`<div style="display:flex;justify-content:space-between;gap:12px;${i===standingRows.length-1?"border-top:1px solid #ddd;margin-top:3px;padding-top:6px;font-weight:700;font-size:14px":"padding:3px 0;font-size:12px"}"><span>${k}</span><span style="color:${c};font-family:monospace">${v}</span></div>`).join("")}${st.depositsHeld>0.005?`<div style="font-size:11px;color:#555;margin-top:6px">${L.depositsHeld}: ${m2(st.depositsHeld)}</div>`:""}</div>`;
@@ -1798,19 +1809,20 @@ function buildEtatDeCompteHTML({client,factures,creditNotes,dateFrom,dateTo,comp
 function EtatDeCompteViewer({clientId,clientOverride,clients,factures,creditNotes,companyInfo,invoiceTemplate,onBack,apiConfig=null}){
  const t=useT();
  const T=useL();
+ const {credits:clientCredits}=useContext(ClientCreditsCtx);
  const client=clientOverride||clients.find(c=>String(c.id)===String(clientId));
  const now=dk(new Date());
  const firstOfYear=now.slice(0,4)+"-01-01";
  const [dateFrom,setDateFrom]=useState(firstOfYear);
  const [dateTo,setDateTo]=useState(now);
  const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:11,padding:"3px 6px",outline:"none",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"};
- const html=useMemo(()=>buildEtatDeCompteHTML({client,factures,creditNotes,dateFrom,dateTo,companyInfo,invoiceTemplate,lang:T===EN?"en":"fr"}),[client,factures,creditNotes,dateFrom,dateTo,companyInfo,invoiceTemplate,T]);
+ const html=useMemo(()=>buildEtatDeCompteHTML({client,factures,creditNotes,clientCredits,dateFrom,dateTo,companyInfo,invoiceTemplate,lang:T===EN?"en":"fr"}),[client,factures,creditNotes,clientCredits,dateFrom,dateTo,companyInfo,invoiceTemplate,T]);
  const [emailModal,setEmailModal]=useState(null);
  // The email carries the same figures as the statement: outstanding, credits, balance owed, deposits held.
  const openStatementEmail=()=>{
   if(!client)return;
   const isEN=client.langue==="English";
-  const st=accountStanding({clientId:client.id,factures,creditNotes:creditNotes||[],asOf:dateTo,totalOf:d=>invoiceTotalsFor(d,clients).total});
+  const st=accountStanding({clientId:client.id,factures,creditNotes:creditNotes||[],clientCredits,asOf:dateTo,totalOf:d=>invoiceTotalsFor(d,clients).total});
   const m=v=>(Number(v)||0).toLocaleString(isEN?"en-CA":"fr-CA",{style:"currency",currency:"CAD"});
   const who=client.contact||client.entreprise||"";
   const lines=isEN
@@ -1826,6 +1838,7 @@ function EtatDeCompteViewer({clientId,clientOverride,clients,factures,creditNote
 function AgingReport({factures,clients,creditNotes,companyInfo,apiConfig,showUpgradePrompt,invoiceTemplate}){
  const t=useT();
  const T=useL();
+ const {credits:clientCredits}=useContext(ClientCreditsCtx);
  const [asOf,setAsOf]=useState(dk(new Date()));
  const [sortCol,setSortCol]=useState("montantDu");
  const [sortDir,setSortDir]=useState(-1);
@@ -1896,7 +1909,7 @@ function AgingReport({factures,clients,creditNotes,companyInfo,apiConfig,showUpg
  setBulkStatus({sending:true,current:i+1,total:toSend.length});
  try{
  const isEN=row.client?.langue==="English";
- const html=buildEtatDeCompteHTML({client:row.client,factures,creditNotes:creditNotes||[],dateFrom:firstOfYear,dateTo:now,companyInfo});
+ const html=buildEtatDeCompteHTML({client:row.client,factures,creditNotes:creditNotes||[],clientCredits,dateFrom:firstOfYear,dateTo:now,companyInfo});
  // Build PDF attachments for unpaid invoices
  const attachments=[];
  for(const fac of row.factures){
@@ -2659,7 +2672,7 @@ const docLangOf=client=>client?.langue==="English"?"en":"fr";
 // Status and payment method are stored in French; print them in the document's language.
 const docStatut=(statut,lang)=>(lang==="en"?EN:FR).facStatuts?.[statut]||statut;
 const PAY_MODE_EN={"Chèque":"Cheque","Virement/E-Transfer":"E-Transfer","Carte de crédit":"Credit card","Carte de débit":"Debit card","Comptant":"Cash","Autre":"Other"};
-const docMode=(mode,lang)=>lang==="en"?(PAY_MODE_EN[mode]||mode):mode;
+const docMode=(mode,lang)=>mode===CLIENT_CREDIT_MODE?(CLIENT_CREDIT_MODE_LABELS[lang==="en"?"en":"fr"]):lang==="en"?(PAY_MODE_EN[mode]||mode):mode;
 const MODES_PAIEMENT=["Chèque","Virement/E-Transfer","Carte de crédit","Carte de débit","Comptant","Autre"];
 
 // ── COMMANDE ──
@@ -2919,6 +2932,7 @@ function BadDebtPanel({form,setForm,savedId,savedNumero,totals,soldeDu,factures,
 function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,produits,companyInfo,docNums,saveDocNums,factures,saveFactures,commandes,soumissions,onBack,onBackToClient,onBackToList,initClientId,onEnregistrerPaiement,onCreditNote,apiConfig,showUpgradePrompt,invoiceTemplate,onOpenDoc,onConvertProforma,categories=[],saveCategories,saveProduits}){
  const t=useT();
  const T=useL();
+ const {credits:clientCredits,saveCredits:saveClientCredits}=useContext(ClientCreditsCtx);
  const isNew=!facture?.id;
  const isProforma=facture?.documentType==="proforma";
  const todayStr=dk(new Date());
@@ -3117,6 +3131,9 @@ function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,pr
  const nowLive=isLiveInvoiceStatus(form.statut);
  let glCleared=false;
  if(!isProforma&&form.statut==="Annulée"&&prevStatut!=="Annulée"&&(form.paiements||[]).some(isCashPayment)){alert(T.facVoidHasPayments);return;}
+ // Applied customer credits are released the same way payments are, before the void.
+ let releasedCreditRows=false;
+ if(!isProforma&&form.statut==="Annulée"&&prevStatut!=="Annulée"&&(form.paiements||[]).some(p=>p.fromClientCredit)){if(!await releaseClientCreditRows())return;releasedCreditRows=true;}
  // Leaving the ledger (back to draft, or voided): the entry is reversed first,
  // and the invoice only changes if that worked. A closed period refuses.
  if(!isProforma&&wasLive&&!nowLive){
@@ -3125,7 +3142,7 @@ function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,pr
   glCleared=true;
   setForm(p=>({...p,glEntryId:null}));
  }
- const doc={...form,id,numero,lignes,acomptes,customPaymentInstructions:cpiSanitized||null,customPaymentInstructionsSnapshot:cpiSnapshot,...(glCleared?{glEntryId:null}:{})};
+ const doc={...form,...(releasedCreditRows?{paiements:(form.paiements||[]).filter(p=>!p.fromClientCredit)}:{}),id,numero,lignes,acomptes,customPaymentInstructions:cpiSanitized||null,customPaymentInstructionsSnapshot:cpiSnapshot,...(glCleared?{glEntryId:null}:{})};
  // Totals are frozen in cents when the invoice enters the ledger, and dropped when it goes back to draft.
  const fz=freezeTotals(liveTotals);
  const willFinalize=!isProforma&&nowLive&&!wasLive;
@@ -3161,18 +3178,20 @@ function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,pr
  };
  const doDelete=async()=>{
  if(!savedId)return;
+ let releasedOnDelete=false;
  const reason=await promptCorrectionReason(T===EN?'Invoice void':'Annulation de la facture',T===EN?'en':'fr');
  if(!reason)return;
  // A voided invoice leaves the ledger: its revenue, tax and receivable are
  // reversed first, and the void only happens if that worked.
  if(!isProforma&&isLiveInvoiceStatus(savedStatut)){
   if((form.paiements||[]).some(isCashPayment)){alert(T.facVoidHasPayments);return;}
+  if((form.paiements||[]).some(p=>p.fromClientCredit)){if(!await releaseClientCreditRows())return;releasedOnDelete=true;}
   const r=await window.api?.ledger?.invoiceUnpost?.({invoiceId:savedId,reason:`${T===EN?'Invoice voided':'Facture annulée'}: ${reason}`}).catch(e=>({ok:false,error:String(e?.message||e)}));
   if(!r?.ok){alert(T.facUnpostFailed+(r?.error?`\n(${r.error})`:""));return;}
  }
  logVoid('invoice','facture',savedId,reason);
  if(invBridgeConfig.enabled)window.api?.inventory?.deduct?.delete?.(savedId);
- saveFactures(factures.map(f=>f.id===savedId?{...f,statut:"Annulée",voidReason:reason,voidDate:dk(new Date()),glEntryId:null}:f));
+ saveFactures(factures.map(f=>f.id===savedId?{...f,...(releasedOnDelete?{paiements:(f.paiements||[]).filter(p=>!p.fromClientCredit)}:{}),statut:"Annulée",voidReason:reason,voidDate:dk(new Date()),glEntryId:null}:f));
  onBack();
  };
  const doReissue=()=>{
@@ -3273,17 +3292,49 @@ function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,pr
  // entry FIRST, so the books can never be left holding a payment the invoice no
  // longer shows. Deliberately not gated on `locked`: that lock protects the
  // invoice lines, and a paid invoice is exactly when a bad payment needs fixing.
+ // Customer-credit rows hold no cash. Before an invoice is voided they are released:
+ // each application is reversed in the ledger first and only then taken off the
+ // invoice and the credit (which becomes available again). False when one refused.
+ const releaseClientCreditRows=async()=>{
+  for(const p of (form.paiements||[]).filter(x=>x.fromClientCredit)){
+   const r=await window.api?.ledger?.creditApplyReverse?.({applicationId:p.id,reason:T.facCreditReleaseReason}).catch(()=>null);
+   if(!r?.ok){alert(T.facCreditReverseFailed);return false;}
+   saveClientCredits(prev=>removeApplication(prev,p.id));
+  }
+  return true;
+ };
  const voidPaiement=async(p)=>{
   const label=`${p.date||""} ${fmt(p.montant||0)}`.trim();
   if(!window.confirm(T===EN
    ?`Void this payment (${label})? Its ledger entry is reversed; the original stays in the record.`
    :`Annuler ce paiement (${label})? Son écriture est contrepassée; l'originale reste au registre.`))return;
+  // The payment that created a customer credit: refused once the credit was applied
+  // to an invoice, otherwise its receipt is reversed with it (below) and the credit goes.
+  const ownCredit=p.fromClientCredit?null:findCreditByPayment(clientCredits,p.id);
+  if(ownCredit&&(ownCredit.applications||[]).length){
+   const nums=[...new Set(ownCredit.applications.map(a=>(factures.find(f=>f.id===a.factureId)||{}).numero||a.factureId))];
+   alert(`${T.facCreditAlreadyApplied} ${nums.join(", ")}\n${T.facCreditAlreadyAppliedHint}`);
+   return;
+  }
   try{
+   if(p.fromClientCredit){
+    // Ledger first: the row and the application go only when the reversal returned ok.
+    const r=await window.api?.ledger?.creditApplyReverse?.({applicationId:p.id,reason:T.facCreditReleaseReason}).catch(()=>null);
+    if(!r?.ok){alert(T.facCreditReverseFailed);return;}
+    saveClientCredits(prev=>removeApplication(prev,p.id));
+   }
    // An applied deposit has two entries (received into 2500, applied to receivables); voiding reverses both.
-   const reverse=p.appliedDeposit?window.api?.ledger?.depositReverse:window.api?.ledger?.paymentReverse;
+   const reverse=p.fromClientCredit?null:p.appliedDeposit?window.api?.ledger?.depositReverse:window.api?.ledger?.paymentReverse;
    if(reverse){
     const r=await reverse(p.appliedDeposit?{depositId:p.id,reason:T===EN?"Deposit voided":"Acompte annulé"}:{paymentId:p.id,reason:T===EN?"Payment voided":"Paiement annulé"});
     if(r&&r.ok===false){alert(T===EN?"Could not reverse the ledger entry. Nothing was changed.":"Impossible de contrepasser l'écriture. Rien n'a été modifié.");return;}
+   }
+   if(ownCredit){
+    const rc=await window.api?.ledger?.depositReverse?.({depositId:ownCredit.id,reason:T.facCreditCancelReason}).catch(()=>null);
+    if(!rc?.ok){alert(T.facCreditReverseFailed);return;}
+    saveClientCredits(prev=>prev.filter(c=>c.id!==ownCredit.id));
+    if(window.api?.cheques?.removePayment)window.api.cheques.removePayment(ownCredit.id,ownCredit.amountCents).catch(()=>{});
+    if(persistEncaisse&&encaisseData){const ck=Object.keys(encaisseData).find(k=>(encaisseData[k]?.autreEntrees||[]).some(e=>e.fromFacturation&&e.id===ownCredit.id));if(ck)persistEncaisse({...encaisseData,[ck]:{...encaisseData[ck],autreEntrees:encaisseData[ck].autreEntrees.filter(e=>!(e.fromFacturation&&e.id===ownCredit.id))}});}
    }
    // A cheque payment also leaves the cheque register. If its deposit already
    // cleared, that statement line now proves money the books no longer hold.
@@ -3415,13 +3466,13 @@ function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,pr
  {invStockWarnings.length>0&&<div style={{background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.3)",borderRadius:6,padding:"6px 10px",marginTop:4,fontSize:11,color:"#d97706"}}>{invStockWarnings.map(n=>T.invBridgeNegWarn(n)).join(" · ")}<button onClick={()=>setInvStockWarnings([])} style={{marginLeft:8,background:"none",border:"none",color:"#d97706",cursor:"pointer",fontSize:10}}>×</button></div>}
  {!locked&&<div style={{display:"flex",gap:6,marginTop:2,flexWrap:"wrap"}}><button onClick={()=>setLignes(ls=>[...ls,newLigne()])} style={{padding:"5px 12px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:11}}>{T.facAjouterLigne}</button>{canUse('invoiceSections')&&<React.Fragment><button onClick={()=>setLignes(ls=>[...ls,{id:Date.now().toString(36)+Math.random().toString(36).slice(2),type:'section',label:''}])} style={{padding:"5px 12px",borderRadius:6,border:"1px solid rgba(249,115,22,0.25)",background:"rgba(249,115,22,0.05)",color:"#f97316",cursor:"pointer",fontWeight:600,fontSize:11}}>{T.sectionAddBtn}</button><details style={{display:"inline"}}><summary style={{listStyle:"none",cursor:"pointer",userSelect:"none",outline:"none",display:"inline-flex",alignItems:"center",verticalAlign:"middle",marginLeft:2}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:15,height:15,borderRadius:"50%",background:"rgba(249,115,22,0.15)",border:"1px solid rgba(249,115,22,0.4)",fontSize:9,fontWeight:800,color:"#f97316",lineHeight:1}}>?</span></summary><div style={{marginTop:6,padding:"10px 12px",background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:7,fontSize:11,color:t.text,display:"flex",flexDirection:"column",gap:4,minWidth:260}}><div style={{fontWeight:700,marginBottom:2}}>{T===EN?"What are sections?":"À quoi servent les sections ?"}</div><div style={{color:t.textSub}}>{T===EN?"Sections add a labelled header row that groups line items below it, each with its own subtotal in the PDF. Useful for complex invoices - e.g. Phase 1 / Phase 2, Labour / Materials.":"Les sections ajoutent un en-tête qui regroupe les lignes avec un sous-total dans le PDF. Utile pour les factures complexes - ex. Phase 1 / Phase 2, Main-d'œuvre / Matériaux."}</div><div style={{fontSize:10,color:t.textMuted,fontStyle:"italic",marginTop:2}}>{T===EN?"Not needed for simple invoices.":"Pas nécessaire pour les factures simples."}</div></div></details></React.Fragment>}</div>}</div><div style={{display:"flex",gap:10,flexWrap:"wrap"}}><div style={{flex:"2 1 200px",background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}><div style={{fontSize:12,fontWeight:700,color:t.text,marginBottom:6}}>{T.facNotes}</div><textarea value={form.notes||""} onChange={e=>upd({notes:e.target.value})} rows={3} placeholder={T.facNotesPlaceholder} style={{...inputS,width:"100%",boxSizing:"border-box",resize:"vertical",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}/></div>{/* A stated tax amount beats the rates - see the credit note editor. */}<div style={{flex:"1 1 220px",background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12,alignSelf:"flex-end"}}><label style={{display:"flex",gap:7,alignItems:"center",cursor:locked?"default":"pointer",fontSize:11.5,fontWeight:700,color:t.text}}><input type="checkbox"checked={taxManual} disabled={locked} onChange={e=>{if(e.target.checked)upd({tpsOverride:totals.tpsTotal.toFixed(2),tvqOverride:totals.tvqTotal.toFixed(2)});else upd({tpsOverride:null,tvqOverride:null});}} style={{accentColor:"#f97316"}}/>{T===EN?"Enter tax amounts myself":"Saisir les taxes moi-même"}</label>{taxManual&&<div style={{display:"flex",gap:8,marginTop:8}}><div style={{flex:1}}><div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.facTPS}</div><input type="number"min="0"step="0.01"value={form.tpsOverride??""} disabled={locked} onChange={e=>upd({tpsOverride:e.target.value})} style={{...inputS,textAlign:"right",fontVariantNumeric:"tabular-nums",width:"100%",boxSizing:"border-box"}}/></div><div style={{flex:1}}><div style={{fontSize:10,color:t.textMuted,marginBottom:3}}>{T.facTVQ}</div><input type="number"min="0"step="0.01"value={form.tvqOverride??""} disabled={locked} onChange={e=>upd({tvqOverride:e.target.value})} style={{...inputS,textAlign:"right",fontVariantNumeric:"tabular-nums",width:"100%",boxSizing:"border-box"}}/></div></div>}</div><div style={{flex:"1 1 180px",background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12,display:"flex",flexDirection:"column",gap:5,justifyContent:"flex-end"}}><SubtotalDiscountRows form={form} upd={upd} totals={totals} disabled={locked} inputS={inputS} t={t} T={T}/>{[[T.facTPS,totals.tpsTotal],[T.facTVQ,totals.tvqTotal]].map(([label,val])=>(<div key={label} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:t.textSub}}><span>{label}</span><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{fmt(val)}</span></div>))}<div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:800,color:t.text,borderTop:`2px solid ${t.dividerMid}`,paddingTop:6,marginTop:2}}><span>{T.facTotal}</span><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:"#f97316"}}>{fmt(totals.total)}</span></div>{acomptes.length>0&&<><div style={{fontSize:10,color:t.textMuted,borderTop:`1px dashed ${t.dividerMid}`,paddingTop:5,marginTop:2,textTransform:"uppercase",letterSpacing:"0.5px"}}>{T.hcDepositsTitle}</div>{acomptes.map(a=>(<div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11,color:"#22c55e"}}><span style={{flex:1}}>{a.date}{a.mode?` (${a.mode})`:""}</span><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",marginRight:4}}>−{fmt(a.montant)}</span>{!locked&&<button onClick={()=>removeDeposit(a)} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:10,padding:0}}>×</button>}</div>))}</>}
  {regularPaiements.length>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#22c55e"}}><span>{T.hcPaymentsReceived}</span><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>−{fmt(regularPaiements.reduce((s,p)=>s+(p.montant||0),0))}</span></div>}
- {badDebtPaiements.map(p=><div key={p.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#78716c"}}><span>{T.badDebtRow}</span><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>−{fmt(p.montant||0)}</span></div>)}{creditPaiements.length>0&&<div style={{display:"flex",flexDirection:"column",gap:2,marginTop:2}}>{creditPaiements.map(p=><div key={p.id} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8b5cf6"}}><span>Note de crédit {p.reference||p.numero}</span><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>−{fmt(p.montant)}</span></div>)}</div>}
+ {badDebtPaiements.map(p=><div key={p.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#78716c"}}><span>{T.badDebtRow}</span><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>−{fmt(p.montant||0)}</span></div>)}{(form.paiements||[]).filter(p=>p.fromClientCredit).map(p=><div key={p.id} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#16a34a"}}><span>{CLIENT_CREDIT_MODE_LABELS[T===EN?"en":"fr"]}</span><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>−{fmt(p.montant||0)}</span></div>)}{creditPaiements.length>0&&<div style={{display:"flex",flexDirection:"column",gap:2,marginTop:2}}>{creditPaiements.map(p=><div key={p.id} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8b5cf6"}}><span>Note de crédit {p.reference||p.numero}</span><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>−{fmt(p.montant)}</span></div>)}</div>}
  {(montantPaye>0||totalAcomptes>0)&&<div style={{display:"flex",justifyContent:"space-between",fontSize:13,fontWeight:800,color:soldeDu<=0?"#22c55e":"#ef4444",borderTop:`1px solid ${t.dividerMid}`,paddingTop:5,marginTop:2}}><span>{T.hcBalanceDue}</span><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{fmt(Math.max(0,soldeDu))}</span></div>}
  {montantPaye===0&&totalAcomptes===0&&<div style={{fontSize:10,color:t.textMuted,textAlign:"center",marginTop:4}}>{T.facAucunPaiement}</div>}
  {(form.paiements||[]).length>0&&(<div style={{marginTop:8,borderTop:`1px solid ${t.divider}`,paddingTop:8}}><div style={{fontSize:10,fontWeight:700,color:t.textMuted,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:4}}>{T.facPayHist}</div><div style={{display:"grid",gridTemplateColumns:"80px 1fr 80px 80px 90px",gap:3,fontSize:10,color:t.textMuted,fontWeight:700,marginBottom:3}}><span>Date</span><span>Mode</span><span>{T.colRef}</span><span>{T.colAmount}</span><span style={{textAlign:"right"}}>{T.colBalance}</span></div>{(form.paiements||[]).map((p,i)=>{
  const cumPaid=(form.paiements||[]).slice(0,i+1).reduce((s,x)=>s+(x.montant||0),0);
  const soldeApres=Math.max(0,totals.total-totalAcomptes-cumPaid);
- return(<div key={p.id||i} style={{display:"grid",gridTemplateColumns:"80px 1fr 80px 80px 90px",gap:3,fontSize:11,color:t.text,padding:"2px 0",borderBottom:`1px solid ${t.divider}`}}><span>{p.date||"-"}<button type="button" onClick={()=>voidPaiement(p)} title={T===EN?"Void this payment":"Annuler ce paiement"} style={{marginLeft:5,background:"none",border:"none",padding:0,cursor:"pointer",color:"#ef4444",fontSize:11,lineHeight:1}}>×</button></span><span style={{color:t.textSub}}>{p.mode||"-"}{p.isDeposit&&<span style={{marginLeft:5,fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.12)",borderRadius:3,padding:"1px 4px"}}>{T===EN?"Deposit":"Acompte"}</span>}</span><span style={{color:t.textDim,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{p.reference||"-"}</span><span style={{color:"#22c55e",fontWeight:700,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{fmt(p.montant||0)}</span><span style={{textAlign:"right",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:soldeApres===0?"#22c55e":"#f97316",fontWeight:700}}>{fmt(soldeApres)}</span></div>);
+ return(<div key={p.id||i} style={{display:"grid",gridTemplateColumns:"80px 1fr 80px 80px 90px",gap:3,fontSize:11,color:t.text,padding:"2px 0",borderBottom:`1px solid ${t.divider}`}}><span>{p.date||"-"}<button type="button" onClick={()=>voidPaiement(p)} title={T===EN?"Void this payment":"Annuler ce paiement"} style={{marginLeft:5,background:"none",border:"none",padding:0,cursor:"pointer",color:"#ef4444",fontSize:11,lineHeight:1}}>×</button></span><span style={{color:t.textSub}}>{p.fromClientCredit?CLIENT_CREDIT_MODE_LABELS[T===EN?"en":"fr"]:(p.mode||"-")}{p.isDeposit&&<span style={{marginLeft:5,fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.12)",borderRadius:3,padding:"1px 4px"}}>{T===EN?"Deposit":"Acompte"}</span>}</span><span style={{color:t.textDim,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{p.reference||"-"}</span><span style={{color:"#22c55e",fontWeight:700,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}}>{fmt(p.montant||0)}</span><span style={{textAlign:"right",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:soldeApres===0?"#22c55e":"#f97316",fontWeight:700}}>{fmt(soldeApres)}</span></div>);
  })}</div>)}
  {locked&&!isProforma&&savedId&&onEnregistrerPaiement&&["Envoyée","Payée partiellement"].includes(form.statut)&&<button type="button" onClick={()=>onEnregistrerPaiement({...form,id:savedId,numero:savedNumero},{deposit:true})} style={{marginTop:6,width:"100%",padding:"5px 0",borderRadius:6,border:`1px dashed ${t.cardBorder}`,background:"none",color:t.textSub,cursor:"pointer",fontSize:11,fontWeight:600}}>{T===EN?"+ Record a deposit":"+ Enregistrer un acompte"}</button>}{!locked&&(showDepotForm
  ?<div style={{borderTop:`1px solid ${t.dividerMid}`,paddingTop:8,marginTop:4,display:"flex",flexDirection:"column",gap:5}}><div style={{fontSize:11,fontWeight:700,color:t.text}}>{T.facEnregistrerDepot}</div><input type="date"value={depotForm.date} onChange={e=>setDepotForm(p=>({...p,date:e.target.value}))} style={{...inputS,fontSize:11}}/><input type="number"value={depotForm.montant} onChange={e=>setDepotForm(p=>({...p,montant:e.target.value}))} placeholder="Montant"style={{...inputS,fontSize:11}}/><select value={depotForm.mode} onChange={e=>setDepotForm(p=>({...p,mode:e.target.value}))} style={{...inputS,fontSize:11}}>
@@ -3468,11 +3519,65 @@ function EncaissementEditor({showBack,clientId,factureId,initialDeposit=false,cl
  // matched to it on the statement. The invoice payment already booked it, so the
  // register entry books nothing (kind invoice_payment). One cheque, one entry,
  // even when it paid several invoices.
- const registerCheque=(applied)=>{
+ // The excess of an overpayment kept as a credit is part of the same cheque, so it
+ // joins the register entry (its id among the payment ids) and the deposit matches.
+ const registerCheque=(applied,credit=null)=>{
   if(form.mode!=="Chèque"||!applied.length||!window.api?.cheques?.record)return;
-  const total=applied.reduce((s,a)=>s+(a.montant||0),0);
+  const totalCents=applied.reduce((s,a)=>s+Math.round((a.montant||0)*100),0)+(credit?credit.amountCents:0);
   window.api.cheques.record({direction:"received",chequeNumber:form.reference||"",chequeDate:form.date,partyName:client?.entreprise||"",
-   amountCents:Math.round(total*100),kind:"invoice_payment",invoiceRefs:applied.map(a=>a.factureNumero).filter(Boolean),paymentIds:applied.map(a=>a.paymentId)}).catch(()=>{});
+   amountCents:totalCents,kind:"invoice_payment",invoiceRefs:applied.map(a=>a.factureNumero).filter(Boolean),paymentIds:[...applied.map(a=>a.paymentId),...(credit?[credit.id]:[])]}).catch(()=>{});
+ };
+ // ── Customer credits ──
+ const {credits:clientCredits,saveCredits:saveClientCredits,getCredits:getClientCredits}=useContext(ClientCreditsCtx);
+ const availableCreditCents=clientAvailableCents(clientCredits,clientId);
+ const [creditBusy,setCreditBusy]=useState(false);
+ const [creditMsg,setCreditMsg]=useState("");
+ // Keep the excess of a payment as a credit on the customer's account. Called only
+ // after the invoice payment itself was recorded. The receipt is posted first (Dr
+ // bank, Cr 2500); the credit exists only when the ledger accepted it, so the list
+ // never holds a credit the books do not.
+ const createCreditForExcess=async(excessCents,srcFac,srcPaymentId)=>{
+  const id=Date.now().toString(36)+Math.random().toString(36).slice(2);
+  const res=await window.api?.ledger?.depositPost?.({depositId:id,invoiceNumber:`${T.facClientCreditLabel} - ${client?.entreprise||""}`,depositDate:form.date,amountCents:excessCents,mode:form.mode}).catch(()=>null);
+  if(!res?.ok){alert(T.facClientCreditNotCreated);return null;}
+  const credit={id,clientId,date:form.date,amountCents:excessCents,mode:form.mode,reference:form.reference||"",source:CLIENT_CREDIT_SOURCE_OVERPAYMENT,sourceFactureId:srcFac.id,sourcePaymentId:srcPaymentId,glEntryId:res.entryId||null,applications:[]};
+  saveClientCredits(prev=>[...prev,credit]);
+  logCreate('payment','client_credit',id,{...credit,factureNumero:srcFac.numero});
+  return credit;
+ };
+ // Apply the customer's available credit to the ticked invoices (oldest first), up to
+ // each balance. The ledger call comes first; the payment row and the application are
+ // written together only when it returned ok, so the invoice and the credit list agree.
+ const applyClientCredit=async()=>{
+  const targets=(isBulk?selectedFacs:(selFac?[selFac]:[])).filter(f=>!CLOSED_INVOICE_STATUSES.includes(f.statut));
+  if(!targets.length||creditBusy)return;
+  setCreditBusy(true);setCreditMsg("");
+  let appliedCents=0;
+  try{
+   for(const fac of targets){
+    const totalCents=Math.round(invoiceTotalsFor(fac,clients).total*100);
+    const paidCents=(fac.paiements||[]).reduce((s,p)=>s+Math.round((p.montant||0)*100),0);
+    const want=Math.max(0,totalCents-paidCents);
+    if(want<=0)continue;
+    const plan=applyCredits(getClientCredits(),clientId,want,{factureId:fac.id,date:form.date,makeId:()=>Date.now().toString(36)+Math.random().toString(36).slice(2)});
+    for(const app of plan.applications){
+     const r=await window.api?.ledger?.creditApply?.({applicationId:app.id,invoiceNumber:fac.numero,applyDate:app.date,amountCents:app.amountCents}).catch(()=>null);
+     if(!r?.ok){if(!r||/^invalid_/.test(r.error||""))alert(T.facClientCreditApplyFailed);return;}
+     const row={id:app.id,date:app.date,montant:app.amountCents/100,mode:CLIENT_CREDIT_MODE,reference:"",note:"",fromClientCredit:true,creditId:app.creditId,glEntryId:r.entryId||null};
+     saveClientCredits(prev=>addApplication(prev,app.creditId,{...app,glEntryId:r.entryId||null}));
+     saveFactures(prev=>prev.map(f=>{
+      if(f.id!==fac.id)return f;
+      const paiements=[...(f.paiements||[]),row];
+      return{...f,paiements,statut:statusAfterPayments({paiements},invoiceTotalsFor(f,clients).total,f.statut)};
+     }));
+     logCreate('payment','paiement',app.id,{...row,factureId:fac.id,factureNumero:fac.numero});
+     appliedCents+=app.amountCents;
+    }
+   }
+  }finally{
+   setCreditBusy(false);
+   if(appliedCents>0)setCreditMsg(`${T.facClientCreditApplied} ${fmt(appliedCents/100)}`);
+  }
  };
  const unpaid=useMemo(()=>factures.filter(f=>f.clientId===clientId&&!CLOSED_INVOICE_STATUSES.includes(f.statut)).sort((a,b)=>(a.date||"").localeCompare(b.date||"")),[factures,clientId]);
 
@@ -3589,30 +3694,49 @@ function EncaissementEditor({showBack,clientId,factureId,initialDeposit=false,cl
  return{updFactures:updFactures.map(f=>f.id===fac.id?updFac:f),paiement,updFac,numero};
  };
 
- const doSave=()=>{
+ // Cash taken in the till also goes into that day's Encaisse as "other receipts".
+ const persistCashRows=(rows)=>{
+ if(form.mode!=="Comptant"||!persistEncaisse||!rows.length)return;
+ const d=form.date;const prev=encaisseData[d]||{};
+ persistEncaisse({...encaisseData,[d]:{...prev,autreEntrees:[...(prev.autreEntrees||[]),...rows]}});
+ };
+ const creditCashRow=(credit)=>({id:credit.id,description:`${T.facCreditEncaisseDesc} - ${client?.entreprise||""}`,montant:credit.amountCents/100,fromFacturation:true});
+ const doSave=async()=>{
  if(!isBulk){
  // Free tier - single invoice
  if(!selFac||!form.montant||parseFloat(form.montant)<=0)return;
  const montant=Math.min(parseFloat(form.montant),solde);
- if(parseFloat(form.montant)>solde+0.005&&!window.confirm(`${T.facOverpayConfirm}\n${fmt(parseFloat(form.montant)-solde)}`))return;
+ const excessCents=Math.max(0,Math.round(parseFloat(form.montant)*100)-Math.round(solde*100));
+ // More than the balance: keep the excess as a credit on the account (OK) or go back and correct the amount (Cancel).
+ if(excessCents>0&&!window.confirm(`${T.facOverpayConfirm}\n${fmt(excessCents/100)}`))return;
  const{updFactures,paiement,updFac,numero}=_applyPayment([...factures],selFac,montant,docNums.encaissement);
  saveFactures(updFactures);
- registerCheque([{montant,factureNumero:selFac.numero,paymentId:paiement.id}]);
+ // The credit is created only after the invoice payment was recorded above.
+ const credit=excessCents>0?await createCreditForExcess(excessCents,selFac,paiement.id):null;
+ registerCheque([{montant,factureNumero:selFac.numero,paymentId:paiement.id}],credit);
  saveDocNums({...docNums,encaissement:docNums.encaissement+1});
- if(form.mode==="Comptant"&&persistEncaisse){
- const d=form.date;const prev=encaisseData[d]||{};
- persistEncaisse({...encaisseData,[d]:{...prev,autreEntrees:[...(prev.autreEntrees||[]),{id:paiement.id,description:`Paiement ${updFac.numero} (Facturation)`,montant,fromFacturation:true}]}});
- }
- setConfirmation({single:true,numero,montant,factureNumero:selFac.numero,paiement,facture:updFac});
+ persistCashRows([{id:paiement.id,description:`Paiement ${updFac.numero} (Facturation)`,montant,fromFacturation:true},...(credit?[creditCashRow(credit)]:[])]);
+ setConfirmation({single:true,numero,montant,factureNumero:selFac.numero,paiement,facture:updFac,creditKept:credit?credit.amountCents/100:0,excedent:credit?0:excessCents/100});
  return;
  }
  // Pro bulk - apply allocations
  const toApply=selectedFacs.filter(f=>parseFloat(allocations[f.id])>0);
  if(!toApply.length||totalMontant<=0)return;
- if(totalMontant>totalAlloue+0.005&&!window.confirm(`${T.facOverpayConfirm}\n${fmt(totalMontant-totalAlloue)}`))return;
+ // What will really be applied (each amount is capped at its invoice's balance); the rest of the amount received is the remainder.
+ const plannedCents=toApply.reduce((s,f)=>{
+ const cap=invoiceTotalsFor(f,clients).total-(f.paiements||[]).reduce((a,p)=>a+(p.montant||0),0);
+ return s+Math.round(Math.max(0,Math.min(parseFloat(allocations[f.id])||0,cap))*100);
+ },0);
+ const remainderCents=Math.max(0,Math.round(totalMontant*100)-plannedCents);
+ let keepAsCredit=false;
+ if(remainderCents>0){
+ if(overflowChoice==="remboursement"){if(!window.confirm(`${T.facOverpayRefundConfirm}\n${fmt(remainderCents/100)}`))return;}
+ else{if(overflowChoice!=="credit"&&!window.confirm(`${T.facOverpayConfirm}\n${fmt(remainderCents/100)}`))return;keepAsCredit=true;}
+ }
  let updFactures=[...factures];
  let encNum=docNums.encaissement;
  const results=[];
+ const cashRows=[];
  toApply.forEach(f=>{
  const cap=invoiceTotalsFor(f,clients).total-(f.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);
  const montant=Math.min(parseFloat(allocations[f.id])||0,cap);
@@ -3620,26 +3744,27 @@ function EncaissementEditor({showBack,clientId,factureId,initialDeposit=false,cl
  const{updFactures:uf,paiement,updFac,numero}=_applyPayment(updFactures,f,montant,encNum++);
  updFactures=uf;
  results.push({numero,montant,factureNumero:f.numero,facture:updFac,paymentId:paiement.id});
- if(form.mode==="Comptant"&&persistEncaisse){
- const d=form.date;const prev=encaisseData[d]||{};
- persistEncaisse({...encaisseData,[d]:{...prev,autreEntrees:[...(prev.autreEntrees||[]),{id:paiement.id,description:`Paiement ${updFac.numero} (Facturation)`,montant,fromFacturation:true}]}});
- }
+ cashRows.push({id:paiement.id,description:`Paiement ${updFac.numero} (Facturation)`,montant,fromFacturation:true});
  });
  saveFactures(updFactures);
- registerCheque(results);
+ // The credit for the unallocated remainder is created only after the invoice payments were recorded above.
+ const lastResult=results[results.length-1];
+ const credit=keepAsCredit&&lastResult?await createCreditForExcess(remainderCents,{id:lastResult.facture.id,numero:lastResult.factureNumero},lastResult.paymentId):null;
+ registerCheque(results,credit);
  saveDocNums({...docNums,encaissement:encNum});
- setConfirmation({bulk:true,results,totalMontant:totalAlloue,overflowChoice,excedent});
+ persistCashRows([...cashRows,...(credit?[creditCashRow(credit)]:[])]);
+ setConfirmation({bulk:true,results,totalMontant:results.reduce((s,r)=>s+r.montant,0),overflowChoice,creditKept:credit?credit.amountCents/100:0,excedent:credit?0:remainderCents/100});
  };
 
  if(confirmation){
  return(<div style={{display:"flex",flexDirection:"column",gap:12}}><div style={{display:"flex",alignItems:"center",gap:8}}>{showBack!==false&&(onBackToClient?<><button onClick={onBackToList} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToList}</button><button onClick={onBackToClient} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToClient}</button></>:<button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.back}</button>)}<span style={{fontSize:14,fontWeight:700,color:t.text}}>{confirmation.bulk?(T===EN?"Payments recorded":"Paiements enregistrés"):(T===EN?"Payment recorded":"Paiement enregistré")}</span></div><div style={{background:"rgba(34,197,94,0.08)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:9,padding:16}}><div style={{textAlign:"center",marginBottom:8}}><div style={{fontSize:22,marginBottom:4}}></div><div style={{fontSize:14,fontWeight:700,color:"#22c55e"}}>{confirmation.bulk?`${fmt(confirmation.totalMontant)} réparti sur ${confirmation.results.length} facture${confirmation.results.length>1?"s":""}`: `Paiement de ${fmt(confirmation.montant)} enregistré`}</div>{!confirmation.bulk&&<div style={{fontSize:12,color:t.textSub,marginTop:4}}>sur facture {confirmation.factureNumero} - reçu {confirmation.numero}</div>}</div>{confirmation.bulk&&confirmation.results.map(r=>(<div key={r.numero} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:t.textSub,borderTop:`1px solid ${t.divider}`,padding:"4px 0"}}><span>Facture {r.factureNumero} - reçu {r.numero}</span><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:"#22c55e",fontWeight:700}}>{fmt(r.montant)}</span></div>))}
- {confirmation.bulk&&confirmation.excedent>0&&(<div style={{marginTop:8,padding:"6px 10px",borderRadius:6,background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.2)",fontSize:11,color:"#f59e0b"}}>{T.facOverpayNotRecorded} {fmt(confirmation.excedent)}</div>)}</div><div style={{display:"flex",gap:8,justifyContent:"center"}}>{!confirmation.bulk&&<button onClick={()=>openPDF(buildReceiptHTML({...confirmation.paiement,numero:confirmation.numero,montant:confirmation.montant,client,facture:selFac,companyInfo}))} style={{padding:"7px 16px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12}}> {T.print}</button>}<button onClick={onBack} style={{padding:"7px 16px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T.close}</button></div></div>);
+ {confirmation.creditKept>0&&(<div style={{marginTop:8,padding:"6px 10px",borderRadius:6,background:"rgba(34,197,94,0.08)",border:"1px solid rgba(34,197,94,0.2)",fontSize:11,color:"#16a34a"}}>{T.facOverpayKept} {fmt(confirmation.creditKept)}</div>)}{confirmation.excedent>0&&(<div style={{marginTop:8,padding:"6px 10px",borderRadius:6,background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.2)",fontSize:11,color:"#f59e0b"}}>{T.facOverpayNotRecorded} {fmt(confirmation.excedent)}</div>)}</div><div style={{display:"flex",gap:8,justifyContent:"center"}}>{!confirmation.bulk&&<button onClick={()=>openPDF(buildReceiptHTML({...confirmation.paiement,numero:confirmation.numero,montant:confirmation.montant,client,facture:selFac,companyInfo}))} style={{padding:"7px 16px",borderRadius:6,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer",fontWeight:600,fontSize:12}}> {T.print}</button>}<button onClick={onBack} style={{padding:"7px 16px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T.close}</button></div></div>);
  }
 
  const colsPro="24px 80px 100px 90px 90px 90px";
  const colsFree="24px 80px 100px 1fr 90px 90px";
  return(<div style={{display:"flex",flexDirection:"column",gap:10}}><div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>{showBack!==false&&(onBackToClient?<><button onClick={onBackToList} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToList}</button><button onClick={onBackToClient} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToClient}</button></>:<button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.back}</button>)}<span style={{fontSize:14,fontWeight:700,color:t.text}}>{T.facRecordPayment}</span>{client&&<span style={{fontSize:12,color:t.textMuted}}>- {client.entreprise}</span>}
- {isBulk&&<span style={{fontSize:9.5,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"2px 7px",borderRadius:8}}>PRO · Multi-factures</span>}</div>{/* ① Invoice selector */}<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><span style={{fontSize:12,fontWeight:700,color:t.text}}>① {T===EN?(isBulk?"Choose invoices":"Choose the invoice"):(isBulk?"Choisir les factures":"Choisir la facture")}</span>{unpaid.length>0&&<button onClick={handleAutoApply} disabled={!totalMontant} style={{padding:"3px 10px",borderRadius:5,border:"none",background:totalMontant?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:totalMontant?"#fff":t.textDim,cursor:totalMontant?"pointer":"default",fontWeight:700,fontSize:10,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T===EN?"Auto-apply":"Auto-appliquer"}{!isAutoApply&&<span style={{fontSize:8,marginLeft:4,opacity:0.7}}>PRO</span>}</button>}</div>{unpaid.length===0
+ {isBulk&&<span style={{fontSize:9.5,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"2px 7px",borderRadius:8}}>PRO · Multi-factures</span>}</div>{availableCreditCents>0&&<div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",background:"rgba(34,197,94,0.08)",border:"1px solid rgba(34,197,94,0.25)",borderRadius:9,padding:"8px 12px"}}><span style={{fontSize:12,fontWeight:700,color:"#16a34a"}}>{T.facClientCreditAvailable} {fmt(availableCreditCents/100)}</span><button onClick={applyClientCredit} disabled={creditBusy||(isBulk?selectedFacs.length===0:!selFac)} title={T.facClientCreditApplyTitle} style={{padding:"4px 14px",borderRadius:5,border:"1px solid #16a34a",background:"transparent",color:"#16a34a",cursor:(creditBusy||(isBulk?selectedFacs.length===0:!selFac))?"default":"pointer",fontWeight:700,fontSize:11,opacity:(creditBusy||(isBulk?selectedFacs.length===0:!selFac))?0.5:1}}>{T.facClientCreditApply}</button>{creditMsg&&<span style={{fontSize:11,color:t.textSub}}>{creditMsg}</span>}</div>}{/* ① Invoice selector */}<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><span style={{fontSize:12,fontWeight:700,color:t.text}}>① {T===EN?(isBulk?"Choose invoices":"Choose the invoice"):(isBulk?"Choisir les factures":"Choisir la facture")}</span>{unpaid.length>0&&<button onClick={handleAutoApply} disabled={!totalMontant} style={{padding:"3px 10px",borderRadius:5,border:"none",background:totalMontant?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:totalMontant?"#fff":t.textDim,cursor:totalMontant?"pointer":"default",fontWeight:700,fontSize:10,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T===EN?"Auto-apply":"Auto-appliquer"}{!isAutoApply&&<span style={{fontSize:8,marginLeft:4,opacity:0.7}}>PRO</span>}</button>}</div>{unpaid.length===0
  ?<div style={{textAlign:"center",padding:"16px 0",color:t.textMuted,fontSize:12}}>{T.facNoUnpaidClient}</div>:<div style={{display:"flex",flexDirection:"column",gap:4}}><div style={{display:"grid",gridTemplateColumns:isBulk?colsPro:colsFree,gap:6,padding:"2px 6px",borderBottom:`1px solid ${t.dividerMid}`}}>{(isBulk?["",T.facNumInvoice,"Date",T.colTotal,T.colBalance,T.facColApply]:["",T.facNumInvoice,"Date",T.colTotal,T.facColPaid,T.colBalance]).map((h,i)=><span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i>=3?"right":"left"}}>{h}</span>)}</div>{unpaid.map(f=>{
  const tot=invoiceTotalsFor(f,clients).total;
  const dp=(f.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);
@@ -4429,13 +4554,14 @@ function ClientsSection({clients,saveClients,onNewDoc,onOpenDoc,soumissions,comm
  // What each customer owes, the same figure their statement shows: open
  // invoices less credit notes not yet applied. The column had been a fixed
  // "0,00 $" since it was added.
+ const {credits:clientCredits}=useContext(ClientCreditsCtx);
  const balances=useMemo(()=>{
   const asOf=dk(new Date());const out={};
   for(const c of (Array.isArray(clients)?clients:[])){
-   try{out[c.id]=accountStanding({clientId:c.id,factures:factures||[],creditNotes:creditNotes||[],asOf,totalOf:d=>invoiceTotalsFor(d,clients).total}).balanceOwed;}catch(_){out[c.id]=0;}
+   try{out[c.id]=accountStanding({clientId:c.id,factures:factures||[],creditNotes:creditNotes||[],clientCredits,asOf,totalOf:d=>invoiceTotalsFor(d,clients).total}).balanceOwed;}catch(_){out[c.id]=0;}
   }
   return out;
- },[clients,factures,creditNotes]);
+ },[clients,factures,creditNotes,clientCredits]);
  const filtered=useMemo(()=>{
  let list=(Array.isArray(clients)?clients:[]).map(c=>({...c,_solde:balances[c.id]||0}));
  if(filterStatut!=="tous")list=list.filter(c=>c.statut===filterStatut);
@@ -6887,6 +7013,7 @@ function AppInner(){
   const [companyPlanVerifiedAt,setCompanyPlanVerifiedAt]=useState(null);
   const [companyOrgConflict,setCompanyOrgConflict]=useState(null);
   const [facCreditNotes,setFacCreditNotes]=useState([]);
+  const [clientCredits,setClientCredits]=useState([]);
   const [facRecurrents,setFacRecurrents]=useState([]);
   const [invConfig,setInvConfig]=useState(DEFAULT_INV_CONFIG);
 
@@ -6943,6 +7070,7 @@ function AppInner(){
     try{const r16=await window.api.storage.get("dicann-fac-commandes");if(r16?.value){const v=JSON.parse(r16.value);if(Array.isArray(v))setFacCommandes(v);}}catch(e){}
     try{const r17=await window.api.storage.get("dicann-fac-factures");if(r17?.value){const v=JSON.parse(r17.value);if(Array.isArray(v)){facFacturesRef.current=v;setFacFactures(v);freezeSentInvoices();}}}catch(e){}
     try{const r18=await window.api.storage.get("dicann-fac-creditnotes");if(r18?.value){const v=JSON.parse(r18.value);if(Array.isArray(v))setFacCreditNotes(v);}}catch(e){}
+    try{const rCC=await window.api.storage.get(CLIENT_CREDITS_KEY);if(rCC?.value){const v=JSON.parse(rCC.value);if(Array.isArray(v)){clientCreditsRef.current=v;setClientCredits(v);}}}catch(e){}
     try{const r19=await window.api.storage.get("dicann-fac-recurrents");if(r19?.value){const v=JSON.parse(r19.value);if(Array.isArray(v))setFacRecurrents(v);}}catch(e){}
     try{const rIC=await window.api.storage.get("dicann-inv-config");if(rIC?.value){const p=JSON.parse(rIC.value);setInvConfig({...DEFAULT_INV_CONFIG,...p,items:p.items||DEFAULT_INV_CONFIG.items});}}catch(e){}
     try{const rPOS=await window.api.pos?.getCredentials?.();if(rPOS)setPosCredentials(rPOS);}catch(e){}
@@ -7486,6 +7614,20 @@ function AppInner(){
     window.api.storage.set("dicann-fac-creditnotes",v).catch(saveFailed("dicann-fac-creditnotes"));
     schedulePush("dicann-fac-creditnotes",v);
   },[]);
+  // Customer credits (overpayments kept on the account): same shape of saver as the
+  // credit notes above, so a ledger write-back can pass an updater function.
+  const clientCreditsRef=useRef(clientCredits);
+  useEffect(()=>{clientCreditsRef.current=clientCredits;},[clientCredits]);
+  const saveClientCredits=useCallback(listOrFn=>{
+    const list=typeof listOrFn==='function'?listOrFn(clientCreditsRef.current):listOrFn;
+    if(!Array.isArray(list))return;
+    clientCreditsRef.current=list;
+    setClientCredits(list);
+    const v=JSON.stringify(list);
+    window.api.storage.set(CLIENT_CREDITS_KEY,v).catch(saveFailed(CLIENT_CREDITS_KEY));
+    schedulePush(CLIENT_CREDITS_KEY,v);
+  },[]);
+  const clientCreditsCtxValue=useMemo(()=>({credits:clientCredits,saveCredits:saveClientCredits,getCredits:()=>clientCreditsRef.current}),[clientCredits,saveClientCredits]);
   const saveFacRecurrents=useCallback(list=>{setFacRecurrents(list);const v=JSON.stringify(list);window.api.storage.set("dicann-fac-recurrents",v).catch(saveFailed("dicann-fac-recurrents"));schedulePush("dicann-fac-recurrents",v);},[]);
 
   // ── raw state updaters (no audit) ──
@@ -8301,7 +8443,7 @@ function AppInner(){
   }
   if(!appMode)return(<WelcomeScreen onSelect={saveAppMode} T={T}/>);
 
-  return(<LangCtx.Provider value={T}><ThemeCtx.Provider value={theme}>{upgradePromptFeature&&<UpgradePrompt
+  return(<LangCtx.Provider value={T}><ClientCreditsCtx.Provider value={clientCreditsCtxValue}><ThemeCtx.Provider value={theme}>{upgradePromptFeature&&<UpgradePrompt
         onClose={()=>setUpgradePromptFeature(null)}
         onSubscribe={()=>{trackEvent('upgrade_prompt_clicked',{feature:upgradePromptFeature});setUpgradePromptFeature(null);setActiveTab("config");setConfigSubTab("application");}}
         isFranchise={FRANCHISE_ONLY_FEATURES.includes(upgradePromptFeature)}
@@ -8962,6 +9104,6 @@ function AppInner(){
             {configSubTab==="apropos"&&(<Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>{T.loading}</div>}><SettingsAboutPanelLazy lang={lang}/></Suspense>)}</div></div>)}</div></div>{/* end scrollable */}</div>{/* end main area */}</div>
             {/* Global Search (Cmd+K) - top-level so it works from any tab */}
             {searchOpen&&(<Suspense fallback={null}><GlobalSearchLazy isOpen={searchOpen} onClose={()=>setSearchOpen(false)} onNavigate={handleSearchNavigate} lang={lang} isDark={themeName!=='warm'}/></Suspense>)}
-            </ThemeCtx.Provider></LangCtx.Provider>
+            </ThemeCtx.Provider></ClientCreditsCtx.Provider></LangCtx.Provider>
   );
 }

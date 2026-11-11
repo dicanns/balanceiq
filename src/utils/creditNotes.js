@@ -30,7 +30,8 @@ export function statusAfterPayments(invoice, invoiceTotal, fallback) {
   if (r2(invoiceTotal) - r2(paid) <= 0.005) {
     // Written off stays written off: the balance was settled by the write-off.
     if ((invoice?.paiements || []).some((p) => p?.badDebt)) return WRITTEN_OFF;
-    const anyMoney = (invoice?.paiements || []).some((p) => isCashPayment(p) && Number(p?.montant) > 0);
+    // A customer credit applied was money received earlier, so the invoice is paid.
+    const anyMoney = (invoice?.paiements || []).some((p) => (isCashPayment(p) || p?.fromClientCredit) && Number(p?.montant) > 0);
     return anyMoney ? 'Payée' : 'Créditée';
   }
   return paid > 0 ? 'Payée partiellement' : (fallback || 'Envoyée');
