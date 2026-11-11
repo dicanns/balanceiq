@@ -4992,8 +4992,9 @@ function bankPostMissingEntries(bankAccountId, _db) {
     `SELECT bt.id FROM bank_transactions bt
      JOIN chart_of_accounts ca ON ca.id = bt.coa_account_id
      WHERE bt.bank_account_id = ? AND bt.journal_entry_id IS NULL
-       AND bt.coa_account_id IS NOT NULL`
-  ).all(bankAccountId);
+       AND bt.coa_account_id IS NOT NULL
+       AND bt.match_status IN (${RECONCILABLE_STATUSES.map(() => '?').join(',')})`
+  ).all(bankAccountId, ...RECONCILABLE_STATUSES);
 
   let posted = 0, skipped = 0, orphansReversed = 0, redated = 0;
   db.transaction(() => {

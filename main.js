@@ -542,15 +542,29 @@ function buildBackupData() {
   return data;
 }
 
+// Write beside the target then rename, so a crash mid-write never leaves a
+// truncated file under the real name.
+function writeFileAtomic(filepath, text) {
+  const tmp = `${filepath}.${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(tmp, text, 'utf-8');
+    fs.renameSync(tmp, filepath);
+  } catch (e) {
+    try { fs.unlinkSync(tmp); } catch (_) {}
+    throw e;
+  }
+}
+
 async function performAutoBackup() {
   const dir = BACKUP_DIR();
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const filepath = path.join(dir, `balanceiq-${today}.json`);
   if (fs.existsSync(filepath)) return; // already backed up today
 
-  fs.writeFileSync(filepath, JSON.stringify(buildBackupData(), null, 2), 'utf-8');
+  writeFileAtomic(filepath, JSON.stringify(buildBackupData(), null, 2));
 
   // Delete backups older than BACKUP_KEEP_DAYS
   try {
@@ -568,7 +582,8 @@ async function performAutoBackup() {
 // anywhere off this Mac. Same file as the daily one, so it restores the same way.
 ipcMain.handle('backup:export', async () => {
   const win = BrowserWindow.getFocusedWindow();
-  const stamp = new Date().toISOString().slice(0, 10);
+  const nowD = new Date();
+  const stamp = `${nowD.getFullYear()}-${String(nowD.getMonth() + 1).padStart(2, '0')}-${String(nowD.getDate()).padStart(2, '0')}`;
   const safeName = (activeCompanyName() || 'BalanceIQ').replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'BalanceIQ';
   const { canceled, filePath } = await dialog.showSaveDialog(win, {
     title: tm('backupExportTitle'),
@@ -577,7 +592,7 @@ ipcMain.handle('backup:export', async () => {
   });
   if (canceled || !filePath) return { cancelled: true };
   try {
-    fs.writeFileSync(filePath, JSON.stringify(buildBackupData(), null, 2), 'utf-8');
+    writeFileAtomic(filePath, JSON.stringify(buildBackupData(), null, 2));
     return { success: true, path: filePath };
   } catch (e) {
     return { error: `${tm('backupExportFailed')} ${e.message}` };
@@ -1811,8 +1826,14 @@ app.whenReady().then(() => {
   // once done there is nothing left to find on later launches.
   setTimeout(() => {
     try {
-      const r = supplierBillRepairTaxAccounts();
-      if (r.found) console.log('[bills] tax accounts repaired', JSON.stringify(r));
+      const doneKey = 'balanceiq-repair-bill-tax-accounts-done';
+      const done = storageGet(doneKey);
+      if (!done || !done.value) {
+        const r = supplierBillRepairTaxAccounts();
+        if (r.found) console.log('[bills] tax accounts repaired', JSON.stringify(r));
+        const failed = (Array.isArray(r.failed) ? r.failed.length : Number(r.failed || r.errors || 0)) > 0;
+        if (!failed) storageSet(doneKey, JSON.stringify({ at: new Date().toISOString() }));
+      }
     } catch (e) { console.error('[bills] tax account repair failed:', e.message); }
     // Opening balances corrected before v1.81.0 left their ledger entry on the
     // old amount or date. Same timing as above: after today's backup.
@@ -2368,8 +2389,16 @@ ledgerHandle('ledger:creditnote:post', async (_e, {
 ipcMain.handle('ledger:entry:draft',   (_e, data)              => glDraftEntry(data));
 ipcMain.handle('ledger:entry:update',  (_e, id, data)          => glUpdateDraft(id, data));
 ipcMain.handle('ledger:entry:post',    (_e, id)                => glPostEntry(id));
-ipcMain.handle('ledger:entry:reverse', (_e, id, reason)        => glReverseEntry(id, reason));
-ipcMain.handle('ledger:entry:correct', (_e, id, newData, reason) => glCorrectEntry(id, newData, reason));
+// Entries that belong to a document are undone from that document; a manual
+// reversal here would leave the document and the ledger disagreeing.
+function assertManualEntry(id) {
+  const { reversibleInJournal } = require('./src/utils/journalSources.mjs');
+  const got = glGetEntry(id);
+  const e = got?.entry || got;
+  if (e && !reversibleInJournal(e)) throw new Error('ERR_ENTRY_HAS_SOURCE');
+}
+ipcMain.handle('ledger:entry:reverse', (_e, id, reason)        => { assertManualEntry(id); return glReverseEntry(id, reason); });
+ipcMain.handle('ledger:entry:correct', (_e, id, newData, reason) => { assertManualEntry(id); return glCorrectEntry(id, newData, reason); });
 ipcMain.handle('ledger:entry:delete',  (_e, id)                => glDeleteDraft(id));
 ipcMain.handle('ledger:entry:get',     (_e, id)                => glGetEntry(id));
 ipcMain.handle('ledger:entry:list',    (_e, opts)              => glListEntries(opts));

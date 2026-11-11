@@ -1,8 +1,24 @@
 import { calcInvoiceOutstanding, computeInvoiceTotals, documentDiscount } from '../utils/calculations.js';
 import YearEndTab from './YearEndTab.jsx';
+import { reversibleInJournal } from '../utils/journalSources.mjs';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
+
+// Entries that belong to a document are undone from that document, so the
+// document and the ledger never disagree.
+function sourceHint(type, lang) {
+  const en = lang === 'en';
+  const where = {
+    invoice:         en ? 'the invoice' : 'la facture',
+    invoice_payment: en ? 'the invoice payment' : 'le paiement de la facture',
+    refund:          en ? 'the credit note' : "la note de crédit",
+    bill:            en ? 'the bill' : 'la facture fournisseur',
+    bill_payment:    en ? 'the bill payment' : 'le paiement du fournisseur',
+    bank_tx:         en ? 'the bank line' : 'la ligne bancaire',
+  }[type] || (en ? 'the source document' : "le document d'origine");
+  return en ? `Undo from ${where}` : `À annuler depuis ${where}`;
+}
 
 const SOURCE_LABELS = {
   invoice:          { fr: 'Facture',           en: 'Invoice' },
@@ -151,6 +167,7 @@ const UI = {
     errorSave:        'Erreur lors de la sauvegarde',
     ledgerErrors: {
       ERR_ENTRY_NOT_FOUND:              'Écriture introuvable.',
+      ERR_ENTRY_HAS_SOURCE:             "Cette écriture appartient à un document (facture, paiement, facture fournisseur, ligne bancaire). Annulez-la depuis ce document.",
       ERR_ENTRY_NOT_DRAFT:              'Seules les écritures en brouillon peuvent être modifiées.',
       ERR_ENTRY_NOT_DRAFT_DELETE:       'Seules les écritures en brouillon peuvent être supprimées.',
       ERR_ENTRY_ALREADY_POSTED:         'Écriture déjà comptabilisée.',
@@ -274,6 +291,7 @@ const UI = {
     errorSave:        'Error saving entry',
     ledgerErrors: {
       ERR_ENTRY_NOT_FOUND:              'Entry not found.',
+      ERR_ENTRY_HAS_SOURCE:             'This entry belongs to a document (invoice, payment, bill, bank line). Undo it from that document.',
       ERR_ENTRY_NOT_DRAFT:              'Only draft entries can be edited.',
       ERR_ENTRY_NOT_DRAFT_DELETE:       'Only draft entries can be deleted.',
       ERR_ENTRY_ALREADY_POSTED:         'This entry is already posted.',
@@ -754,8 +772,11 @@ function JournalTab({ lang, accounts }) {
                         <button onClick={() => handlePost(entry)} style={{ ...btnActionSm, color: '#86efac' }}>{t.postBtn}</button>
                         <button onClick={() => handleDelete(entry)} style={{ ...btnActionSm, color: '#fca5a5' }}>{t.deleteBtn}</button>
                       </>}
-                      {entry.status === 'posted' && (
+                      {entry.status === 'posted' && reversibleInJournal(entry) && (
                         <button onClick={() => setReverseEntry(entry)} style={{ ...btnActionSm, color: '#fbbf24' }}>{t.reverseBtn}</button>
+                      )}
+                      {entry.status === 'posted' && !reversibleInJournal(entry) && !entry.reverses_entry_id && (
+                        <span title={sourceHint(entry.source_type, lang)} style={{ color: '#64748b', fontSize: 11, alignSelf: 'center' }}>{sourceHint(entry.source_type, lang)}</span>
                       )}
                     </div>
                   </td>

@@ -18,7 +18,7 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Rebuild better-sqlite3
         run: npm rebuild better-sqlite3 --quiet
@@ -55,7 +55,7 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build Vite
         run: npx vite build

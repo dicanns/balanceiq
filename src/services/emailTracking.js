@@ -15,6 +15,7 @@
 // everyone and many companies block it, so it is wrong in both directions.
 //
 // Pure functions; the shell does the network calls.
+import { CLOSED_INVOICE_STATUSES } from '../utils/invoiceStatus.mjs';
 
 const DAY = 86400000;
 
@@ -104,7 +105,7 @@ export function emailTimeline(invoice) {
   }));
 }
 
-const CLOSED = ['Brouillon', 'Payée', 'Créditée', 'Annulée'];
+const CLOSED = CLOSED_INVOICE_STATUSES;
 const PROBLEM_LABEL = {
   bounced:    { en: 'bounced',                 fr: 'refusée par la messagerie' },
   complained: { en: 'was marked as spam',      fr: 'a été signalée comme pourriel' },
