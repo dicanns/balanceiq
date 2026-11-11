@@ -20,11 +20,14 @@ describe('FUP-001 exemption in generated invoices', () => {
   it('computes the posted totals with the customer exemption in all three generators and the backfill', () => {
     expect(APP).toMatch(/function clientExemptOpts\(client\)/);
     const dep = APP.slice(APP.indexOf('const generateDepositInvoice='), APP.indexOf('const generateDepositInvoice=') + 3000);
-    expect(dep).toMatch(/const dTot=depFac\.totauxCents\|\|frozenTotalsFor\(depFac,clients\)/);
+    expect(dep).toMatch(/depFac\.totauxCents=frozenTotalsFor\(depFac,clients\)/);
+    expect(dep).toMatch(/invoicePostArgs\(depFac,depFac\.totauxCents,depClient\?\.taxExempt\)/);
     // frozenTotalsFor applies the customer's exemption (see FROZEN-005).
     expect(APP).toMatch(/function frozenTotalsFor\(doc,clients\)\{\s*return freezeTotals\(computeSoumTotals\(doc\.lignes\|\|\[\],\{\.\.\.doc,\.\.\.clientExemptOpts\(/);
     const withExempt = APP.match(/const ft=f\.totauxCents\|\|frozenTotalsFor\(f,clients\)/g) || [];
-    expect(withExempt.length).toBe(3); // backfill, interest, recurring
+    expect(withExempt.length).toBe(1); // backfill
+    expect(APP).toMatch(/intFac\.totauxCents=frozenTotalsFor\(intFac,clients\)/); // interest
+    expect(APP).toMatch(/fac\.totauxCents=frozenTotalsFor\(fac,clients\);/); // recurring
   });
   it('no invoice poster computes totals from the bare invoice any more', () => {
     expect(APP).not.toMatch(/const ft=computeSoumTotals\(f\.lignes\|\|\[\],f\);/);

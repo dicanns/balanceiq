@@ -9,8 +9,7 @@
 
 import { calcInvoiceOutstanding } from '../utils/calculations.js';
 import { generateTaxPeriods } from './onboarding.js';
-
-const CLOSED_STATUSES = ['Brouillon', 'Payée', 'Créditée', 'Annulée'];
+import { isOverdue } from '../utils/invoiceStatus.mjs';
 
 const toUTC = (iso) => {
   const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
@@ -33,8 +32,7 @@ const money = (amount, lang) => (Number(amount) || 0).toLocaleString(
 export function overdueInvoices(factures, clients, today) {
   const byId = new Map((clients || []).map(c => [c.id, c]));
   return (factures || [])
-    .filter(f => f && !CLOSED_STATUSES.includes(f.statut) && f.documentType !== 'proforma')
-    .filter(f => f.dateEcheance && String(f.dateEcheance).slice(0, 10) < today)
+    .filter(f => isOverdue(f, today))
     .map(f => {
       const c = byId.get(f.clientId);
       const exempt = c?.taxExempt

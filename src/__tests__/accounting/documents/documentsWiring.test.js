@@ -98,7 +98,7 @@ describe('DOC-042 invoices:commit', () => {
   });
   it('answers a refusal as ok:false and returns the document on success', () => {
     expect(handler).toMatch(/ok: false/);
-    expect(handler).toMatch(/return \{ ok: true, doc: saved, entryId \}/);
+    expect(handler).toMatch(/return \{ ok: true, doc: saved, entryId, alreadyPosted \}/);
   });
   it('the post and unpost handlers share the same plain functions', () => {
     expect(main).toMatch(/ledgerHandle\('ledger:invoice:post', async \(_e, args\) => postInvoiceToLedger\(args\)\)/);

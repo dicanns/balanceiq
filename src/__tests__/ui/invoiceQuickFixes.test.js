@@ -112,7 +112,8 @@ describe('INVFIX deposits after an invoice is sent', () => {
   it('INVFIX-014 the payment keeps the deposit flag and still posts to the ledger', () => {
     expect(PAYMENT_EDITOR).toMatch(/isDeposit:!!initialDeposit/);
     expect(PAYMENT_EDITOR).toMatch(/\.\.\.\(form\.isDeposit\?\{isDeposit:true\}:\{\}\)/);
-    expect(PAYMENT_EDITOR).toMatch(/ledger\?\.paymentPost/);
+    expect(PAYMENT_EDITOR).toMatch(/commitPaymentOnInvoice\(draftFac,\{\s*paymentId:id/);
+    expect(APP).toMatch(/invoices\.commitPayment\(/);
   });
 
   it('INVFIX-015 deposits are badged on the invoice and in the client profile', () => {

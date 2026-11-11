@@ -2023,56 +2023,65 @@ const PAYMENT_MODE_ACCOUNT = {
   'Autre':                '1010',
 };
 
-ledgerHandle('ledger:payment:post', async (_e, {
-  paymentId, invoiceId, paymentDate, amountCents, mode, invoiceNumber,
-}) => {
+// The payment posting itself, synchronous so invoices:commitPayment can run it inside one
+// transaction with the save. Returns { ok, entryId } or { ok:false, error }; a refusal by the
+// ledger (closed period) throws.
+function postPaymentToLedger({ paymentId, invoiceId, paymentDate, amountCents, mode, invoiceNumber } = {}) {
+  if (!paymentId || !amountCents || amountCents <= 0) {
+    return { ok: false, error: 'invalid_payment' };
+  }
+
+  // Idempotent: the same payment must never book the cash twice.
+  const existing = glFindEntryBySource('payment', paymentId);
+  if (existing) return { ok: true, entryId: existing.id, alreadyPosted: true };
+
+  const accounts = coaList();
+  const find = (num) => accounts.find(a => a.account_number === num);
+  const ar   = find('1100');
+  const cashNum = PAYMENT_MODE_ACCOUNT[mode] || '1010';
+  // 1050 only exists after migration v34; fall back rather than fail the post.
+  const cash = find(cashNum) || find('1010');
+
+  if (!ar || !cash) {
+    return { ok: false, error: 'missing_coa_accounts', detail: `1100 / ${cashNum}` };
+  }
+
+  const label = `Paiement ${invoiceNumber || invoiceId || ''}`.trim();
+  const { entryId } = glDraftEntry({
+    entry_date: paymentDate,
+    description: label,
+    source_type: 'payment',
+    source_id: String(paymentId),
+    lines: [
+      { account_id: cash.id, debit_cents: amountCents, credit_cents: 0, memo: label },
+      { account_id: ar.id,   debit_cents: 0, credit_cents: amountCents, memo: 'Comptes clients' },
+    ],
+  });
+  glPostEntry(entryId);
+  return { ok: true, entryId, account: cashNum };
+}
+
+ledgerHandle('ledger:payment:post', async (_e, args = {}) => {
   try {
-    if (!paymentId || !amountCents || amountCents <= 0) {
-      return { ok: false, error: 'invalid_payment' };
-    }
-
-    // Idempotent: the same payment must never book the cash twice.
-    const existing = glFindEntryBySource('payment', paymentId);
-    if (existing) return { ok: true, entryId: existing.id, alreadyPosted: true };
-
-    const accounts = coaList();
-    const find = (num) => accounts.find(a => a.account_number === num);
-    const ar   = find('1100');
-    const cashNum = PAYMENT_MODE_ACCOUNT[mode] || '1010';
-    // 1050 only exists after migration v34; fall back rather than fail the post.
-    const cash = find(cashNum) || find('1010');
-
-    if (!ar || !cash) {
-      return { ok: false, error: 'missing_coa_accounts', detail: `1100 / ${cashNum}` };
-    }
-
-    const label = `Paiement ${invoiceNumber || invoiceId || ''}`.trim();
-    const { entryId } = glDraftEntry({
-      entry_date: paymentDate,
-      description: label,
-      source_type: 'payment',
-      source_id: String(paymentId),
-      lines: [
-        { account_id: cash.id, debit_cents: amountCents, credit_cents: 0, memo: label },
-        { account_id: ar.id,   debit_cents: 0, credit_cents: amountCents, memo: 'Comptes clients' },
-      ],
-    });
-    glPostEntry(entryId);
-    return { ok: true, entryId, account: cashNum };
+    return postPaymentToLedger(args || {});
   } catch (err) {
     return { ok: false, error: 'post_failed', detail: String(err?.message ?? err) };
   }
 });
 
 // Deleting or amending a payment reverses its entry rather than removing it -
-// the ledger stays append-only.
-ipcMain.handle('ledger:payment:reverse', async (_e, { paymentId, reason }) => {
+// the ledger stays append-only. Throws when the ledger refuses (closed period).
+function reversePaymentInLedger({ paymentId, reason } = {}) {
+  const entry = glFindEntryBySource('payment', paymentId);
+  if (!entry) return { ok: true, nothingToReverse: true };
+  if (entry.status === 'draft') { glDeleteDraft(entry.id); return { ok: true, deletedDraft: true }; }
+  const res = glReverseEntry(entry.id, reason || 'Paiement annulé');
+  return { ok: true, ...res };
+}
+
+ipcMain.handle('ledger:payment:reverse', async (_e, args = {}) => {
   try {
-    const entry = glFindEntryBySource('payment', paymentId);
-    if (!entry) return { ok: true, nothingToReverse: true };
-    if (entry.status === 'draft') { glDeleteDraft(entry.id); return { ok: true, deletedDraft: true }; }
-    const res = glReverseEntry(entry.id, reason || 'Paiement annulé');
-    return { ok: true, ...res };
+    return reversePaymentInLedger(args || {});
   } catch (err) {
     return { ok: false, error: 'reverse_failed', detail: String(err?.message ?? err) };
   }
@@ -2215,6 +2224,52 @@ ledgerHandle('ledger:credit:applyReverse', async (_e, { applicationId, reason } 
     if (!entry) return { ok: true, nothingToReverse: true };
     if (entry.status === 'draft') { glDeleteDraft(entry.id); return { ok: true, deletedDraft: true }; }
     const res = glReverseEntry(entry.id, reason || 'Crédit client retiré');
+    return { ok: true, ...res };
+  } catch (err) {
+    return { ok: false, error: 'reverse_failed', detail: String(err?.message ?? err) };
+  }
+});
+
+// A refund of a customer credit to the customer: the credit is a liability (2500) and
+// paying it back clears it against the cash account the payment mode settles into (the
+// same account ledger:payment:post would debit for that mode). Cheque refunds do NOT
+// come through here: they are created in the cheque register and post when written.
+// Idempotent on the refund id.
+ledgerHandle('ledger:credit:refund', async (_e, { refundId, refundDate, amountCents, mode, label } = {}) => {
+  try {
+    if (!refundId || !amountCents || amountCents <= 0 || !refundDate) return { ok: false, error: 'invalid_credit_refund' };
+    const existing = glFindEntryBySource('credit_refund', refundId);
+    if (existing) return { ok: true, entryId: existing.id, alreadyPosted: true };
+    const accounts = coaList();
+    const find = (num) => accounts.find(a => a.account_number === num);
+    const deposits = find('2500');
+    const cashNum = PAYMENT_MODE_ACCOUNT[mode] || '1010';
+    const cash = find(cashNum) || find('1010');
+    if (!deposits || !cash) return { ok: false, error: 'missing_coa_accounts', detail: `2500 / ${cashNum}` };
+    const memo = String(label || 'Remboursement de crédit client').trim();
+    const { entryId } = glDraftEntry({
+      entry_date: refundDate,
+      description: memo,
+      source_type: 'credit_refund',
+      source_id: String(refundId),
+      lines: [
+        { account_id: deposits.id, debit_cents: amountCents, credit_cents: 0, memo },
+        { account_id: cash.id, debit_cents: 0, credit_cents: amountCents, memo },
+      ],
+    });
+    glPostEntry(entryId);
+    return { ok: true, entryId, account: cashNum };
+  } catch (err) {
+    return { ok: false, error: 'post_failed', detail: String(err?.message ?? err) };
+  }
+});
+
+ledgerHandle('ledger:credit:refundReverse', async (_e, { refundId, reason } = {}) => {
+  try {
+    const entry = glFindEntryBySource('credit_refund', refundId);
+    if (!entry) return { ok: true, nothingToReverse: true };
+    if (entry.status === 'draft') { glDeleteDraft(entry.id); return { ok: true, deletedDraft: true }; }
+    const res = glReverseEntry(entry.id, reason || 'Remboursement de crédit client annulé');
     return { ok: true, ...res };
   } catch (err) {
     return { ok: false, error: 'reverse_failed', detail: String(err?.message ?? err) };
@@ -2420,6 +2475,7 @@ ledgerHandle('invoices:commit', async (_e, { doc, ledger = 'none', post, reason,
   try {
     return withTransaction(() => {
       let entryId = doc.glEntryId ?? null;
+      let alreadyPosted = false;
       let saved = doc;
       if (ledger === 'unpost') {
         const r = unpostInvoiceFromLedger({ invoiceId: doc.id, reason });
@@ -2430,11 +2486,61 @@ ledgerHandle('invoices:commit', async (_e, { doc, ledger = 'none', post, reason,
         const r = postInvoiceToLedger({ ...(post || {}), invoiceId: (post && post.invoiceId) || doc.id });
         if (!r.ok) throw new CommitRefused(r);
         entryId = r.entryId;
+        alreadyPosted = !!r.alreadyPosted;
         saved = { ...doc, glEntryId: r.entryId };
       }
       const res = documentsSaveChanges('facture', { upserts: [saved], deletes: [], order });
       if (!res.ok) throw new CommitRefused(res);
-      return { ok: true, doc: saved, entryId };
+      return { ok: true, doc: saved, entryId, alreadyPosted };
+    });
+  } catch (err) {
+    if (err instanceof CommitRefused) return { ...err.res, ok: false };
+    return { ok: false, error: 'post_failed', detail: String(err?.message ?? err) };
+  }
+});
+
+// Record a payment on an invoice as one step: the payment's posting runs first, inside the
+// same transaction as the save, so a refusal leaves the invoice exactly as it was and a saved
+// payment row always carries its entry. payment takes the arguments of ledger:payment:post;
+// doc already holds the new payment row (its id is payment.paymentId).
+ledgerHandle('invoices:commitPayment', async (_e, { doc, payment, order } = {}) => {
+  if (!doc || typeof doc !== 'object' || doc.id === undefined || doc.id === null || doc.id === '') {
+    return { ok: false, error: 'invalid_invoice' };
+  }
+  if (!payment || !payment.paymentId) return { ok: false, error: 'invalid_payment' };
+  if (!(doc.paiements || []).some(p => p && String(p.id) === String(payment.paymentId))) {
+    return { ok: false, error: 'payment_row_missing' };
+  }
+  try {
+    return withTransaction(() => {
+      const r = postPaymentToLedger({ ...payment, invoiceId: payment.invoiceId ?? doc.id });
+      if (!r.ok) throw new CommitRefused(r);
+      const saved = { ...doc, paiements: doc.paiements.map(p => (String(p.id) === String(payment.paymentId) ? { ...p, glEntryId: r.entryId } : p)) };
+      const res = documentsSaveChanges('facture', { upserts: [saved], deletes: [], order });
+      if (!res.ok) throw new CommitRefused(res);
+      return { ok: true, doc: saved, entryId: r.entryId };
+    });
+  } catch (err) {
+    if (err instanceof CommitRefused) return { ...err.res, ok: false };
+    return { ok: false, error: 'post_failed', detail: String(err?.message ?? err) };
+  }
+});
+
+// Remove a payment from an invoice as one step: its entry is reversed first, in the same
+// transaction as the save of the invoice without the row.
+ledgerHandle('invoices:commitPaymentRemoval', async (_e, { doc, paymentId, reason, order } = {}) => {
+  if (!doc || typeof doc !== 'object' || doc.id === undefined || doc.id === null || doc.id === '') {
+    return { ok: false, error: 'invalid_invoice' };
+  }
+  if (!paymentId) return { ok: false, error: 'invalid_payment' };
+  try {
+    return withTransaction(() => {
+      const r = reversePaymentInLedger({ paymentId, reason });
+      if (!r.ok) throw new CommitRefused(r);
+      const saved = { ...doc, paiements: (doc.paiements || []).filter(p => !(p && String(p.id) === String(paymentId))) };
+      const res = documentsSaveChanges('facture', { upserts: [saved], deletes: [], order });
+      if (!res.ok) throw new CommitRefused(res);
+      return { ok: true, doc: saved };
     });
   } catch (err) {
     if (err instanceof CommitRefused) return { ...err.res, ok: false };

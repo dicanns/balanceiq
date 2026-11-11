@@ -36,6 +36,7 @@ import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./config/features.js";
 import { calcRoyaltyFull, computeInvoiceTotals, documentTotals, freezeTotals, invoiceExportParts, frozenFromPosted, backfillFrozenTotals, isTaxOverride, badDebtTaxShare, lineTotal, lineDiscountLabel, documentDiscount, DISCOUNT_PERCENT, DISCOUNT_AMOUNT } from "./utils/calculations.js";
 import { applyCreditToInvoice, creditRemaining, invoiceBalance, unapplyCredit, statusAfterPayments } from "./utils/creditNotes.js";
+import { commitInvoicePosted, describeNotCreated } from "./utils/invoiceCommit.mjs";
 import { WRITTEN_OFF, CLOSED_INVOICE_STATUSES, isCashPayment, isOverdue } from "./utils/invoiceStatus.mjs";
 import { diffDocuments } from "./utils/documentDiff.mjs";
 import { overdueInvoices, nextFilingDeadline, cashVarianceCents, buildWorklist, worklistCounts } from "./services/todayWorklist.js";
@@ -67,7 +68,7 @@ import CompanyPlanGate from './components/CompanyPlanGate.jsx';
 import RemindersTab from './components/RemindersTab.jsx';
 import ClientReminderPicker from './components/ClientReminderPicker.jsx';
 import { accountStanding } from './services/accountStanding.js';
-import { CLIENT_CREDITS_KEY, CLIENT_CREDIT_MODE, CLIENT_CREDIT_MODE_LABELS, CLIENT_CREDIT_SOURCE_OVERPAYMENT, clientAvailableCents, creditAvailableCents, applyCredits, addApplication, removeApplication, setApplicationEntry, findCreditByPayment, findCreditByApplication, creditsForFacture } from './utils/clientCredits.mjs';
+import { CLIENT_CREDIT_AUTO_APPLY_KEY, parseAutoApplySetting, planRefund, addRefund, removeRefund, findCreditByRefund, creditRefundedCents, CLIENT_CREDIT_REFUND_MODES, CLIENT_CREDIT_REFUND_CHEQUE, CLIENT_CREDIT_REFUND_CASH, CLIENT_CREDITS_KEY, CLIENT_CREDIT_MODE, CLIENT_CREDIT_MODE_LABELS, CLIENT_CREDIT_SOURCE_OVERPAYMENT, clientAvailableCents, creditAvailableCents, applyCredits, addApplication, removeApplication, setApplicationEntry, findCreditByPayment, findCreditByApplication, creditsForFacture } from './utils/clientCredits.mjs';
 import { newEmailLogEntry, needsStatusCheck, needsViewCheck, applyDeliveryUpdates, emailWorklistItems, emailBadge } from './services/emailTracking.js';
 import { companyAccess, COMPANY_PLAN_VERIFIED_KEY, PAID_PLANS } from './services/companyAccess.js';
 import { shouldRecalcDueDate } from './utils/invoiceDueDate.js';
@@ -293,6 +294,7 @@ const DEFAULT_GL_ACCOUNTS={
  telephone:"6130",internet:"6140",assurances:"6500",
  entretien:"6200",fournitures:"6610",publicite:"6300",
  transport:"6800",autre:"6900",badDebt:"6430",openingEquity:"3400",
+ customerDeposits:"2500",undeposited:"1050",
 };
 const BLANK_CASH={cashierId:"",posVentes:null,posTPS:null,posTVQ:null,posLivraisons:null,float:null,interac:null,livraisons:null,deposits:null,finalCash:null,pmtVisa:null,pmtMastercard:null,pmtDebit:null,pmtAmex:null,pmtOther:null,pmtTips:null,pmtGiftCard:null};
 const BLANK_EMP={name:"",hours:null,wage:null};
@@ -1361,6 +1363,7 @@ function EncaisseTab({liveData,encaisseData,persistEncaisse,encaisseConfig,saveE
 function ComptabiliteExport({creditNotes,factures,clients,produits,categories,companyInfo,onClose,showUpgradePrompt,glAccounts}){
  const t=useT();
  const T=useL();
+ const {credits:exportClientCredits}=useContext(ClientCreditsCtx);
  const today=dk(new Date());
  const firstOfMonth=today.slice(0,8)+"01";
  const iS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:11,padding:"4px 7px",outline:"none",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"};
@@ -1435,7 +1438,30 @@ function ComptabiliteExport({creditNotes,factures,clients,produits,categories,co
     return{hdr,data};
   };
 
-  const GL=glAccounts||DEFAULT_GL_ACCOUNTS;
+  const GL={...DEFAULT_GL_ACCOUNTS,...(glAccounts||{})};
+  // Customer credits: the excess received (bank or undeposited funds against 2500), each application
+  // (2500 against receivables, with the invoice number) and each refund (2500 against the bank side), dated
+  // inside the export range. Cash settles in undeposited funds, every other mode in the bank account.
+  const creditCashAccount=(mode)=>mode===CLIENT_CREDIT_REFUND_CASH?GL.undeposited:GL.bank;
+  const creditExportEvents=()=>{
+    const inRange=(d)=>!!d&&(!dateFrom||d>=dateFrom)&&(!dateTo||d<=dateTo);
+    const out=[];
+    for(const c of exportClientCredits||[]){
+      if(!c)continue;
+      const clName=clients.find(x=>x.id===c.clientId)?.entreprise||"";
+      const srcNum=factures.find(f=>f.id===c.sourceFactureId)?.numero||"";
+      if(inRange(c.date))out.push({kind:"receipt",date:c.date,ref:c.reference||srcNum||c.id,amt:(c.amountCents||0)/100,account:creditCashAccount(c.mode),clName});
+      for(const a of c.applications||[]){
+        if(!inRange(a.date))continue;
+        out.push({kind:"apply",date:a.date,ref:factures.find(f=>f.id===a.factureId)?.numero||a.factureId,amt:(a.amountCents||0)/100,clName});
+      }
+      for(const r of c.refunds||[]){
+        if(!inRange(r.date))continue;
+        out.push({kind:"refund",date:r.date,ref:r.reference||c.id,amt:(r.amountCents||0)/100,account:creditCashAccount(r.mode),clName});
+      }
+    }
+    return out;
+  };
 
   const buildAcombaRows=()=>{
     const hdr=["Date","Journal","Référence","Description","Compte GL","Débit","Crédit","Note"];
@@ -1496,6 +1522,19 @@ function ComptabiliteExport({creditNotes,factures,clients,produits,categories,co
         }
         data.push([p.date,"CA",p.numero||fac.numero,`Paiement ${fac.numero}`,GL.bank,amt.toFixed(2),"",cl?.entreprise||""]);
         data.push([p.date,"CA",p.numero||fac.numero,`Paiement ${fac.numero}`,GL.ar,"",amt.toFixed(2),cl?.entreprise||""]);
+      }
+    }
+    for(const ev of creditExportEvents()){
+      const a=ev.amt.toFixed(2);
+      if(ev.kind==="receipt"){
+        data.push([ev.date,"CA",ev.ref,"Excédent de paiement - crédit client",ev.account,a,"",ev.clName]);
+        data.push([ev.date,"CA",ev.ref,"Excédent de paiement - crédit client",GL.customerDeposits,"",a,ev.clName]);
+      }else if(ev.kind==="apply"){
+        data.push([ev.date,"JG",ev.ref,`Crédit client appliqué ${ev.ref}`,GL.customerDeposits,a,"",ev.clName]);
+        data.push([ev.date,"JG",ev.ref,`Crédit client appliqué ${ev.ref}`,GL.ar,"",a,ev.clName]);
+      }else{
+        data.push([ev.date,"CA",ev.ref,"Remboursement de crédit client",GL.customerDeposits,a,"",ev.clName]);
+        data.push([ev.date,"CA",ev.ref,"Remboursement de crédit client",ev.account,"",a,ev.clName]);
       }
     }
     return{hdr,data};
@@ -1560,6 +1599,20 @@ function ComptabiliteExport({creditNotes,factures,clients,produits,categories,co
         }
         data.push([p.date,p.numero||fac.numero,`Payment - ${fac.numero}`,GL.bank,"Bank",amt.toFixed(2),""]);
         data.push([p.date,p.numero||fac.numero,`Payment - ${fac.numero}`,GL.ar,"Accounts Receivable","",amt.toFixed(2)]);
+      }
+    }
+    for(const ev of creditExportEvents()){
+      const a=ev.amt.toFixed(2);
+      const cashName=ev.account===GL.undeposited?"Undeposited Funds":"Bank";
+      if(ev.kind==="receipt"){
+        data.push([ev.date,ev.ref,`Overpayment - customer credit - ${ev.clName}`,ev.account,cashName,a,""]);
+        data.push([ev.date,ev.ref,`Overpayment - customer credit - ${ev.clName}`,GL.customerDeposits,"Customer Deposits","",a]);
+      }else if(ev.kind==="apply"){
+        data.push([ev.date,ev.ref,`Customer credit applied - ${ev.ref}`,GL.customerDeposits,"Customer Deposits",a,""]);
+        data.push([ev.date,ev.ref,`Customer credit applied - ${ev.ref}`,GL.ar,"Accounts Receivable","",a]);
+      }else{
+        data.push([ev.date,ev.ref,`Customer credit refund - ${ev.clName}`,GL.customerDeposits,"Customer Deposits",a,""]);
+        data.push([ev.date,ev.ref,`Customer credit refund - ${ev.clName}`,ev.account,cashName,"",a]);
       }
     }
     return{hdr,data};
@@ -2058,6 +2111,8 @@ function EditorLayer({title,onClose,children}){
  </div>);
 }
 
+// Invoices the startup backfill could not post this session: named once, not on every pass.
+const backfillWarned=new Set();
 function FacturationTab({categories,saveCategories,produits,saveProduits,clients,saveClients,soumissions,saveSoumissions,commandes,saveCommandes,factures,saveFactures,creditNotes,saveCreditNotes,docNums,saveDocNums,companyInfo,encaisseData,persistEncaisse,showUpgradePrompt,apiConfig,recurrents,saveRecurrents,invoiceTemplate,rawInvoiceTemplate,saveInvoiceTemplate,canUse,glAccounts,saveGlAccounts,deepLink,onDeepLinkDone}){
  // Opening receivables: invoices still owed when the business moved here.
  const [showOpeningImport,setShowOpeningImport]=useState(false);
@@ -2068,21 +2123,27 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
  // v1.84.0) was sent to the customer and never reached the books. Posting is
  // idempotent on the invoice id, so anything sent and unposted is posted here.
  useEffect(()=>{
-  if(!window.api?.ledger?.invoicePost)return;
+  if(!window.api?.invoices?.commit)return;
   const missing=(factures||[]).filter(f=>f&&f.documentType!=='proforma'&&!f.glEntryId&&f.statut&&!['Brouillon','Annulée'].includes(f.statut));
   if(!missing.length)return;
   (async()=>{
-   const done={};
+   const done={};const failed=[];
    for(const f of missing){
     try{
      const taxExempt=!!(clients?.find(c=>c.id===f.clientId)?.taxExempt);
      const ft=f.totauxCents||frozenTotalsFor(f,clients);
-     const res=await window.api.ledger.invoicePost({...revenueSource(f.lignes,f),invoiceId:f.id,invoiceDate:f.date,subtotalCents:ft.sousTotal,tpsCents:ft.tps,tvqCents:ft.tvq,totalCents:ft.total,taxExempt});
+     // Ledger and save are one step; an invoice the ledger refuses is left exactly as it was.
+     const r=await commitInvoicePosted(window.api,f,invoicePostArgs(f,ft,taxExempt),(factures||[]).map(x=>x.id));
      // An entry that already existed holds its own amounts: the startup backfill reads them, nothing is guessed here.
-     if(res?.ok&&res.entryId)done[f.id]={entryId:res.entryId,frozen:res.alreadyPosted?null:ft};
+     if(r.ok&&r.entryId)done[f.id]={entryId:r.entryId,frozen:r.alreadyPosted?null:ft};
+     else if(!backfillWarned.has(f.id)){backfillWarned.add(f.id);failed.push({numero:f.numero,res:r});}
     }catch(e){console.error('[ledger] backfill failed',f.numero,e);}
    }
-   if(Object.keys(done).length)saveFactures(prev=>prev.map(f=>done[f.id]?{...f,glEntryId:done[f.id].entryId,...(done[f.id].frozen&&!f.totauxCents?{totauxCents:done[f.id].frozen}:{})}:f));
+   if(Object.keys(done).length){
+    saveFactures(prev=>prev.map(f=>done[f.id]?{...f,glEntryId:done[f.id].entryId}:f),{alreadySaved:true});
+    if(Object.values(done).some(d=>d.frozen))saveFactures(prev=>prev.map(f=>done[f.id]?.frozen&&!f.totauxCents?{...f,totauxCents:done[f.id].frozen}:f));
+   }
+   if(failed.length)alert(T.facGenNotPosted(describeNotCreated(failed,T.facGenClosedPeriod)));
   })();
  },[factures?.length]);
  const [activeDoc,setActiveDoc]=useState(null);
@@ -2267,7 +2328,7 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
  {cat.actif===false?"Réactiver":"Désactiver"}</button></div>)}</div>))}</div>)}
 
  {/* Paramètres / Invoice Template */}
- {subTab==="parametres"&&rawInvoiceTemplate&&saveInvoiceTemplate&&(<div style={{display:"flex",flexDirection:"column",gap:10}}><InterestConfigSection showUpgradePrompt={showUpgradePrompt} factures={factures} saveFactures={saveFactures} clients={clients} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums}/>{(()=>{const canNum=canUse&&canUse("customNumbering");return(<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:14}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}><span style={{fontSize:13,fontWeight:700,color:t.text}}>{T.numCustomToggle||"Numérotation personnalisée"}</span><span style={{fontSize:9,fontWeight:700,color:canNum?"#f97316":"#6b7280",background:canNum?"rgba(249,115,22,0.1)":"rgba(255,255,255,0.06)",padding:"1px 6px",borderRadius:6}}>PRO</span></div>{canNum?(<div style={{display:"flex",flexDirection:"column",gap:8}}><label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:12,color:t.text}}><input type="checkbox" checked={!!docNums.useCustomPattern} onChange={e=>saveDocNums({...docNums,useCustomPattern:e.target.checked})} style={{accentColor:"#f97316"}}/>{T.numCustomEnable||(T===EN?"Enable custom numbering":"Activer la numérotation personnalisée")}</label>{docNums.useCustomPattern&&(<div style={{display:"flex",flexDirection:"column",gap:6}}><details style={{marginBottom:2}}><summary style={{fontSize:10,cursor:"pointer",userSelect:"none",listStyle:"none",display:"inline-flex",alignItems:"center",gap:5,color:t.textMuted,outline:"none"}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:15,height:15,borderRadius:"50%",border:`1px solid ${t.cardBorder}`,fontSize:9,fontWeight:700,flexShrink:0,color:t.textMuted}}>?</span><span>{T===EN?"Variables & examples":"Variables et exemples"}</span></summary><div style={{marginTop:6,padding:"8px 10px",background:t.section,borderRadius:6,display:"flex",flexDirection:"column",gap:4}}><div style={{display:"grid",gridTemplateColumns:"auto 1fr",gap:"3px 10px",alignItems:"start"}}>{[["{seq4}",T===EN?"0001 → 0002 → 0003 … (recommended - makes every number unique)":"0001 → 0002 → 0003 … (recommandé - rend chaque numéro unique)"],["{seq}","1 → 2 → 3 …"],["{year}","2026"],["{year2}","26"],["{month}","04"],["{day}","23"],["{clientCode}",T===EN?"First 3 letters of client name (e.g. HOT)":"3 premières lettres du client (ex. HOT)"]].map(([v,d])=>(<React.Fragment key={v}><code style={{color:"#f97316",fontSize:10,fontFamily:"monospace",fontWeight:700}}>{v}</code><span style={{fontSize:10,color:t.textSub}}>{d}</span></React.Fragment>))}</div><div style={{fontSize:10,color:"#f59e0b",fontWeight:600,marginTop:2}}>⚠ {T===EN?"Always include {seq4} - without it, every document gets the same number.":"Incluez toujours {seq4} - sinon, chaque document reçoit le même numéro."}</div><div style={{fontSize:10,color:t.textMuted}}>{T===EN?"e.g.  F-{year}-{seq4}  →  F-2026-0001, F-2026-0002, …":"ex.  F-{year}-{seq4}  →  F-2026-0001, F-2026-0002, …"}</div></div></details>{[["soumission","S"],["commande","C"],["facture","F"],["creditNote","NC"],["proforma","PF"]].map(([docType,code])=>(<div key={docType} style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}><div style={{flex:"1 1 130px"}}><div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{docType==="soumission"?(T===EN?"Quote":"Soumission"):docType==="commande"?(T===EN?"Order":"Commande"):docType==="facture"?(T===EN?"Invoice":"Facture"):docType==="creditNote"?(T===EN?"Credit note":"Note de crédit"):"Proforma"}</div><input value={(docNums.patterns||{})[docType]||""} onChange={e=>saveDocNums({...docNums,useCustomPattern:true,patterns:{...(docNums.patterns||{}),[docType]:e.target.value}})} placeholder={`Ex: ${code}-{year}-{seq4}`} style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:11,padding:"4px 7px",outline:"none",width:"100%",boxSizing:"border-box"}}/></div><div style={{fontSize:11,color:t.textMuted,minWidth:80,paddingTop:14}}>{(docNums.patterns||{})[docType]?applyNumPattern((docNums.patterns||{})[docType],docNums[docType]||1,"CLI001",docNums.prefix):`${docNums.prefix||"BIQ"}-${code}-${String(docNums[docType]||1).padStart(4,"0")}`}</div></div>))}<button onClick={()=>saveDocNums({...docNums,soumission:1,commande:1,facture:1,creditNote:1,proforma:1})} style={{alignSelf:"flex-start",padding:"3px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:"#ef4444",cursor:"pointer",fontSize:10,fontWeight:600}}>{T.numResetSeq||"Réinitialiser les séquences"}</button></div>)}</div>):<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}><span style={{fontSize:11,color:t.textSub}}>{T.numPatternHint||"Créez des numéros de documents avec votre format."}</span><button onClick={()=>showUpgradePrompt&&showUpgradePrompt("customNumbering")} style={{padding:"4px 12px",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:10,whiteSpace:"nowrap"}}>{T.upgradeToPro}</button></div>}</div>);})()}<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:14}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}><span style={{fontSize:13,fontWeight:700,color:t.text}}>{T.cfgInvoiceTemplate}</span>{canUse&&canUse("customTemplates")?<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"1px 6px",borderRadius:6}}>PRO</span>:<span style={{fontSize:9,fontWeight:700,color:"#6b7280",background:"rgba(255,255,255,0.06)",padding:"1px 6px",borderRadius:6}}>Pro</span>}</div>{canUse&&canUse("customTemplates")
+ {subTab==="parametres"&&rawInvoiceTemplate&&saveInvoiceTemplate&&(<div style={{display:"flex",flexDirection:"column",gap:10}}><ClientCreditSettingsSection/><InterestConfigSection showUpgradePrompt={showUpgradePrompt} factures={factures} saveFactures={saveFactures} clients={clients} companyInfo={companyInfo} docNums={docNums} saveDocNums={saveDocNums}/>{(()=>{const canNum=canUse&&canUse("customNumbering");return(<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:14}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}><span style={{fontSize:13,fontWeight:700,color:t.text}}>{T.numCustomToggle||"Numérotation personnalisée"}</span><span style={{fontSize:9,fontWeight:700,color:canNum?"#f97316":"#6b7280",background:canNum?"rgba(249,115,22,0.1)":"rgba(255,255,255,0.06)",padding:"1px 6px",borderRadius:6}}>PRO</span></div>{canNum?(<div style={{display:"flex",flexDirection:"column",gap:8}}><label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:12,color:t.text}}><input type="checkbox" checked={!!docNums.useCustomPattern} onChange={e=>saveDocNums({...docNums,useCustomPattern:e.target.checked})} style={{accentColor:"#f97316"}}/>{T.numCustomEnable||(T===EN?"Enable custom numbering":"Activer la numérotation personnalisée")}</label>{docNums.useCustomPattern&&(<div style={{display:"flex",flexDirection:"column",gap:6}}><details style={{marginBottom:2}}><summary style={{fontSize:10,cursor:"pointer",userSelect:"none",listStyle:"none",display:"inline-flex",alignItems:"center",gap:5,color:t.textMuted,outline:"none"}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:15,height:15,borderRadius:"50%",border:`1px solid ${t.cardBorder}`,fontSize:9,fontWeight:700,flexShrink:0,color:t.textMuted}}>?</span><span>{T===EN?"Variables & examples":"Variables et exemples"}</span></summary><div style={{marginTop:6,padding:"8px 10px",background:t.section,borderRadius:6,display:"flex",flexDirection:"column",gap:4}}><div style={{display:"grid",gridTemplateColumns:"auto 1fr",gap:"3px 10px",alignItems:"start"}}>{[["{seq4}",T===EN?"0001 → 0002 → 0003 … (recommended - makes every number unique)":"0001 → 0002 → 0003 … (recommandé - rend chaque numéro unique)"],["{seq}","1 → 2 → 3 …"],["{year}","2026"],["{year2}","26"],["{month}","04"],["{day}","23"],["{clientCode}",T===EN?"First 3 letters of client name (e.g. HOT)":"3 premières lettres du client (ex. HOT)"]].map(([v,d])=>(<React.Fragment key={v}><code style={{color:"#f97316",fontSize:10,fontFamily:"monospace",fontWeight:700}}>{v}</code><span style={{fontSize:10,color:t.textSub}}>{d}</span></React.Fragment>))}</div><div style={{fontSize:10,color:"#f59e0b",fontWeight:600,marginTop:2}}>⚠ {T===EN?"Always include {seq4} - without it, every document gets the same number.":"Incluez toujours {seq4} - sinon, chaque document reçoit le même numéro."}</div><div style={{fontSize:10,color:t.textMuted}}>{T===EN?"e.g.  F-{year}-{seq4}  →  F-2026-0001, F-2026-0002, …":"ex.  F-{year}-{seq4}  →  F-2026-0001, F-2026-0002, …"}</div></div></details>{[["soumission","S"],["commande","C"],["facture","F"],["creditNote","NC"],["proforma","PF"]].map(([docType,code])=>(<div key={docType} style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}><div style={{flex:"1 1 130px"}}><div style={{fontSize:10,color:t.textMuted,marginBottom:2}}>{docType==="soumission"?(T===EN?"Quote":"Soumission"):docType==="commande"?(T===EN?"Order":"Commande"):docType==="facture"?(T===EN?"Invoice":"Facture"):docType==="creditNote"?(T===EN?"Credit note":"Note de crédit"):"Proforma"}</div><input value={(docNums.patterns||{})[docType]||""} onChange={e=>saveDocNums({...docNums,useCustomPattern:true,patterns:{...(docNums.patterns||{}),[docType]:e.target.value}})} placeholder={`Ex: ${code}-{year}-{seq4}`} style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:11,padding:"4px 7px",outline:"none",width:"100%",boxSizing:"border-box"}}/></div><div style={{fontSize:11,color:t.textMuted,minWidth:80,paddingTop:14}}>{(docNums.patterns||{})[docType]?applyNumPattern((docNums.patterns||{})[docType],docNums[docType]||1,"CLI001",docNums.prefix):`${docNums.prefix||"BIQ"}-${code}-${String(docNums[docType]||1).padStart(4,"0")}`}</div></div>))}<button onClick={()=>saveDocNums({...docNums,soumission:1,commande:1,facture:1,creditNote:1,proforma:1})} style={{alignSelf:"flex-start",padding:"3px 10px",borderRadius:5,border:`1px solid ${t.cardBorder}`,background:t.section,color:"#ef4444",cursor:"pointer",fontSize:10,fontWeight:600}}>{T.numResetSeq||"Réinitialiser les séquences"}</button></div>)}</div>):<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}><span style={{fontSize:11,color:t.textSub}}>{T.numPatternHint||"Créez des numéros de documents avec votre format."}</span><button onClick={()=>showUpgradePrompt&&showUpgradePrompt("customNumbering")} style={{padding:"4px 12px",borderRadius:5,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:10,whiteSpace:"nowrap"}}>{T.upgradeToPro}</button></div>}</div>);})()}<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:14}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}><span style={{fontSize:13,fontWeight:700,color:t.text}}>{T.cfgInvoiceTemplate}</span>{canUse&&canUse("customTemplates")?<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"1px 6px",borderRadius:6}}>PRO</span>:<span style={{fontSize:9,fontWeight:700,color:"#6b7280",background:"rgba(255,255,255,0.06)",padding:"1px 6px",borderRadius:6}}>Pro</span>}</div>{canUse&&canUse("customTemplates")
  ?<div style={{display:"flex",flexDirection:"column",gap:8}}><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><div style={{flex:"1 1 120px"}}><div style={{fontSize:11,color:t.textMuted,marginBottom:3}}>{T.cfgLogoPosition}</div><select value={rawInvoiceTemplate.logoPosition} onChange={e=>saveInvoiceTemplate({...rawInvoiceTemplate,logoPosition:e.target.value})} style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none",width:"100%",boxSizing:"border-box"}}><option value="gauche">{T.cfgLogoLeft}</option><option value="centre">{T.cfgLogoCenter}</option><option value="droite">{T.cfgLogoRight}</option></select></div><div style={{flex:"1 1 120px"}}><div style={{fontSize:11,color:t.textMuted,marginBottom:3}}>{T.cfgAccentColor}</div><div style={{display:"flex",gap:6,alignItems:"center"}}><input type="color"value={rawInvoiceTemplate.accentColor} onChange={e=>saveInvoiceTemplate({...rawInvoiceTemplate,accentColor:e.target.value})} style={{width:38,height:32,border:`1px solid ${t.inputBorder}`,borderRadius:5,padding:2,background:t.inputBg,cursor:"pointer"}}/><input value={rawInvoiceTemplate.accentColor} onChange={e=>saveInvoiceTemplate({...rawInvoiceTemplate,accentColor:e.target.value})} style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none",flex:1,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums"}} placeholder="#f97316"/><button onClick={()=>saveInvoiceTemplate({...rawInvoiceTemplate,accentColor:"#f97316"})} style={{padding:"3px 8px",borderRadius:4,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textDim,cursor:"pointer",fontSize:10}}>Reset</button></div></div></div><div><div style={{fontSize:11,color:t.textMuted,marginBottom:3}}>{T.cfgFooterText}</div><input value={rawInvoiceTemplate.footerText} onChange={e=>saveInvoiceTemplate({...rawInvoiceTemplate,footerText:e.target.value})} placeholder={T.cfgFooterPlaceholder} style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none",width:"100%",boxSizing:"border-box"}}/></div><label style={{display:"flex",alignItems:"center",gap:6,fontSize:11.5,color:t.textSub,cursor:"pointer"}}><input type="checkbox" checked={rawInvoiceTemplate.showPoweredBy!==false} onChange={e=>saveInvoiceTemplate({...rawInvoiceTemplate,showPoweredBy:e.target.checked})} style={{accentColor:"#f97316"}}/>{T===EN?"Show \"Prepared with BalanceIQ\" at the bottom of documents":"Afficher « Préparé avec BalanceIQ » au bas des documents"}</label><div><div style={{fontSize:11,color:t.textMuted,marginBottom:3}}>{T.cfgDefaultNotes}</div><textarea value={rawInvoiceTemplate.defaultNotes} onChange={e=>saveInvoiceTemplate({...rawInvoiceTemplate,defaultNotes:e.target.value})} rows={2} placeholder={T.cfgDefaultNotesPlaceholder} style={{background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:12,padding:"5px 8px",outline:"none",width:"100%",boxSizing:"border-box",resize:"vertical",fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}/></div><label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:11,color:t.text}}><input type="checkbox"checked={rawInvoiceTemplate.showTaxNumbers} onChange={e=>saveInvoiceTemplate({...rawInvoiceTemplate,showTaxNumbers:e.target.checked})} style={{accentColor:"#f97316"}}/>
  {T.cfgShowTaxNums}</label><div style={{fontSize:10,color:"#22c55e",fontWeight:600}}>{T.cfgTemplateApplied}</div><button onClick={()=>{
  const sampleClient={entreprise:companyInfo.nom||"Entreprise Exemple inc.",contact:"Jean Dupont",adresse:"123 rue Principale",ville:"Montréal",province:"QC",codePostal:"H1A 1A1",courriel:"jean@exemple.ca",tel1:"514-555-0100"};
@@ -2361,6 +2422,73 @@ function invoiceTotalsFor(doc,clients){
 // what invoicePost receives.
 function frozenTotalsFor(doc,clients){
  return freezeTotals(computeSoumTotals(doc.lignes||[],{...doc,...clientExemptOpts(clients?.find(c=>c.id===doc.clientId))}));
+}
+// The arguments invoicePost takes for an invoice (cents from its frozen totals).
+function invoicePostArgs(inv,ft,taxExempt){
+ return{...revenueSource(inv.lignes,inv),invoiceId:inv.id,invoiceDate:inv.date,subtotalCents:ft.sousTotal,tpsCents:ft.tps,tvqCents:ft.tvq,totalCents:ft.total,taxExempt:!!taxExempt};
+}
+const newEntityId=()=>Date.now().toString(36)+Math.random().toString(36).slice(2);
+// Apply up to wantCents of the customer's available credit to one invoice. The ledger
+// call comes first; the payment row on the invoice and the application on the credit are
+// written together only when it returned ok, so the invoice and the credit list agree.
+// Shared by the Apply button on the payment screen and the auto-apply setting. Returns
+// { appliedCents, rows, statut, failed, notify }.
+async function applyClientCreditToInvoice({fac,wantCents,date,clients,getCredits,saveCredits,saveFactures}){
+ let appliedCents=0;const rows=[];let statut=fac.statut;
+ if(!(wantCents>0))return{appliedCents,rows,statut,failed:false,notify:false};
+ const plan=applyCredits(getCredits(),fac.clientId,wantCents,{factureId:fac.id,date,makeId:newEntityId});
+ for(const app of plan.applications){
+  const r=await window.api?.ledger?.creditApply?.({applicationId:app.id,invoiceNumber:fac.numero,applyDate:app.date,amountCents:app.amountCents}).catch(()=>null);
+  if(!r?.ok)return{appliedCents,rows,statut,failed:true,notify:!r||/^invalid_/.test(r.error||"")};
+  const row={id:app.id,date:app.date,montant:app.amountCents/100,mode:CLIENT_CREDIT_MODE,reference:"",note:"",fromClientCredit:true,creditId:app.creditId,glEntryId:r.entryId||null};
+  saveCredits(prev=>addApplication(prev,app.creditId,{...app,glEntryId:r.entryId||null}));
+  saveFactures(prev=>prev.map(f=>{
+   if(f.id!==fac.id)return f;
+   const paiements=[...(f.paiements||[]),row];
+   statut=statusAfterPayments({paiements},invoiceTotalsFor(f,clients).total,f.statut);
+   return{...f,paiements,statut};
+  }));
+  logCreate('payment','paiement',app.id,{...row,factureId:fac.id,factureNumero:fac.numero});
+  rows.push(row);
+  appliedCents+=app.amountCents;
+ }
+ return{appliedCents,rows,statut,failed:false,notify:false};
+}
+// Record a payment on an invoice as one step (the payment's ledger entry and the save of the
+// invoice with the new row are one transaction). Returns the commit result, or null after telling
+// the operator that nothing was saved.
+async function commitPaymentOnInvoice(doc,payment,order,T){
+ let r;
+ try{r=await window.api.invoices.commitPayment({doc,payment,order});}
+ catch(e){r={ok:false,error:String(e?.message||e)};}
+ if(!r?.ok){alert(T.facPaymentNotSaved+(r?.detail||r?.error?`\n(${r.detail||r.error})`:""));return null;}
+ return r;
+}
+// The same for removing a payment: its entry is reversed and the invoice saved without the row.
+async function commitPaymentRemovalOnInvoice(doc,paymentId,reason,order,T){
+ let r;
+ try{r=await window.api.invoices.commitPaymentRemoval({doc,paymentId,reason,order});}
+ catch(e){r={ok:false,error:String(e?.message||e)};}
+ if(!r?.ok){alert(T.facPaymentRemoveFailed+(r?.detail||r?.error?`\n(${r.detail||r.error})`:""));return null;}
+ return r;
+}
+// The operator's setting: apply a customer's available credit when an invoice enters the
+// ledger. Runs only after the invoice was committed; if the credit posting fails the invoice
+// stays as sent and the operator is told. Returns the result of the application, or null
+// when the setting is off or there is nothing to apply.
+async function autoApplyClientCredit({doc,clients,getCredits,saveCredits,saveFactures,T}){
+ try{
+  let stored=null;
+  try{stored=await window.api?.storage?.get?.(CLIENT_CREDIT_AUTO_APPLY_KEY);}catch(_){stored=null;}
+  if(!parseAutoApplySetting(stored))return null;
+  if(!doc||doc.documentType==="proforma"||CLOSED_INVOICE_STATUSES.includes(doc.statut))return null;
+  if(clientAvailableCents(getCredits(),doc.clientId)<=0)return null;
+  const totalCents=Math.round(invoiceTotalsFor(doc,clients).total*100);
+  const paidCents=(doc.paiements||[]).reduce((s,p)=>s+Math.round((p.montant||0)*100),0);
+  const res=await applyClientCreditToInvoice({fac:doc,wantCents:Math.max(0,totalCents-paidCents),date:dk(new Date()),clients,getCredits,saveCredits,saveFactures});
+  if(res.failed)alert(T.facClientCreditAutoApplyFailed);
+  return res;
+ }catch(e){alert(T.facClientCreditAutoApplyFailed);return null;}
 }
 function computeSoumTotals(lignes,taxExemptOpts){
  // Delegates to the shared definition so the ledger, the control-account check
@@ -2962,7 +3090,7 @@ function BadDebtPanel({form,setForm,savedId,savedNumero,totals,soldeDu,factures,
 function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,produits,companyInfo,docNums,saveDocNums,factures,saveFactures,commandes,soumissions,onBack,onBackToClient,onBackToList,initClientId,onEnregistrerPaiement,onCreditNote,apiConfig,showUpgradePrompt,invoiceTemplate,onOpenDoc,onConvertProforma,categories=[],saveCategories,saveProduits}){
  const t=useT();
  const T=useL();
- const {credits:clientCredits,saveCredits:saveClientCredits}=useContext(ClientCreditsCtx);
+ const {credits:clientCredits,saveCredits:saveClientCredits,getCredits:getClientCredits}=useContext(ClientCreditsCtx);
  const isNew=!facture?.id;
  const isProforma=facture?.documentType==="proforma";
  const todayStr=dk(new Date());
@@ -3119,9 +3247,9 @@ function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,pr
   }
  };
  const settleDepositsOnSend=(id,numero,doc)=>{
-  if(isProforma)return;
+  if(isProforma)return doc;
   const {doc:settled,applied}=applyDepositsOnSend(doc,totals.total);
-  if(!applied.length)return;
+  if(!applied.length)return doc;
   saveFactures(prev=>prev.map(f=>f.id===id?{...f,acomptes:settled.acomptes,paiements:settled.paiements,statut:settled.statut}:f));
   setAcomptes([]);
   upd({paiements:settled.paiements,statut:settled.statut});
@@ -3131,6 +3259,13 @@ function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,pr
     .then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(f=>f.id===id?{...f,paiements:(f.paiements||[]).map(x=>x.id===pay.id?{...x,glEntryId:res.entryId}:x)}:f));})
     .catch(()=>{});
   }
+  return{...doc,acomptes:settled.acomptes,paiements:settled.paiements,statut:settled.statut};
+ };
+ // The auto-apply setting: right after an invoice entered the ledger (and its deposits were
+ // settled), apply the customer's available credit. The editor shows the rows it added.
+ const runAutoApplyCredit=async(doc)=>{
+  const res=await autoApplyClientCredit({doc,clients,getCredits:getClientCredits,saveCredits:saveClientCredits,saveFactures,T});
+  if(res&&res.rows.length)setForm(p=>({...p,paiements:[...(p.paiements||[]),...res.rows],statut:res.statut}));
  };
  // Saves the invoice and its ledger step as one: nothing is saved when the ledger refuses.
  // Returns the committed result, or null after telling the operator why nothing was saved.
@@ -3197,7 +3332,7 @@ function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,pr
  else if(isFinalize&&committed.entryId)setForm(p=>({...p,glEntryId:committed.entryId}));
  if(isNew)logCreate('invoice','facture',id,doc);
  else logUpdate('invoice','facture',id,'document',null,JSON.stringify(doc));
- if(!isProforma&&form.statut!=='Brouillon'&&form.statut!=='Annulée')settleDepositsOnSend(id,numero,doc);
+ if(!isProforma&&form.statut!=='Brouillon'&&form.statut!=='Annulée'){const afterDeposits=settleDepositsOnSend(id,numero,doc);if(isFinalize)await runAutoApplyCredit(afterDeposits);}
  else if(form.statut==='Brouillon')postDepositReceipts(id,numero,doc.acomptes);
  setCreditLimitBanner(null);setCreditLimitOverrideGranted(false);
  if(invBridgeConfig.enabled&&!isProforma&&form.statut!=="Brouillon"&&form.statut!=="Annulée"){
@@ -3314,17 +3449,20 @@ function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,pr
  }catch(e){alert((T===EN?"Stripe error: ":"Erreur Stripe: ")+e.message);}
  setStripeWorking(false);
  };
- const doApplyStripePayment=()=>{
+ const doApplyStripePayment=async()=>{
  const _stripePayId=Date.now().toString();
  const _stripePayDate=dk(new Date());
  // Record what the link charged (the balance when it was created), never more than is still owed.
  const _stripeAmt=Math.min(factures.find(f=>f.id===savedId)?.stripeAmount||soldeDu,Math.max(0,soldeDu));
  if(!(_stripeAmt>0))return;
  const _stripePay={id:_stripePayId,date:_stripePayDate,montant:_stripeAmt,mode:"Stripe",reference:stripeSession.sessionId};
- const updated=factures.map(f=>f.id===savedId?{...f,paiements:[...(f.paiements||[]),_stripePay],statut:statusAfterPayments({paiements:[...(f.paiements||[]),_stripePay]},totals.total-totalAcomptes,f.statut)}:f);
- // Bridge phase 1: Stripe settles to the bank, so this credits AR like any other payment.
- window.api?.ledger?.paymentPost?.({paymentId:_stripePayId,invoiceId:savedId,paymentDate:_stripePayDate,amountCents:Math.round(_stripeAmt*100),mode:"Stripe"}).then(res=>{if(res&&res.ok===false)alert(T.facPaymentNotPosted+(res.error?`\n(${res.error})`:""));}).catch(()=>{alert(T.facPaymentNotPosted);});
- saveFactures(updated);
+ const current=factures.find(f=>f.id===savedId);
+ if(!current)return;
+ const stripeDoc={...current,paiements:[...(current.paiements||[]),_stripePay],statut:statusAfterPayments({paiements:[...(current.paiements||[]),_stripePay]},totals.total-totalAcomptes,current.statut)};
+ // Stripe settles to the bank, so this credits AR like any other payment; the entry and the save are one step.
+ const committed=await commitPaymentOnInvoice(stripeDoc,{paymentId:_stripePayId,invoiceId:savedId,invoiceNumber:current.numero,paymentDate:_stripePayDate,amountCents:Math.round(_stripeAmt*100),mode:"Stripe"},factures.map(f=>f.id),T);
+ if(!committed)return;
+ saveFactures(factures.map(f=>f.id===savedId?committed.doc:f),{alreadySaved:true});
  setStripeStatus(null);
  };
  // A payment recorded with the wrong date or amount had no way back: there was
@@ -3363,8 +3501,20 @@ function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,pr
     if(!r?.ok){alert(T.facCreditReverseFailed);return;}
     saveClientCredits(prev=>removeApplication(prev,p.id));
    }
+   const rest=(form.paiements||[]).filter(x=>x.id!==p.id);
+   const paid=rest.reduce((a,x)=>a+(x.montant||0),0);
+   const newStatut=paid<=0.005?"Envoyée":(totals.total-totalAcomptes-paid)<=0.005?"Payée":"Payée partiellement";
+   // An ordinary payment: its entry is reversed and the invoice saved without the row in ONE step; nothing
+   // else below runs when that was refused.
+   const stored=savedId&&!p.fromClientCredit&&!p.appliedDeposit?factures.find(f=>f.id===savedId):null;
+   let removedByCommit=false;
+   if(stored){
+    const removal=await commitPaymentRemovalOnInvoice({...stored,paiements:rest,statut:newStatut},p.id,T===EN?"Payment voided":"Paiement annulé",factures.map(f=>f.id),T);
+    if(!removal)return;
+    removedByCommit=true;
+   }
    // An applied deposit has two entries (received into 2500, applied to receivables); voiding reverses both.
-   const reverse=p.fromClientCredit?null:p.appliedDeposit?window.api?.ledger?.depositReverse:window.api?.ledger?.paymentReverse;
+   const reverse=removedByCommit||p.fromClientCredit?null:p.appliedDeposit?window.api?.ledger?.depositReverse:window.api?.ledger?.paymentReverse;
    if(reverse){
     const r=await reverse(p.appliedDeposit?{depositId:p.id,reason:T===EN?"Deposit voided":"Acompte annulé"}:{paymentId:p.id,reason:T===EN?"Payment voided":"Paiement annulé"});
     if(r&&r.ok===false){alert(T===EN?"Could not reverse the ledger entry. Nothing was changed.":"Impossible de contrepasser l'écriture. Rien n'a été modifié.");return;}
@@ -3384,11 +3534,8 @@ function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,pr
      ?"This cheque was already deposited and its statement line is linked to it. In Banking, unlink that deposit line and categorize it again."
      :"Ce chèque a déjà été déposé et sa ligne de relevé y est liée. Dans Banque, déliez cette ligne de dépôt et catégorisez-la de nouveau.");
    }
-   const rest=(form.paiements||[]).filter(x=>x.id!==p.id);
-   const paid=rest.reduce((a,x)=>a+(x.montant||0),0);
-   const newStatut=paid<=0.005?"Envoyée":(totals.total-totalAcomptes-paid)<=0.005?"Payée":"Payée partiellement";
    upd({paiements:rest,statut:newStatut});
-   if(savedId)saveFactures(factures.map(f=>f.id===savedId?{...f,paiements:rest,statut:newStatut}:f));
+   if(savedId)saveFactures(factures.map(f=>f.id===savedId?{...f,paiements:rest,statut:newStatut}:f),removedByCommit?{alreadySaved:true}:undefined);
    // A cash payment also sits in that day's Encaisse as an "other receipt"; voiding it takes the row out.
    if(persistEncaisse&&encaisseData){const dayKey=Object.keys(encaisseData).find(k=>(encaisseData[k]?.autreEntrees||[]).some(e=>e.fromFacturation&&e.id===p.id));if(dayKey)persistEncaisse({...encaisseData,[dayKey]:{...encaisseData[dayKey],autreEntrees:encaisseData[dayKey].autreEntrees.filter(e=>!(e.fromFacturation&&e.id===p.id))}});}
    logUpdate('invoice','paiement',p.id,'voided',JSON.stringify(p),null);
@@ -3531,7 +3678,7 @@ function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,pr
   post:isProforma?undefined:{...revenueSource(lignes,form),invoiceId:savedId,invoiceDate:form.date||dk(new Date()),subtotalCents:fz.sousTotal,tpsCents:fz.tps,tvqCents:fz.tvq,totalCents:fz.total,taxExempt}});
  if(!committed)return;
  setForm(p=>({...p,statut:newStatut,...(isProforma?{}:{totauxCents:fz}),...(committed.entryId?{glEntryId:committed.entryId}:{})}));
- settleDepositsOnSend(savedId,savedNumero,committed.doc);
+ {const afterDeposits=settleDepositsOnSend(savedId,savedNumero,committed.doc);if(!isProforma)await runAutoApplyCredit(afterDeposits);}
  }else setForm(p=>({...p,statut:newStatut}));
  }
  }} onClose={()=>setEmailModal(null)}/>}
@@ -3599,27 +3746,94 @@ function EncaissementEditor({showBack,clientId,factureId,initialDeposit=false,cl
    for(const fac of targets){
     const totalCents=Math.round(invoiceTotalsFor(fac,clients).total*100);
     const paidCents=(fac.paiements||[]).reduce((s,p)=>s+Math.round((p.montant||0)*100),0);
-    const want=Math.max(0,totalCents-paidCents);
-    if(want<=0)continue;
-    const plan=applyCredits(getClientCredits(),clientId,want,{factureId:fac.id,date:form.date,makeId:()=>Date.now().toString(36)+Math.random().toString(36).slice(2)});
-    for(const app of plan.applications){
-     const r=await window.api?.ledger?.creditApply?.({applicationId:app.id,invoiceNumber:fac.numero,applyDate:app.date,amountCents:app.amountCents}).catch(()=>null);
-     if(!r?.ok){if(!r||/^invalid_/.test(r.error||""))alert(T.facClientCreditApplyFailed);return;}
-     const row={id:app.id,date:app.date,montant:app.amountCents/100,mode:CLIENT_CREDIT_MODE,reference:"",note:"",fromClientCredit:true,creditId:app.creditId,glEntryId:r.entryId||null};
-     saveClientCredits(prev=>addApplication(prev,app.creditId,{...app,glEntryId:r.entryId||null}));
-     saveFactures(prev=>prev.map(f=>{
-      if(f.id!==fac.id)return f;
-      const paiements=[...(f.paiements||[]),row];
-      return{...f,paiements,statut:statusAfterPayments({paiements},invoiceTotalsFor(f,clients).total,f.statut)};
-     }));
-     logCreate('payment','paiement',app.id,{...row,factureId:fac.id,factureNumero:fac.numero});
-     appliedCents+=app.amountCents;
-    }
+    const res=await applyClientCreditToInvoice({fac,wantCents:Math.max(0,totalCents-paidCents),date:form.date,clients,getCredits:getClientCredits,saveCredits:saveClientCredits,saveFactures});
+    appliedCents+=res.appliedCents;
+    if(res.failed){if(res.notify)alert(T.facClientCreditApplyFailed);return;}
    }
   }finally{
    setCreditBusy(false);
    if(appliedCents>0)setCreditMsg(`${T.facClientCreditApplied} ${fmt(appliedCents/100)}`);
   }
+ };
+ // ── Refund a credit to the customer ──
+ // Cheque: created in the cheque register (Dr 2500 / Cr bank, posted when written, printable, cleared
+ // against the statement like any cheque). E-transfer and cash: ledger:credit:refund. The ledger
+ // answer comes first; the refund is recorded on the credit only when it was accepted.
+ const [refundOpen,setRefundOpen]=useState(false);
+ const [refundForm,setRefundForm]=useState({amount:"",date:todayStr,mode:CLIENT_CREDIT_REFUND_CHEQUE,reference:"",bankAccountId:""});
+ const [refundBanks,setRefundBanks]=useState([]);
+ const [refundDepositsCoaId,setRefundDepositsCoaId]=useState(null);
+ const updRefund=f=>setRefundForm(p=>({...p,...f}));
+ const clientRefunds=useMemo(()=>(clientCredits||[]).filter(c=>c&&c.clientId===clientId).flatMap(c=>(c.refunds||[]).map(r=>({...r,creditId:c.id}))).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||""))),[clientCredits,clientId]);
+ useEffect(()=>{
+  if(!refundOpen||refundForm.mode!==CLIENT_CREDIT_REFUND_CHEQUE)return;
+  let alive=true;
+  (async()=>{
+   try{
+    const [banks,coa]=await Promise.all([window.api.bank.accounts.list(),window.api.coa.list()]);
+    if(!alive)return;
+    const live=(banks||[]).filter(b=>!b.is_archived);
+    setRefundBanks(live);
+    setRefundDepositsCoaId((coa||[]).find(a=>a.account_number==="2500")?.id||null);
+    setRefundForm(p=>p.bankAccountId?p:{...p,bankAccountId:live[0]?String(live[0].id):""});
+   }catch(_){}
+  })();
+  return()=>{alive=false;};
+ },[refundOpen,refundForm.mode]);
+ const openRefund=()=>{setRefundForm(p=>({...p,amount:(availableCreditCents/100).toFixed(2),date:form.date||todayStr}));setRefundOpen(o=>!o);setCreditMsg("");};
+ const refundCashRow=(r,label)=>({id:r.id,categorie:"autre",description:label,montant:r.amountCents/100,fromFacturation:true,refundId:r.id});
+ const doRefundCredit=async()=>{
+  const wantCents=Math.round((parseFloat(refundForm.amount)||0)*100);
+  if(wantCents<=0||creditBusy)return;
+  if(wantCents>availableCreditCents){alert(T.facClientCreditRefundTooMuch);return;}
+  const isCheque=refundForm.mode===CLIENT_CREDIT_REFUND_CHEQUE;
+  if(isCheque&&(!refundForm.bankAccountId||!refundDepositsCoaId)){alert(T.facClientCreditRefundNoBank);return;}
+  setCreditBusy(true);setCreditMsg("");
+  let refundedCents=0;
+  try{
+   const plan=planRefund(getClientCredits(),clientId,wantCents,{date:refundForm.date,mode:refundForm.mode,reference:refundForm.reference,makeId:newEntityId});
+   const label=`${T.facClientCreditRefundLabel} - ${client?.entreprise||""}`;
+   for(const rfd of plan.refunds){
+    let chequeId=null,glEntryId=null;
+    if(isCheque){
+     const r=await window.api?.cheques?.record?.({direction:"issued",kind:"account",coaAccountId:refundDepositsCoaId,bankAccountId:Number(refundForm.bankAccountId),chequeNumber:rfd.reference,chequeDate:rfd.date,partyName:client?.entreprise||"",amountCents:rfd.amountCents,memo:label}).catch(()=>null);
+     if(!r?.ok){alert(T.facClientCreditRefundFailed+(r?.error?`\n(${r.error})`:""));return;}
+     chequeId=r.id;glEntryId=r.entryId||null;
+    }else{
+     const r=await window.api?.ledger?.creditRefund?.({refundId:rfd.id,refundDate:rfd.date,amountCents:rfd.amountCents,mode:rfd.mode,label}).catch(()=>null);
+     if(!r?.ok){if(!r||/^invalid_/.test(r.error||""))alert(T.facClientCreditRefundFailed);return;}
+     glEntryId=r.entryId||null;
+    }
+    saveClientCredits(prev=>addRefund(prev,rfd.creditId,{...rfd,chequeId,glEntryId}));
+    if(rfd.mode===CLIENT_CREDIT_REFUND_CASH&&persistEncaisse){
+     const d=rfd.date;const prevDay=encaisseData[d]||{};
+     persistEncaisse({...encaisseData,[d]:{...prevDay,sorties:[...(prevDay.sorties||[]),refundCashRow(rfd,label)]}});
+    }
+    logCreate('payment','client_credit_refund',rfd.id,{...rfd,chequeId,glEntryId,clientId});
+    refundedCents+=rfd.amountCents;
+   }
+  }finally{
+   setCreditBusy(false);
+   if(refundedCents>0){setCreditMsg(`${T.facClientCreditRefunded} ${fmt(refundedCents/100)}`);setRefundOpen(false);}
+  }
+ };
+ // Undo a refund while its cheque has not cleared: the entry is reversed (or the cheque voided
+ // through the register) first; the credit is available again only when that succeeded.
+ const undoCreditRefund=async(rfd)=>{
+  if(creditBusy||!window.confirm(T.facClientCreditRefundUndoConfirm))return;
+  setCreditBusy(true);
+  try{
+   if(rfd.chequeId){
+    const r=await window.api?.cheques?.void?.(rfd.chequeId,T.facClientCreditRefundUndoReason).catch(()=>null);
+    if(!r?.ok){alert(r?.error==="cheque_cleared"?T.facClientCreditRefundCleared:T.facClientCreditRefundUndoFailed);return;}
+   }else{
+    const r=await window.api?.ledger?.creditRefundReverse?.({refundId:rfd.id,reason:T.facClientCreditRefundUndoReason}).catch(()=>null);
+    if(!r?.ok){alert(T.facClientCreditRefundUndoFailed);return;}
+   }
+   saveClientCredits(prev=>removeRefund(prev,rfd.id));
+   if(persistEncaisse&&encaisseData){const dk2=Object.keys(encaisseData).find(k=>(encaisseData[k]?.sorties||[]).some(x=>x.refundId===rfd.id));if(dk2)persistEncaisse({...encaisseData,[dk2]:{...encaisseData[dk2],sorties:encaisseData[dk2].sorties.filter(x=>x.refundId!==rfd.id)}});}
+   logUpdate('payment','client_credit_refund',rfd.id,'voided',JSON.stringify(rfd),null);
+  }finally{setCreditBusy(false);}
  };
  const unpaid=useMemo(()=>factures.filter(f=>f.clientId===clientId&&!CLOSED_INVOICE_STATUSES.includes(f.statut)).sort((a,b)=>(a.date||"").localeCompare(b.date||"")),[factures,clientId]);
 
@@ -3713,27 +3927,26 @@ function EncaissementEditor({showBack,clientId,factureId,initialDeposit=false,cl
  };
 
  // ── Save (single / bulk) ──
- const _applyPayment=(updFactures,fac,montant,encNum)=>{
+ // The payment and its ledger entry are one step (invoices.commitPayment): when the commit
+ // fails nothing was saved and null comes back, so the caller does nothing else (no cheque
+ // register entry, no Encaisse row, no customer credit, no audit line, no number used).
+ const _applyPayment=async(updFactures,fac,montant,encNum)=>{
  const id=Date.now().toString(36)+Math.random().toString(36).slice(2);
  const numero=fmtDocNum(docNums.prefix,"E",encNum);
  const paiement={id,numero,date:form.date,montant,mode:form.mode,reference:form.reference,note:form.note,...(form.isDeposit?{isDeposit:true}:{})};
  const dp=(fac.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);
  const newSolde=invoiceTotalsFor(fac,clients).total-dp-montant;
  const newStatut=newSolde<=0.005?"Payée":"Payée partiellement";
- const updFac={...fac,paiements:[...(fac.paiements||[]),paiement],statut:newStatut};
- // Bridge phase 1: credit accounts receivable so the ledger tracks the invoice
- // module. Idempotent on paymentId in the main process, and non-blocking - a
- // ledger failure must not lose the payment the user just recorded.
- window.api?.ledger?.paymentPost?.({
+ const draftFac={...fac,paiements:[...(fac.paiements||[]),paiement],statut:newStatut};
+ const committed=await commitPaymentOnInvoice(draftFac,{
    paymentId:id, invoiceId:fac.id, invoiceNumber:fac.numero,
    paymentDate:paiement.date, amountCents:Math.round((montant||0)*100), mode:paiement.mode,
- }).then(res=>{
-   if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(f=>f.id===fac.id?{...f,paiements:(f.paiements||[]).map(pp=>pp.id===id?{...pp,glEntryId:res.entryId}:pp)}:f));
-   else if(res&&res.ok===false)alert(T.facPaymentNotPosted+(res.error?`\n(${res.error})`:""));
- }).catch(()=>{alert(T.facPaymentNotPosted);});
+ },updFactures.map(f=>f.id),T);
+ if(!committed)return null;
+ const updFac=committed.doc;
  logCreate('payment','paiement',id,{...paiement,factureId:fac.id,factureNumero:fac.numero});
  logUpdate('invoice','facture',fac.id,'statut',fac.statut,newStatut);
- return{updFactures:updFactures.map(f=>f.id===fac.id?updFac:f),paiement,updFac,numero};
+ return{updFactures:updFactures.map(f=>f.id===fac.id?updFac:f),paiement:updFac.paiements.find(x=>x.id===id)||paiement,updFac,numero};
  };
 
  // Cash taken in the till also goes into that day's Encaisse as "other receipts".
@@ -3751,8 +3964,10 @@ function EncaissementEditor({showBack,clientId,factureId,initialDeposit=false,cl
  const excessCents=Math.max(0,Math.round(parseFloat(form.montant)*100)-Math.round(solde*100));
  // More than the balance: keep the excess as a credit on the account (OK) or go back and correct the amount (Cancel).
  if(excessCents>0&&!window.confirm(`${T.facOverpayConfirm}\n${fmt(excessCents/100)}`))return;
- const{updFactures,paiement,updFac,numero}=_applyPayment([...factures],selFac,montant,docNums.encaissement);
- saveFactures(updFactures);
+ const applied=await _applyPayment([...factures],selFac,montant,docNums.encaissement);
+ if(!applied)return;
+ const{updFactures,paiement,updFac,numero}=applied;
+ saveFactures(updFactures,{alreadySaved:true});
  // The credit is created only after the invoice payment was recorded above.
  const credit=excessCents>0?await createCreditForExcess(excessCents,selFac,paiement.id):null;
  registerCheque([{montant,factureNumero:selFac.numero,paymentId:paiement.id}],credit);
@@ -3779,19 +3994,26 @@ function EncaissementEditor({showBack,clientId,factureId,initialDeposit=false,cl
  let encNum=docNums.encaissement;
  const results=[];
  const cashRows=[];
- toApply.forEach(f=>{
+ // One commit per invoice. The first refusal stops the batch: what was committed stays (and is
+ // reported below), the refused invoice and the ones after it are untouched, and no credit is made.
+ let batchStopped=false;
+ for(const f of toApply){
  const cap=invoiceTotalsFor(f,clients).total-(f.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);
  const montant=Math.min(parseFloat(allocations[f.id])||0,cap);
- if(montant<=0)return;
- const{updFactures:uf,paiement,updFac,numero}=_applyPayment(updFactures,f,montant,encNum++);
+ if(montant<=0)continue;
+ const applied=await _applyPayment(updFactures,f,montant,encNum);
+ if(!applied){batchStopped=true;break;}
+ encNum++;
+ const{updFactures:uf,paiement,updFac,numero}=applied;
  updFactures=uf;
  results.push({numero,montant,factureNumero:f.numero,facture:updFac,paymentId:paiement.id});
  cashRows.push({id:paiement.id,description:`Paiement ${updFac.numero} (Facturation)`,montant,fromFacturation:true});
- });
- saveFactures(updFactures);
+ }
+ if(!results.length)return;
+ saveFactures(updFactures,{alreadySaved:true});
  // The credit for the unallocated remainder is created only after the invoice payments were recorded above.
  const lastResult=results[results.length-1];
- const credit=keepAsCredit&&lastResult?await createCreditForExcess(remainderCents,{id:lastResult.facture.id,numero:lastResult.factureNumero},lastResult.paymentId):null;
+ const credit=keepAsCredit&&lastResult&&!batchStopped?await createCreditForExcess(remainderCents,{id:lastResult.facture.id,numero:lastResult.factureNumero},lastResult.paymentId):null;
  registerCheque(results,credit);
  saveDocNums({...docNums,encaissement:encNum});
  persistCashRows([...cashRows,...(credit?[creditCashRow(credit)]:[])]);
@@ -3806,7 +4028,7 @@ function EncaissementEditor({showBack,clientId,factureId,initialDeposit=false,cl
  const colsPro="24px 80px 100px 90px 90px 90px";
  const colsFree="24px 80px 100px 1fr 90px 90px";
  return(<div style={{display:"flex",flexDirection:"column",gap:10}}><div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>{showBack!==false&&(onBackToClient?<><button onClick={onBackToList} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToList}</button><button onClick={onBackToClient} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.backToClient}</button></>:<button onClick={onBack} style={{background:"none",border:`1px solid ${t.cardBorder}`,borderRadius:5,color:t.textSub,fontSize:11,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>{T.back}</button>)}<span style={{fontSize:14,fontWeight:700,color:t.text}}>{T.facRecordPayment}</span>{client&&<span style={{fontSize:12,color:t.textMuted}}>- {client.entreprise}</span>}
- {isBulk&&<span style={{fontSize:9.5,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"2px 7px",borderRadius:8}}>PRO · Multi-factures</span>}</div>{availableCreditCents>0&&<div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",background:"rgba(34,197,94,0.08)",border:"1px solid rgba(34,197,94,0.25)",borderRadius:9,padding:"8px 12px"}}><span style={{fontSize:12,fontWeight:700,color:"#16a34a"}}>{T.facClientCreditAvailable} {fmt(availableCreditCents/100)}</span><button onClick={applyClientCredit} disabled={creditBusy||(isBulk?selectedFacs.length===0:!selFac)} title={T.facClientCreditApplyTitle} style={{padding:"4px 14px",borderRadius:5,border:"1px solid #16a34a",background:"transparent",color:"#16a34a",cursor:(creditBusy||(isBulk?selectedFacs.length===0:!selFac))?"default":"pointer",fontWeight:700,fontSize:11,opacity:(creditBusy||(isBulk?selectedFacs.length===0:!selFac))?0.5:1}}>{T.facClientCreditApply}</button>{creditMsg&&<span style={{fontSize:11,color:t.textSub}}>{creditMsg}</span>}</div>}{/* ① Invoice selector */}<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><span style={{fontSize:12,fontWeight:700,color:t.text}}>① {T===EN?(isBulk?"Choose invoices":"Choose the invoice"):(isBulk?"Choisir les factures":"Choisir la facture")}</span>{unpaid.length>0&&<button onClick={handleAutoApply} disabled={!totalMontant} style={{padding:"3px 10px",borderRadius:5,border:"none",background:totalMontant?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:totalMontant?"#fff":t.textDim,cursor:totalMontant?"pointer":"default",fontWeight:700,fontSize:10,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T===EN?"Auto-apply":"Auto-appliquer"}{!isAutoApply&&<span style={{fontSize:8,marginLeft:4,opacity:0.7}}>PRO</span>}</button>}</div>{unpaid.length===0
+ {isBulk&&<span style={{fontSize:9.5,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"2px 7px",borderRadius:8}}>PRO · Multi-factures</span>}</div>{(availableCreditCents>0||clientRefunds.length>0)&&<div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",background:"rgba(34,197,94,0.08)",border:"1px solid rgba(34,197,94,0.25)",borderRadius:9,padding:"8px 12px"}}>{availableCreditCents>0&&<span style={{fontSize:12,fontWeight:700,color:"#16a34a"}}>{T.facClientCreditAvailable} {fmt(availableCreditCents/100)}</span>}{availableCreditCents>0&&<button onClick={applyClientCredit} disabled={creditBusy||(isBulk?selectedFacs.length===0:!selFac)} title={T.facClientCreditApplyTitle} style={{padding:"4px 14px",borderRadius:5,border:"1px solid #16a34a",background:"transparent",color:"#16a34a",cursor:(creditBusy||(isBulk?selectedFacs.length===0:!selFac))?"default":"pointer",fontWeight:700,fontSize:11,opacity:(creditBusy||(isBulk?selectedFacs.length===0:!selFac))?0.5:1}}>{T.facClientCreditApply}</button>}{availableCreditCents>0&&<button onClick={openRefund} disabled={creditBusy} title={T.facClientCreditRefundTitle} style={{padding:"4px 14px",borderRadius:5,border:"1px solid #16a34a",background:refundOpen?"rgba(22,163,74,0.12)":"transparent",color:"#16a34a",cursor:creditBusy?"default":"pointer",fontWeight:700,fontSize:11,opacity:creditBusy?0.5:1}}>{T.facClientCreditRefund}</button>}{creditMsg&&<span style={{fontSize:11,color:t.textSub}}>{creditMsg}</span>}{refundOpen&&availableCreditCents>0&&<div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"flex-end",width:"100%"}}><label style={{fontSize:10,color:t.textMuted}}>{T.facClientCreditRefundAmount}<input type="number" min="0" step="0.01" max={availableCreditCents/100} value={refundForm.amount} onChange={e=>updRefund({amount:e.target.value})} style={{...inputS,display:"block",width:90}}/></label><label style={{fontSize:10,color:t.textMuted}}>{T.facClientCreditRefundDate}<input type="date" value={refundForm.date} onChange={e=>updRefund({date:e.target.value})} style={{...inputS,display:"block"}}/></label><label style={{fontSize:10,color:t.textMuted}}>{T.facClientCreditRefundMode}<select value={refundForm.mode} onChange={e=>updRefund({mode:e.target.value})} style={{...inputS,display:"block"}}>{CLIENT_CREDIT_REFUND_MODES.map(m=><option key={m} value={m}>{T.facClientCreditRefundModes[m]}</option>)}</select></label>{refundForm.mode===CLIENT_CREDIT_REFUND_CHEQUE&&<label style={{fontSize:10,color:t.textMuted}}>{T.facClientCreditRefundBank}<select value={refundForm.bankAccountId} onChange={e=>updRefund({bankAccountId:e.target.value})} style={{...inputS,display:"block"}}>{refundBanks.map(b=><option key={b.id} value={String(b.id)}>{b.name}</option>)}</select></label>}<label style={{fontSize:10,color:t.textMuted}}>{refundForm.mode===CLIENT_CREDIT_REFUND_CHEQUE?T.facClientCreditRefundChequeNo:T.facClientCreditRefundReference}<input value={refundForm.reference} onChange={e=>updRefund({reference:e.target.value})} style={{...inputS,display:"block",width:120}}/></label><button onClick={doRefundCredit} disabled={creditBusy||!(parseFloat(refundForm.amount)>0)} style={{padding:"5px 14px",borderRadius:5,border:"none",background:"#16a34a",color:"#fff",cursor:creditBusy?"default":"pointer",fontWeight:700,fontSize:11,opacity:creditBusy?0.5:1}}>{T.facClientCreditRefundConfirm}</button></div>}{clientRefunds.length>0&&<div style={{width:"100%",display:"flex",flexDirection:"column",gap:2}}>{clientRefunds.slice(0,5).map(r=><div key={r.id} style={{fontSize:10.5,color:t.textSub,display:"flex",gap:8,alignItems:"center"}}><span>{T.facClientCreditRefundedOn} {r.date} - {fmt(r.amountCents/100)} - {T.facClientCreditRefundModes[r.mode]||r.mode}{r.reference?` (${r.reference})`:""}</span><button onClick={()=>undoCreditRefund(r)} disabled={creditBusy} style={{fontSize:10,padding:"1px 8px",borderRadius:4,border:`1px solid ${t.cardBorder}`,background:t.section,color:t.textSub,cursor:"pointer"}}>{T.facClientCreditRefundUndo}</button></div>)}</div>}</div>}{/* ① Invoice selector */}<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:12}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><span style={{fontSize:12,fontWeight:700,color:t.text}}>① {T===EN?(isBulk?"Choose invoices":"Choose the invoice"):(isBulk?"Choisir les factures":"Choisir la facture")}</span>{unpaid.length>0&&<button onClick={handleAutoApply} disabled={!totalMontant} style={{padding:"3px 10px",borderRadius:5,border:"none",background:totalMontant?"linear-gradient(135deg,#f97316,#ea580c)":"rgba(255,255,255,0.05)",color:totalMontant?"#fff":t.textDim,cursor:totalMontant?"pointer":"default",fontWeight:700,fontSize:10,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T===EN?"Auto-apply":"Auto-appliquer"}{!isAutoApply&&<span style={{fontSize:8,marginLeft:4,opacity:0.7}}>PRO</span>}</button>}</div>{unpaid.length===0
  ?<div style={{textAlign:"center",padding:"16px 0",color:t.textMuted,fontSize:12}}>{T.facNoUnpaidClient}</div>:<div style={{display:"flex",flexDirection:"column",gap:4}}><div style={{display:"grid",gridTemplateColumns:isBulk?colsPro:colsFree,gap:6,padding:"2px 6px",borderBottom:`1px solid ${t.dividerMid}`}}>{(isBulk?["",T.facNumInvoice,"Date",T.colTotal,T.colBalance,T.facColApply]:["",T.facNumInvoice,"Date",T.colTotal,T.facColPaid,T.colBalance]).map((h,i)=><span key={i} style={{fontSize:9.5,color:t.textMuted,fontWeight:600,textAlign:i>=3?"right":"left"}}>{h}</span>)}</div>{unpaid.map(f=>{
  const tot=invoiceTotalsFor(f,clients).total;
  const dp=(f.paiements||[]).reduce((s,p)=>s+(p.montant||0),0);
@@ -4203,6 +4425,7 @@ function NoteDeCreditEditor({showBack,creditNote,clients,factures,companyInfo,do
 function DepositScheduleSection({commandeId,clientId,totals,factures,saveFactures,clients,docNums,saveDocNums,companyInfo,invoiceTemplate,showUpgradePrompt}){
  const t=useT();
  const T=useL();
+ const {saveCredits:saveClientCredits,getCredits:getClientCredits}=useContext(ClientCreditsCtx);
  const isPro=canUse('customTemplates');
  const inputS={background:t.inputBg,border:`1px solid ${t.inputBorder}`,borderRadius:5,color:t.inputText,fontSize:11,padding:"4px 7px",outline:"none"};
  const [schedules,setSchedules]=useState([]);
@@ -4234,10 +4457,14 @@ function DepositScheduleSection({commandeId,clientId,totals,factures,saveFacture
    const newId=Date.now().toString();
    const depClient=clients?.find(c=>c.id===clientId);
    const num=generateDocNum(docNums,"facture",docNums?.facture||1,depClient?.code);
-   if(window.api?.docnum)window.api.docnum.register("facture",num,newId);const depFac={id:newId,clientId:clientId||"",numero:num,date:todayStr,dateEcheance:depClient?calcDateEcheance(todayStr,depClient.conditionsPaiement,depClient.nbJours):"",statut:"Envoyée",notes:sched.label,lignes:[{id:"1",description:sched.label,quantite:1,prixUnitaire:parseFloat(beforeTax.toFixed(2)),tps:true,tvq:true,remise:0}],paiements:[],sourceType:"commande_acompte",isDepositInvoice:true,parentCommandeId:sched.commande_id};
+   const depFac={id:newId,clientId:clientId||"",numero:num,date:todayStr,dateEcheance:depClient?calcDateEcheance(todayStr,depClient.conditionsPaiement,depClient.nbJours):"",statut:"Envoyée",notes:sched.label,lignes:[{id:"1",description:sched.label,quantite:1,prixUnitaire:parseFloat(beforeTax.toFixed(2)),tps:true,tvq:true,remise:0}],paiements:[],sourceType:"commande_acompte",isDepositInvoice:true,parentCommandeId:sched.commande_id};
    depFac.totauxCents=frozenTotalsFor(depFac,clients);
-   saveFactures([...factures,depFac]);
-   if(!depFac.glEntryId&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients?.find(c=>c.id===depFac.clientId)?.taxExempt);const dTot=depFac.totauxCents||frozenTotalsFor(depFac,clients);window.api.ledger.invoicePost({...revenueSource(depFac.lignes,depFac),invoiceId:depFac.id,invoiceDate:depFac.date,subtotalCents:dTot.sousTotal,tpsCents:dTot.tps,tvqCents:dTot.tvq,totalCents:dTot.total,taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(f=>f.id===depFac.id?{...f,glEntryId:res.entryId}:f));}).catch(e=>console.error('[ledger] invoice post failed',e));}
+   // Ledger and save are one step: when the ledger refuses, no invoice is created and the number is not used.
+   const cr=await commitInvoicePosted(window.api,depFac,invoicePostArgs(depFac,depFac.totauxCents,depClient?.taxExempt),[...factures.map(f=>f.id),depFac.id]);
+   if(!cr.ok){alert(T.facGenNotCreated(describeNotCreated([{numero:num,res:cr}],T.facGenClosedPeriod)));setLoading(false);return;}
+   if(window.api?.docnum)window.api.docnum.register("facture",num,newId);
+   saveFactures([...factures,cr.doc],{alreadySaved:true});
+   await autoApplyClientCredit({doc:cr.doc,clients,getCredits:getClientCredits,saveCredits:saveClientCredits,saveFactures,T});
    if(saveDocNums&&docNums)saveDocNums({...docNums,facture:(docNums.facture||1)+1});
    await window.api.deposits.markGenerated(sched.id,newId);
    setSchedules(prev=>prev.map(s=>s.id===sched.id?{...s,status:'generated',generated_invoice_id:newId}:s));
@@ -4256,6 +4483,15 @@ function DepositScheduleSection({commandeId,clientId,totals,factures,saveFacture
 // Payment reminders: see components/RemindersTab.jsx.
 
 // ── SPRINT 9 - INTEREST ON OVERDUE ──
+// Invoicing setting: apply a customer's available credit automatically when an invoice is sent.
+function ClientCreditSettingsSection(){
+ const t=useT();
+ const T=useL();
+ const [on,setOn]=useState(false);
+ useEffect(()=>{(async()=>{try{setOn(parseAutoApplySetting(await window.api.storage.get(CLIENT_CREDIT_AUTO_APPLY_KEY)));}catch(_){}})();},[]);
+ const toggle=async(v)=>{setOn(v);try{await window.api.storage.set(CLIENT_CREDIT_AUTO_APPLY_KEY,JSON.stringify(v));}catch(_){}};
+ return(<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:14}}><label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:12,fontWeight:700,color:t.text}}><input type="checkbox" checked={on} onChange={e=>toggle(e.target.checked)} style={{accentColor:"#f97316"}}/>{T.facClientCreditAutoApplyLabel}</label><div style={{fontSize:10.5,color:t.textMuted,marginTop:4,lineHeight:1.5}}>{T.facClientCreditAutoApplyHint}</div></div>);
+}
 function InterestConfigSection({showUpgradePrompt,factures,saveFactures,clients,companyInfo,docNums,saveDocNums}){
  const t=useT();
  const T=useL();
@@ -4264,6 +4500,7 @@ function InterestConfigSection({showUpgradePrompt,factures,saveFactures,clients,
  // Interest is charged once per overdue invoice at a flat rate (simple); the "compound"
  // option was removed because it computed the same amount.
  const DEFAULT_CFG={rate:1.5,grace:30,method:"simple",auto:false,message:""};
+ const {saveCredits:saveClientCredits,getCredits:getClientCredits}=useContext(ClientCreditsCtx);
  const [cfg,setCfg]=useState(DEFAULT_CFG);
  const [result,setResult]=useState(null);
  const [preview,setPreview]=useState(null); // null=idle, []=preview list
@@ -4306,27 +4543,34 @@ function InterestConfigSection({showUpgradePrompt,factures,saveFactures,clients,
   const sel={};eligible.forEach(f=>{sel[f.id]=true;});
   setPreview(eligible);setSelected(sel);setResult(null);
  };
- const confirmGenerate=()=>{
+ const confirmGenerate=async()=>{
   const toGenerate=preview.filter(f=>selected[f.id]);
   if(!toGenerate.length){setPreview(null);return;}
   let encNum=docNums?.facture||1;
-  const newFacs=[...factures];
-  const generated=[];const newIntFacs=[];
+  const generated=[];const newIntFacs=[];const notCreated=[];
   const intStamp=Date.now().toString();
+  const existingIds=factures.map(f=>f.id);
   for(const fac of toGenerate){
    // Batch-unique id: the same millisecond can serve several invoices.
    const newId=intStamp+"-"+fac.id;
    const intClient=clients?.find(c=>c.id===fac.clientId);
-   const num=generateDocNum(docNums,"facture",encNum++,intClient?.code);
-   if(window.api?.docnum)window.api.docnum.register("facture",num,newId);
+   const num=generateDocNum(docNums,"facture",encNum,intClient?.code);
    const intFac={id:newId,clientId:fac.clientId,numero:num,date:todayStr,dateEcheance:intClient?calcDateEcheance(todayStr,intClient.conditionsPaiement,intClient.nbJours):"",statut:"Envoyée",isInterest:true,parentFactureId:fac.id,notes:cfg.message||`Intérêts sur facture ${fac.numero} (${cfg.rate}%/mois)`,lignes:[{id:"1",description:`Intérêts sur ${fac.numero} - ${cfg.rate}%/mois`,quantite:1,prixUnitaire:fac._interestAmt,tps:false,tvq:false,remise:0}],paiements:[]};
    intFac.totauxCents=frozenTotalsFor(intFac,clients);
-   newFacs.push(intFac);newIntFacs.push(intFac);
+   // Ledger and save are one step: an invoice the ledger refuses is not created and its number is reused.
+   const cr=await commitInvoicePosted(window.api,intFac,invoicePostArgs(intFac,intFac.totauxCents,intClient?.taxExempt),[...existingIds,...newIntFacs.map(f=>f.id),intFac.id]);
+   if(!cr.ok){notCreated.push({numero:num,res:cr});continue;}
+   encNum++;
+   if(window.api?.docnum)window.api.docnum.register("facture",num,newId);
+   newIntFacs.push(cr.doc);
    generated.push({num,client:fac._client,amt:fac._interestAmt});
   }
-  saveFactures(newFacs);
-  if(saveDocNums&&docNums)saveDocNums({...docNums,facture:encNum});
-  for(const f of newIntFacs){if(!f.glEntryId&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients?.find(c=>c.id===f.clientId)?.taxExempt);const ft=f.totauxCents||frozenTotalsFor(f,clients);window.api.ledger.invoicePost({...revenueSource(f.lignes,f),invoiceId:f.id,invoiceDate:f.date,subtotalCents:ft.sousTotal,tpsCents:ft.tps,tvqCents:ft.tvq,totalCents:ft.total,taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(fa=>fa.id===f.id?{...fa,glEntryId:res.entryId}:fa));}).catch(e=>console.error('[ledger] invoice post failed',e));}}
+  if(newIntFacs.length){
+   saveFactures(prev=>[...prev,...newIntFacs],{alreadySaved:true});
+   if(saveDocNums&&docNums)saveDocNums({...docNums,facture:encNum});
+   for(const f of newIntFacs)await autoApplyClientCredit({doc:f,clients,getCredits:getClientCredits,saveCredits:saveClientCredits,saveFactures,T});
+  }
+  if(notCreated.length)alert(T.facGenNotCreated(describeNotCreated(notCreated,T.facGenClosedPeriod)));
   setPreview(null);setResult(generated);
  };
  return(<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:14}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}><span style={{fontSize:13,fontWeight:700,color:t.text}}>{T.interestTitle||"Intérêts sur retard"}</span>{isPro?<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"1px 6px",borderRadius:6}}>PRO</span>:<span style={{fontSize:9,fontWeight:700,color:"#6b7280",background:"rgba(255,255,255,0.06)",padding:"1px 6px",borderRadius:6}}>Pro</span>}</div>
@@ -4414,12 +4658,14 @@ function RecurringGenerateModal({recurrents,saveRecurrents,factures,saveFactures
  const due=useMemo(()=>(Array.isArray(recurrents)?recurrents:[]).filter(r=>isRecurringDue(r,today)),[recurrents,today]);
  const [generating,setGenerating]=useState(false);
  const [results,setResults]=useState(null);
+ const [notCreatedMsg,setNotCreatedMsg]=useState("");
+ const {saveCredits:saveClientCredits,getCredits:getClientCredits}=useContext(ClientCreditsCtx);
  const doGenerate=async()=>{
  setGenerating(true);
  let updFactures=[...factures];
  let encNum=docNums.facture;
  const newRecs=[...recurrents];
- const done=[];const newRecFacs=[];
+ const done=[];const newRecFacs=[];const notCreated=[];
  for(const rec of due){
  const fac={
  id:Date.now().toString(36)+Math.random().toString(36).slice(2),
@@ -4432,10 +4678,16 @@ function RecurringGenerateModal({recurrents,saveRecurrents,factures,saveFactures
  statut:"Envoyée",
  notes:"",
  paiements:[],
- numero:generateDocNum(docNums,"facture",encNum++,clients.find(c=>c.id===rec.clientId)?.code),
+ numero:generateDocNum(docNums,"facture",encNum,clients.find(c=>c.id===rec.clientId)?.code),
  };
- if(window.api?.docnum)window.api.docnum.register("facture",fac.numero,fac.id);
  fac.totauxCents=frozenTotalsFor(fac,clients);
+ // Ledger and save are one step: an invoice the ledger refuses is not created, keeps its number
+ // for the next one and its schedule stays due.
+ const cr=await commitInvoicePosted(window.api,fac,invoicePostArgs(fac,fac.totauxCents,clients.find(c=>c.id===rec.clientId)?.taxExempt),[...updFactures.map(f=>f.id),fac.id]);
+ if(!cr.ok){notCreated.push({numero:fac.numero,res:cr});continue;}
+ encNum++;
+ fac.glEntryId=cr.entryId;
+ if(window.api?.docnum)window.api.docnum.register("facture",fac.numero,fac.id);
  updFactures=[...updFactures,fac];newRecFacs.push(fac);
  const ri=newRecs.findIndex(r=>r.id===rec.id);
  if(ri>=0)newRecs[ri]={...newRecs[ri],lastGenerated:today};
@@ -4451,15 +4703,16 @@ function RecurringGenerateModal({recurrents,saveRecurrents,factures,saveFactures
  }catch(e){row.emailError=e?.message||"unknown";console.warn('[recurring] auto-send failed',fac.numero,e);}
  }
  }
- saveFactures(updFactures);
- for(const f of newRecFacs){if(!f.glEntryId&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients?.find(c=>c.id===f.clientId)?.taxExempt);const ft=f.totauxCents||frozenTotalsFor(f,clients);window.api.ledger.invoicePost({...revenueSource(f.lignes,f),invoiceId:f.id,invoiceDate:f.date,subtotalCents:ft.sousTotal,tpsCents:ft.tps,tvqCents:ft.tvq,totalCents:ft.total,taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(fa=>fa.id===f.id?{...fa,glEntryId:res.entryId}:fa));}).catch(e=>console.error('[ledger] invoice post failed',e));}}
+ if(newRecFacs.length)saveFactures(updFactures,{alreadySaved:true});
+ for(const f of newRecFacs)await autoApplyClientCredit({doc:f,clients,getCredits:getClientCredits,saveCredits:saveClientCredits,saveFactures,T});
  saveDocNums({...docNums,facture:encNum});
  saveRecurrents(newRecs);
  setGenerating(false);
+ setNotCreatedMsg(notCreated.length?T.facGenNotCreated(describeNotCreated(notCreated,T.facGenClosedPeriod)):"");
  setResults(done);
  };
  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{background:"#1a1d26",border:"1px solid rgba(249,115,22,0.3)",borderRadius:12,padding:24,maxWidth:540,width:"90%",maxHeight:"80vh",overflowY:"auto"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><span style={{fontSize:14,fontWeight:700,color:"#fff"}}>{T.recurringTitle}</span><button onClick={onClose} style={{background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:16}}>×</button></div>{results
- ?(<div><div style={{fontSize:12,color:"#22c55e",fontWeight:700,marginBottom:12}}>{T.hcGenCreated(results.length)}</div>{results.map(({fac,client,emailSent,emailError})=>(<div key={fac.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#9ca3af",borderTop:"1px solid rgba(255,255,255,0.05)",padding:"5px 0"}}><span>{fac.numero} - {client?.entreprise||"-"}{emailSent&&<span style={{fontSize:9,color:"#22c55e",marginLeft:6}}>{T.recurringEmailSent}</span>}{emailError&&<span title={emailError} style={{fontSize:9,color:"#ef4444",marginLeft:6}}>{T.recurringEmailFailed}</span>}</span><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:"#f97316"}}>{fmt(invoiceTotalsFor(fac,clients).total)}</span></div>))}<button onClick={onClose} style={{marginTop:16,padding:"7px 20px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T.close}</button></div>)
+ ?(<div><div style={{fontSize:12,color:"#22c55e",fontWeight:700,marginBottom:12}}>{T.hcGenCreated(results.length)}</div>{notCreatedMsg&&<div style={{fontSize:11,color:"#ef4444",marginBottom:10}}>{notCreatedMsg}</div>}{results.map(({fac,client,emailSent,emailError})=>(<div key={fac.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#9ca3af",borderTop:"1px solid rgba(255,255,255,0.05)",padding:"5px 0"}}><span>{fac.numero} - {client?.entreprise||"-"}{emailSent&&<span style={{fontSize:9,color:"#22c55e",marginLeft:6}}>{T.recurringEmailSent}</span>}{emailError&&<span title={emailError} style={{fontSize:9,color:"#ef4444",marginLeft:6}}>{T.recurringEmailFailed}</span>}</span><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:"#f97316"}}>{fmt(invoiceTotalsFor(fac,clients).total)}</span></div>))}<button onClick={onClose} style={{marginTop:16,padding:"7px 20px",borderRadius:6,border:"none",background:"linear-gradient(135deg,#f97316,#ea580c)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{T.close}</button></div>)
  :(<div>{due.length===0
  ?<div style={{textAlign:"center",padding:"20px 0",color:"#9ca3af",fontSize:12}}>{T.noRecurringPending}</div>:<div>{due.map(r=>{const client=clients.find(c=>c.id===r.clientId);return(<div key={r.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#9ca3af",borderTop:"1px solid rgba(255,255,255,0.05)",padding:"6px 0"}}><div><span style={{color:"#fff",fontWeight:600}}>{client?.entreprise||"-"}</span><span style={{color:"#6b7280",marginLeft:8}}>{r.lignes[0]?.description}</span>{r.autoEnvoyer&&<span style={{fontSize:9,color:"#f97316",marginLeft:6}}>Auto-envoi</span>}</div><span style={{fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif",fontVariantNumeric:"tabular-nums",color:"#f97316",fontWeight:700}}>{fmt(invoiceTotalsFor(r,clients).total)}</span></div>);})}<div style={{display:"flex",gap:8,marginTop:16}}><button onClick={doGenerate} disabled={generating} style={{padding:"7px 20px",borderRadius:6,border:"none",background:generating?"rgba(255,255,255,0.1)":"linear-gradient(135deg,#f97316,#ea580c)",color:generating?"#6b7280":"#fff",cursor:generating?"default":"pointer",fontWeight:700,fontSize:12,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{generating?"Génération…":`Créer ${due.length} facture${due.length!==1?"s":""}`}</button><button onClick={onClose} style={{padding:"7px 14px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:"#9ca3af",cursor:"pointer",fontSize:12}}>{T.cancel}</button></div></div>}</div>)}</div></div>);
 }
@@ -5642,6 +5895,7 @@ function MesSuccursalesTab({myLinkedLocations,activeMUOLocationId,setActiveMUOLo
 
 // ── RÉSEAU TAB ──
 function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfig,facCategories,facProduits,saveFacFactures,docNums,saveDocNums,companyInfo,apiConfig,perfTargets,payrollConfig,cloudUser,alertConfig,orgId,onUnreadDocsChange}){
+ const {saveCredits:saveClientCredits,getCredits:getClientCredits}=useContext(ClientCreditsCtx);
  const t=useT();
  const T=useL();
  const lang=T===EN?'en':'fr';
@@ -5878,9 +6132,9 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
  const createRoyaltyInvoices=async()=>{
  if(!genPreview)return;
  const checked=genPreview.filter(p=>p.checked&&p.client);
- const newFactures=[..._facFactures];
+ const newFactures=[];
  let nextNum=docNums?.facture||1;
- const created=[];const notPosted=[];
+ const created=[];const notCreated=[];
  const royaltyProduct=(Array.isArray(facProduits)?facProduits:[]).find(pr=>pr.categorieId&&pr.categorieId===royaltyConfig.categoryId);
  const today=dk(new Date());
  for(const p of checked){
@@ -5907,18 +6161,20 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
  const exempt=p.client.taxExempt?{exemptFromTps:p.client.exemptFromTps!==false,exemptFromTvq:p.client.exemptFromTvq!==false}:{};
  const tot=freezeTotals(computeSoumTotals(lignes,exempt));
  inv.totauxCents=tot;
+ // Ledger and save are one step: an invoice the ledger refuses is not created and its number is reused.
+ const cr=await commitInvoicePosted(window.api,inv,invoicePostArgs(inv,tot,p.client.taxExempt),[..._facFactures.map(f=>f.id),...newFactures.map(f=>f.id),inv.id]);
+ if(!cr.ok){notCreated.push({numero:inv.numero,res:cr});continue;}
  if(window.api?.docnum)window.api.docnum.register("facture",inv.numero,inv.id);
- try{
-  const res=await window.api?.ledger?.invoicePost?.({...revenueSource(lignes,inv),invoiceId:inv.id,invoiceDate:inv.date,subtotalCents:tot.sousTotal,tpsCents:tot.tps,tvqCents:tot.tvq,totalCents:tot.total,taxExempt:!!p.client.taxExempt});
-  if(res?.ok&&res.entryId)inv.glEntryId=res.entryId;else notPosted.push(inv.numero);
- }catch(e){console.error('[ledger] royalty invoice post failed',e);notPosted.push(inv.numero);}
- newFactures.push(inv);
+ newFactures.push(cr.doc);
  created.push(inv.numero);
  nextNum++;
  }
- saveFacFactures(newFactures);
- saveDocNums({...docNums,facture:nextNum});
- setGenResult(` ${T.hcGenCreated(created.length)}: ${created.join(", ")}`+(notPosted.length?(T===EN?` - not recorded in the ledger: ${notPosted.join(", ")}`:` - non inscrites au grand livre : ${notPosted.join(", ")}`):""));
+ if(newFactures.length){
+  saveFacFactures(prev=>[...prev,...newFactures],{alreadySaved:true});
+  saveDocNums({...docNums,facture:nextNum});
+  for(const f of newFactures)await autoApplyClientCredit({doc:f,clients:_facClients,getCredits:getClientCredits,saveCredits:saveClientCredits,saveFactures:saveFacFactures,T});
+ }
+ setGenResult((created.length?` ${T.hcGenCreated(created.length)}: ${created.join(", ")}`:"")+(notCreated.length?` ${T.facGenNotCreated(describeNotCreated(notCreated,T.facGenClosedPeriod))}`:""));
  setGenPreview(null);
  };
 

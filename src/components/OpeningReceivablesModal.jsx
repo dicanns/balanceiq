@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import ColumnMapper from './ColumnMapper.jsx';
+import { commitInvoicePosted, describeNotCreated } from '../utils/invoiceCommit.mjs';
 import { parseOpeningRows, guessOpeningRoles, buildOpeningInvoices, OPENING_ROLES } from '../utils/openingReceivables.mjs';
 
 // Invoicing > Import open invoices: the invoices still owed when a business
@@ -22,7 +23,8 @@ const UI = {
     err: { no_client: 'client manquant', no_number: 'no de facture manquant', bad_date: 'date illisible (AAAA-MM-JJ ou JJ/MM/AAAA)', bad_amount: 'solde dû manquant ou nul', duplicate_number: 'ce no de facture existe déjà' },
     row: (r) => `Ligne ${r}`, lineLabel: (num, date) => `Solde d'ouverture - facture ${num}${date ? ' du ' + date : ''}`,
     import: 'Importer', cancel: 'Annuler', done: (n) => `${n} facture${n > 1 ? 's' : ''} importée${n > 1 ? 's' : ''}.`,
-    ledgerWarn: (n) => `${n} facture${n > 1 ? 's n\'ont' : ' n\'a'} pas pu être comptabilisée${n > 1 ? 's' : ''} au grand livre; elles sont enregistrées et pourront l'être depuis Livres.`,
+    notCreated: (list) => `Non importées : ${list}`,
+    closedPeriod: 'période fermée',
     close: 'Fermer', colClient: 'Client', colNumero: 'No', colDate: 'Date', colDue: 'Échéance', colAmount: 'Solde dû', newTag: 'nouveau',
   },
   en: {
@@ -38,7 +40,8 @@ const UI = {
     err: { no_client: 'customer missing', no_number: 'invoice number missing', bad_date: 'unreadable date (YYYY-MM-DD or DD/MM/YYYY)', bad_amount: 'balance owed missing or zero', duplicate_number: 'that invoice number already exists' },
     row: (r) => `Line ${r}`, lineLabel: (num, date) => `Opening balance - invoice ${num}${date ? ' of ' + date : ''}`,
     import: 'Import', cancel: 'Cancel', done: (n) => `${n} invoice${n > 1 ? 's' : ''} imported.`,
-    ledgerWarn: (n) => `${n} invoice${n > 1 ? 's' : ''} could not be booked in the ledger; ${n > 1 ? 'they are' : 'it is'} saved and can be posted from Books.`,
+    notCreated: (list) => `Not imported: ${list}`,
+    closedPeriod: 'closed period',
     close: 'Close', colClient: 'Customer', colNumero: 'No.', colDate: 'Date', colDue: 'Due', colAmount: 'Balance owed', newTag: 'new',
   },
 };
@@ -79,22 +82,24 @@ export default function OpeningReceivablesModal({ clients = [], saveClients, fac
     if (!plan.invoices.length) return;
     setBusy(true);
     try {
-      if (plan.newClients.length) saveClients([...clients, ...plan.newClients]);
-      let posted = 0, failed = 0;
-      const withEntries = [];
+      // Each invoice is committed with its ledger posting in one step; one the ledger refuses
+      // is not imported and is named at the end.
+      const created = [];
+      const notCreated = [];
       for (const f of plan.invoices) {
-        let glEntryId = null;
-        try {
-          const cents = Math.round((f.lignes[0]?.prixUnitaire || 0) * 100);
-          const r = await window.api?.ledger?.invoicePost?.({ invoiceId: f.id, invoiceDate: f.date, subtotalCents: cents, tpsCents: 0, tvqCents: 0, totalCents: cents, taxExempt: true, openingBalance: true });
-          if (r?.ok) { glEntryId = r.entryId; posted++; } else failed++;
-        } catch (_) { failed++; }
         // An opening balance is frozen as one amount with no tax.
-        const frozenCents = Math.round((f.lignes[0]?.prixUnitaire || 0) * 100);
-        withEntries.push({ ...f, totauxCents: { sousTotal: frozenCents, tps: 0, tvq: 0, total: frozenCents }, ...(glEntryId ? { glEntryId } : {}) });
+        const cents = Math.round((f.lignes[0]?.prixUnitaire || 0) * 100);
+        const doc = { ...f, totauxCents: { sousTotal: cents, tps: 0, tvq: 0, total: cents } };
+        const post = { invoiceId: f.id, invoiceDate: f.date, subtotalCents: cents, tpsCents: 0, tvqCents: 0, totalCents: cents, taxExempt: true, openingBalance: true };
+        const r = await commitInvoicePosted(window.api, doc, post, [...factures.map(x => x.id), ...created.map(x => x.id), f.id]);
+        if (r.ok) created.push(r.doc); else notCreated.push({ numero: f.numero, res: r });
       }
-      saveFactures([...factures, ...withEntries]);
-      setResult({ count: withEntries.length, failed, posted });
+      // Only the customers an imported invoice belongs to are created.
+      const usedIds = new Set(created.map(f => f.clientId));
+      const newClients = plan.newClients.filter(c => usedIds.has(c.id));
+      if (newClients.length) saveClients([...clients, ...newClients]);
+      if (created.length) saveFactures([...factures, ...created], { alreadySaved: true });
+      setResult({ count: created.length, notCreated: notCreated.length ? T.notCreated(describeNotCreated(notCreated, T.closedPeriod)) : '' });
     } finally { setBusy(false); }
   };
 
@@ -113,7 +118,7 @@ export default function OpeningReceivablesModal({ clients = [], saveClients, fac
         {result ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ fontSize: 13, color: '#22c55e', fontWeight: 700 }}>{T.done(result.count)}</div>
-            {result.failed > 0 && <div style={{ fontSize: 12, color: '#f59e0b' }}>{T.ledgerWarn(result.failed)}</div>}
+            {result.notCreated && <div style={{ fontSize: 12, color: '#f59e0b' }}>{result.notCreated}</div>}
             <div><button type="button" onClick={onClose} style={primary}>{T.close}</button></div>
           </div>
         ) : (<>

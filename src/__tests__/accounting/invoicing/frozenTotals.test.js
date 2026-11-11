@@ -204,11 +204,22 @@ describe('FROZEN-004 invoicePostedTotals', () => {
 });
 
 describe('FROZEN-005 every poster freezes first and sends those cents', () => {
-  // Direct posts, plus the editor's two posts that travel inside invoices.commit (the post: argument).
-  const callLines = APP.split('\n').filter((l) => /ledger\??\.invoicePost\??\.?\(\{/.test(l) || /\.invoicePost\(\{/.test(l) || /^\s*post:(isFinalize|isProforma)/.test(l));
+  // The shared argument builder (invoicePostArgs) used by every generator, plus the editor's two posts
+  // that travel inside invoices.commit (the post: argument).
+  const callLines = APP.split('\n').filter((l) => /^\s*return\{\.\.\.revenueSource\(inv\.lignes,inv\),invoiceId/.test(l) || /^\s*post:(isFinalize|isProforma)/.test(l));
 
   it('finds every posting call site in App.jsx', () => {
-    expect(callLines.length).toBe(7);
+    expect(callLines.length).toBe(3);
+    // No direct ledger.invoicePost call is left anywhere in the renderer.
+    expect(APP).not.toMatch(/invoicePost\??\.?\(/);
+  });
+
+  it('every generator builds its posting arguments from its frozen totals', () => {
+    const sites = APP.match(/(?<!function )invoicePostArgs\((\w+),[^,)]+,/g) || [];
+    expect(sites.length).toBe(5); // deposit, interest, recurring, royalty, backfill
+    expect(sites.map((x) => x.replace(/\s/g, ''))).toEqual(expect.arrayContaining([
+      'invoicePostArgs(depFac,depFac.totauxCents,', 'invoicePostArgs(intFac,intFac.totauxCents,', 'invoicePostArgs(fac,fac.totauxCents,', 'invoicePostArgs(inv,tot,', 'invoicePostArgs(f,ft,',
+    ]));
   });
 
   it('each one passes cents taken from a frozen object, never a recomputed dollar amount', () => {
@@ -220,7 +231,7 @@ describe('FROZEN-005 every poster freezes first and sends those cents', () => {
 
   it('the editor, the generators and the royalty poster set totauxCents before saving', () => {
     expect(APP).toMatch(/if\(willFinalize\)\{doc\.totauxCents=fz;/);
-    expect(APP).toMatch(/depFac\.totauxCents=frozenTotalsFor\(depFac,clients\);\s*saveFactures/);
+    expect(APP.indexOf('depFac.totauxCents=frozenTotalsFor(depFac,clients);')).toBeLessThan(APP.indexOf('commitInvoicePosted(window.api,depFac,'));
     expect(APP).toMatch(/intFac\.totauxCents=frozenTotalsFor\(intFac,clients\);/);
     expect(APP).toMatch(/fac\.totauxCents=frozenTotalsFor\(fac,clients\);/);
     expect(APP).toMatch(/inv\.totauxCents=tot;/);
@@ -232,7 +243,7 @@ describe('FROZEN-005 every poster freezes first and sends those cents', () => {
 
   it('the opening balance import freezes one amount with no tax', () => {
     const src = fs.readFileSync(path.join(ROOT, 'src/components/OpeningReceivablesModal.jsx'), 'utf8');
-    expect(src).toMatch(/totauxCents: \{ sousTotal: frozenCents, tps: 0, tvq: 0, total: frozenCents \}/);
+    expect(src).toMatch(/totauxCents: \{ sousTotal: cents, tps: 0, tvq: 0, total: cents \}/);
   });
 
   it('invoiceTotalsFor reads the frozen totals and the startup backfill is wired', () => {

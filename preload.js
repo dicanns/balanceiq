@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('api', {
   },
   invoices: {
     commit: (opts) => ipcRenderer.invoke('invoices:commit', opts),
+    commitPayment: (opts) => ipcRenderer.invoke('invoices:commitPayment', opts),
+    commitPaymentRemoval: (opts) => ipcRenderer.invoke('invoices:commitPaymentRemoval', opts),
   },
   books: {
     check: () => ipcRenderer.invoke('books:check'),
@@ -280,6 +282,8 @@ contextBridge.exposeInMainWorld('api', {
     depositReverse: (opts) => ipcRenderer.invoke('ledger:deposit:reverse', opts),
     creditApply:        (opts) => ipcRenderer.invoke('ledger:credit:apply', opts),
     creditApplyReverse: (opts) => ipcRenderer.invoke('ledger:credit:applyReverse', opts),
+    creditRefund:       (opts) => ipcRenderer.invoke('ledger:credit:refund', opts),
+    creditRefundReverse: (opts) => ipcRenderer.invoke('ledger:credit:refundReverse', opts),
     paymentPost:    (opts) => ipcRenderer.invoke('ledger:payment:post', opts),
     paymentReverse: (opts) => ipcRenderer.invoke('ledger:payment:reverse', opts),
     creditNotePost: (opts) => ipcRenderer.invoke('ledger:creditnote:post', opts),

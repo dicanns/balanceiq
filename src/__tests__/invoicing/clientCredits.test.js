@@ -131,11 +131,11 @@ describe('CC-004 wiring', () => {
   });
   it('the payment screen creates the credit only after the invoice payment was recorded', () => {
     const single = encaissement.slice(encaissement.indexOf('const doSave=async()'));
-    const savedAt = single.indexOf('saveFactures(updFactures);');
+    const savedAt = single.indexOf('saveFactures(updFactures,{alreadySaved:true});');
     const creditAt = single.indexOf('await createCreditForExcess(');
     expect(savedAt).toBeGreaterThan(-1);
     expect(creditAt).toBeGreaterThan(savedAt);
-    const bulkSaved = single.indexOf('saveFactures(updFactures);', single.indexOf('let updFactures=[...factures];'));
+    const bulkSaved = single.indexOf('saveFactures(updFactures,{alreadySaved:true});', single.indexOf('let updFactures=[...factures];'));
     const bulkCredit = single.indexOf('await createCreditForExcess(', bulkSaved);
     expect(bulkCredit).toBeGreaterThan(bulkSaved);
   });
@@ -143,11 +143,15 @@ describe('CC-004 wiring', () => {
     const create = encaissement.slice(encaissement.indexOf('const createCreditForExcess='), encaissement.indexOf('const applyClientCredit='));
     expect(create.indexOf('depositPost')).toBeLessThan(create.indexOf('saveClientCredits('));
     expect(create).toMatch(/if\(!res\?\.ok\)\{alert\(T\.facClientCreditNotCreated\);return null;\}/);
-    const apply = encaissement.slice(encaissement.indexOf('const applyClientCredit='), encaissement.indexOf('const unpaid=useMemo'));
+    // The core shared by the Apply button and the auto-apply setting.
+    const apply = APP.slice(APP.indexOf('async function applyClientCreditToInvoice('), APP.indexOf('// Record a payment on an invoice as one step'));
+    expect(apply.indexOf('creditApply?.(')).toBeGreaterThan(-1);
     expect(apply.indexOf('creditApply?.(')).toBeLessThan(apply.indexOf('saveFactures('));
-    expect(apply).toMatch(/if\(!r\?\.ok\)\{/);
+    expect(apply).toMatch(/if\(!r\?\.ok\)return\{/);
     expect(apply).toMatch(/fromClientCredit:true/);
     expect(apply).not.toMatch(/paymentPost/);
+    const button = encaissement.slice(encaissement.indexOf('const applyClientCredit='), encaissement.indexOf('// ── Refund a credit'));
+    expect(button).toMatch(/applyClientCreditToInvoice\(/);
   });
   it('removing an applied-credit row reverses it before changing the invoice', () => {
     const v = factureEditor.slice(factureEditor.indexOf('const voidPaiement='), factureEditor.indexOf('const doPrint='));
