@@ -20,7 +20,9 @@ describe('TAXOV-001 a stated tax amount overrides the rates', () => {
   it('without an override the rates apply', () => {
     const t = computeInvoiceTotals(DEDUCTION);
     expect(t.tpsTotal).toBeCloseTo(1.23, 2);
-    expect(t.tvqTotal).toBeCloseTo(2.45385, 5);
+    // 24.60 x 9.975% = 2.45385, rounded to the cent
+    expect(t.tvqTotal).toBe(2.45);
+    expect(t.total).toBe(28.28);
     expect(t.tpsOverridden).toBe(false);
   });
 
@@ -41,7 +43,7 @@ describe('TAXOV-001 a stated tax amount overrides the rates', () => {
   it('one tax can be overridden while the other keeps its rate', () => {
     const t = computeInvoiceTotals(DEDUCTION, { tpsOverride: 0.02 });
     expect(t.tpsTotal).toBe(0.02);
-    expect(t.tvqTotal).toBeCloseTo(2.45385, 5);
+    expect(t.tvqTotal).toBe(2.45);
   });
 
   it('zero is a real answer, not a missing one', () => {
@@ -89,7 +91,7 @@ describe('TAXOV-003 the override reaches every reader of the total', () => {
 
   it('a document with no override is unaffected', () => {
     const doc = { lignes: DEDUCTION, paiements: [] };
-    expect(calcInvoiceOutstanding(doc)).toBeCloseTo(28.28385, 5);
+    expect(calcInvoiceOutstanding(doc)).toBeCloseTo(28.28, 2);
   });
 
   it('the cents handed to the ledger match the document to the penny', () => {

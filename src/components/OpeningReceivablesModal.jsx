@@ -89,7 +89,9 @@ export default function OpeningReceivablesModal({ clients = [], saveClients, fac
           const r = await window.api?.ledger?.invoicePost?.({ invoiceId: f.id, invoiceDate: f.date, subtotalCents: cents, tpsCents: 0, tvqCents: 0, totalCents: cents, taxExempt: true, openingBalance: true });
           if (r?.ok) { glEntryId = r.entryId; posted++; } else failed++;
         } catch (_) { failed++; }
-        withEntries.push(glEntryId ? { ...f, glEntryId } : f);
+        // An opening balance is frozen as one amount with no tax.
+        const frozenCents = Math.round((f.lignes[0]?.prixUnitaire || 0) * 100);
+        withEntries.push({ ...f, totauxCents: { sousTotal: frozenCents, tps: 0, tvq: 0, total: frozenCents }, ...(glEntryId ? { glEntryId } : {}) });
       }
       saveFactures([...factures, ...withEntries]);
       setResult({ count: withEntries.length, failed, posted });

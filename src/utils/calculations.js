@@ -443,13 +443,98 @@ export function computeInvoiceTotals(lignes, opts) {
   if (ovTvq) tv = parseFloat(opts.tvqOverride);
   // sousTotal is what the customer is charged before tax, after every discount:
   // the revenue. sousTotalBrut is the lines added up, before the subtotal discount.
+  // Every part is rounded to the cent and the total is the sum of the rounded
+  // parts, so what is printed always adds up to what is charged.
+  const r2 = (x) => Math.round(x * 100) / 100;
+  const stR = r2(st), tpR = r2(tp), tvR = r2(tv);
   return {
-    sousTotal: st, tpsTotal: tp, tvqTotal: tv, total: st + tp + tv,
-    sousTotalBrut: gross, remiseGlobaleMontant,
+    sousTotal: stR, tpsTotal: tpR, tvqTotal: tvR, total: r2(stR + tpR + tvR),
+    sousTotalBrut: r2(gross), remiseGlobaleMontant: r2(remiseGlobaleMontant),
     // For the document's label: the percentage when the discount is one, else null.
     remiseGlobaleTaux: remiseGlobaleMontant > 0 && opts?.remiseGlobaleType !== DISCOUNT_AMOUNT ? n(opts?.remiseGlobale) : null,
     tpsOverridden: ovTps, tvqOverridden: ovTvq,
   };
+}
+
+// ── FROZEN TOTALS ────────────────────────────────────────────────────────────
+// A document that is in the ledger carries its totals in integer cents
+// (totauxCents), so every reader shows exactly what was posted.
+const isCentsInt = (v) => typeof v === 'number' && Number.isInteger(v);
+
+// The cents object of a computed totals object.
+export function freezeTotals(totals) {
+  const c = (x) => Math.round((Number(x) || 0) * 100);
+  const sousTotal = c(totals?.sousTotal), tps = c(totals?.tpsTotal), tvq = c(totals?.tvqTotal);
+  return { sousTotal, tps, tvq, total: sousTotal + tps + tvq };
+}
+
+// The frozen totals of an invoice already posted: the revenue is whatever is
+// left of the receivable after the taxes, exactly how the ledger books it.
+export function frozenFromPosted({ totalCents, tpsCents, tvqCents }) {
+  const total = Math.round(Number(totalCents) || 0);
+  const tps = Math.round(Number(tpsCents) || 0);
+  const tvq = Math.round(Number(tvqCents) || 0);
+  return { sousTotal: total - tps - tvq, tps, tvq, total };
+}
+
+export function isValidFrozen(t) {
+  return !!t && isCentsInt(t.sousTotal) && isCentsInt(t.tps) && isCentsInt(t.tvq) && isCentsInt(t.total)
+    && t.total === t.sousTotal + t.tps + t.tvq;
+}
+
+// Totals of a document: the frozen ones when it is in the ledger, else computed.
+export function documentTotals(doc, opts) {
+  const computed = computeInvoiceTotals(doc?.lignes, opts);
+  const f = doc?.totauxCents;
+  if (doc?.statut === 'Brouillon' || !isValidFrozen(f)) return computed;
+  return { ...computed, sousTotal: f.sousTotal / 100, tpsTotal: f.tps / 100, tvqTotal: f.tvq / 100, total: f.total / 100 };
+}
+
+// An invoice as export rows, in cents, that add up to its (frozen) totals exactly:
+// one row per line, plus one adjustment row (the subtotal discount, and whatever
+// rounding or override difference is left in the tax). The rounding drift of the
+// revenue lands on the last line that has an amount. totals comes from documentTotals.
+export function invoiceExportParts(doc, totals, exemptOpts) {
+  const ex = exemptOpts || {};
+  const lines = [];
+  (doc?.lignes || []).forEach((l) => {
+    if (!l || l.type === 'section') return;
+    const lt = lineTotal(l);
+    lines.push({
+      l,
+      st: Math.round(lt * 100),
+      tps: l.tps && !ex.exemptFromTps ? Math.round(lt * 5) : 0,
+      tvq: l.tvq && !ex.exemptFromTvq ? Math.round(lt * 9.975) : 0,
+    });
+  });
+  const fz = freezeTotals(totals);
+  const disc = Math.round((totals?.remiseGlobaleMontant || 0) * 100);
+  const sum = (k) => lines.reduce((a, x) => a + x[k], 0);
+  const drift = fz.sousTotal - (sum('st') - disc);
+  if (drift !== 0 && lines.length) {
+    const last = [...lines].reverse().find((x) => x.st !== 0) || lines[lines.length - 1];
+    last.st += drift;
+  }
+  const adj = { st: -disc, tps: fz.tps - sum('tps'), tvq: fz.tvq - sum('tvq'), discount: disc };
+  const hasAdj = adj.st !== 0 || adj.tps !== 0 || adj.tvq !== 0;
+  return { lines, adj: hasAdj ? adj : null, frozen: fz };
+}
+
+// Fill in the frozen totals of invoices sent before they were kept, from what
+// the ledger holds. Never overwrites, never touches drafts or voided invoices.
+export function backfillFrozenTotals(invoices, posted) {
+  let changed = false;
+  if (!Array.isArray(invoices) || !posted) return { invoices, changed };
+  const out = invoices.map((f) => {
+    if (!f || f.totauxCents || f.statut === 'Brouillon' || f.statut === 'Annulée') return f;
+    const p = posted[f.id];
+    if (!p) return f;
+    const frozen = frozenFromPosted(p);
+    if (!isValidFrozen(frozen)) return f;
+    changed = true;
+    return { ...f, totauxCents: frozen };
+  });
+  return { invoices: changed ? out : invoices, changed };
 }
 
 // The subtotal discount fields a document carries, for callers that pass their
@@ -475,7 +560,7 @@ export function badDebtTaxShare({ writtenOff, total, tps, tvq }) {
 // Overrides live on the document itself, so a caller that only knows the customer's
 // exemption still gets the right total.
 export function calcInvoiceOutstanding(facture, taxExemptOpts) {
-  const total = computeInvoiceTotals(facture?.lignes, {
+  const total = documentTotals(facture, {
     tpsOverride: facture?.tpsOverride,
     tvqOverride: facture?.tvqOverride,
     ...documentDiscount(facture),

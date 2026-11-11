@@ -79,7 +79,7 @@ describe('CNAPPLY-004 the editor', () => {
   it('takes tax per line, stores the sums so every screen agrees, and prints them', () => {
     expect(editor).toMatch(/const lineTaxSums=useMemo/);
     expect(editor).toMatch(/\.\.\.\(form\.taxPerLine\?\{tpsOverride:taxOpts\.tpsOverride,tvqOverride:taxOpts\.tvqOverride\}:\{\}\)/);
-    expect(app).toMatch(/const totals=computeSoumTotals\(lignes,\{tpsOverride,tvqOverride\}\);/);
+    expect(app).toMatch(/const totals=documentTotals\(\{lignes,statut,totauxCents\},\{tpsOverride,tvqOverride\}\);/);
   });
   it('says why Save is off, labels the custom-line columns, and speaks English', () => {
     expect(editor).toMatch(/\{!canSave&&saveBlocker&&<span/);

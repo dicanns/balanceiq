@@ -75,8 +75,9 @@ describe('DISC-003 the tax follows the subtotal discount', () => {
   it('a fully taxable document is taxed on what is left', () => {
     const t = computeInvoiceTotals(TAXABLE, { remiseGlobale: 10 });
     expect(t.tpsTotal).toBeCloseTo(9, 6);
-    expect(t.tvqTotal).toBeCloseTo(17.955, 6);
-    expect(t.total).toBeCloseTo(180 + 9 + 17.955, 6);
+    // 17.955 is a half cent: it rounds up to 17.96
+    expect(t.tvqTotal).toBe(17.96);
+    expect(t.total).toBe(206.96);
   });
 
   it('on a mixed document the taxable lines carry only their share', () => {
@@ -89,7 +90,7 @@ describe('DISC-003 the tax follows the subtotal discount', () => {
     const t = computeInvoiceTotals(mixed, { remiseGlobale: 40, remiseGlobaleType: DISCOUNT_AMOUNT });
     expect(t.sousTotal).toBe(360);
     expect(t.tpsTotal).toBeCloseTo(4.5, 6);
-    expect(t.tvqTotal).toBeCloseTo(8.9775, 6);
+    expect(t.tvqTotal).toBe(8.98);
   });
 
   it('a tax-exempt customer is still charged no tax', () => {
@@ -118,7 +119,8 @@ describe('DISC-004 line and subtotal discounts together', () => {
 describe('DISC-005 balances and stated taxes see the discount', () => {
   it('the outstanding balance uses the discounted total', () => {
     const facture = { lignes: TAXABLE, remiseGlobale: 20, remiseGlobaleType: DISCOUNT_AMOUNT, paiements: [{ montant: 100 }] };
-    expect(calcInvoiceOutstanding(facture)).toBeCloseTo(180 * 1.14975 - 100, 6);
+    // 180 + 9.00 + 17.96 = 206.96, less 100
+    expect(calcInvoiceOutstanding(facture)).toBeCloseTo(106.96, 6);
   });
 
   it('a stated tax amount still wins over the computed one', () => {

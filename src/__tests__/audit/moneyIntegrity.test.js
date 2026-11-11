@@ -53,8 +53,19 @@ describe('AUDIT-LEDGER-001 the split balances by construction', () => {
       expect(s.tvqCents).toBe(c(t.tvqTotal));
       if (s.revenueCents !== c(t.sousTotal)) absorbed++;
     }
-    // The cases that used to be refused: the cent now sits in revenue.
-    expect(absorbed).toBeGreaterThan(1000);
+    // Computed totals are now the sum of their rounded parts, so no cent is left
+    // for the split to absorb on these invoices.
+    expect(absorbed).toBe(0);
+  });
+  it('a total that misses its parts by a cent (older documents) still lands the cent in revenue', () => {
+    let absorbed = 0;
+    for (const t of seededInvoices(2000, 20260921)) {
+      const s = ledgerSplit({ totalCents: c(t.total) + 1, tpsCents: c(t.tpsTotal), tvqCents: c(t.tvqTotal), taxExempt: false });
+      expect(s.ok).toBe(true);
+      expect(s.revenueCents + s.tpsCents + s.tvqCents).toBe(s.totalCents);
+      if (s.revenueCents !== c(t.sousTotal)) absorbed++;
+    }
+    expect(absorbed).toBe(2000);
   });
   it('an exempt invoice is all revenue; a tax with no account stays in revenue; nonsense is refused', () => {
     // The exemption is in the figures: fully exempt arrives with no tax, and a

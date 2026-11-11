@@ -3401,6 +3401,37 @@ function glFindEntryBySource(sourceType, sourceId, _db) {
   ).get(sourceType, String(sourceId)) ?? null;
 }
 
+// What the ledger holds for every invoice that is posted: the receivable
+// debited (1100) and the taxes credited (2100, 2110), in cents. Used to freeze
+// the totals of invoices sent before totals were kept on the document. A
+// reversed entry no longer counts. When an invoice has more than one posted
+// entry, the latest wins.
+function invoicePostedTotals(_db) {
+  const db = _db || getDb();
+  const rows = db.prepare(
+    `SELECT je.id AS entry_id, je.source_id AS invoice_id, coa.account_number AS num,
+            COALESCE(SUM(jl.debit_cents),0) AS debit, COALESCE(SUM(jl.credit_cents),0) AS credit
+     FROM journal_entries je
+     JOIN journal_lines jl ON jl.entry_id = je.id
+     JOIN chart_of_accounts coa ON coa.id = jl.account_id
+     WHERE je.source_type='invoice' AND je.status='posted' AND je.source_id IS NOT NULL
+       AND coa.account_number IN ('1100','2100','2110')
+     GROUP BY je.id, coa.account_number
+     ORDER BY je.id`
+  ).all();
+  const byEntry = new Map();
+  for (const r of rows) {
+    let e = byEntry.get(r.entry_id);
+    if (!e) { e = { invoiceId: String(r.invoice_id), totalCents: 0, tpsCents: 0, tvqCents: 0 }; byEntry.set(r.entry_id, e); }
+    if (r.num === '1100') e.totalCents = r.debit - r.credit;
+    else if (r.num === '2100') e.tpsCents = r.credit - r.debit;
+    else if (r.num === '2110') e.tvqCents = r.credit - r.debit;
+  }
+  const out = {};
+  for (const e of byEntry.values()) out[e.invoiceId] = { totalCents: e.totalCents, tpsCents: e.tpsCents, tvqCents: e.tvqCents };
+  return out;
+}
+
 // ── Bad debts ──────────────────────────────────────────────────────────────
 // An invoice the customer will not pay is written off: the receivable goes, the
 // unpaid balance becomes a bad-debt expense, and the GST/QST inside it is taken
@@ -8739,7 +8770,7 @@ module.exports = {
   searchWasteEntries,
   coaList, coaCreate, coaUpdate, coaArchive, coaUnarchive, coaImportCSV, coaExportCSV, coaMappingSuggestions,
   glDraftEntry, glUpdateDraft, glPostEntry, glReverseEntry, glCorrectEntry, glDeleteDraft,
-  glGetEntry, glListEntries, glGetAccountHistory, glFindEntryBySource, glExportLines,
+  glGetEntry, glListEntries, glGetAccountHistory, glFindEntryBySource, invoicePostedTotals, glExportLines,
   trialBalance,
   periodList, periodOpen, periodClose, periodReopen,
   glAuditLogList,

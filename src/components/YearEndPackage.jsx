@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { escapeHtml as esc } from '../utils/htmlSafe.mjs';
-import { computeInvoiceTotals, calcInvoiceOutstanding, documentDiscount } from '../utils/calculations.js';
+import { documentTotals, calcInvoiceOutstanding, documentDiscount } from '../utils/calculations.js';
 
 // Statuses that carry no receivable and no revenue in the journal.
 const NOT_BILLED_STATUSES = ['Brouillon', 'Annulée'];
@@ -13,7 +13,7 @@ function clientExemptOpts(client) {
 // Totals and balance of one invoice as of a date: payments dated after it are ignored.
 function invoiceFigures(f, client, asOf) {
   const opts = { tpsOverride: f.tpsOverride, tvqOverride: f.tvqOverride, ...documentDiscount(f), ...clientExemptOpts(client) };
-  const t = computeInvoiceTotals(f.lignes, opts);
+  const t = documentTotals(f, opts);
   const asOfDoc = { ...f, paiements: (f.paiements || []).filter(p => !p.date || !asOf || p.date <= asOf) };
   const due = NO_BALANCE_STATUSES.includes(f.statut) ? 0 : calcInvoiceOutstanding(asOfDoc, clientExemptOpts(client));
   return { sub: t.sousTotal, tps: t.tpsTotal, tvq: t.tvqTotal, total: t.total, due };

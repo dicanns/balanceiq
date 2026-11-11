@@ -34,7 +34,7 @@ const CohortBenchmarkLazy         = lazy(() => import('./components/franchise/Co
 const OnboardingPacketBuilderLazy = lazy(() => import('./components/franchise/OnboardingPacketBuilder.jsx'));
 import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./config/features.js";
-import { calcRoyaltyFull, computeInvoiceTotals, isTaxOverride, badDebtTaxShare, lineTotal, lineDiscountLabel, documentDiscount, DISCOUNT_PERCENT, DISCOUNT_AMOUNT } from "./utils/calculations.js";
+import { calcRoyaltyFull, computeInvoiceTotals, documentTotals, freezeTotals, invoiceExportParts, frozenFromPosted, backfillFrozenTotals, isTaxOverride, badDebtTaxShare, lineTotal, lineDiscountLabel, documentDiscount, DISCOUNT_PERCENT, DISCOUNT_AMOUNT } from "./utils/calculations.js";
 import { applyCreditToInvoice, creditRemaining, invoiceBalance, unapplyCredit, statusAfterPayments } from "./utils/creditNotes.js";
 import { WRITTEN_OFF, CLOSED_INVOICE_STATUSES, isCashPayment, isOverdue } from "./utils/invoiceStatus.mjs";
 import { overdueInvoices, nextFilingDeadline, cashVarianceCents, buildWorklist, worklistCounts } from "./services/todayWorklist.js";
@@ -1374,7 +1374,7 @@ function ComptabiliteExport({creditNotes,factures,clients,produits,categories,co
     const hdr=["Date","# Facture","Code client","Nom client","Code produit","Catégorie","# Compte revenu","Description","Quantité","Prix unitaire","Remise %","Remise $","Sous-total","TPS","TVQ","Total"];
     const data=[];
     const facs=factures.filter(f=>!["Annulée","Brouillon"].includes(f.statut)&&f.documentType!=="proforma"&&!f.openingBalance&&(!dateFrom||f.date>=dateFrom)&&(!dateTo||f.date<=dateTo));
-    for(const fac of facs){const cl=clients.find(c=>c.id===fac.clientId);for(const l of fac.lignes||[]){const prod=produits.find(p=>p.id===l.produitId);const cat=categories.find(c=>c.id===prod?.categorieId);const st=lineTotal(l);const tps=l.tps!==false?st*0.05:0;const tvq=l.tvq!==false?st*0.09975:0;const isAmt=l.remiseType===DISCOUNT_AMOUNT;data.push([fac.date||"",fac.numero||"",cl?.code||"",cl?.entreprise||"",prod?.code||"",cat?.nom||"",cat?.compteRevenu||"",l.description||"",l.quantite||0,parseFloat((l.prixUnitaire||0).toFixed(2)),isAmt?0:parseFloat((l.remise||0).toFixed(1)),isAmt?parseFloat((l.remise||0).toFixed(2)):0,parseFloat(st.toFixed(2)),parseFloat(tps.toFixed(2)),parseFloat(tvq.toFixed(2)),parseFloat((st+tps+tvq).toFixed(2))]);}const dr=subtotalDiscountRow(fac);if(dr)data.push([fac.date||"",fac.numero||"",cl?.code||"",cl?.entreprise||"","","","",dr.label,"","","",parseFloat(dr.amount.toFixed(2)),parseFloat(dr.st.toFixed(2)),parseFloat(dr.tps.toFixed(2)),parseFloat(dr.tvq.toFixed(2)),parseFloat((dr.st+dr.tps+dr.tvq).toFixed(2))]);}
+    for(const fac of facs){const cl=clients.find(c=>c.id===fac.clientId);const xp=invoiceExportParts(fac,invoiceTotalsFor(fac,clients),clientExemptOpts(cl));for(const pt of xp.lines){const l=pt.l;const prod=produits.find(p=>p.id===l.produitId);const cat=categories.find(c=>c.id===prod?.categorieId);const isAmt=l.remiseType===DISCOUNT_AMOUNT;data.push([fac.date||"",fac.numero||"",cl?.code||"",cl?.entreprise||"",prod?.code||"",cat?.nom||"",cat?.compteRevenu||"",l.description||"",l.quantite||0,parseFloat((l.prixUnitaire||0).toFixed(2)),isAmt?0:parseFloat((l.remise||0).toFixed(1)),isAmt?parseFloat((l.remise||0).toFixed(2)):0,pt.st/100,pt.tps/100,pt.tvq/100,(pt.st+pt.tps+pt.tvq)/100]);}if(xp.adj){const dr=subtotalDiscountRow(fac);data.push([fac.date||"",fac.numero||"",cl?.code||"",cl?.entreprise||"","","","",dr?dr.label:(T===EN?"Rounding adjustment":"Ajustement d'arrondi"),"","","",xp.adj.discount/100,xp.adj.st/100,xp.adj.tps/100,xp.adj.tvq/100,(xp.adj.st+xp.adj.tps+xp.adj.tvq)/100]);}}
     return{hdr,data};
   };
   const buildEncRows=()=>{
@@ -1416,11 +1416,12 @@ function ComptabiliteExport({creditNotes,factures,clients,produits,categories,co
         data.push([fac.date,"VE",fac.numero,`Ctes clients - ${fac.numero}`,GL.ar,totals.total.toFixed(2),"",clName]);
         continue;
       }
-      for(const l of fac.lignes||[]){
+      for(const pt of invoiceExportParts(fac,totals,clientExemptOpts(cl)).lines){
+        const l=pt.l;
         const prod=produits.find(p=>p.id===l.produitId);
         const cat=categories.find(c=>c.id===prod?.categorieId);
         const acct=cat?.compteRevenu||GL.revenue;
-        const st=lineTotal(l);
+        const st=pt.st/100;
         if(st!==0)data.push([fac.date,"VE",fac.numero,l.description||cat?.nom||"Ventes",acct,"",st.toFixed(2),clName]);
       }
       if(totals.remiseGlobaleMontant>0)data.push([fac.date,"VE",fac.numero,"Remise sur sous-total",GL.revenue,totals.remiseGlobaleMontant.toFixed(2),"",clName]);
@@ -1432,10 +1433,11 @@ function ComptabiliteExport({creditNotes,factures,clients,produits,categories,co
     for(const cn of cnList){
       const clName=clients.find(c=>c.id===cn.clientId)?.entreprise||"";
       const totals=invoiceTotalsFor(cn,clients);
-      for(const l of cn.lignes||[]){
+      for(const pt of invoiceExportParts(cn,totals,clientExemptOpts(clients.find(c=>c.id===cn.clientId))).lines){
+        const l=pt.l;
         const prod=produits.find(pp=>pp.id===l.produitId);
         const cat=categories.find(c=>c.id===prod?.categorieId);
-        const st=lineTotal(l);
+        const st=pt.st/100;
         if(st!==0)data.push([cn.date,"VE",cn.numero,l.description||cat?.nom||"Ventes",cat?.compteRevenu||GL.revenue,st.toFixed(2),"",clName]);
       }
       if(totals.remiseGlobaleMontant>0)data.push([cn.date,"VE",cn.numero,"Remise sur sous-total",GL.revenue,"",totals.remiseGlobaleMontant.toFixed(2),clName]);
@@ -1478,11 +1480,12 @@ function ComptabiliteExport({creditNotes,factures,clients,produits,categories,co
         data.push([fac.date,fac.numero,`A/R - ${fac.numero} - ${clName}`,GL.ar,"Accounts Receivable",totals.total.toFixed(2),""]);
         continue;
       }
-      for(const l of fac.lignes||[]){
+      for(const pt of invoiceExportParts(fac,totals,clientExemptOpts(cl)).lines){
+        const l=pt.l;
         const prod=produits.find(p=>p.id===l.produitId);
         const cat=categories.find(c=>c.id===prod?.categorieId);
         const acct=cat?.compteRevenu||GL.revenue;
-        const st=lineTotal(l);
+        const st=pt.st/100;
         if(st!==0)data.push([fac.date,fac.numero,l.description||cat?.nom||"Revenue",acct,"Sales Revenue","",st.toFixed(2)]);
       }
       if(totals.remiseGlobaleMontant>0)data.push([fac.date,fac.numero,"Subtotal discount",GL.revenue,"Sales Revenue",totals.remiseGlobaleMontant.toFixed(2),""]);
@@ -1494,10 +1497,11 @@ function ComptabiliteExport({creditNotes,factures,clients,produits,categories,co
     for(const cn of cnList){
       const clName=clients.find(c=>c.id===cn.clientId)?.entreprise||"";
       const totals=invoiceTotalsFor(cn,clients);
-      for(const l of cn.lignes||[]){
+      for(const pt of invoiceExportParts(cn,totals,clientExemptOpts(clients.find(c=>c.id===cn.clientId))).lines){
+        const l=pt.l;
         const prod=produits.find(pp=>pp.id===l.produitId);
         const cat=categories.find(c=>c.id===prod?.categorieId);
-        const st=lineTotal(l);
+        const st=pt.st/100;
         if(st!==0)data.push([cn.date,cn.numero,l.description||cat?.nom||"Revenue",cat?.compteRevenu||GL.revenue,"Sales Revenue",st.toFixed(2),""]);
       }
       if(totals.remiseGlobaleMontant>0)data.push([cn.date,cn.numero,"Subtotal discount",GL.revenue,"Sales Revenue","",totals.remiseGlobaleMontant.toFixed(2)]);
@@ -1565,7 +1569,7 @@ function ComptabiliteExport({creditNotes,factures,clients,produits,categories,co
  if(exportType==="facturation"){
  const rows=[["Date","# Facture","Code client","Nom client","Code produit","Catégorie","# Compte revenu","Description","Quantité","Prix unitaire","Remise %","Remise $","Sous-total","TPS","TVQ","Total"]];
  const facs=factures.filter(f=>!["Annulée","Brouillon"].includes(f.statut)&&!f.openingBalance&&(!dateFrom||f.date>=dateFrom)&&(!dateTo||f.date<=dateTo));
- for(const fac of facs){const cl=clients.find(c=>c.id===fac.clientId);for(const l of fac.lignes||[]){const prod=produits.find(p=>p.id===l.produitId);const cat=categories.find(c=>c.id===prod?.categorieId);const st=lineTotal(l);const tps=l.tps!==false?st*0.05:0;const tvq=l.tvq!==false?st*0.09975:0;const isAmt=l.remiseType===DISCOUNT_AMOUNT;rows.push([fac.date||"",fac.numero||"",cl?.code||"",cl?.entreprise||"",prod?.code||"",cat?.nom||"",cat?.compteRevenu||"",l.description||"",l.quantite||0,(l.prixUnitaire||0).toFixed(2),isAmt?"0.0":(l.remise||0).toFixed(1),isAmt?(l.remise||0).toFixed(2):"0.00",st.toFixed(2),tps.toFixed(2),tvq.toFixed(2),(st+tps+tvq).toFixed(2)]);}const dr=subtotalDiscountRow(fac);if(dr)rows.push([fac.date||"",fac.numero||"",cl?.code||"",cl?.entreprise||"","","","",dr.label,"","","",dr.amount.toFixed(2),dr.st.toFixed(2),dr.tps.toFixed(2),dr.tvq.toFixed(2),(dr.st+dr.tps+dr.tvq).toFixed(2)]);}
+ for(const fac of facs){const cl=clients.find(c=>c.id===fac.clientId);const xp=invoiceExportParts(fac,invoiceTotalsFor(fac,clients),clientExemptOpts(cl));for(const pt of xp.lines){const l=pt.l;const prod=produits.find(p=>p.id===l.produitId);const cat=categories.find(c=>c.id===prod?.categorieId);const isAmt=l.remiseType===DISCOUNT_AMOUNT;rows.push([fac.date||"",fac.numero||"",cl?.code||"",cl?.entreprise||"",prod?.code||"",cat?.nom||"",cat?.compteRevenu||"",l.description||"",l.quantite||0,(l.prixUnitaire||0).toFixed(2),isAmt?"0.0":(l.remise||0).toFixed(1),isAmt?(l.remise||0).toFixed(2):"0.00",(pt.st/100).toFixed(2),(pt.tps/100).toFixed(2),(pt.tvq/100).toFixed(2),((pt.st+pt.tps+pt.tvq)/100).toFixed(2)]);}if(xp.adj){const dr=subtotalDiscountRow(fac);rows.push([fac.date||"",fac.numero||"",cl?.code||"",cl?.entreprise||"","","","",dr?dr.label:(T===EN?"Rounding adjustment":"Ajustement d'arrondi"),"","","",(xp.adj.discount/100).toFixed(2),(xp.adj.st/100).toFixed(2),(xp.adj.tps/100).toFixed(2),(xp.adj.tvq/100).toFixed(2),((xp.adj.st+xp.adj.tps+xp.adj.tvq)/100).toFixed(2)]);}}
  if(rows.length<=1){setMsg(T.hcExpNoData);return;}
  buildCSV(rows,"journal-facturation");setMsg(T.hcExpRows(rows.length-1));
  } else if(exportType==="encaissements"){
@@ -2029,12 +2033,13 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
    for(const f of missing){
     try{
      const taxExempt=!!(clients?.find(c=>c.id===f.clientId)?.taxExempt);
-     const ft=computeSoumTotals(f.lignes||[],{...f,...clientExemptOpts(clients?.find(c=>c.id===f.clientId))});
-     const res=await window.api.ledger.invoicePost({...revenueSource(f.lignes,f),invoiceId:f.id,invoiceDate:f.date,subtotalCents:Math.round((ft.sousTotal||0)*100),tpsCents:Math.round((ft.tpsTotal||0)*100),tvqCents:Math.round((ft.tvqTotal||0)*100),totalCents:Math.round((ft.total||0)*100),taxExempt});
-     if(res?.ok&&res.entryId)done[f.id]=res.entryId;
+     const ft=f.totauxCents||frozenTotalsFor(f,clients);
+     const res=await window.api.ledger.invoicePost({...revenueSource(f.lignes,f),invoiceId:f.id,invoiceDate:f.date,subtotalCents:ft.sousTotal,tpsCents:ft.tps,tvqCents:ft.tvq,totalCents:ft.total,taxExempt});
+     // An entry that already existed holds its own amounts: the startup backfill reads them, nothing is guessed here.
+     if(res?.ok&&res.entryId)done[f.id]={entryId:res.entryId,frozen:res.alreadyPosted?null:ft};
     }catch(e){console.error('[ledger] backfill failed',f.numero,e);}
    }
-   if(Object.keys(done).length)saveFactures(prev=>prev.map(f=>done[f.id]?{...f,glEntryId:done[f.id]}:f));
+   if(Object.keys(done).length)saveFactures(prev=>prev.map(f=>done[f.id]?{...f,glEntryId:done[f.id].entryId,...(done[f.id].frozen&&!f.totauxCents?{totauxCents:done[f.id].frozen}:{})}:f));
   })();
  },[factures?.length]);
  const [activeDoc,setActiveDoc]=useState(null);
@@ -2306,7 +2311,13 @@ function clientExemptOpts(client){
 }
 // Totals of an invoice-like document with its customer's tax exemption applied.
 function invoiceTotalsFor(doc,clients){
- return computeSoumTotals(doc.lignes||[],{...doc,...clientExemptOpts(clients?.find(c=>c.id===doc.clientId))});
+ return documentTotals(doc,{...doc,...clientExemptOpts(clients?.find(c=>c.id===doc.clientId))});
+}
+// The totals an invoice carries into the ledger, in cents: computed once with the
+// customer's exemption. They are stored on the invoice (totauxCents) and are exactly
+// what invoicePost receives.
+function frozenTotalsFor(doc,clients){
+ return freezeTotals(computeSoumTotals(doc.lignes||[],{...doc,...clientExemptOpts(clients?.find(c=>c.id===doc.clientId))}));
 }
 function computeSoumTotals(lignes,taxExemptOpts){
  // Delegates to the shared definition so the ledger, the control-account check
@@ -2960,7 +2971,8 @@ function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,pr
  // Same rule as the credit note: a stated tax amount beats the rates, and an
  // exemption beats both. The totals here feed invoicePost, so the ledger gets
  // whatever the document says.
- const totals=useMemo(()=>computeSoumTotals(lignes,{tpsOverride:form.tpsOverride,tvqOverride:form.tvqOverride,...documentDiscount(form),...(client?.taxExempt?{exemptFromTps:client.exemptFromTps!==false,exemptFromTvq:client.exemptFromTvq!==false}:{})}),[lignes,client,form.tpsOverride,form.tvqOverride,form.remiseGlobale,form.remiseGlobaleType]);
+ const totOpts=useMemo(()=>({tpsOverride:form.tpsOverride,tvqOverride:form.tvqOverride,...documentDiscount(form),...(client?.taxExempt?{exemptFromTps:client.exemptFromTps!==false,exemptFromTvq:client.exemptFromTvq!==false}:{})}),[client,form.tpsOverride,form.tvqOverride,form.remiseGlobale,form.remiseGlobaleType]);
+ const liveTotals=useMemo(()=>computeSoumTotals(lignes,totOpts),[lignes,totOpts]);
  const taxManual=isTaxOverride(form.tpsOverride)||isTaxOverride(form.tvqOverride);
  // The lock follows the status the invoice was last saved with, not the one
  // picked in the form: picking Draft used to unlock the lines of a posted invoice
@@ -2968,6 +2980,8 @@ function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,pr
  // save takes the invoice out of the ledger first.
  const savedStatut=(savedId&&(factures.find(f=>f.id===savedId)?.statut||facture?.statut))||"Brouillon";
  const locked=savedStatut!=="Brouillon";
+ // A locked invoice shows the totals frozen when it entered the ledger; a draft shows the live computation.
+ const totals=useMemo(()=>locked?documentTotals({...form,lignes,statut:savedStatut},totOpts):liveTotals,[locked,form.totauxCents,lignes,savedStatut,totOpts,liveTotals]);
  const pendingUnlock=locked&&form.statut==="Brouillon";
  const creditPaiements=useMemo(()=>(form.paiements||[]).filter(p=>p.fromCredit),[form.paiements]);
  const regularPaiements=useMemo(()=>(form.paiements||[]).filter(isCashPayment),[form.paiements]);
@@ -3112,6 +3126,12 @@ function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,pr
   setForm(p=>({...p,glEntryId:null}));
  }
  const doc={...form,id,numero,lignes,acomptes,customPaymentInstructions:cpiSanitized||null,customPaymentInstructionsSnapshot:cpiSnapshot,...(glCleared?{glEntryId:null}:{})};
+ // Totals are frozen in cents when the invoice enters the ledger, and dropped when it goes back to draft.
+ const fz=freezeTotals(liveTotals);
+ const willFinalize=!isProforma&&nowLive&&!wasLive;
+ if(willFinalize){doc.totauxCents=fz;setForm(p=>({...p,totauxCents:fz}));}
+ else if(form.statut==="Brouillon"){delete doc.totauxCents;setForm(p=>{const{totauxCents:_t,...r}=p;return r;});}
+ else if(!doc.totauxCents){const stored=factures.find(f=>f.id===id)?.totauxCents;if(stored)doc.totauxCents=stored;}
  saveFactures(factures.some(f=>f.id===id)?factures.map(f=>f.id===id?doc:f):[...factures,doc]);
  if(isNew)logCreate('invoice','facture',id,doc);
  else logUpdate('invoice','facture',id,'document',null,JSON.stringify(doc));
@@ -3121,7 +3141,7 @@ function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,pr
  const isFinalize=!isProforma&&nowLive&&!wasLive;
  if(isFinalize&&window.api?.ledger?.invoicePost){
   const taxExempt=!!(clients.find(c=>c.id===form.clientId)?.taxExempt);
-  window.api.ledger.invoicePost({...revenueSource(lignes,form),invoiceId:id,invoiceDate:form.date||dk(new Date()),subtotalCents:Math.round((totals.sousTotal||0)*100),tpsCents:Math.round((totals.tpsTotal||0)*100),tvqCents:Math.round((totals.tvqTotal||0)*100),totalCents:Math.round((totals.total||0)*100),taxExempt}).then(res=>{if(res?.ok&&res.entryId){setForm(p=>({...p,glEntryId:res.entryId}));saveFactures(prev=>prev.map(f=>f.id===id?{...f,glEntryId:res.entryId}:f));}}).catch(e=>console.error('[ledger] invoice post failed',e));
+  window.api.ledger.invoicePost({...revenueSource(lignes,form),invoiceId:id,invoiceDate:form.date||dk(new Date()),subtotalCents:fz.sousTotal,tpsCents:fz.tps,tvqCents:fz.tvq,totalCents:fz.total,taxExempt}).then(res=>{if(res?.ok&&res.entryId){setForm(p=>({...p,glEntryId:res.entryId}));saveFactures(prev=>prev.map(f=>f.id===id?{...f,glEntryId:res.entryId}:f));}}).catch(e=>console.error('[ledger] invoice post failed',e));
  }
  if(!isProforma&&form.statut!=='Brouillon'&&form.statut!=='Annulée')settleDepositsOnSend(id,numero,doc);
  else if(form.statut==='Brouillon')postDepositReceipts(id,numero,doc.acomptes);
@@ -3413,10 +3433,12 @@ function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,pr
  const newStatut="Envoyée";
  setForm(p=>({...p,statut:newStatut}));
  if(savedId){
- const doc={...form,statut:newStatut,id:savedId,numero:savedNumero,lignes,acomptes};
+ const fz=freezeTotals(liveTotals);
+ const doc={...form,statut:newStatut,id:savedId,numero:savedNumero,lignes,acomptes,...(isProforma?{}:{totauxCents:fz})};
+ if(!isProforma)setForm(p=>({...p,totauxCents:fz}));
  saveFactures(factures.some(f=>f.id===savedId)?factures.map(f=>f.id===savedId?doc:f):[...factures,doc]);
  settleDepositsOnSend(savedId,savedNumero,doc);
- if(!isProforma&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients.find(c=>c.id===form.clientId)?.taxExempt);window.api.ledger.invoicePost({...revenueSource(lignes,form),invoiceId:savedId,invoiceDate:form.date||dk(new Date()),subtotalCents:Math.round((totals.sousTotal||0)*100),tpsCents:Math.round((totals.tpsTotal||0)*100),tvqCents:Math.round((totals.tvqTotal||0)*100),totalCents:Math.round((totals.total||0)*100),taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(f=>f.id===savedId?{...f,glEntryId:res.entryId}:f));}).catch(e=>console.error('[ledger] invoice post failed',e));}
+ if(!isProforma&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients.find(c=>c.id===form.clientId)?.taxExempt);window.api.ledger.invoicePost({...revenueSource(lignes,form),invoiceId:savedId,invoiceDate:form.date||dk(new Date()),subtotalCents:fz.sousTotal,tpsCents:fz.tps,tvqCents:fz.tvq,totalCents:fz.total,taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(f=>f.id===savedId?{...f,glEntryId:res.entryId}:f));}).catch(e=>console.error('[ledger] invoice post failed',e));}
  }
  }
  }} onClose={()=>setEmailModal(null)}/>}
@@ -3672,11 +3694,12 @@ const NC_DESCS_KEY="dicann-nc-descriptions";
 const ncReasonLabel=(r,isEn)=>isEn?(NC_REASON_EN[r]||r):r;
 const STATUTS_NC=["Brouillon","Émise","Appliquée","Annulée"];
 const STATUT_NC_C={"Brouillon":"#6b7280","Émise":"#3b82f6","Appliquée":"#22c55e","Annulée":"#9ca3af"};
-function buildNoteDeCreditHTML({numero,date,clientId,factureNumero,raison,raisonDetail,lignes,notes,companyInfo,clients,invoiceTemplate={},tpsOverride=null,tvqOverride=null}){
+function buildNoteDeCreditHTML({numero,date,clientId,factureNumero,raison,raisonDetail,lignes,notes,companyInfo,clients,invoiceTemplate={},tpsOverride=null,tvqOverride=null,statut=null,totauxCents=null}){
  const client=clients.find(c=>c.id===clientId);
  const docLang=docLangOf(client);const D=DOC_LABELS[docLang];
  const cli=client?[escapeHtml(client.entreprise),escapeHtml(client.adresse||""),client.ville?`${escapeHtml(client.ville)}, ${escapeHtml(client.province||"")} ${escapeHtml(client.codePostal||"")}`:null,escapeHtml(client.tel1||""),escapeHtml(client.courriel||"")].filter(Boolean).join("<br/>"):"-";
- const totals=computeSoumTotals(lignes,{tpsOverride,tvqOverride});
+ // A credit note that is in the ledger prints the totals frozen when it was posted.
+ const totals=documentTotals({lignes,statut,totauxCents},{tpsOverride,tvqOverride});
  const fc=v=>`${v<0?"-":""}$${Math.abs(v).toFixed(2)}`;
  const fd=s=>s?new Date(s+"T12:00:00").toLocaleDateString(D.locale,{year:"numeric",month:"long",day:"numeric"}):"";
  const rows=lignes.map(l=>{const sub=lineTotal(l);return`<tr style="border-bottom:1px solid #eee"><td style="padding:5px 8px">${escapeHtml(l.description||"")}</td><td style="padding:5px 8px;text-align:center">${escapeHtml(l.quantite)}</td><td style="padding:5px 8px;text-align:right">${fc(-(l.prixUnitaire||0))}</td><td style="padding:5px 8px;text-align:center">${lineDiscountLabel(l,fc)||"-"}</td><td style="padding:5px 8px;text-align:right;color:#ef4444;font-weight:700">${fc(-sub)}</td></tr>`;}).join("");
@@ -3834,7 +3857,7 @@ function NoteDeCreditEditor({showBack,creditNote,clients,factures,companyInfo,do
  const id=savedId||Date.now().toString();
  const numero=savedId?(creditNotes.find(n=>n.id===savedId)?.numero||fmtDocNum(docNums.prefix,"NC",docNums.creditNote)):fmtDocNum(docNums.prefix,"NC",docNums.creditNote);
  const creditAmount=linkedFac?Math.min(totals.total,remainingCredit):totals.total;
- const rec={...form,...(form.taxPerLine?{tpsOverride:taxOpts.tpsOverride,tvqOverride:taxOpts.tvqOverride}:{}),creditMode,id,numero,lignes:activeLignes,selLines:fromInvoice?selLines:undefined,customLines:fromInvoice?manualLines:undefined};
+ const rec={...form,...(form.taxPerLine?{tpsOverride:taxOpts.tpsOverride,tvqOverride:taxOpts.tvqOverride}:{}),creditMode,id,numero,lignes:activeLignes,selLines:fromInvoice?selLines:undefined,customLines:fromInvoice?manualLines:undefined,totauxCents:freezeTotals(totals)};
  // Cancelling undoes the credit: its ledger entry is reversed and every
  // application to an invoice comes off. Setting the status alone left the
  // entry posted and the invoice credited.
@@ -4045,8 +4068,9 @@ function DepositScheduleSection({commandeId,clientId,totals,factures,saveFacture
    const depClient=clients?.find(c=>c.id===clientId);
    const num=generateDocNum(docNums,"facture",docNums?.facture||1,depClient?.code);
    if(window.api?.docnum)window.api.docnum.register("facture",num,newId);const depFac={id:newId,clientId:clientId||"",numero:num,date:todayStr,dateEcheance:depClient?calcDateEcheance(todayStr,depClient.conditionsPaiement,depClient.nbJours):"",statut:"Envoyée",notes:sched.label,lignes:[{id:"1",description:sched.label,quantite:1,prixUnitaire:parseFloat(beforeTax.toFixed(2)),tps:true,tvq:true,remise:0}],paiements:[],sourceType:"commande_acompte",isDepositInvoice:true,parentCommandeId:sched.commande_id};
+   depFac.totauxCents=frozenTotalsFor(depFac,clients);
    saveFactures([...factures,depFac]);
-   if(!depFac.glEntryId&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients?.find(c=>c.id===depFac.clientId)?.taxExempt);const dTot=computeSoumTotals(depFac.lignes||[],{...depFac,...clientExemptOpts(clients?.find(c=>c.id===depFac.clientId))});window.api.ledger.invoicePost({...revenueSource(depFac.lignes,depFac),invoiceId:depFac.id,invoiceDate:depFac.date,subtotalCents:Math.round((dTot.sousTotal||0)*100),tpsCents:Math.round((dTot.tpsTotal||0)*100),tvqCents:Math.round((dTot.tvqTotal||0)*100),totalCents:Math.round((dTot.total||0)*100),taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(f=>f.id===depFac.id?{...f,glEntryId:res.entryId}:f));}).catch(e=>console.error('[ledger] invoice post failed',e));}
+   if(!depFac.glEntryId&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients?.find(c=>c.id===depFac.clientId)?.taxExempt);const dTot=depFac.totauxCents||frozenTotalsFor(depFac,clients);window.api.ledger.invoicePost({...revenueSource(depFac.lignes,depFac),invoiceId:depFac.id,invoiceDate:depFac.date,subtotalCents:dTot.sousTotal,tpsCents:dTot.tps,tvqCents:dTot.tvq,totalCents:dTot.total,taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(f=>f.id===depFac.id?{...f,glEntryId:res.entryId}:f));}).catch(e=>console.error('[ledger] invoice post failed',e));}
    if(saveDocNums&&docNums)saveDocNums({...docNums,facture:(docNums.facture||1)+1});
    await window.api.deposits.markGenerated(sched.id,newId);
    setSchedules(prev=>prev.map(s=>s.id===sched.id?{...s,status:'generated',generated_invoice_id:newId}:s));
@@ -4091,7 +4115,7 @@ function InterestConfigSection({showUpgradePrompt,factures,saveFactures,clients,
    if(client?.interestEnabled===false)return false;
    const due=new Date(f.dateEcheance+"T12:00:00");
    if((today-due)<=graceMs)return false;
-   const totals=computeSoumTotals(f.lignes||[],{...f,...clientExemptOpts(client)});
+   const totals=invoiceTotalsFor(f,clients);
    const paid=(f.paiements||[]).reduce((s,p)=>s+(parseFloat(p.montant)||0),0);
    const balance=totals.total-paid;
    if(balance<=0.01)return false;
@@ -4102,7 +4126,7 @@ function InterestConfigSection({showUpgradePrompt,factures,saveFactures,clients,
    return{...f,_client:client2?.entreprise||"-",_balance:balance,_interestAmt:rounded};
   }).map(f=>{
    const client=clients?.find(c=>c.id===f.clientId);
-   const totals=computeSoumTotals(f.lignes||[],{...f,...clientExemptOpts(client)});
+   const totals=invoiceTotalsFor(f,clients);
    const paid=(f.paiements||[]).reduce((s,p)=>s+(parseFloat(p.montant)||0),0);
    const balance=totals.total-paid;
    const amt=balance*(cfg.rate/100);
@@ -4129,12 +4153,13 @@ function InterestConfigSection({showUpgradePrompt,factures,saveFactures,clients,
    const num=generateDocNum(docNums,"facture",encNum++,intClient?.code);
    if(window.api?.docnum)window.api.docnum.register("facture",num,newId);
    const intFac={id:newId,clientId:fac.clientId,numero:num,date:todayStr,dateEcheance:intClient?calcDateEcheance(todayStr,intClient.conditionsPaiement,intClient.nbJours):"",statut:"Envoyée",isInterest:true,parentFactureId:fac.id,notes:cfg.message||`Intérêts sur facture ${fac.numero} (${cfg.rate}%/mois)`,lignes:[{id:"1",description:`Intérêts sur ${fac.numero} - ${cfg.rate}%/mois`,quantite:1,prixUnitaire:fac._interestAmt,tps:false,tvq:false,remise:0}],paiements:[]};
+   intFac.totauxCents=frozenTotalsFor(intFac,clients);
    newFacs.push(intFac);newIntFacs.push(intFac);
    generated.push({num,client:fac._client,amt:fac._interestAmt});
   }
   saveFactures(newFacs);
   if(saveDocNums&&docNums)saveDocNums({...docNums,facture:encNum});
-  for(const f of newIntFacs){if(!f.glEntryId&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients?.find(c=>c.id===f.clientId)?.taxExempt);const ft=computeSoumTotals(f.lignes||[],{...f,...clientExemptOpts(clients?.find(c=>c.id===f.clientId))});window.api.ledger.invoicePost({...revenueSource(f.lignes,f),invoiceId:f.id,invoiceDate:f.date,subtotalCents:Math.round((ft.sousTotal||0)*100),tpsCents:Math.round((ft.tpsTotal||0)*100),tvqCents:Math.round((ft.tvqTotal||0)*100),totalCents:Math.round((ft.total||0)*100),taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(fa=>fa.id===f.id?{...fa,glEntryId:res.entryId}:fa));}).catch(e=>console.error('[ledger] invoice post failed',e));}}
+  for(const f of newIntFacs){if(!f.glEntryId&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients?.find(c=>c.id===f.clientId)?.taxExempt);const ft=f.totauxCents||frozenTotalsFor(f,clients);window.api.ledger.invoicePost({...revenueSource(f.lignes,f),invoiceId:f.id,invoiceDate:f.date,subtotalCents:ft.sousTotal,tpsCents:ft.tps,tvqCents:ft.tvq,totalCents:ft.total,taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(fa=>fa.id===f.id?{...fa,glEntryId:res.entryId}:fa));}).catch(e=>console.error('[ledger] invoice post failed',e));}}
   setPreview(null);setResult(generated);
  };
  return(<div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:9,padding:14}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}><span style={{fontSize:13,fontWeight:700,color:t.text}}>{T.interestTitle||"Intérêts sur retard"}</span>{isPro?<span style={{fontSize:9,fontWeight:700,color:"#f97316",background:"rgba(249,115,22,0.1)",padding:"1px 6px",borderRadius:6}}>PRO</span>:<span style={{fontSize:9,fontWeight:700,color:"#6b7280",background:"rgba(255,255,255,0.06)",padding:"1px 6px",borderRadius:6}}>Pro</span>}</div>
@@ -4243,6 +4268,7 @@ function RecurringGenerateModal({recurrents,saveRecurrents,factures,saveFactures
  numero:generateDocNum(docNums,"facture",encNum++,clients.find(c=>c.id===rec.clientId)?.code),
  };
  if(window.api?.docnum)window.api.docnum.register("facture",fac.numero,fac.id);
+ fac.totauxCents=frozenTotalsFor(fac,clients);
  updFactures=[...updFactures,fac];newRecFacs.push(fac);
  const ri=newRecs.findIndex(r=>r.id===rec.id);
  if(ri>=0)newRecs[ri]={...newRecs[ri],lastGenerated:today};
@@ -4259,7 +4285,7 @@ function RecurringGenerateModal({recurrents,saveRecurrents,factures,saveFactures
  }
  }
  saveFactures(updFactures);
- for(const f of newRecFacs){if(!f.glEntryId&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients?.find(c=>c.id===f.clientId)?.taxExempt);const ft=computeSoumTotals(f.lignes||[],{...f,...clientExemptOpts(clients?.find(c=>c.id===f.clientId))});window.api.ledger.invoicePost({...revenueSource(f.lignes,f),invoiceId:f.id,invoiceDate:f.date,subtotalCents:Math.round((ft.sousTotal||0)*100),tpsCents:Math.round((ft.tpsTotal||0)*100),tvqCents:Math.round((ft.tvqTotal||0)*100),totalCents:Math.round((ft.total||0)*100),taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(fa=>fa.id===f.id?{...fa,glEntryId:res.entryId}:fa));}).catch(e=>console.error('[ledger] invoice post failed',e));}}
+ for(const f of newRecFacs){if(!f.glEntryId&&window.api?.ledger?.invoicePost){const taxExempt=!!(clients?.find(c=>c.id===f.clientId)?.taxExempt);const ft=f.totauxCents||frozenTotalsFor(f,clients);window.api.ledger.invoicePost({...revenueSource(f.lignes,f),invoiceId:f.id,invoiceDate:f.date,subtotalCents:ft.sousTotal,tpsCents:ft.tps,tvqCents:ft.tvq,totalCents:ft.total,taxExempt}).then(res=>{if(res?.ok&&res.entryId)saveFactures(prev=>prev.map(fa=>fa.id===f.id?{...fa,glEntryId:res.entryId}:fa));}).catch(e=>console.error('[ledger] invoice post failed',e));}}
  saveDocNums({...docNums,facture:encNum});
  saveRecurrents(newRecs);
  setGenerating(false);
@@ -5686,10 +5712,11 @@ function ReseauTab({locations,facFactures,facCreditNotes,facClients,royaltyConfi
  sourceType:null,sourceId:null,sourceNumero:null,
  };
  const exempt=p.client.taxExempt?{exemptFromTps:p.client.exemptFromTps!==false,exemptFromTvq:p.client.exemptFromTvq!==false}:{};
- const tot=computeSoumTotals(lignes,exempt);
+ const tot=freezeTotals(computeSoumTotals(lignes,exempt));
+ inv.totauxCents=tot;
  if(window.api?.docnum)window.api.docnum.register("facture",inv.numero,inv.id);
  try{
-  const res=await window.api?.ledger?.invoicePost?.({...revenueSource(lignes,inv),invoiceId:inv.id,invoiceDate:inv.date,subtotalCents:Math.round((tot.sousTotal||0)*100),tpsCents:Math.round((tot.tpsTotal||0)*100),tvqCents:Math.round((tot.tvqTotal||0)*100),totalCents:Math.round((tot.total||0)*100),taxExempt:!!p.client.taxExempt});
+  const res=await window.api?.ledger?.invoicePost?.({...revenueSource(lignes,inv),invoiceId:inv.id,invoiceDate:inv.date,subtotalCents:tot.sousTotal,tpsCents:tot.tps,tvqCents:tot.tvq,totalCents:tot.total,taxExempt:!!p.client.taxExempt});
   if(res?.ok&&res.entryId)inv.glEntryId=res.entryId;else notPosted.push(inv.numero);
  }catch(e){console.error('[ledger] royalty invoice post failed',e);notPosted.push(inv.numero);}
  newFactures.push(inv);
@@ -6914,7 +6941,7 @@ function AppInner(){
     try{const r14=await window.api.storage.get("dicann-doc-nums");if(r14?.value)setDocNums(prev=>({...DEFAULT_DOC_NUMS,...JSON.parse(r14.value)}))}catch(e){}
     try{const r15=await window.api.storage.get("dicann-fac-soumissions");if(r15?.value){const v=JSON.parse(r15.value);if(Array.isArray(v))setFacSoumissions(v);}}catch(e){}
     try{const r16=await window.api.storage.get("dicann-fac-commandes");if(r16?.value){const v=JSON.parse(r16.value);if(Array.isArray(v))setFacCommandes(v);}}catch(e){}
-    try{const r17=await window.api.storage.get("dicann-fac-factures");if(r17?.value){const v=JSON.parse(r17.value);if(Array.isArray(v))setFacFactures(v);}}catch(e){}
+    try{const r17=await window.api.storage.get("dicann-fac-factures");if(r17?.value){const v=JSON.parse(r17.value);if(Array.isArray(v)){facFacturesRef.current=v;setFacFactures(v);freezeSentInvoices();}}}catch(e){}
     try{const r18=await window.api.storage.get("dicann-fac-creditnotes");if(r18?.value){const v=JSON.parse(r18.value);if(Array.isArray(v))setFacCreditNotes(v);}}catch(e){}
     try{const r19=await window.api.storage.get("dicann-fac-recurrents");if(r19?.value){const v=JSON.parse(r19.value);if(Array.isArray(v))setFacRecurrents(v);}}catch(e){}
     try{const rIC=await window.api.storage.get("dicann-inv-config");if(rIC?.value){const p=JSON.parse(rIC.value);setInvConfig({...DEFAULT_INV_CONFIG,...p,items:p.items||DEFAULT_INV_CONFIG.items});}}catch(e){}
@@ -7428,7 +7455,17 @@ function AppInner(){
   // the updater always sees the newest value.
   const facFacturesRef=useRef(facFactures);
   useEffect(()=>{facFacturesRef.current=facFactures;},[facFactures]);
-  const saveFacFactures=useCallback(listOrFn=>{
+  // Invoices sent before totals were frozen get them from what the ledger holds. Fills
+  // only what is missing; if the ledger cannot be read, nothing is touched.
+  const freezeSentInvoices=async()=>{
+    try{
+      const r=await window.api?.ledger?.invoicePostedTotals?.();
+      if(!r?.ok||!r.totals)return;
+      const cur=backfillFrozenTotals(facFacturesRef.current,r.totals);
+      if(cur.changed)saveFacFactures(prev=>backfillFrozenTotals(prev,r.totals).invoices,{silent:true});
+    }catch(e){console.error('[ledger] freezing sent invoice totals failed',e);}
+  };
+  const saveFacFactures=useCallback((listOrFn,opts)=>{
     const list=typeof listOrFn==='function'?listOrFn(facFacturesRef.current):listOrFn;
     if(!Array.isArray(list))return;
     facFacturesRef.current=list;
@@ -7436,7 +7473,7 @@ function AppInner(){
     const v=JSON.stringify(list);
     window.api.storage.set("dicann-fac-factures",v).catch(saveFailed("dicann-fac-factures"));
     schedulePush("dicann-fac-factures",v);
-    trackEvent('feature_used:invoice_created');
+    if(!opts?.silent)trackEvent('feature_used:invoice_created');
   },[]);
   const facCreditNotesRef=useRef(facCreditNotes);
   useEffect(()=>{facCreditNotesRef.current=facCreditNotes;},[facCreditNotes]);

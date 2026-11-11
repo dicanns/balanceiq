@@ -263,6 +263,7 @@ contextBridge.exposeInMainWorld('api', {
     },
     invoicePost:    (opts) => ipcRenderer.invoke('ledger:invoice:post', opts),
     invoiceUnpost:  (opts) => ipcRenderer.invoke('ledger:invoice:unpost', opts),
+    invoicePostedTotals: () => ipcRenderer.invoke('ledger:invoice:postedTotals'),
     periodIsClosed: (date) => ipcRenderer.invoke('ledger:period:isClosed', date),
     depositPost:    (opts) => ipcRenderer.invoke('ledger:deposit:post', opts),
     depositApply:   (opts) => ipcRenderer.invoke('ledger:deposit:apply', opts),

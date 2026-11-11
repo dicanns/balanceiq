@@ -2303,6 +2303,17 @@ ledgerHandle('ledger:invoice:post', async (_e, {
   return { ok: true, entryId };
 });
 
+// Totals the ledger holds for every posted invoice, to freeze the totals of
+// invoices sent before the document kept its own.
+ipcMain.handle('ledger:invoice:postedTotals', async () => {
+  try {
+    const { invoicePostedTotals } = require('./src/db/database.js');
+    return { ok: true, totals: invoicePostedTotals() };
+  } catch (err) {
+    return { ok: false, error: String(err?.message ?? err) };
+  }
+});
+
 // Take an invoice back out of the ledger: returned to draft for correction, or
 // voided. Looked up by the invoice itself, not by an entry id the screen holds,
 // so a stale id cannot leave the entry posted. A closed period refuses, and the

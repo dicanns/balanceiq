@@ -6,7 +6,7 @@
 // {facture, clients, ...} instead; with no totals the builder threw, the error
 // was swallowed, and the email silently never went out.
 
-import { computeInvoiceTotals } from './calculations.js';
+import { documentTotals } from './calculations.js';
 
 export function recurringInvoiceHtmlArgs({ fac, clients, companyInfo, invoiceTemplate }) {
   const lignes = fac.lignes || [];
@@ -19,7 +19,7 @@ export function recurringInvoiceHtmlArgs({ fac, clients, companyInfo, invoiceTem
     referenceClient: fac.referenceClient,
     lignes,
     notes: fac.notes,
-    totals: computeInvoiceTotals(lignes, fac),
+    totals: documentTotals({ ...fac, lignes }, fac),
     companyInfo: companyInfo || {},
     invoiceTemplate: invoiceTemplate || {},
     montantPaye: (fac.paiements || []).reduce((s, p) => s + (p.montant || 0), 0),

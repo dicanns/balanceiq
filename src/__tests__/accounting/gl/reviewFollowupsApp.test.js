@@ -20,8 +20,10 @@ describe('FUP-001 exemption in generated invoices', () => {
   it('computes the posted totals with the customer exemption in all three generators and the backfill', () => {
     expect(APP).toMatch(/function clientExemptOpts\(client\)/);
     const dep = APP.slice(APP.indexOf('const generateDepositInvoice='), APP.indexOf('const generateDepositInvoice=') + 3000);
-    expect(dep).toMatch(/const dTot=computeSoumTotals\(depFac\.lignes\|\|\[\],\{\.\.\.depFac,\.\.\.clientExemptOpts\(/);
-    const withExempt = APP.match(/const ft=computeSoumTotals\(f\.lignes\|\|\[\],\{\.\.\.f,\.\.\.clientExemptOpts\(/g) || [];
+    expect(dep).toMatch(/const dTot=depFac\.totauxCents\|\|frozenTotalsFor\(depFac,clients\)/);
+    // frozenTotalsFor applies the customer's exemption (see FROZEN-005).
+    expect(APP).toMatch(/function frozenTotalsFor\(doc,clients\)\{\s*return freezeTotals\(computeSoumTotals\(doc\.lignes\|\|\[\],\{\.\.\.doc,\.\.\.clientExemptOpts\(/);
+    const withExempt = APP.match(/const ft=f\.totauxCents\|\|frozenTotalsFor\(f,clients\)/g) || [];
     expect(withExempt.length).toBe(3); // backfill, interest, recurring
   });
   it('no invoice poster computes totals from the bare invoice any more', () => {
