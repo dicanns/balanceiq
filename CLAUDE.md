@@ -27,17 +27,18 @@ Every code path that creates an invoice with `statut:"Envoyee"` must call
 immediately after `saveFactures`. A direct `statut:"Envoyee"` assignment
 without an invoicePost call is a bug.
 
-Covered paths as of v1.38.2:
-- FactureEditor doSave (line ~2670)
-- FactureEditor email send (line ~2902)
-- DepositScheduleSection generateDepositInvoice (line ~3234)
-- InterestConfigSection confirmGenerate (line ~3401)
-- RecurringGenerateModal doGenerate (line ~3520)
+Covered paths as of v1.99.0 (find them by searching for `invoicePost(` in
+src/App.jsx; line numbers move too often to list):
+- FactureEditor doSave, and its email send path
+- DepositScheduleSection, InterestConfigSection, RecurringGenerateModal
+- the royalty invoice generator in ReseauTab
+- the "post missing entries" backfill, and OpeningReceivablesModal
 
-Verified clean by grep audit: all remaining `statut:"Envoyée"` occurrences
-in App.jsx are filter predicates, status-color maps, or the demo PDF - not
-new invoice creation sites. Payment plan installments use `statut:"Brouillon"`
-at generation and are posted through the normal doSave path.
+The main process posts once per invoice (looked up by the invoice, not by an id
+the screen holds), so a repeated call is harmless. Taking an invoice back out of
+the ledger (return to draft, void) goes through `window.api.ledger.invoiceUnpost`
+BEFORE the invoice is saved. A posting the ledger refuses is shown to the
+operator by `ledgerHandle` in main.js; never swallow a `{ ok:false }` result.
 
 Integration test: src/__tests__/integration/recurringInvoiceToGL.test.js
 (INT-001) covers all three bypass paths end-to-end.
@@ -98,9 +99,9 @@ npm run scan:semgrep           # semgrep security scan (slow -- run before big P
 
 - `main.js` -- Electron main process, all IPC handlers, SQLite access
 - `preload.js` -- contextBridge exposing `window.api.*`
-- `src/App.jsx` -- full React app (~6000+ lines)
+- `src/App.jsx` -- full React app (~9000 lines)
 - `src/db/database.js` -- SQLite wrapper, migrations, all data functions
-- `src/db/migrations.js` -- versioned migration chain (v1-v18)
+- `src/db/migrations.js` -- versioned migration chain
 - `supabase/functions/` -- Deno edge functions
 - `supabase/functions/_shared/auth.ts` -- shared `requireOrgMember` helper
 
@@ -109,27 +110,3 @@ npm run scan:semgrep           # semgrep security scan (slow -- run before big P
 ```bash
 SUPABASE_ACCESS_TOKEN="sbp_..." npx supabase functions deploy <fn> --project-ref etiwnesxjypdwhxqnqqq
 ```
-
----
-
-## LEGACY SOFTWARE (Kesa, Mon Resto, Fortune 1000)
-
-Anthony's current billing, till and accounting programs live on the ThinkPad and are copied
-nightly to the backup server. Before studying them, read docs/LEGACY_SOFTWARE_ACCESS.md: it gives
-the two SSH doors (already keyed from this Mac), what every folder is, how the data can be read,
-and the rules (read-only, no personal data in the repo, nothing installed or changed on the
-ThinkPad without Anthony).
-
-
-## If Claude is on a new account (written 2026-10-28)
-
-Anthony may have moved from the business Claude account to a personal one. Nothing in this folder depends on the Claude account:
-- The code, data and git history are plain files here. Claude Code conversations about this folder are local too
-  (`~/.claude/projects/`), and a readable copy of every past conversation is in
-  `~/Documents/CLAUDE EXPORT - all conversations (READ ME)/`. Read the relevant ones there if context is missing.
-- Logins used from the terminal (GitHub `gh`, Vercel, Cloudflare `wrangler`, Supabase CLI, SSH keys to the ThinkPad and the
-  backup server) live on this Mac, not in the Claude account. They keep working. Test with the usual command before assuming otherwise.
-- Only the connectors inside the Claude desktop app (Supabase, Netlify, Sentry, Stripe, Spark mail, Claude Docs, Chrome extension,
-  scheduled tasks) are tied to the account. If a connector tool is missing, ask Anthony to re-add it under Connectors; do not work around it.
-- The full account-move notes and the day-of checklist: `~/Desktop/Automation/docs/MOVE.md`. The automation machine (ThinkPad) and the
-  backup server are documented in `~/Desktop/Automation/HANDBOOK.md`.

@@ -25,3 +25,6 @@ certificates/
 
 # Local security audit - contains unpatched vulnerability detail, do not publish
 AUDIT_REPORT.md
+
+# Private, machine-specific instructions
+CLAUDE.local.md

@@ -344,7 +344,7 @@ Storage keys in use:
 ## Sessions 1–2 - Pre-Electron (prototype in Claude.ai artifacts)
 
 All feature development happened in the browser prototype (`app.jsx`).
-That file is preserved at `/Users/anthonyzammit/balanceiq/app.jsx` as the original reference.
+That file is preserved as `app.jsx` at the repository root as the original reference.
 Do not delete it - it is the source of truth for all business logic.
 
 ---
