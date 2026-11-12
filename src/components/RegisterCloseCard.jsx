@@ -483,7 +483,7 @@ function AdvancedFieldsPanel({ cash, onChange, showAdvanced, setShowAdvanced, va
     { key: 'paid_outs_cents',           label: T?.tenderPaidOuts ?? (fr ? 'Sorties de caisse'          : 'Paid-outs'),          sign: -1,
       tip: fr ? 'Cash retiré de la caisse pour des dépenses.\nEx : 25 $ payés au livreur de produits.' : 'Cash taken from the till for expenses.\nEx: $25 paid to the produce delivery driver.' },
     { key: 'cash_tips_paid_cents',      label: T?.tenderCashTips ?? (fr ? 'Pourboires comptant payés'  : 'Cash tips paid'),     sign: -1,
-      tip: fr ? 'Pourboires distribués en cash aux employés depuis la caisse.\nEx : pourboire carte de 15 $ payé en espèces au serveur.' : 'Tips paid out in cash to staff from the till.\nEx: $15 card tip paid as cash to the server.' },
+      tip: fr ? 'Pourboires distribués en cash aux employés depuis la caisse, quand le total du terminal ne les contient pas.\nSi le total du terminal inclut les pourboires, utilisez plutôt la ligne des pourboires par carte dans le compte.' : 'Tips paid out in cash to staff from the till, when the terminal total leaves them out.\nIf the terminal total includes tips, use the card tips line in the count instead.' },
     { key: 'till_transfers_in_cents',   label: T?.tenderTillIn   ?? (fr ? 'Transferts entrants'        : 'Till transfers in'),  sign: +1,
       tip: fr ? 'Cash reçu d\'une autre caisse.\nEx : la caisse 2 vous envoie 100 $ de monnaie.' : 'Cash received from another register.\nEx: Register 2 sends you $100 in change.' },
     { key: 'till_transfers_out_cents',  label: T?.tenderTillOut  ?? (fr ? 'Transferts sortants'        : 'Till transfers out'), sign: -1,
