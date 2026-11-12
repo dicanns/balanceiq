@@ -11,6 +11,7 @@ const {
 } = require('../utils/importParse.mjs');
 const { transferRule } = require('../utils/transferRule.mjs');
 const { csvField } = require('../utils/csvSafe.mjs');
+const { unitPriceFromPack, round6 } = require('../utils/ingredientCost.mjs');
 const { STRINGS } = require('../services/mainStrings.cjs');
 const { WRITTEN_OFF, isCashPayment } = require('../utils/invoiceStatus.mjs');
 const { CHEQUE_ISSUED, CHEQUE_RECEIVED, chequeNumberFromDescription, normalizeChequeNumber } = require('../utils/chequeNumber.mjs');
@@ -1712,6 +1713,31 @@ const MIGRATIONS = [
       importDocumentsFromKv(database);
     },
   },
+  {
+    version: 52,
+    // Purely additive columns: a backup written before this version restores
+    // straight into it (missing columns take their defaults).
+    restoreSafe: true,
+    description: 'Ingredient pack pricing (price of a case/box/bag and what it holds), to-verify flag, '
+      + 'and recipe selling price.',
+    up: (database) => {
+      const addColumns = (table, defs) => {
+        const cols = database.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name);
+        if (cols.length === 0) return; // table not present (minimal test schemas)
+        for (const [name, ddl] of defs) {
+          if (!cols.includes(name)) database.prepare(`ALTER TABLE ${table} ADD COLUMN ${name} ${ddl}`).run();
+        }
+      };
+      addColumns('ingredients', [
+        ['pack_price_cents', 'INTEGER'],
+        ['pack_qty', 'REAL'],
+        ['pack_unit', 'TEXT'],
+        ['pack_label', 'TEXT'],
+        ['needs_verify', 'INTEGER NOT NULL DEFAULT 0'],
+      ]);
+      addColumns('recipes', [['sell_price_cents', 'INTEGER']]);
+    },
+  },
 ];
 
 // The newest schema this build knows. Anything on disk below it has migrations
@@ -2725,21 +2751,84 @@ function checklistEntryUpsert(entry) {
 }
 
 // ── Ingredients (Recipe Costing Products) ──
-function ingredientsGetAll() {
-  return getDb().prepare('SELECT * FROM ingredients WHERE active=1 ORDER BY category, name_fr').all();
+function ingredientsGetAll(_db) {
+  return (_db || getDb()).prepare('SELECT * FROM ingredients WHERE active=1 ORDER BY category, name_fr').all();
 }
-function ingredientUpsert(p) {
-  const db = getDb();
-  if (p.id) {
-    db.prepare(`UPDATE ingredients SET name_fr=@name_fr, name_en=@name_en, category=@category,
-      default_unit=@default_unit, current_unit_price=@current_unit_price, last_price_update=@last_price_update,
-      supplier_id=@supplier_id, sku=@sku, notes=@notes, active=@active WHERE id=@id`).run(p);
-    return p.id;
+function localDateToday() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+// Saves an ingredient. When the caller gives the price of a purchase unit
+// (pack_price_cents) and what it holds (pack_qty, pack_unit), the unit price is
+// computed HERE (the one place the division happens) and any current_unit_price
+// sent is ignored. Returns the numeric id, or { ok:false, error } when refused.
+// A real change of the unit price stamps last_price_update and adds a row to
+// supplier_price_history.
+function ingredientUpsert(p, _db) {
+  const db = _db || getDb();
+  const unit = p.default_unit || 'kg';
+  const num = (v) => (v === undefined || v === null || v === '' ? null : Number(v));
+  const packCents = num(p.pack_price_cents);
+  const packQty = num(p.pack_qty);
+  const packMode = packCents > 0 && packQty > 0;
+
+  let newPrice;
+  if (packMode) {
+    const raw = unitPriceFromPack({ packPriceCents: packCents, packQty, packUnit: p.pack_unit, unit });
+    if (raw == null) return { ok: false, error: 'pack_units_incompatible' };
+    newPrice = round6(raw);
   } else {
-    const info = db.prepare(`INSERT INTO ingredients (name_fr,name_en,category,default_unit,current_unit_price,last_price_update,supplier_id,sku,notes,active)
-      VALUES (@name_fr,@name_en,@category,@default_unit,@current_unit_price,@last_price_update,@supplier_id,@sku,@notes,@active)`).run(p);
-    return info.lastInsertRowid;
+    const v = num(p.current_unit_price);
+    newPrice = v !== null && Number.isFinite(v) ? v : null;
   }
+
+  const existing = p.id ? db.prepare('SELECT current_unit_price, last_price_update FROM ingredients WHERE id=?').get(p.id) : null;
+  const oldPrice = existing ? existing.current_unit_price : null;
+  const changed = newPrice !== null && (oldPrice === null || oldPrice === undefined
+    || round6(oldPrice) !== round6(newPrice));
+  const today = localDateToday();
+  let lastUpdate;
+  if (changed) lastUpdate = today;
+  else if (p.last_price_update !== undefined && p.last_price_update !== null) lastUpdate = p.last_price_update;
+  else lastUpdate = existing ? existing.last_price_update : null;
+
+  const row = {
+    name_fr: p.name_fr, name_en: p.name_en || '', category: p.category || 'other', default_unit: unit,
+    current_unit_price: newPrice, last_price_update: lastUpdate,
+    supplier_id: p.supplier_id || '', sku: p.sku || '', notes: p.notes || '',
+    active: p.active === undefined || p.active === null ? 1 : p.active,
+    pack_price_cents: packMode ? Math.round(packCents) : null,
+    pack_qty: packMode ? packQty : null,
+    pack_unit: packMode ? (p.pack_unit || 'count') : null,
+    pack_label: packMode ? (p.pack_label || null) : null,
+    needs_verify: p.needs_verify ? 1 : 0,
+  };
+
+  let id;
+  db.transaction(() => {
+    if (p.id) {
+      db.prepare(`UPDATE ingredients SET name_fr=@name_fr, name_en=@name_en, category=@category,
+        default_unit=@default_unit, current_unit_price=@current_unit_price, last_price_update=@last_price_update,
+        supplier_id=@supplier_id, sku=@sku, notes=@notes, active=@active,
+        pack_price_cents=@pack_price_cents, pack_qty=@pack_qty, pack_unit=@pack_unit, pack_label=@pack_label,
+        needs_verify=@needs_verify WHERE id=@id`).run({ ...row, id: p.id });
+      id = p.id;
+    } else {
+      const info = db.prepare(`INSERT INTO ingredients (name_fr,name_en,category,default_unit,current_unit_price,last_price_update,supplier_id,sku,notes,active,
+        pack_price_cents,pack_qty,pack_unit,pack_label,needs_verify)
+        VALUES (@name_fr,@name_en,@category,@default_unit,@current_unit_price,@last_price_update,@supplier_id,@sku,@notes,@active,
+        @pack_price_cents,@pack_qty,@pack_unit,@pack_label,@needs_verify)`).run(row);
+      id = info.lastInsertRowid;
+    }
+    if (changed) {
+      priceHistorySave({
+        ingredient_id: id, supplier_name: p.supplier_name || 'manual', unit_price: newPrice,
+        quantity: null, unit, invoice_date: today, invoice_ref: '',
+      }, db);
+    }
+  })();
+  return id;
 }
 function ingredientDelete(id) {
   getDb().prepare('UPDATE ingredients SET active=0 WHERE id=?').run(id);
@@ -2779,25 +2868,40 @@ function priceHistoryGetLastPrice(ingredientId, supplierName) {
   return getDb().prepare(`SELECT * FROM supplier_price_history WHERE ingredient_id=? AND supplier_name=?
     ORDER BY invoice_date DESC LIMIT 1`).get(ingredientId, supplierName||'') || null;
 }
-function priceHistorySave(record) {
-  getDb().prepare(`INSERT INTO supplier_price_history (ingredient_id, supplier_name, unit_price, quantity, unit, invoice_date, invoice_ref)
+function priceHistorySave(record, _db) {
+  (_db || getDb()).prepare(`INSERT INTO supplier_price_history (ingredient_id, supplier_name, unit_price, quantity, unit, invoice_date, invoice_ref)
     VALUES (@ingredient_id, @supplier_name, @unit_price, @quantity, @unit, @invoice_date, @invoice_ref)`).run(record);
   return true;
 }
 
 // ── Recipes ──
-function recipesGetAll() {
-  return getDb().prepare('SELECT * FROM recipes WHERE active=1 ORDER BY category, name_fr').all();
+function recipesGetAll(_db) {
+  return (_db || getDb()).prepare('SELECT * FROM recipes WHERE active=1 ORDER BY category, name_fr').all();
 }
-function recipeUpsert(r) {
-  const db = getDb();
+function recipeUpsert(r, _db) {
+  const db = _db || getDb();
+  // Selling price in integer cents; callers that do not send it keep what is stored.
+  const cents = (v) => (v === undefined || v === null || v === '' || !Number.isFinite(Number(v)) ? null : Math.round(Number(v)));
+  const row = {
+    name_fr: r.name_fr, name_en: r.name_en || '', category: r.category || 'main',
+    yield_qty: r.yield_qty === undefined || r.yield_qty === null ? 1 : r.yield_qty,
+    yield_unit: r.yield_unit || 'portions',
+    active: r.active === undefined || r.active === null ? 1 : r.active,
+    notes: r.notes || '',
+    sell_price_cents: cents(r.sell_price_cents),
+  };
   if (r.id) {
+    if (r.sell_price_cents === undefined) {
+      const cur = db.prepare('SELECT sell_price_cents FROM recipes WHERE id=?').get(r.id);
+      row.sell_price_cents = cur ? cur.sell_price_cents : null;
+    }
     db.prepare(`UPDATE recipes SET name_fr=@name_fr, name_en=@name_en, category=@category,
-      yield_qty=@yield_qty, yield_unit=@yield_unit, active=@active, notes=@notes WHERE id=@id`).run(r);
+      yield_qty=@yield_qty, yield_unit=@yield_unit, active=@active, notes=@notes,
+      sell_price_cents=@sell_price_cents WHERE id=@id`).run({ ...row, id: r.id });
     return r.id;
   } else {
-    const info = db.prepare(`INSERT INTO recipes (name_fr,name_en,category,yield_qty,yield_unit,active,notes)
-      VALUES (@name_fr,@name_en,@category,@yield_qty,@yield_unit,@active,@notes)`).run(r);
+    const info = db.prepare(`INSERT INTO recipes (name_fr,name_en,category,yield_qty,yield_unit,active,notes,sell_price_cents)
+      VALUES (@name_fr,@name_en,@category,@yield_qty,@yield_unit,@active,@notes,@sell_price_cents)`).run(row);
     return info.lastInsertRowid;
   }
 }
@@ -2807,13 +2911,13 @@ function recipeDelete(id) {
 }
 
 // ── Recipe Ingredients ──
-function recipeIngredientsGet(recipeId) {
-  return getDb().prepare(`SELECT ri.*, i.name_fr, i.name_en, i.current_unit_price, i.default_unit
+function recipeIngredientsGet(recipeId, _db) {
+  return (_db || getDb()).prepare(`SELECT ri.*, i.name_fr, i.name_en, i.current_unit_price, i.default_unit, i.needs_verify, i.last_price_update
     FROM recipe_ingredients ri JOIN ingredients i ON ri.ingredient_id=i.id
     WHERE ri.recipe_id=?`).all(recipeId);
 }
-function recipeIngredientsSetAll(recipeId, ingredients) {
-  const db = getDb();
+function recipeIngredientsSetAll(recipeId, ingredients, _db) {
+  const db = _db || getDb();
   db.prepare('DELETE FROM recipe_ingredients WHERE recipe_id=?').run(recipeId);
   const ins = db.prepare(`INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit, notes)
     VALUES (@recipe_id, @ingredient_id, @quantity, @unit, @notes)`);

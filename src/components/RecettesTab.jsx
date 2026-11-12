@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { unitPriceFromPack, round6 } from '../utils/ingredientCost.mjs';
 
 // ── Levenshtein distance for fuzzy matching ──────────────────────────────────
 function levenshtein(a, b) {
@@ -36,7 +37,9 @@ const CATEGORIES = [
   { value: 'beverage',  fr: 'Boissons',        en: 'Beverages' },
   { value: 'other',     fr: 'Autre',           en: 'Other' },
 ];
-const UNITS = ['kg', 'lb', 'g', 'oz', 'L', 'mL', 'case', 'each', 'dz', 'box', 'bag', 'can'];
+const UNITS = ['kg', 'lb', 'g', 'oz', 'L', 'mL', 'case', 'each', 'dz', 'box', 'bag', 'can', 'slice', 'patty', 'portion', 'spoon'];
+// Units a case, box or bag can be measured in besides a count of the ingredient's own unit.
+const PACK_UNITS = ['lb', 'kg', 'g', 'oz', 'L', 'mL'];
 const RECIPE_CATS = [
   { value: 'main',    fr: 'Plat principal', en: 'Main' },
   { value: 'side',    fr: 'Accompagnement', en: 'Side' },
@@ -55,6 +58,44 @@ function recipeCatLabel(value, lang) {
   return c ? (lang === 'en' ? c.en : c.fr) : value;
 }
 function fmt(n) { return n == null ? '-' : `$${Number(n).toFixed(2)}`; }
+// Unit prices are often a fraction of a cent: show enough decimals.
+function fmtUnitPrice(n) { return n == null ? '-' : `$${Number(n).toFixed(Number(n) < 0.01 ? 5 : Number(n) < 1 ? 4 : 2)}`; }
+// Whole days since a YYYY-MM-DD date (local time), or null.
+function daysSince(d) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d || '');
+  if (!m) return null;
+  const then = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.max(0, Math.round((today - then) / 86400000));
+}
+function agoLabel(days, lang) {
+  if (days == null) return '';
+  if (lang === 'en') return days === 0 ? 'today' : days === 1 ? '1 day ago' : `${days} days ago`;
+  return days === 0 ? "aujourd'hui" : days === 1 ? 'il y a 1 jour' : `il y a ${days} jours`;
+}
+// Live result of the "price from a case" form: { price } or { error } or null while incomplete.
+function packPreview(ed, lang) {
+  const cents = Math.round(Number(ed.pack_price) * 100);
+  const qty = Number(ed.pack_qty);
+  if (!(cents > 0) || !(qty > 0)) return null;
+  const unit = ed.default_unit;
+  const price = unitPriceFromPack({ packPriceCents: cents, packQty: qty, packUnit: ed.pack_unit, unit });
+  if (price == null) {
+    return { error: lang === 'en'
+      ? `Cannot convert ${ed.pack_unit} to ${unit}. Give the number of ${unit}(s) in the case, or change the ingredient's unit to a weight.`
+      : `Impossible de convertir ${ed.pack_unit} en ${unit}. Indiquez le nombre de ${unit}(s) dans la caisse, ou changez l'unité de l'ingrédient pour un poids.` };
+  }
+  return { price: round6(price) };
+}
+// Form state for an ingredient row (pack data opens the case mode with its values).
+function ingredientToForm(ing) {
+  const pack = Number(ing.pack_price_cents) > 0 && Number(ing.pack_qty) > 0;
+  return { ...ing, price_mode: pack ? 'pack' : 'unit',
+    pack_price: pack ? (Number(ing.pack_price_cents) / 100).toFixed(2) : '',
+    pack_qty: pack ? ing.pack_qty : '', pack_unit: pack && ing.pack_unit !== ing.default_unit ? (ing.pack_unit || 'count') : 'count',
+    pack_label: pack ? (ing.pack_label || '') : '', needs_verify: ing.needs_verify ? 1 : 0 };
+}
 function fmtDate(d) { if (!d) return '-'; const dt = new Date(d); return isNaN(dt)?d:dt.toLocaleDateString('fr-CA'); }
 
 // ── Small shared components ───────────────────────────────────────────────────
@@ -83,7 +124,8 @@ function IngredientsTab({ t, T, lang, ingredients, setIngredients }) {
   const [priceHistory, setPriceHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(null); // ingredient id
 
-  const empty = { name_fr: '', name_en: '', category: 'protein', default_unit: 'kg', current_unit_price: '', supplier_id: '', sku: '', notes: '', active: 1 };
+  const empty = { name_fr: '', name_en: '', category: 'protein', default_unit: 'kg', current_unit_price: '', supplier_id: '', sku: '', notes: '', active: 1,
+    price_mode: 'unit', pack_price: '', pack_qty: '', pack_unit: 'count', pack_label: '', needs_verify: 0 };
 
   const filtered = useMemo(() => {
     let list = ingredients;
@@ -102,8 +144,29 @@ function IngredientsTab({ t, T, lang, ingredients, setIngredients }) {
 
   const save = async () => {
     if (!editing?.name_fr?.trim()) return;
-    const p = { ...editing, current_unit_price: editing.current_unit_price !== '' ? Number(editing.current_unit_price) : null };
-    await window.api.ingredients.save(p);
+    const p = { ...editing, current_unit_price: editing.current_unit_price !== '' && editing.current_unit_price != null ? Number(editing.current_unit_price) : null };
+    const packMode = editing.price_mode === 'pack';
+    if (packMode) {
+      p.pack_price_cents = Math.round(Number(editing.pack_price) * 100);
+      p.pack_qty = Number(editing.pack_qty);
+      p.pack_unit = editing.pack_unit || 'count';
+      p.pack_label = editing.pack_label || '';
+      if (!(p.pack_price_cents > 0) || !(p.pack_qty > 0)) {
+        window.alert(lang === 'en' ? 'Enter what you paid and what the case holds.' : 'Entrez le prix payé et ce que contient la caisse.');
+        return;
+      }
+    } else {
+      p.pack_price_cents = null; p.pack_qty = null; p.pack_unit = null; p.pack_label = null;
+    }
+    p.needs_verify = editing.needs_verify ? 1 : 0;
+    delete p.price_mode; delete p.pack_price;
+    const res = await window.api.ingredients.save(p);
+    if (res && res.ok === false) {
+      const preview = packMode ? packPreview(editing, lang) : null;
+      window.alert(res.error === 'pack_units_incompatible' && preview?.error ? preview.error
+        : (lang === 'en' ? 'Could not save this ingredient.' : "Impossible d'enregistrer cet ingrédient."));
+      return;
+    }
     await reload();
     setEditing(null);
   };
@@ -170,7 +233,12 @@ function IngredientsTab({ t, T, lang, ingredients, setIngredients }) {
           + {lang === 'en' ? 'Add ingredient' : 'Ajouter ingrédient'}</button></div>{/* Edit form */}
       {editing && (<div style={{ background: t.card, border: `1px solid ${t.cardBorder}`, borderRadius: 10, padding: '14px 16px' }}><div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 12 }}>{editing.id ? (lang === 'en' ? 'Edit ingredient' : 'Modifier ingrédient') : (lang === 'en' ? '+ New ingredient' : '+ Nouvel ingrédient')}</div><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}><div><div style={{ fontSize: 10, color: t.textMuted, marginBottom: 3 }}>{lang === 'en' ? 'Name (French) *' : 'Nom (français) *'}</div><input style={inp} value={editing.name_fr} onChange={e =>setEditing(p => ({ ...p, name_fr: e.target.value }))} placeholder="Ex: Bœuf haché" /></div><div><div style={{ fontSize: 10, color: t.textMuted, marginBottom: 3 }}>{lang === 'en' ? 'Name (English)' : 'Nom (anglais)'}</div><input style={inp} value={editing.name_en || ''} onChange={e =>setEditing(p => ({ ...p, name_en: e.target.value }))} placeholder="Ex: Ground beef" /></div><div><div style={{ fontSize: 10, color: t.textMuted, marginBottom: 3 }}>{lang === 'en' ? 'Category' : 'Catégorie'}</div><select style={sel} value={editing.category} onChange={e =>setEditing(p => ({ ...p, category: e.target.value }))}>
                 {CATEGORIES.map(c =><option key={c.value} value={c.value}>{lang === 'en' ? c.en : c.fr}</option>)}</select></div><div><div style={{ fontSize: 10, color: t.textMuted, marginBottom: 3 }}>{lang === 'en' ? 'Default unit' : 'Unité par défaut'}</div><select style={sel} value={editing.default_unit} onChange={e =>setEditing(p => ({ ...p, default_unit: e.target.value }))}>
-                {UNITS.map(u =><option key={u} value={u}>{u}</option>)}</select></div><div><div style={{ fontSize: 10, color: t.textMuted, marginBottom: 3 }}>{lang === 'en' ? 'Current price / unit ($)' : 'Prix actuel / unité ($)'}</div><input style={inp} type="number" step="0.01" min="0" value={editing.current_unit_price ?? ''} onChange={e =>setEditing(p => ({ ...p, current_unit_price: e.target.value }))} placeholder="0.00" /></div><div><div style={{ fontSize: 10, color: t.textMuted, marginBottom: 3 }}>{lang === 'en' ? 'Supplier' : 'Fournisseur'}</div><input style={inp} value={editing.supplier_id || ''} onChange={e =>setEditing(p => ({ ...p, supplier_id: e.target.value }))} placeholder="Ex: Sysco" /></div><div><div style={{ fontSize: 10, color: t.textMuted, marginBottom: 3 }}>SKU</div><input style={inp} value={editing.sku || ''} onChange={e =>setEditing(p => ({ ...p, sku: e.target.value }))} placeholder={lang === 'en' ? 'Supplier product code' : 'Code produit fournisseur'} /></div><div><div style={{ fontSize: 10, color: t.textMuted, marginBottom: 3 }}>{lang === 'en' ? 'Notes' : 'Notes'}</div><input style={inp} value={editing.notes || ''} onChange={e =>setEditing(p => ({ ...p, notes: e.target.value }))} /></div></div><div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}><button onClick={() =>setEditing(null)} style={{ padding: '6px 14px', borderRadius: 6, border: `1px solid ${t.cardBorder}`, background: 'none', color: t.textMuted, fontSize: 11, cursor: 'pointer' }}>
+                {UNITS.map(u =><option key={u} value={u}>{u}</option>)}</select></div><div style={{ gridColumn: '1 / -1' }}><div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 6 }}>{[['unit', lang === 'en' ? 'Price per portion' : 'Prix par portion'], ['pack', lang === 'en' ? 'Price from a case, box or bag' : "Prix à partir d'une caisse, boîte ou sac"]].map(([mode, label]) => (<label key={mode} style={{ fontSize: 11.5, color: t.text, display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}><input type="radio" name="price_mode" checked={editing.price_mode === mode} onChange={() =>setEditing(p => ({ ...p, price_mode: mode }))} />{label}</label>))}</div>{editing.price_mode === 'pack' ? (<div><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}><div><div style={{ fontSize: 10, color: t.textMuted, marginBottom: 3 }}>{lang === 'en' ? 'What you paid ($)' : 'Prix payé ($)'}</div><input style={inp} type="number" step="0.01" min="0" value={editing.pack_price ?? ''} onChange={e =>setEditing(p => ({ ...p, pack_price: e.target.value }))} placeholder="101.63" /></div><div><div style={{ fontSize: 10, color: t.textMuted, marginBottom: 3 }}>{lang === 'en' ? 'What it holds' : 'Contenu'}</div><div style={{ display: 'flex', gap: 6 }}><input style={{ ...inp, flex: 1, minWidth: 0 }} type="number" step="any" min="0" value={editing.pack_qty ?? ''} onChange={e =>setEditing(p => ({ ...p, pack_qty: e.target.value }))} placeholder="1111" /><select style={{ ...sel, width: 96 }} value={editing.pack_unit || 'count'} onChange={e =>setEditing(p => ({ ...p, pack_unit: e.target.value }))}><option value="count">{editing.default_unit}(s)</option>{PACK_UNITS.filter(u => u !== editing.default_unit).map(u =><option key={u} value={u}>{u}</option>)}</select></div></div><div><div style={{ fontSize: 10, color: t.textMuted, marginBottom: 3 }}>{lang === 'en' ? 'Label (optional)' : 'Étiquette (facultatif)'}</div><input style={inp} value={editing.pack_label || ''} onChange={e =>setEditing(p => ({ ...p, pack_label: e.target.value }))} placeholder={lang === 'en' ? 'box, case, brick, bag...' : 'boîte, caisse, brique, sac...'} /></div></div>{(() => {
+                const pv = packPreview(editing, lang);
+                if (!pv) return null;
+                if (pv.error) return<div style={{ fontSize: 11, color: '#dc2626', marginTop: 6 }}>{pv.error}</div>;
+                return<div style={{ fontSize: 12, color: '#f97316', fontWeight: 700, marginTop: 6 }}>= {fmtUnitPrice(pv.price).slice(1)} $ {lang === 'en' ? 'per' : 'par'} {editing.default_unit}</div>;
+              })()}</div>) : (<div><div style={{ fontSize: 10, color: t.textMuted, marginBottom: 3 }}>{lang === 'en' ? 'Current price / unit ($)' : 'Prix actuel / unité ($)'}</div><input style={inp} type="number" step="any" min="0" value={editing.current_unit_price ?? ''} onChange={e =>setEditing(p => ({ ...p, current_unit_price: e.target.value }))} placeholder="0.00" /></div>)}</div><label style={{ gridColumn: '1 / -1', fontSize: 11.5, color: t.text, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}><input type="checkbox" checked={!!editing.needs_verify} onChange={e =>setEditing(p => ({ ...p, needs_verify: e.target.checked ? 1 : 0 }))} />{lang === 'en' ? 'To verify (price not confirmed)' : 'À vérifier (prix non confirmé)'}</label><div><div style={{ fontSize: 10, color: t.textMuted, marginBottom: 3 }}>{lang === 'en' ? 'Supplier' : 'Fournisseur'}</div><input style={inp} value={editing.supplier_id || ''} onChange={e =>setEditing(p => ({ ...p, supplier_id: e.target.value }))} placeholder="Ex: Sysco" /></div><div><div style={{ fontSize: 10, color: t.textMuted, marginBottom: 3 }}>SKU</div><input style={inp} value={editing.sku || ''} onChange={e =>setEditing(p => ({ ...p, sku: e.target.value }))} placeholder={lang === 'en' ? 'Supplier product code' : 'Code produit fournisseur'} /></div><div><div style={{ fontSize: 10, color: t.textMuted, marginBottom: 3 }}>{lang === 'en' ? 'Notes' : 'Notes'}</div><input style={inp} value={editing.notes || ''} onChange={e =>setEditing(p => ({ ...p, notes: e.target.value }))} /></div></div><div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}><button onClick={() =>setEditing(null)} style={{ padding: '6px 14px', borderRadius: 6, border: `1px solid ${t.cardBorder}`, background: 'none', color: t.textMuted, fontSize: 11, cursor: 'pointer' }}>
               {lang === 'en' ? 'Cancel' : 'Annuler'}</button><button onClick={save} style={{ padding: '6px 14px', borderRadius: 6, border: 'none', background: 'linear-gradient(135deg,#f97316,#ea580c)', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>{lang === 'en' ? 'Save' : 'Enregistrer'}</button></div></div>)}
 
       {/* List */}
@@ -182,8 +250,8 @@ function IngredientsTab({ t, T, lang, ingredients, setIngredients }) {
               : 'Astuce: Commencez avec vos 5–10 ingrédients les plus coûteux. Vous n\'avez pas besoin de tout ajouter d\'un coup.'}</div><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button onClick={() =>setEditing({ ...empty })} style={{ padding: '7px 16px', borderRadius: 6, border: 'none', background: 'linear-gradient(135deg,#f97316,#ea580c)', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
               + {lang === 'en' ? 'Add ingredient' : 'Ajouter un ingrédient'}</button><div style={{ fontSize: 11, color: t.textMuted, display: 'flex', alignItems: 'center', padding: '0 4px' }}>{lang === 'en'
                 ? 'Ingredients populate automatically from P&L invoice scans.'
-                : 'Les ingrédients se remplissent automatiquement via les scans de factures du P&L.'}</div></div></div>: filtered.map(ing => (<div key={ing.id} style={{ background: t.card, border: `1px solid ${t.cardBorder}`, borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}><div style={{ flex: 1, minWidth: 0 }}><div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3 }}><span style={{ fontSize: 12.5, fontWeight: 700, color: t.text }}>{lang === 'en' ? (ing.name_en || ing.name_fr) : ing.name_fr}</span><Badge color="blue">{catLabel(ing.category, lang)}</Badge><Badge color="gray">{ing.default_unit}</Badge></div><div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}><span style={{ fontSize: 11, color: ing.current_unit_price ? '#f97316' : t.textMuted, fontWeight: ing.current_unit_price ? 600 : 400 }}>{ing.current_unit_price ? `${fmt(ing.current_unit_price)}/${ing.default_unit}` : (lang === 'en' ? 'No price set' : 'Prix non défini')}</span>{ing.supplier_id &&<span style={{ fontSize: 11, color: t.textMuted }}>{ing.supplier_id}</span>}
-                {ing.last_price_update &&<span style={{ fontSize: 10, color: t.textDim }}>{fmtDate(ing.last_price_update)}</span>}</div></div><button onClick={() =>openHistory(ing.id)} title={lang === 'en' ? 'Price history' : 'Historique des prix'} style={{ background: 'none', border: 'none', color: t.textMuted, cursor: 'pointer', fontSize: 14, padding: '2px 5px' }}>◴</button><button onClick={() =>openAliases(ing.id)} title={lang === 'en' ? 'Aliases' : 'Alias'} style={{ background: 'none', border: 'none', color: t.textMuted, cursor: 'pointer', fontSize: 14, padding: '2px 5px' }}>≡</button><button onClick={() =>setEditing({ ...ing })} style={{ background: 'none', border: 'none', color: '#f97316', cursor: 'pointer', fontSize: 13, padding: '2px 5px' }}>✎</button><button onClick={() =>del(ing.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 13, padding: '2px 5px' }}>×</button></div>))
+                : 'Les ingrédients se remplissent automatiquement via les scans de factures du P&L.'}</div></div></div>: filtered.map(ing => (<div key={ing.id} style={{ background: t.card, border: `1px solid ${t.cardBorder}`, borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}><div style={{ flex: 1, minWidth: 0 }}><div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3 }}><span style={{ fontSize: 12.5, fontWeight: 700, color: t.text }}>{lang === 'en' ? (ing.name_en || ing.name_fr) : ing.name_fr}</span><Badge color="blue">{catLabel(ing.category, lang)}</Badge><Badge color="gray">{ing.default_unit}</Badge>{ing.needs_verify ? <Badge color="red">{lang === 'en' ? 'To verify' : 'À vérifier'}</Badge> : null}</div><div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}><span style={{ fontSize: 11, color: ing.current_unit_price ? '#f97316' : t.textMuted, fontWeight: ing.current_unit_price ? 600 : 400 }}>{ing.current_unit_price ? `${fmtUnitPrice(ing.current_unit_price)}/${ing.default_unit}` : (lang === 'en' ? 'No price set' : 'Prix non défini')}</span>{ing.supplier_id &&<span style={{ fontSize: 11, color: t.textMuted }}>{ing.supplier_id}</span>}
+                {Number(ing.pack_price_cents) > 0 &&<span style={{ fontSize: 10, color: t.textMuted }}>{`${fmt(ing.pack_price_cents / 100)} / ${ing.pack_label || (lang === 'en' ? 'case' : 'caisse')}`}</span>}{ing.last_price_update &&<span style={{ fontSize: 10, color: t.textDim }}>{`${lang === 'en' ? 'Price updated' : 'Prix mis à jour'} ${String(ing.last_price_update).slice(0, 10)} (${agoLabel(daysSince(ing.last_price_update), lang)})`}</span>}</div></div><button onClick={() =>openHistory(ing.id)} title={lang === 'en' ? 'Price history' : 'Historique des prix'} style={{ background: 'none', border: 'none', color: t.textMuted, cursor: 'pointer', fontSize: 14, padding: '2px 5px' }}>◴</button><button onClick={() =>openAliases(ing.id)} title={lang === 'en' ? 'Aliases' : 'Alias'} style={{ background: 'none', border: 'none', color: t.textMuted, cursor: 'pointer', fontSize: 14, padding: '2px 5px' }}>≡</button><button onClick={() =>setEditing(ingredientToForm(ing))} style={{ background: 'none', border: 'none', color: '#f97316', cursor: 'pointer', fontSize: 13, padding: '2px 5px' }}>✎</button><button onClick={() =>del(ing.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 13, padding: '2px 5px' }}>×</button></div>))
       }</div>);
 }
 
@@ -193,13 +261,19 @@ function RecipesTab({ t, T, lang, ingredients }) {
   const [editing, setEditing] = useState(null); // recipe obj with .ingredientRows
   const [expandedId, setExpandedId] = useState(null);
   const [expandedIngs, setExpandedIngs] = useState([]);
+  const [recipeRows, setRecipeRows] = useState({}); // recipe id -> its ingredient rows (for the list costs)
 
-  const emptyRecipe = { name_fr: '', name_en: '', category: 'main', yield_qty: 1, yield_unit: 'portions', active: 1, notes: '', ingredientRows: [] };
+  const emptyRecipe = { name_fr: '', name_en: '', category: 'main', yield_qty: 1, yield_unit: 'portions', active: 1, notes: '', sell_price: '', ingredientRows: [] };
   const emptyRow = { ingredient_id: '', quantity: '', unit: 'kg', notes: '' };
 
   const reload = useCallback(async () => {
     const rows = await window.api.recipes.getAll();
     setRecipes(rows);
+    const map = {};
+    await Promise.all(rows.map(async r => {
+      try { map[r.id] = await window.api.recipes.ingredientsGet(r.id); } catch (_) { map[r.id] = []; }
+    }));
+    setRecipeRows(map);
   }, []);
 
   useEffect(() => { reload(); }, [reload]);
@@ -214,11 +288,23 @@ function RecipesTab({ t, T, lang, ingredients }) {
     return total;
   };
 
+  const anyVerify = (rows) => rows.some(r => ingredients.find(i => i.id === Number(r.ingredient_id))?.needs_verify);
+
+  // Cost, selling price, food cost % and margin for one portion.
+  const renderCostLine = (cost, sellCents, verify) => {
+    const price = sellCents != null && sellCents > 0 ? sellCents / 100 : null;
+    const pct = price ? cost / price * 100 : null;
+    const pctColor = pct == null ? t.textMuted : pct <= 30 ? '#16a34a' : pct <= 35 ? '#d97706' : '#dc2626';
+    return (<div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', fontSize: 11 }}><span style={{ color: t.textMuted }}>{lang === 'en' ? 'Cost' : 'Coût'} <b style={{ color: '#f97316' }}>{fmt(cost)}</b></span>{price != null ? (<><span style={{ color: t.textMuted }}>{lang === 'en' ? 'Price' : 'Prix'} <b style={{ color: t.text }}>{fmt(price)}</b></span><span style={{ color: t.textMuted }}>{lang === 'en' ? 'Food cost' : 'Coût matière'} <b style={{ color: pctColor }}>{pct.toFixed(1)}%</b></span><span style={{ color: t.textMuted }}>{lang === 'en' ? 'Margin' : 'Marge'} <b style={{ color: t.text }}>{fmt(price - cost)}</b></span></>) : <span style={{ color: t.textDim }}>{lang === 'en' ? 'No selling price' : 'Aucun prix de vente'}</span>}{verify ? <Badge color="red">{lang === 'en' ? 'Contains a price to verify' : 'Contient un prix à vérifier'}</Badge> : null}</div>);
+  };
+
   const save = async () => {
     if (!editing?.name_fr?.trim()) return;
     const rows = editing.ingredientRows || [];
     const recipe = { ...editing };
     delete recipe.ingredientRows;
+    recipe.sell_price_cents = recipe.sell_price !== '' && recipe.sell_price != null && Number(recipe.sell_price) > 0 ? Math.round(Number(recipe.sell_price) * 100) : null;
+    delete recipe.sell_price;
     recipe.yield_qty = Number(recipe.yield_qty) || 1;
     const id = await window.api.recipes.save(recipe);
     const recipeId = editing.id || id;
@@ -246,7 +332,7 @@ function RecipesTab({ t, T, lang, ingredients }) {
 
   const openEdit = async (recipe) => {
     const rows = await window.api.recipes.ingredientsGet(recipe.id);
-    setEditing({ ...recipe, ingredientRows: rows.map(r => ({ ingredient_id: r.ingredient_id, quantity: r.quantity, unit: r.unit, notes: r.notes })) });
+    setEditing({ ...recipe, sell_price: recipe.sell_price_cents != null ? (recipe.sell_price_cents / 100).toFixed(2) : '', ingredientRows: rows.map(r => ({ ingredient_id: r.ingredient_id, quantity: r.quantity, unit: r.unit, notes: r.notes })) });
   };
 
   const inp = { background: t.inputBg, border: `1px solid ${t.inputBorder}`, borderRadius: 6, color: t.text, fontSize: 12, padding: '6px 9px', outline: 'none', width: '100%', boxSizing: 'border-box', fontFamily: "'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif" };
@@ -256,7 +342,7 @@ function RecipesTab({ t, T, lang, ingredients }) {
           style={{ padding: '7px 14px', borderRadius: 6, border: 'none', background: 'linear-gradient(135deg,#f97316,#ea580c)', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
           + {lang === 'en' ? 'New recipe' : 'Nouvelle recette'}</button></div>{/* Edit form */}
       {editing && (<div style={{ background: t.card, border: `1px solid ${t.cardBorder}`, borderRadius: 10, padding: '14px 16px' }}><div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 12 }}>{editing.id ? (lang === 'en' ? 'Edit recipe' : 'Modifier recette') : (lang === 'en' ? '+ New recipe' : '+ Nouvelle recette')}</div><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}><div><div style={{ fontSize: 10, color: t.textMuted, marginBottom: 3 }}>{lang === 'en' ? 'Name (French) *' : 'Nom (français) *'}</div><input style={inp} value={editing.name_fr} onChange={e =>setEditing(p => ({ ...p, name_fr: e.target.value }))} placeholder="Ex: Hamburger classique" /></div><div><div style={{ fontSize: 10, color: t.textMuted, marginBottom: 3 }}>{lang === 'en' ? 'Name (English)' : 'Nom (anglais)'}</div><input style={inp} value={editing.name_en || ''} onChange={e =>setEditing(p => ({ ...p, name_en: e.target.value }))} placeholder="Ex: Classic Burger" /></div><div><div style={{ fontSize: 10, color: t.textMuted, marginBottom: 3 }}>{lang === 'en' ? 'Category' : 'Catégorie'}</div><select style={sel} value={editing.category} onChange={e =>setEditing(p => ({ ...p, category: e.target.value }))}>
-                {RECIPE_CATS.map(c =><option key={c.value} value={c.value}>{lang === 'en' ? c.en : c.fr}</option>)}</select></div><div style={{ display: 'flex', gap: 8 }}><div style={{ flex: 1 }}><div style={{ fontSize: 10, color: t.textMuted, marginBottom: 3 }}>{lang === 'en' ? 'Yield qty' : 'Rendement'}</div><input style={inp} type="number" min="0.1" step="0.1" value={editing.yield_qty} onChange={e =>setEditing(p => ({ ...p, yield_qty: e.target.value }))} /></div><div style={{ flex: 1 }}><div style={{ fontSize: 10, color: t.textMuted, marginBottom: 3 }}>{lang === 'en' ? 'Unit' : 'Unité'}</div><input style={inp} value={editing.yield_unit} onChange={e =>setEditing(p => ({ ...p, yield_unit: e.target.value }))} placeholder="portions" /></div></div></div>{/* Ingredients */}<div style={{ fontSize: 11, fontWeight: 700, color: t.textSub, marginBottom: 8 }}>{lang === 'en' ? 'Ingredients' : 'Ingrédients'}</div>{(editing.ingredientRows || []).map((row, i) => (<div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}><select style={{ ...sel, flex: 2, minWidth: 0 }} value={row.ingredient_id || ''} onChange={e =>setEditing(p => ({ ...p, ingredientRows: p.ingredientRows.map((r, j) => j === i ? { ...r, ingredient_id: e.target.value, unit: ingredients.find(x => x.id === Number(e.target.value))?.default_unit || r.unit } : r) }))}><option value="">{lang === 'en' ? '- Select ingredient -' : '- Choisir ingrédient -'}</option>{CATEGORIES.map(cat => {
+                {RECIPE_CATS.map(c =><option key={c.value} value={c.value}>{lang === 'en' ? c.en : c.fr}</option>)}</select></div><div style={{ display: 'flex', gap: 8 }}><div style={{ flex: 1 }}><div style={{ fontSize: 10, color: t.textMuted, marginBottom: 3 }}>{lang === 'en' ? 'Yield qty' : 'Rendement'}</div><input style={inp} type="number" min="0.1" step="0.1" value={editing.yield_qty} onChange={e =>setEditing(p => ({ ...p, yield_qty: e.target.value }))} /></div><div style={{ flex: 1 }}><div style={{ fontSize: 10, color: t.textMuted, marginBottom: 3 }}>{lang === 'en' ? 'Unit' : 'Unité'}</div><input style={inp} value={editing.yield_unit} onChange={e =>setEditing(p => ({ ...p, yield_unit: e.target.value }))} placeholder="portions" /></div></div><div><div style={{ fontSize: 10, color: t.textMuted, marginBottom: 3 }}>{lang === 'en' ? 'Selling price ($)' : 'Prix de vente ($)'}</div><input style={inp} type="number" step="0.01" min="0" value={editing.sell_price ?? ''} onChange={e =>setEditing(p => ({ ...p, sell_price: e.target.value }))} placeholder="0.00" /></div></div>{/* Ingredients */}<div style={{ fontSize: 11, fontWeight: 700, color: t.textSub, marginBottom: 8 }}>{lang === 'en' ? 'Ingredients' : 'Ingrédients'}</div>{(editing.ingredientRows || []).map((row, i) => (<div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}><select style={{ ...sel, flex: 2, minWidth: 0 }} value={row.ingredient_id || ''} onChange={e =>setEditing(p => ({ ...p, ingredientRows: p.ingredientRows.map((r, j) => j === i ? { ...r, ingredient_id: e.target.value, unit: ingredients.find(x => x.id === Number(e.target.value))?.default_unit || r.unit } : r) }))}><option value="">{lang === 'en' ? '- Select ingredient -' : '- Choisir ingrédient -'}</option>{CATEGORIES.map(cat => {
                   const group = ingredients.filter(x => x.category === cat.value);
                   if (!group.length) return null;
                   return<optgroup key={cat.value} label={lang === 'en' ? cat.en : cat.fr}>{group.map(ing =><option key={ing.id} value={ing.id}>{lang === 'en' ? (ing.name_en || ing.name_fr) : ing.name_fr}</option>)}</optgroup>;
@@ -267,17 +353,17 @@ function RecipesTab({ t, T, lang, ingredients }) {
                 return<span style={{ fontSize: 11, color: '#f97316', fontWeight: 600, minWidth: 50, textAlign: 'right' }}>{cost != null ? fmt(cost) : ''}</span>;
               })()}<button onClick={() =>setEditing(p => ({ ...p, ingredientRows: p.ingredientRows.filter((_, j) => j !== i) }))} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 14, flexShrink: 0 }}>✎</button></div>))}<button onClick={() =>setEditing(p => ({ ...p, ingredientRows: [...(p.ingredientRows || []), { ...emptyRow }] }))}
             style={{ fontSize: 11, padding: '4px 12px', borderRadius: 5, border: '1px solid rgba(249,115,22,0.3)', background: 'rgba(249,115,22,0.07)', color: '#f97316', cursor: 'pointer', fontWeight: 600, marginBottom: 12 }}>
-            + {lang === 'en' ? 'Add ingredient' : 'Ajouter ingrédient'}</button><div style={{ background: t.section, borderRadius: 6, padding: '8px 12px', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={{ fontSize: 12, color: t.textSub }}>{lang === 'en' ? 'Estimated cost per portion' : 'Coût estimé par portion'}</span><span style={{ fontSize: 14, fontWeight: 700, color: '#f97316' }}>{fmt(calcCost(editing.ingredientRows || []) / Math.max(Number(editing.yield_qty) || 1, 0.01))}</span></div><div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}><button onClick={() =>setEditing(null)} style={{ padding: '6px 14px', borderRadius: 6, border: `1px solid ${t.cardBorder}`, background: 'none', color: t.textMuted, fontSize: 11, cursor: 'pointer' }}>
+            + {lang === 'en' ? 'Add ingredient' : 'Ajouter ingrédient'}</button><div style={{ background: t.section, borderRadius: 6, padding: '8px 12px', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={{ fontSize: 12, color: t.textSub }}>{lang === 'en' ? 'Estimated cost per portion' : 'Coût estimé par portion'}</span><span style={{ fontSize: 14, fontWeight: 700, color: '#f97316' }}>{fmt(calcCost(editing.ingredientRows || []) / Math.max(Number(editing.yield_qty) || 1, 0.01))}</span></div><div style={{ marginBottom: 12 }}>{renderCostLine(calcCost(editing.ingredientRows || []) / Math.max(Number(editing.yield_qty) || 1, 0.01), Number(editing.sell_price) > 0 ? Math.round(Number(editing.sell_price) * 100) : null, anyVerify(editing.ingredientRows || []))}</div><div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}><button onClick={() =>setEditing(null)} style={{ padding: '6px 14px', borderRadius: 6, border: `1px solid ${t.cardBorder}`, background: 'none', color: t.textMuted, fontSize: 11, cursor: 'pointer' }}>
               {lang === 'en' ? 'Cancel' : 'Annuler'}</button><button onClick={save} style={{ padding: '6px 14px', borderRadius: 6, border: 'none', background: 'linear-gradient(135deg,#f97316,#ea580c)', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>{lang === 'en' ? 'Save' : 'Enregistrer'}</button></div></div>)}
 
       {/* Recipe list */}
       {recipes.length === 0 && !editing
         ?<div style={{ background: t.card, border: `1px solid ${t.cardBorder}`, borderRadius: 10, padding: 20, textAlign: 'center', color: t.textMuted, fontSize: 12 }}>{lang === 'en' ? 'No recipes yet. Add your first recipe to start tracking food costs.' : 'Aucune recette. Ajoutez votre première recette pour commencer le suivi du coût alimentaire.'}</div>: recipes.map(r => (<div key={r.id} style={{ background: t.card, border: `1px solid ${t.cardBorder}`, borderRadius: 8, overflow: 'hidden' }}><div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px' }}><button onClick={() =>openExpanded(r)} style={{ background: 'none', border: 'none', color: t.text, cursor: 'pointer', fontSize: 13 }}>
-                {expandedId === r.id ? '▼' : '▶'}</button><div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>{lang === 'en' ? (r.name_en || r.name_fr) : r.name_fr}</div><div style={{ fontSize: 11, color: t.textMuted }}>{recipeCatLabel(r.category, lang)} · {r.yield_qty} {r.yield_unit}</div></div><span style={{ fontSize: 13, fontWeight: 700, color: '#f97316' }}>{/* cost shown after expand */}</span><button onClick={() =>openEdit(r)} style={{ background: 'none', border: 'none', color: '#f97316', cursor: 'pointer', fontSize: 14 }}>✎</button><button onClick={() =>del(r.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 14 }}>×</button></div>{expandedId === r.id && (<div style={{ borderTop: `1px solid ${t.cardBorder}`, padding: '10px 14px', background: t.section }}>{expandedIngs.length === 0
+                {expandedId === r.id ? '▼' : '▶'}</button><div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>{lang === 'en' ? (r.name_en || r.name_fr) : r.name_fr}</div><div style={{ fontSize: 11, color: t.textMuted }}>{recipeCatLabel(r.category, lang)} · {r.yield_qty} {r.yield_unit}</div></div><div style={{ textAlign: 'right' }}>{renderCostLine(calcCost(recipeRows[r.id] || []) / Math.max(Number(r.yield_qty) || 1, 0.01), r.sell_price_cents, anyVerify(recipeRows[r.id] || []))}</div><button onClick={() =>openEdit(r)} style={{ background: 'none', border: 'none', color: '#f97316', cursor: 'pointer', fontSize: 14 }}>✎</button><button onClick={() =>del(r.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 14 }}>×</button></div>{expandedId === r.id && (<div style={{ borderTop: `1px solid ${t.cardBorder}`, padding: '10px 14px', background: t.section }}>{expandedIngs.length === 0
                   ?<div style={{ fontSize: 11, color: t.textMuted }}>{lang === 'en' ? 'No ingredients in this recipe.' : 'Aucun ingrédient dans cette recette.'}</div>:<>{expandedIngs.map((ri, i) => {
                       const cost = ri.current_unit_price && ri.quantity ? (Number(ri.quantity) * Number(ri.current_unit_price)) : null;
                       return (<div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: i < expandedIngs.length - 1 ? `1px solid ${t.cardBorder}` : 'none' }}><span style={{ fontSize: 12, color: t.text }}>{lang === 'en' ? (ri.name_en || ri.name_fr) : ri.name_fr}</span><span style={{ fontSize: 11, color: t.textMuted }}>{ri.quantity} {ri.unit}</span><span style={{ fontSize: 12, fontWeight: 600, color: cost ? '#f97316' : t.textMuted }}>{cost ? fmt(cost) : '-'}</span></div>);
-                    })}<div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0 0', borderTop: `1px solid ${t.cardBorder}`, marginTop: 4 }}><span style={{ fontSize: 12, fontWeight: 700, color: t.text }}>{lang === 'en' ? `Total cost (${r.yield_qty} ${r.yield_unit})` : `Coût total (${r.yield_qty} ${r.yield_unit})`}</span><span style={{ fontSize: 13, fontWeight: 700, color: '#f97316' }}>{fmt(calcCost(expandedIngs))}</span></div><div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0 0' }}><span style={{ fontSize: 11, color: t.textMuted }}>{lang === 'en' ? 'Cost per portion' : 'Coût / portion'}</span><span style={{ fontSize: 12, fontWeight: 700, color: '#f97316' }}>{fmt(calcCost(expandedIngs) / Math.max(Number(r.yield_qty) || 1, 0.01))}</span></div></>}</div>)}</div>))
+                    })}<div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0 0', borderTop: `1px solid ${t.cardBorder}`, marginTop: 4 }}><span style={{ fontSize: 12, fontWeight: 700, color: t.text }}>{lang === 'en' ? `Total cost (${r.yield_qty} ${r.yield_unit})` : `Coût total (${r.yield_qty} ${r.yield_unit})`}</span><span style={{ fontSize: 13, fontWeight: 700, color: '#f97316' }}>{fmt(calcCost(expandedIngs))}</span></div><div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0 0' }}><span style={{ fontSize: 11, color: t.textMuted }}>{lang === 'en' ? 'Cost per portion' : 'Coût / portion'}</span><span style={{ fontSize: 12, fontWeight: 700, color: '#f97316' }}>{fmt(calcCost(expandedIngs) / Math.max(Number(r.yield_qty) || 1, 0.01))}</span></div><div style={{ paddingTop: 6 }}>{renderCostLine(calcCost(expandedIngs) / Math.max(Number(r.yield_qty) || 1, 0.01), r.sell_price_cents, anyVerify(expandedIngs))}</div></>}</div>)}</div>))
       }</div>);
 }
 

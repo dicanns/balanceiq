@@ -69,7 +69,8 @@ describe('DOC-023 a backup from just before the documents table', () => {
     expect(backupRestoreVerdict(backup, target)).toBe('direct');
     restoreAllTablesFromBackup(backup, undefined, target);
     expect(documentsList('facture', target).map(x => x.id)).toEqual(['7', '8']);
-    // Two versions back is not known to be safe without the structure.
-    expect(backupRestoreVerdict({ ...backup, schemaVersion: backup.schemaVersion - 1 }, target)).toBe('too_old');
+    // A version whose migration is not restoreSafe (50) is not known to be safe without the structure.
+    // Versions 51 and later are additive and restoreSafe, so the check is made against 49 -> 50.
+    expect(backupRestoreVerdict({ ...backup, schemaVersion: 49 }, target)).toBe('too_old');
   });
 });

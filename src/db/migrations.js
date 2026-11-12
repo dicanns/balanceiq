@@ -1647,6 +1647,31 @@ const MIGRATIONS = [
       importDocumentsFromKv(database);
     },
   },
+  {
+    version: 52,
+    // Purely additive columns: a backup written before this version restores
+    // straight into it (missing columns take their defaults).
+    restoreSafe: true,
+    description: 'Ingredient pack pricing (price of a case/box/bag and what it holds), to-verify flag, '
+      + 'and recipe selling price.',
+    up: (database) => {
+      const addColumns = (table, defs) => {
+        const cols = database.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name);
+        if (cols.length === 0) return; // table not present (minimal test schemas)
+        for (const [name, ddl] of defs) {
+          if (!cols.includes(name)) database.prepare(`ALTER TABLE ${table} ADD COLUMN ${name} ${ddl}`).run();
+        }
+      };
+      addColumns('ingredients', [
+        ['pack_price_cents', 'INTEGER'],
+        ['pack_qty', 'REAL'],
+        ['pack_unit', 'TEXT'],
+        ['pack_label', 'TEXT'],
+        ['needs_verify', 'INTEGER NOT NULL DEFAULT 0'],
+      ]);
+      addColumns('recipes', [['sell_price_cents', 'INTEGER']]);
+    },
+  },
 ];
 
 // kv_store keys that hold a whole list of documents, and the kind each one is
