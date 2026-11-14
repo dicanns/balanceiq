@@ -34,7 +34,7 @@ const CohortBenchmarkLazy         = lazy(() => import('./components/franchise/Co
 const OnboardingPacketBuilderLazy = lazy(() => import('./components/franchise/OnboardingPacketBuilder.jsx'));
 import { version as appVersion } from "../package.json";
 import { canUse, shouldShowUpgradePrompt, getActivePlan, setPlan } from "./config/features.js";
-import { calcRoyaltyFull, computeInvoiceTotals, documentTotals, freezeTotals, invoiceExportParts, frozenFromPosted, backfillFrozenTotals, isTaxOverride, badDebtTaxShare, lineTotal, lineDiscountLabel, documentDiscount, DISCOUNT_PERCENT, DISCOUNT_AMOUNT } from "./utils/calculations.js";
+import { calcRoyaltyFull, computeInvoiceTotals, documentTotals, clientExemptOpts, invoiceTotalsFor, freezeTotals, invoiceExportParts, frozenFromPosted, backfillFrozenTotals, isTaxOverride, badDebtTaxShare, lineTotal, lineDiscountLabel, documentDiscount, DISCOUNT_PERCENT, DISCOUNT_AMOUNT } from "./utils/calculations.js";
 import { applyCreditToInvoice, creditRemaining, invoiceBalance, unapplyCredit, statusAfterPayments } from "./utils/creditNotes.js";
 import { commitInvoicePosted, describeNotCreated } from "./utils/invoiceCommit.mjs";
 import { WRITTEN_OFF, CLOSED_INVOICE_STATUSES, isCashPayment, isOverdue } from "./utils/invoiceStatus.mjs";
@@ -65,6 +65,7 @@ import QuickProductModal from './components/QuickProductModal.jsx';
 import { applyDepositsOnSend, appliedDepositsTotal, depositApplyDate } from './utils/invoiceDeposits.js';
 import InvoiceDeliveryTimeline from './components/InvoiceDeliveryTimeline.jsx';
 import CompaniesPanel from './components/CompaniesPanel.jsx';
+import AiConnectorSettings from './components/AiConnectorSettings.jsx';
 import CompanyPlanGate from './components/CompanyPlanGate.jsx';
 import RemindersTab from './components/RemindersTab.jsx';
 import ProductProfitReport from './components/ProductProfitReport.jsx';
@@ -2413,15 +2414,8 @@ function subtotalRowsHtml(totals,fc,subtotalLabel,discountLabel,afterLabel){
  const pct=totals.remiseGlobaleTaux!=null?` (${escapeHtml(totals.remiseGlobaleTaux)}%)`:"";
  return`<div class="tr"><span>${subtotalLabel}</span><span>${fc(totals.sousTotalBrut)}</span></div><div class="tr"style="color:#16a34a"><span>${discountLabel}${pct}</span><span>−${fc(totals.remiseGlobaleMontant)}</span></div><div class="tr"style="border-top:1px solid #ddd;padding-top:4px"><span>${afterLabel}</span><span>${fc(totals.sousTotal)}</span></div>`;
 }
-// Options that make computeSoumTotals honour a customer's tax exemption, the
-// same way the invoice editor does.
-function clientExemptOpts(client){
- return client?.taxExempt?{exemptFromTps:client.exemptFromTps!==false,exemptFromTvq:client.exemptFromTvq!==false}:{};
-}
-// Totals of an invoice-like document with its customer's tax exemption applied.
-function invoiceTotalsFor(doc,clients){
- return documentTotals(doc,{...doc,...clientExemptOpts(clients?.find(c=>c.id===doc.clientId))});
-}
+// clientExemptOpts and invoiceTotalsFor (a document's totals with its customer's
+// tax exemption) live in utils/calculations.js, shared with the AI connector.
 // The totals an invoice carries into the ledger, in cents: computed once with the
 // customer's exemption. They are stored on the invoice (totauxCents) and are exactly
 // what invoicePost receives.
@@ -9194,6 +9188,7 @@ function AppInner(){
               const CTABS=[
                 {id:"entreprise",       label:T.cfgBusiness},
                 {id:"companies",        label:lang==="fr"?"Entreprises":"Companies"},
+                {id:"assistant",        label:lang==="fr"?"Assistant IA":"AI assistant"},
                 {id:"personnel-paie",   label:T.cfgPersonnelPayroll},
                 {id:"pl-fournisseurs",  label:T.cfgPLSuppliers},
                 {id:"operations",       label:T.cfgOperations||"Opérations"},
@@ -9208,7 +9203,7 @@ function AppInner(){
               ];
               const scrollCfgTabs=(dir)=>{const el=document.getElementById('biq-cfg-tabs');if(el)el.scrollBy({left:dir*140,behavior:'smooth'});};
               return(<div style={{display:"flex",alignItems:"stretch",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:4,flexShrink:0}}><button onClick={()=>scrollCfgTabs(-1)} style={{flexShrink:0,background:'none',border:'none',borderRight:`1px solid ${t.cardBorder}`,color:t.textMuted,cursor:'pointer',padding:'0 7px',fontSize:16,lineHeight:1,fontFamily:'inherit'}}>‹</button><div id="biq-cfg-tabs" className="no-scrollbar" style={{display:"flex",gap:2,overflowX:"auto",flex:1,paddingBottom:1,scrollbarWidth:'none',msOverflowStyle:'none'}}>{CTABS.map(({id,label})=>(<button key={id} onClick={()=>setConfigSubTab(id)} style={{background:"none",border:"none",color:configSubTab===id?"#f97316":t.textMuted,fontSize:11,fontWeight:configSubTab===id?700:500,padding:"5px 11px",cursor:"pointer",borderBottom:configSubTab===id?"2px solid #f97316":"2px solid transparent",whiteSpace:"nowrap",flexShrink:0,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{label}</button>))}</div><button onClick={()=>scrollCfgTabs(1)} style={{flexShrink:0,background:'none',border:'none',borderLeft:`1px solid ${t.cardBorder}`,color:t.textMuted,cursor:'pointer',padding:'0 7px',fontSize:16,lineHeight:1,fontFamily:'inherit'}}>›</button></div>);
- })()}<div style={{width:'100%',minWidth:0}}>{/* COMPANIES */}{configSubTab==="companies"&&<CompaniesPanel lang={lang} t={t}/>}{/* ENTREPRISE */}
+ })()}<div style={{width:'100%',minWidth:0}}>{/* COMPANIES */}{configSubTab==="companies"&&<CompaniesPanel lang={lang} t={t}/>}{configSubTab==="assistant"&&<AiConnectorSettings lang={lang} t={t}/>}{/* ENTREPRISE */}
  {configSubTab==="entreprise"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
               <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:10,padding:"14px 16px"}}>
                 <div style={{fontSize:13,fontWeight:700,color:t.text}}>{lang==="fr"?"Quel type de ventes faites-vous ?":"What kind of sales do you make?"}</div>

@@ -247,7 +247,9 @@ describe('FROZEN-005 every poster freezes first and sends those cents', () => {
   });
 
   it('invoiceTotalsFor reads the frozen totals and the startup backfill is wired', () => {
-    expect(APP).toMatch(/function invoiceTotalsFor\(doc,clients\)\{\s*return documentTotals\(doc,/);
+    const calc = fs.readFileSync(path.join(ROOT, 'src/utils/calculations.js'), 'utf8');
+    expect(calc).toMatch(/export function invoiceTotalsFor\(doc, clients\) \{\s*return documentTotals\(doc,/);
+    expect(APP).toMatch(/import \{[^}]*\binvoiceTotalsFor\b[^}]*\} from "\.\/utils\/calculations\.js"/);
     expect(APP).toMatch(/ledger\?\.invoicePostedTotals\?\.\(\)/);
     expect(fs.readFileSync(path.join(ROOT, 'preload.js'), 'utf8')).toMatch(/invoicePostedTotals:/);
     expect(fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8')).toMatch(/'ledger:invoice:postedTotals'/);

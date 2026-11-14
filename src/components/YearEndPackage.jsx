@@ -1,14 +1,10 @@
 import React, { useState, useCallback } from 'react';
 import { escapeHtml as esc } from '../utils/htmlSafe.mjs';
-import { documentTotals, calcInvoiceOutstanding, documentDiscount } from '../utils/calculations.js';
+import { documentTotals, calcInvoiceOutstanding, documentDiscount, clientExemptOpts } from '../utils/calculations.js';
 
 // Statuses that carry no receivable and no revenue in the journal.
 const NOT_BILLED_STATUSES = ['Brouillon', 'Annulée'];
 const NO_BALANCE_STATUSES = ['Brouillon', 'Annulée', 'Créditée'];
-
-function clientExemptOpts(client) {
-  return client?.taxExempt ? { exemptFromTps: client.exemptFromTps !== false, exemptFromTvq: client.exemptFromTvq !== false } : {};
-}
 
 // Totals and balance of one invoice as of a date: payments dated after it are ignored.
 function invoiceFigures(f, client, asOf) {

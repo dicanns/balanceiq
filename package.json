@@ -1,6 +1,6 @@
 {
   "name": "balanceiq",
-  "version": "1.105.0",
+  "version": "1.106.0",
   "description": "L'intelligence derrière vos chiffres.",
   "main": "main.js",
   "scripts": {
@@ -84,6 +84,7 @@
       "src/db/**/*",
       "src/services/**/*",
       "src/utils/**/*",
+      "src/connector/**/*",
       "!**/*.test.*",
       "node_modules/**/*",
       "!node_modules/**/better-sqlite3/build/Release/.deps/**",

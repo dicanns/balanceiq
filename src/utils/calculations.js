@@ -490,6 +490,17 @@ export function documentTotals(doc, opts) {
   return { ...computed, sousTotal: f.sousTotal / 100, tpsTotal: f.tps / 100, tvqTotal: f.tvq / 100, total: f.total / 100 };
 }
 
+// Options that make the totals honour a customer's tax exemption, the same way
+// the invoice editor does.
+export function clientExemptOpts(client) {
+  return client?.taxExempt ? { exemptFromTps: client.exemptFromTps !== false, exemptFromTvq: client.exemptFromTvq !== false } : {};
+}
+
+// Totals of an invoice-like document with its customer's tax exemption applied.
+export function invoiceTotalsFor(doc, clients) {
+  return documentTotals(doc, { ...doc, ...clientExemptOpts(clients?.find((c) => c.id === doc.clientId)) });
+}
+
 // An invoice as export rows, in cents, that add up to its (frozen) totals exactly:
 // one row per line, plus one adjustment row (the subtotal discount, and whatever
 // rounding or override difference is left in the tax). The rounding drift of the

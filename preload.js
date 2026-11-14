@@ -14,6 +14,12 @@ contextBridge.exposeInMainWorld('api', {
     commitPayment: (opts) => ipcRenderer.invoke('invoices:commitPayment', opts),
     commitPaymentRemoval: (opts) => ipcRenderer.invoke('invoices:commitPaymentRemoval', opts),
   },
+  connector: {
+    status: () => ipcRenderer.invoke('connector:status'),
+    enable: () => ipcRenderer.invoke('connector:enable'),
+    newKey: () => ipcRenderer.invoke('connector:newKey'),
+    disable: () => ipcRenderer.invoke('connector:disable'),
+  },
   books: {
     check: () => ipcRenderer.invoke('books:check'),
   },

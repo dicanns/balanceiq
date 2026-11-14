@@ -102,6 +102,12 @@ npm run scan:semgrep           # semgrep security scan (slow -- run before big P
 - `src/App.jsx` -- full React app (~9000 lines)
 - `src/db/database.js` -- SQLite wrapper, migrations, all data functions
 - `src/db/migrations.js` -- versioned migration chain
+- `src/connector/` -- the AI connector: a local MCP server in the main process
+  (127.0.0.1 only, off until enabled in Settings, access key on every call).
+  `tools/*.mjs` are the actions an AI may take. A tool calls the existing data
+  functions (never its own SQL), returns named fields only (never a raw row or
+  a stored object), and cannot reach credential or lock settings. Enabling,
+  keys and access level are changed from the Settings page only, never by a tool.
 - `supabase/functions/` -- Deno edge functions
 - `supabase/functions/_shared/auth.ts` -- shared `requireOrgMember` helper
 

@@ -15,10 +15,14 @@ const root = path.resolve(__dirname, '../../../..');
 const APP = fs.readFileSync(path.join(root, 'src/App.jsx'), 'utf8');
 const FEATURES = fs.readFileSync(path.join(root, 'src/config/features.js'), 'utf8');
 const DB = fs.readFileSync(path.join(root, 'src/db/database.js'), 'utf8');
+const CALC = fs.readFileSync(path.join(root, 'src/utils/calculations.js'), 'utf8');
 
 describe('FUP-001 exemption in generated invoices', () => {
   it('computes the posted totals with the customer exemption in all three generators and the backfill', () => {
-    expect(APP).toMatch(/function clientExemptOpts\(client\)/);
+    // One definition, in calculations.js, shared by the screens and the AI connector.
+    expect(CALC).toMatch(/export function clientExemptOpts\(client\)/);
+    expect(APP).not.toMatch(/function clientExemptOpts\(/);
+    expect(APP).toMatch(/import \{[^}]*\bclientExemptOpts\b[^}]*\} from "\.\/utils\/calculations\.js"/);
     const dep = APP.slice(APP.indexOf('const generateDepositInvoice='), APP.indexOf('const generateDepositInvoice=') + 3000);
     expect(dep).toMatch(/depFac\.totauxCents=frozenTotalsFor\(depFac,clients\)/);
     expect(dep).toMatch(/invoicePostArgs\(depFac,depFac\.totauxCents,depClient\?\.taxExempt\)/);

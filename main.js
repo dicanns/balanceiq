@@ -146,6 +146,47 @@ setDataDir(COMPANY_DATA_DIR);
 
 const { hashPin, verifyPin, enforceRole, createActorRegistry } = require('./src/services/identityCore.js');
 
+// ── AI CONNECTOR ─────────────────────────────────────────────────────────────
+// Lets the owner's own AI assistant read these books through a fixed list of
+// tools (src/connector). Off until turned on in Settings; this computer only;
+// an access key on every call. Built on first use, and a failure to load it
+// leaves the rest of the app untouched.
+let _connector = null;
+let _connectorFailed = false;
+function aiConnector() {
+  if (_connector || _connectorFailed) return _connector;
+  try {
+    const { createConnectorService } = require('./src/connector/service.mjs');
+    const { ALL_TOOLS } = require('./src/connector/tools/index.mjs');
+    const data = require('./src/db/database.js');
+    // A stored value as a tool may see it: never a key that holds credentials
+    // or the lock (those are encrypted at rest as well).
+    const closed = (key) => secrets.keys.includes(key) || /lock|pin|password|secret|token|credential|api-config/i.test(key);
+    const kv = (key) => {
+      if (typeof key !== 'string' || closed(key)) return null;
+      try { const r = storageGet(key); return r && r.value != null ? JSON.parse(r.value) : null; } catch (_) { return null; }
+    };
+    _connector = createConnectorService({
+      dir: USER_DATA_DIR,
+      company: { id: ACTIVE_COMPANY.id, name: activeCompanyName() },
+      version: app.getVersion(),
+      tools: ALL_TOOLS,
+      // No handle is passed: each data function opens this company's books itself.
+      makeCtx: () => ({ data, kv }),
+      getLang: () => companies.getUiLang(USER_DATA_DIR) || 'fr',
+    });
+  } catch (e) {
+    _connectorFailed = true;
+    try { Sentry.captureException(e); } catch (_) {}
+  }
+  return _connector;
+}
+const CONNECTOR_UNAVAILABLE = { ok: false, error: 'unavailable' };
+ipcMain.handle('connector:status', () => { const c = aiConnector(); return c ? c.status() : null; });
+ipcMain.handle('connector:enable', async () => { const c = aiConnector(); return c ? c.enable() : CONNECTOR_UNAVAILABLE; });
+ipcMain.handle('connector:newKey', async () => { const c = aiConnector(); return c ? c.newKey() : CONNECTOR_UNAVAILABLE; });
+ipcMain.handle('connector:disable', async () => { const c = aiConnector(); return c ? c.disable() : CONNECTOR_UNAVAILABLE; });
+
 const BACKUP_DIR = () => path.join(COMPANY_DATA_DIR, 'Backups');
 const BACKUP_KEEP_DAYS = 30;
 
@@ -1814,7 +1855,10 @@ if (process.env.NODE_ENV !== 'test' && !process.env.BIQ_PDF_SELFTEST && !app.req
   });
 }
 
+app.on('will-quit', () => { try { if (_connector) _connector.stop(); } catch (_) {} });
 app.whenReady().then(() => {
+  // Starts listening only if the owner turned the connector on for this company.
+  try { const c = aiConnector(); if (c) c.start().catch(() => {}); } catch (_) {}
   // Packaging check: BIQ_PDF_SELFTEST=/path/to.pdf reads the file through the PDF
   // utility process, prints what it found and quits, without opening a window.
   if (process.env.BIQ_PDF_SELFTEST) {
