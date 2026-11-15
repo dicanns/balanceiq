@@ -14,6 +14,10 @@ import path from 'node:path';
 import { ALL_TOOLS } from '../../connector/tools/index.mjs';
 import { describeTool, checkArguments } from '../../connector/protocol.mjs';
 import { createConnectorService, CONFIG_FILE } from '../../connector/service.mjs';
+import { expectWellFormed } from './_conformance.js';
+
+// How many questions an assistant can ask. Changing it is a deliberate act: say why in the commit.
+const TOOL_COUNT = 43;
 
 const TODAY = '2026-06-15';
 const clients = [
@@ -56,7 +60,11 @@ const run = (name, args = {}) => { expect(checkArguments(tool(name).inputSchema,
 describe('CONN-030 the tool list', () => {
   it('offers the first questions, each named once', () => {
     const names = ALL_TOOLS.map((t) => t.name);
-    expect(names).toEqual(['company_overview', 'bills_to_pay', 'bank_balances', 'profit_and_loss', 'books_check', 'who_owes_me', 'list_invoices', 'get_invoice']);
+    // The first questions keep their place; every area's tools follow.
+    expect(names.slice(0, 8)).toEqual(['company_overview', 'bills_to_pay', 'bank_balances', 'profit_and_loss', 'books_check', 'who_owes_me', 'list_invoices', 'get_invoice']);
+    expect(names).toHaveLength(TOOL_COUNT);
+    for (const area of ['list_customers', 'list_bills', 'bank_transactions', 'trial_balance', 'tax_position', 'daily_register', 'list_recipes']) expect(names, area).toContain(area);
+    expectWellFormed(ALL_TOOLS);
     expect(new Set(names).size).toBe(names.length);
   });
 
@@ -195,7 +203,7 @@ describe('CONN-033 the service', () => {
   it('is off until turned on, and starting it then does nothing', async () => {
     const { s, d } = make();
     const st = await s.start();
-    expect(st).toMatchObject({ companyName: 'Demo Inc.', enabled: false, running: false, error: null, level: 'read', keyCreatedAt: null, toolCount: 8, callCount: 0, lastCallAt: null, lastTool: null });
+    expect(st).toMatchObject({ companyName: 'Demo Inc.', enabled: false, running: false, error: null, level: 'read', keyCreatedAt: null, toolCount: TOOL_COUNT, callCount: 0, lastCallAt: null, lastTool: null });
     expect(fs.existsSync(path.join(d, CONFIG_FILE))).toBe(false);
   });
 

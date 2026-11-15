@@ -3,14 +3,12 @@
 import { invoiceTotalsFor } from '../../utils/calculations.js';
 import { accountStanding } from '../../services/accountStanding.js';
 import { CLOSED_INVOICE_STATUSES, WRITTEN_OFF, isOverdue } from '../../utils/invoiceStatus.mjs';
-import { ToolError, round2, dateArg, limitArg, clampLimit, capped, nameMatches } from './shared.mjs';
+import { ToolError, round2, dateArg, limitArg, clampLimit, capped, nameMatches, paidOf, paymentKind } from './shared.mjs';
 
 const PRO_FORMA = 'proforma';
 const STATUS_WORDS = { 'Brouillon': 'draft', 'Envoyée': 'sent', 'Payée': 'paid', 'Créditée': 'credited', 'Annulée': 'void', [WRITTEN_OFF]: 'written_off', 'Partiellement payée': 'partly_paid', 'En retard': 'overdue' };
 export const statusWord = (statut) => STATUS_WORDS[statut] || String(statut || '').toLowerCase();
 
-const paidOf = (inv) => (inv.paiements || []).reduce((s, p) => s + (parseFloat(p?.montant) || 0), 0);
-const paymentKind = (p) => (p.fromCredit ? 'credit_note' : p.fromClientCredit ? 'customer_credit' : p.badDebt ? 'write_off' : 'money');
 
 function load(ctx) {
   const clients = ctx.kv('dicann-fac-clients') || [];

@@ -11,12 +11,13 @@ export const UI = {
     intro: 'Let your own AI assistant read this company\'s books by asking BalanceIQ a fixed list of questions. It uses your own AI subscription: BalanceIQ charges nothing for it and sends nothing anywhere by itself.',
     privacy: 'What your assistant reads is sent by your assistant to the AI company you chose, as part of your conversation. It is off until you turn it on.',
     canTitle: 'What your assistant can do today',
-    can1: 'Read your invoices and see who owes you',
-    can2: 'Read the bills you have to pay',
-    can3: 'Read your bank balances',
-    can4: 'Read your profit and loss',
-    can5: 'Run the books check',
-    can6: 'Change nothing: it can only read',
+    can1: 'Read your invoices, customers, products and payments, and see who owes you',
+    can2: 'Read your supplier bills and what you have to pay',
+    can3: 'Read your bank accounts, statements and cheques',
+    can4: 'Read your ledger and reports: profit and loss, balance sheet, sales tax position',
+    can5: 'Read your daily closes, recipes and ingredient costs',
+    can6: 'Run the books check',
+    can7: 'Change nothing: it can only read',
     neverTitle: 'What it can never do',
     never1: 'See your sign-in or your passwords',
     never2: 'Change your subscription',
@@ -78,12 +79,13 @@ export const UI = {
     intro: 'Laissez votre propre assistant IA lire les livres de cette entreprise en posant à BalanceIQ une liste fixe de questions. Il utilise votre propre abonnement IA : BalanceIQ ne facture rien pour cela et n\'envoie rien nulle part de lui-même.',
     privacy: 'Ce que votre assistant lit est transmis par votre assistant à l\'entreprise d\'IA que vous avez choisie, dans le cadre de votre conversation. La fonction est désactivée tant que vous ne l\'activez pas.',
     canTitle: 'Ce que votre assistant peut faire aujourd\'hui',
-    can1: 'Lire vos factures et voir qui vous doit de l\'argent',
-    can2: 'Lire les factures que vous avez à payer',
-    can3: 'Lire les soldes de vos comptes bancaires',
-    can4: 'Lire votre état des résultats',
-    can5: 'Faire la vérification des livres',
-    can6: 'Ne rien modifier : il peut seulement lire',
+    can1: 'Lire vos factures, clients, produits et paiements, et voir qui vous doit de l\'argent',
+    can2: 'Lire vos factures fournisseurs et ce que vous avez à payer',
+    can3: 'Lire vos comptes bancaires, relevés et chèques',
+    can4: 'Lire votre grand livre et vos rapports : état des résultats, bilan, position de taxes de vente',
+    can5: 'Lire vos fermetures de caisse, recettes et coûts d\'ingrédients',
+    can6: 'Faire la vérification des livres',
+    can7: 'Ne rien modifier : il peut seulement lire',
     neverTitle: 'Ce qu\'il ne peut jamais faire',
     never1: 'Voir votre connexion ou vos mots de passe',
     never2: 'Modifier votre abonnement',
@@ -284,7 +286,7 @@ export default function AiConnectorSettings({ lang = 'fr', t = {}, allowed = tru
           <span style={{ fontSize: 9, fontWeight: 700, color: '#f97316', background: 'rgba(249,115,22,0.1)', padding: '1px 6px', borderRadius: 6 }}>Pro</span>
         </div>
         <div style={{ ...small, marginTop: 4 }}>{L.intro}</div>
-        {list(L.canTitle, [L.can1, L.can2, L.can3, L.can4, L.can5, L.can6])}
+        {list(L.canTitle, [L.can1, L.can2, L.can3, L.can4, L.can5, L.can6, L.can7])}
         {list(L.neverTitle, [L.never1, L.never2, L.never3, L.never4])}
         <div style={{ fontSize: 12, fontWeight: 600, color: t.text, marginTop: 14 }}>{L.proOnly}</div>
         {status?.enabled && <div style={{ ...small, marginTop: 4 }}>{L.proPaused}</div>}
@@ -313,7 +315,7 @@ export default function AiConnectorSettings({ lang = 'fr', t = {}, allowed = tru
 
         {!enabled && (
           <>
-            {list(L.canTitle, [L.can1, L.can2, L.can3, L.can4, L.can5, L.can6])}
+            {list(L.canTitle, [L.can1, L.can2, L.can3, L.can4, L.can5, L.can6, L.can7])}
             {list(L.neverTitle, [L.never1, L.never2, L.never3, L.never4])}
             <div style={{ marginTop: 14 }}>
               <button type="button" style={btn(true)} disabled={busy || !status} onClick={enable}>

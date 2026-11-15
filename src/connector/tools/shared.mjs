@@ -23,6 +23,8 @@
 // A tool never returns a raw table row or a whole stored object: it names what
 // it returns, so nothing private rides along by accident.
 
+import { isCashPayment } from '../../utils/invoiceStatus.mjs';
+
 export { ToolError } from '../protocol.mjs';
 
 export const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -32,6 +34,11 @@ export const DATE_PATTERN = '^\\d{4}-\\d{2}-\\d{2}$';
 export const dateArg = (description) => ({ type: 'string', pattern: DATE_PATTERN, description: `${description} (YYYY-MM-DD)` });
 export const limitArg = (max, standard) => ({ type: 'integer', description: `Maximum rows to return (default ${standard}, at most ${max})` });
 export const clampLimit = (value, max, standard) => Math.max(1, Math.min(max, Number.isInteger(value) ? value : standard));
+
+/** Everything recorded against an invoice: money, credits and write-offs alike. */
+export const paidOf = (inv) => ((inv && inv.paiements) || []).reduce((s, p) => s + (parseFloat(p?.montant) || 0), 0);
+/** What a payment row is. Only `money` came through the bank (the app's own rule, isCashPayment). */
+export const paymentKind = (p) => (isCashPayment(p) ? 'money' : p.fromCredit ? 'credit_note' : p.fromClientCredit ? 'customer_credit' : 'write_off');
 
 export const NO_ARGS = { type: 'object', additionalProperties: false, properties: {} };
 

@@ -2573,8 +2573,8 @@ function demoPurgeSqlite(_db) {
 }
 
 // ── FORECAST: Products ──
-function forecastProductsGetAll() {
-  return getDb().prepare('SELECT * FROM forecast_products ORDER BY category, name').all();
+function forecastProductsGetAll(_db) {
+  return (_db || getDb()).prepare('SELECT * FROM forecast_products ORDER BY category, name').all();
 }
 function forecastProductUpsert(p) {
   getDb().prepare(`
@@ -7017,9 +7017,10 @@ function supplierPaymentCreate(data) {
 
 // ── Assets & CCA ─────────────────────────────────────────────────────────────
 
-function assetList({ includeArchived = false } = {}) {
-  const db = getDb();
-  const where = includeArchived ? '' : 'WHERE is_archived=0';
+function assetList({ includeArchived = false } = {}, _db) {
+  const db = _db || getDb();
+  // Both tables have an is_archived column: name the assets one, or the query is refused.
+  const where = includeArchived ? '' : 'WHERE a.is_archived=0';
   return db.prepare(`SELECT a.*, c.account_number, c.name_fr AS coa_name_fr, c.name_en AS coa_name_en FROM assets a
     LEFT JOIN chart_of_accounts c ON c.id=a.coa_account_id ${where} ORDER BY a.acquisition_date ASC`).all();
 }

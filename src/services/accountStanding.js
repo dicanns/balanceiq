@@ -16,6 +16,11 @@ import { CLOSED_INVOICE_STATUSES } from '../utils/invoiceStatus.mjs';
 import { creditAvailableCents } from '../utils/clientCredits.mjs';
 
 const DAY = 86400000;
+
+/** Whole days between a due date and the day of reckoning: 0 or less is not late; no due date is never late. */
+export function daysLate(dueDate, asOf) {
+  return dueDate ? Math.floor((Date.parse(`${asOf}T12:00:00`) - Date.parse(`${dueDate}T12:00:00`)) / DAY) : 0;
+}
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const sum = (list) => (list || []).reduce((s, x) => s + (parseFloat(x?.montant) || 0), 0);
 const CLOSED = CLOSED_INVOICE_STATUSES;
@@ -33,7 +38,7 @@ export function accountStanding({ clientId, factures = [], creditNotes = [], cli
     if (CLOSED.includes(f.statut)) continue;
     const balance = (Number(totalOf(f)) || 0) - sum(f.paiements);
     if (balance <= 0.005) continue;
-    const days = f.dateEcheance ? Math.floor((asOfMs - Date.parse(`${f.dateEcheance}T12:00:00`)) / DAY) : 0;
+    const days = daysLate(f.dateEcheance, asOf);
     if (days <= 0) aging.current += balance;
     else if (days <= 30) aging.d30 += balance;
     else if (days <= 60) aging.d60 += balance;
