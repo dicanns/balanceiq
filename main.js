@@ -153,6 +153,7 @@ const { hashPin, verifyPin, enforceRole, createActorRegistry } = require('./src/
 // the screen reports a plan that includes it (connector:setAllowed). Built on
 // first use, and a failure to load it leaves the rest of the app untouched.
 let _connector = null;
+let _proposals = null;
 let _connectorFailed = false;
 function aiConnector() {
   if (_connector || _connectorFailed) return _connector;
@@ -167,13 +168,16 @@ function aiConnector() {
       if (typeof key !== 'string' || closed(key)) return null;
       try { const r = storageGet(key); return r && r.value != null ? JSON.parse(r.value) : null; } catch (_) { return null; }
     };
+    // What an assistant prepared and the owner has not dealt with yet (in memory only).
+    const { createProposalStore } = require('./src/connector/proposals.mjs');
+    _proposals = createProposalStore({ onChange: () => { try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('connector:proposalsChanged'); } catch (_) {} } });
     _connector = createConnectorService({
       dir: USER_DATA_DIR,
       company: { id: ACTIVE_COMPANY.id, name: activeCompanyName() },
       version: app.getVersion(),
       tools: ALL_TOOLS,
       // No handle is passed: each data function opens this company's books itself.
-      makeCtx: () => ({ data, kv }),
+      makeCtx: () => ({ data, kv, propose: (p) => _proposals.add(p), proposal: (id) => _proposals.get(id) }),
       getLang: () => companies.getUiLang(USER_DATA_DIR) || 'fr',
       allowed: false,
     });
@@ -185,10 +189,32 @@ function aiConnector() {
 }
 const CONNECTOR_UNAVAILABLE = { ok: false, error: 'unavailable' };
 ipcMain.handle('connector:status', () => { const c = aiConnector(); return c ? c.status() : null; });
-ipcMain.handle('connector:enable', async () => { const c = aiConnector(); return c ? c.enable() : CONNECTOR_UNAVAILABLE; });
-ipcMain.handle('connector:newKey', async () => { const c = aiConnector(); return c ? c.newKey() : CONNECTOR_UNAVAILABLE; });
-ipcMain.handle('connector:disable', async () => { const c = aiConnector(); return c ? c.disable() : CONNECTOR_UNAVAILABLE; });
-ipcMain.handle('connector:setRelay', async (_e, on) => { const c = aiConnector(); return c ? c.setRelay(on === true) : CONNECTOR_UNAVAILABLE; });
+// Every change to what an assistant may reach is written to the audit log.
+function connectorAudit(action, result, detail) {
+  if (result && result.ok) {
+    try { auditInsert({ module: 'ai_connector', action, recordType: 'connector', recordId: ACTIVE_COMPANY.id, newValue: detail ?? null }); } catch (_) { /* the log must not block the switch */ }
+  }
+  return result;
+}
+ipcMain.handle('connector:enable', async () => { const c = aiConnector(); return c ? connectorAudit('turned_on', await c.enable()) : CONNECTOR_UNAVAILABLE; });
+ipcMain.handle('connector:newKey', async () => { const c = aiConnector(); return c ? connectorAudit('new_key', await c.newKey()) : CONNECTOR_UNAVAILABLE; });
+ipcMain.handle('connector:disable', async () => { const c = aiConnector(); return c ? connectorAudit('turned_off', await c.disable()) : CONNECTOR_UNAVAILABLE; });
+ipcMain.handle('connector:setRelay', async (_e, on) => { const c = aiConnector(); return c ? connectorAudit(on === true ? 'relay_on' : 'relay_off', await c.setRelay(on === true)) : CONNECTOR_UNAVAILABLE; });
+ipcMain.handle('connector:setLevel', async (_e, level) => { const c = aiConnector(); return c ? connectorAudit('level', await c.setLevel(level), String(level)) : CONNECTOR_UNAVAILABLE; });
+// Entries an assistant prepared: the screen lists them, and tells us when the owner
+// opened, saved or dismissed one. A saved one is marked in the audit log.
+ipcMain.handle('connector:proposals', () => (aiConnector() && _proposals ? _proposals.open() : []));
+ipcMain.handle('connector:markProposal', (_e, id, status, reference) => {
+  if (!aiConnector() || !_proposals) return null;
+  const p = _proposals.mark(id, status, reference);
+  if (p && p.status === 'saved') {
+    try {
+      auditInsert({ userName: 'AI assistant', module: 'ai_connector', action: 'entry_saved', recordType: p.kind, recordId: p.reference || p.id,
+        reason: 'Prepared by the AI assistant, reviewed and saved by the owner', metadata: { tool: p.tool } });
+    } catch (_) { /* the entry is saved either way */ }
+  }
+  return p ? { id: p.id, status: p.status } : null;
+});
 // A question an online assistant put to this company through the relay. The screen
 // fetched it with the owner's own sign-in; the answer is read-only, as always.
 ipcMain.handle('connector:relayHandle', async (_e, message, headers) => { const c = aiConnector(); return c ? c.handleRelayed(message, headers) : { status: 403, body: null }; });

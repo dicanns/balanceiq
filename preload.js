@@ -21,6 +21,10 @@ contextBridge.exposeInMainWorld('api', {
     disable: () => ipcRenderer.invoke('connector:disable'),
     setAllowed: (allowed) => ipcRenderer.invoke('connector:setAllowed', allowed === true),
     setRelay: (on) => ipcRenderer.invoke('connector:setRelay', on === true),
+    setLevel: (level) => ipcRenderer.invoke('connector:setLevel', level),
+    proposals: () => ipcRenderer.invoke('connector:proposals'),
+    markProposal: (id, status, reference) => ipcRenderer.invoke('connector:markProposal', id, status, reference),
+    onProposals: (cb) => { const h = () => cb(); ipcRenderer.on('connector:proposalsChanged', h); return () => ipcRenderer.removeListener('connector:proposalsChanged', h); },
     relayHandle: (message, headers) => ipcRenderer.invoke('connector:relayHandle', message, headers),
   },
   books: {

@@ -14,12 +14,17 @@ import { createConnectorServer, listenLocal, CONNECTOR_PATH } from './httpServer
 export const CONFIG_FILE = 'ai-connector.json';
 export const SERVER_NAME = 'balanceiq';
 
-const instructionsFor = (companyName) => [
+const instructionsFor = (companyName, level) => [
   `BalanceIQ: the accounting books of ${companyName || 'one company'} (Quebec, Canada).`,
   'Amounts are Canadian dollars. Dates are YYYY-MM-DD. GST is 5 % and QST is 9.975 %.',
   'Call company_overview first. For any figure, call a tool: never estimate or reuse a number from memory.',
-  'This connection is read-only: nothing you call changes the books.',
+  levelAllows(level, LEVEL_ASK)
+    ? 'You can read the books, and prepare an invoice or a supplier bill with the propose_ tools. Nothing you call records anything: a prepared entry waits in BalanceIQ until the owner opens it, checks it and saves it. Never say an entry was recorded before proposal_status says saved.'
+    : 'This connection is read-only: nothing you call changes the books.',
 ].join(' ');
+
+// A tool that prepares an entry, or only makes sense beside one.
+const needsAsk = (tool) => tool.readOnly === false || tool.level === LEVEL_ASK;
 
 const localDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
@@ -73,9 +78,9 @@ export function createConnectorService({ dir, company, version, tools, makeCtx, 
       activity.lastTool = (call.title && (call.title[lang] || call.title.en)) || call.name;
     }
     return handleMessage(message, {
-      server: { name: SERVER_NAME, version, instructions: instructionsFor(company.name), lang },
+      server: { name: SERVER_NAME, version, instructions: instructionsFor(company.name, who.level), lang },
       tools,
-      allow: (tool) => (tool.readOnly === false && !levelAllows(who.level, LEVEL_ASK) ? 'This company allows reading only. The owner can change that in BalanceIQ, under Settings.' : null),
+      allow: (tool) => (needsAsk(tool) && !levelAllows(who.level, LEVEL_ASK) ? 'This company allows reading only. The owner can change that in BalanceIQ, under Settings.' : null),
       ctx: { ...makeCtx(), company: { id: company.id, name: company.name }, today: localDate(now()), lang, level: who.level },
       headers,
     });
@@ -119,7 +124,7 @@ export function createConnectorService({ dir, company, version, tools, makeCtx, 
       url: `http://127.0.0.1:${listeningPort || wantedPort()}${CONNECTOR_PATH}`,
       keyCreatedAt: access.keyCreatedAt,
       relay: access.relay,
-      toolCount: tools.filter((t) => t.readOnly !== false || access.level !== LEVEL_READ).length,
+      toolCount: tools.filter((t) => !needsAsk(t) || access.level !== LEVEL_READ).length,
       ...activity,
     };
   }
@@ -136,6 +141,15 @@ export function createConnectorService({ dir, company, version, tools, makeCtx, 
   async function disable() {
     write((cfg) => withCompany(cfg, company.id, { enabled: false, keyHash: null, keyCreatedAt: null }));
     await stop();
+    return { ok: true, status: status() };
+  }
+
+  // What an assistant may do here: read, or also prepare entries the owner reviews and
+  // saves. Acting without the owner's review is not offered.
+  async function setLevel(level) {
+    if (![LEVEL_READ, LEVEL_ASK].includes(level)) return { ok: false, error: 'level', status: status() };
+    if (level !== LEVEL_READ && !allowed) return { ok: false, error: 'plan', status: status() };
+    write((cfg) => withCompany(cfg, company.id, { level }));
     return { ok: true, status: status() };
   }
 
@@ -162,5 +176,5 @@ export function createConnectorService({ dir, company, version, tools, makeCtx, 
     return allowed ? start() : stop();
   }
 
-  return { start, stop, status, enable: newKey, newKey, disable, setAllowed, setRelay, handleRelayed };
+  return { start, stop, status, enable: newKey, newKey, disable, setAllowed, setRelay, setLevel, handleRelayed };
 }

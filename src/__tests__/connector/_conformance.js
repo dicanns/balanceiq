@@ -5,7 +5,7 @@ import { describeTool, checkArguments } from '../../connector/protocol.mjs';
 
 const EM_DASH = String.fromCharCode(0x2014);
 
-export function expectWellFormed(tools) {
+export function expectWellFormed(tools, { preparing = false } = {}) {
   expect(Array.isArray(tools) && tools.length > 0).toBe(true);
   const names = tools.map((t) => t.name);
   expect(new Set(names).size, 'each name once').toBe(names.length);
@@ -27,11 +27,15 @@ export function expectWellFormed(tools) {
       expect(typeof p.description === 'string' && p.description.length > 5, `${where}.${k} description`).toBe(true);
     }
     expect(checkArguments(t.inputSchema, { not_an_argument: 1 }), `${where} unknown argument`).not.toBeNull();
-    // Reading only, until actions arrive with their own confirmation step.
-    expect(t.readOnly, `${where} must not be marked as changing anything`).not.toBe(false);
+    // A reading tool is marked read-only. A tool that prepares an entry is marked as not
+    // read-only and is named propose_: it leaves something for the owner, it never records.
+    const prepares = t.readOnly === false;
+    if (!preparing) expect(prepares, `${where} must not be marked as changing anything`).toBe(false);
+    if (prepares) expect(t.name, where).toMatch(/^propose_/);
     expect(typeof t.run, where).toBe('function');
     const shown = describeTool(t, 'en');
-    expect(shown.annotations.readOnlyHint, where).toBe(true);
+    expect(shown.annotations.readOnlyHint, where).toBe(!prepares);
+    expect(shown.annotations.destructiveHint, where).toBe(false);
     expect(shown.name, where).toBe(t.name);
   }
 }

@@ -296,4 +296,7 @@ const productProfit = {
   },
 };
 
+// The books as the customer tools read them, and the one way a customer is found by name.
+export { load as loadBooks, findCustomer };
+
 export const customerTools = [listCustomers, customerAccount, listProducts, listQuotesAndOrders, paymentsReceived, customerCredits, productProfit];

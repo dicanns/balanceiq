@@ -11,12 +11,12 @@ import { describe, it, expect, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ALL_TOOLS } from '../../connector/tools/index.mjs';
+import { ALL_TOOLS, READ_TOOLS, ACTION_TOOLS } from '../../connector/tools/index.mjs';
 import { describeTool, checkArguments } from '../../connector/protocol.mjs';
 import { createConnectorService, CONFIG_FILE } from '../../connector/service.mjs';
 import { expectWellFormed } from './_conformance.js';
 
-// How many questions an assistant can ask. Changing it is a deliberate act: say why in the commit.
+// How many questions an assistant can ask (reading). Changing it is a deliberate act: say why in the commit.
 const TOOL_COUNT = 43;
 
 const TODAY = '2026-06-15';
@@ -62,9 +62,13 @@ describe('CONN-030 the tool list', () => {
     const names = ALL_TOOLS.map((t) => t.name);
     // The first questions keep their place; every area's tools follow.
     expect(names.slice(0, 8)).toEqual(['company_overview', 'bills_to_pay', 'bank_balances', 'profit_and_loss', 'books_check', 'who_owes_me', 'list_invoices', 'get_invoice']);
-    expect(names).toHaveLength(TOOL_COUNT);
     for (const area of ['list_customers', 'list_bills', 'bank_transactions', 'trial_balance', 'tax_position', 'daily_register', 'list_recipes']) expect(names, area).toContain(area);
-    expectWellFormed(ALL_TOOLS);
+    expectWellFormed(READ_TOOLS);
+    // The tools that prepare an entry for the owner come last, and are few on purpose.
+    expectWellFormed(ACTION_TOOLS, { preparing: true });
+    expect(ACTION_TOOLS.map((x) => x.name)).toEqual(['propose_invoice', 'propose_bill', 'proposal_status']);
+    expect(READ_TOOLS).toHaveLength(TOOL_COUNT);
+    expect(ALL_TOOLS).toHaveLength(TOOL_COUNT + ACTION_TOOLS.length);
     expect(new Set(names).size).toBe(names.length);
   });
 
@@ -79,8 +83,9 @@ describe('CONN-030 the tool list', () => {
     }
   });
 
-  it('is read-only at this stage', () => {
-    for (const t of ALL_TOOLS) expect(describeTool(t, 'en').annotations.readOnlyHint, t.name).toBe(true);
+  it('marks every reading tool read-only, and only the propose_ tools otherwise', () => {
+    for (const t of READ_TOOLS) expect(describeTool(t, 'en').annotations.readOnlyHint, t.name).toBe(true);
+    expect(ALL_TOOLS.filter((t) => !describeTool(t, 'en').annotations.readOnlyHint).map((t) => t.name)).toEqual(['propose_invoice', 'propose_bill']);
   });
 
   it('keeps the em dash out of what the AI app shows', () => {

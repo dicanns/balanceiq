@@ -108,6 +108,11 @@ npm run scan:semgrep           # semgrep security scan (slow -- run before big P
   functions (never its own SQL), returns named fields only (never a raw row or
   a stored object), and cannot reach credential or lock settings. Enabling,
   keys and access level are changed from the Settings page only, never by a tool.
+  A `propose_` tool (`tools/actions.mjs`) never records anything: it fills in
+  the form the owner would fill in and leaves it waiting (`proposals.mjs`); the
+  owner opens it in the normal screen and that screen's own Save is the only
+  way it reaches the books. Offered only at the level the owner chose in
+  Settings, never through the relay.
   The relay (`relayClient.mjs`, `src/services/aiRelay.js`, edge function
   `ai-relay`) lets online assistants such as ChatGPT ask the same read-only
   questions: the app fetches each question with the owner's own sign-in and

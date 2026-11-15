@@ -66,6 +66,8 @@ import { applyDepositsOnSend, appliedDepositsTotal, depositApplyDate } from './u
 import InvoiceDeliveryTimeline from './components/InvoiceDeliveryTimeline.jsx';
 import CompaniesPanel from './components/CompaniesPanel.jsx';
 import AiConnectorSettings from './components/AiConnectorSettings.jsx';
+import AiProposalsBar from './components/AiProposalsBar.jsx';
+import { lineFromProduct } from './utils/invoiceLines.mjs';
 import { syncAiRelay, aiRelayApi } from './services/aiRelay.js';
 import CompanyPlanGate from './components/CompanyPlanGate.jsx';
 import RemindersTab from './components/RemindersTab.jsx';
@@ -2162,13 +2164,16 @@ function FacturationTab({categories,saveCategories,produits,saveProduits,clients
      if(doc){const type=doc._type||'facture';setActiveDoc({type,doc,clientId:doc.clientId||null});}
    }else if(deepLink.clientId){
      setSubTab('clients');setSelectedClientId(deepLink.clientId);
+   }else if(deepLink.action==='prefill-invoice'&&deepLink.proposal){
+     // Prepared by the AI assistant: no id, so the editor treats it as new and nothing is saved until Save.
+     const pr=deepLink.proposal;openDoc('facture',pr.payload.clientId,{...pr.payload,notes:pr.payload.notes??(invoiceTemplate?.defaultNotes||""),aiProposalId:pr.id});
    }else if(deepLink.action==='new-invoice'){
      openDoc('facture',null,null);
    }else if(deepLink.action==='new-client'){
      setSubTab('clients');
    }
    onDeepLinkDone?.();
- },[deepLink?.invoiceId,deepLink?.clientId,deepLink?.action]);
+ },[deepLink?.invoiceId,deepLink?.clientId,deepLink?.action,deepLink?.proposal?.id]);
  const [showRecurringModal,setShowRecurringModal]=useState(false);
  const today=dk(new Date());
  const dueCount=useMemo(()=>(Array.isArray(recurrents)?recurrents:[]).filter(r=>isRecurringDue(r,today)).length,[recurrents,today]);
@@ -3099,6 +3104,8 @@ function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,pr
  const [lignes,setLignes]=useState(facture?.lignes?.length?facture.lignes:[newLigne()]);
  const [savedId,setSavedId]=useState(facture?.id||null);
  const [savedNumero,setSavedNumero]=useState(facture?.numero||null);
+ // An invoice the AI assistant prepared: once it is saved here, say so (the status the assistant can read, and the audit log).
+ useEffect(()=>{if(savedId&&!facture?.id&&form.aiProposalId)window.api?.connector?.markProposal?.(form.aiProposalId,'saved',savedNumero||'');},[savedId]);
  const [confirmDel,setConfirmDel]=useState(false);
  const [flash,setFlash]=useState(false);
  const [acomptes,setAcomptes]=useState(facture?.acomptes||[]);
@@ -3172,7 +3179,7 @@ function FactureEditor({showBack,encaisseData,persistEncaisse,facture,clients,pr
  const displayStatut=isOverdueNow?"En retard":form.statut;
  const upd=f=>setForm(p=>({...p,...f}));
  const updL=(id,f)=>setLignes(ls=>ls.map(l=>l.id===id?{...l,...f}:l));
- const applyProd=(lid,p)=>updL(lid,{produitId:p.id,description:p.description,prixUnitaire:parseFloat(p.prixUnitaire)||0,tps:p.tps!==false,tvq:p.tvq!==false,...(invBridgeConfig.enabled?{forecast_product_id:p.forecast_product_id||null}:{})});
+ const applyProd=(lid,p)=>updL(lid,lineFromProduct(p,{forecastLink:invBridgeConfig.enabled}));
  const selectProd=(lid,pid)=>{
  if(pid==="__new__"){setQuickProductFor(lid);return;}
  if(!pid){updL(lid,{produitId:""});return;}
@@ -7336,6 +7343,15 @@ function AppInner(){
   const [showTipPool,setShowTipPool]=useState(false);
   const [searchOpen,setSearchOpen]=useState(false);
   const [facDeepLink,setFacDeepLink]=useState(null); // {clientId?, invoiceId?} for GlobalSearch nav
+  // Something the AI assistant prepared: take the owner to the normal form, filled in.
+  const [billPrefillTick,setBillPrefillTick]=useState(0);
+  const reviewAiProposal=useCallback(async pr=>{
+    if(pr.kind==='invoice'){setFacDeepLink({action:'prefill-invoice',proposal:pr});setActiveTab('facturation');}
+    else if(pr.kind==='bill'){
+      await window.api.storage.set('balanceiq-bill-prefill',JSON.stringify({...pr.payload,aiProposalId:pr.id})).catch(saveFailed('balanceiq-bill-prefill'));
+      setBillPrefillTick(n=>n+1);goSection('bank','fournisseurs');
+    }
+  },[goSection]);
   const [posScanOpen,setPosScanOpen]=useState(null); // null | { caisseIndex: number }
   const [flashTestStatus,setFlashTestStatus]=useState(null); // null | 'sending' | {ok} | {err}
   const [flashReport,setFlashReport]=useState(null); // null | {date, venteNet, total, wtdSales, wtdDays, closedCount, totalRegs, isClosed, labourCost, labourPct, cashes}
@@ -8796,7 +8812,7 @@ function AppInner(){
   }
   if(!appMode)return(<WelcomeScreen onSelect={saveAppMode} T={T}/>);
 
-  return(<LangCtx.Provider value={T}><ClientCreditsCtx.Provider value={clientCreditsCtxValue}><ThemeCtx.Provider value={theme}>{upgradePromptFeature&&<UpgradePrompt
+  return(<LangCtx.Provider value={T}><ClientCreditsCtx.Provider value={clientCreditsCtxValue}><ThemeCtx.Provider value={theme}><AiProposalsBar lang={lang} t={t} onReview={reviewAiProposal}/>{upgradePromptFeature&&<UpgradePrompt
         onClose={()=>setUpgradePromptFeature(null)}
         onSubscribe={()=>{trackEvent('upgrade_prompt_clicked',{feature:upgradePromptFeature});setUpgradePromptFeature(null);setActiveTab("config");setConfigSubTab("application");}}
         isFranchise={FRANCHISE_ONLY_FEATURES.includes(upgradePromptFeature)}
@@ -9176,7 +9192,7 @@ function AppInner(){
             return(<div style={{padding:"0 20px 24px"}}>
               <Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>{T.loading}</div>}>
                 {activeTab==="bank"&&cur==="comptes"&&<BanqueTabLazy lang={lang} t={t} companyName={companyInfo?.nom||""}/>}
-                {activeTab==="bank"&&cur==="fournisseurs"&&<BillsTabLazy lang={lang}/>}
+                {activeTab==="bank"&&cur==="fournisseurs"&&<BillsTabLazy lang={lang} prefillTick={billPrefillTick}/>}
                 {activeTab==="books"&&cur==="grandlivre"&&<GrandLivreTabLazy lang={lang} canUse={canUse}/>}
                 {activeTab==="books"&&cur==="comptabilite"&&<ChartOfAccountsTabLazy lang={lang} t={t}/>}
                 {activeTab==="books"&&cur==="bilan"&&<BilanTabLazy lang={lang} canUsePro={canUse("excelExport")} onUpgrade={()=>showUpgradePrompt("excelExport")}/>}

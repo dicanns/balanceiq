@@ -30,6 +30,11 @@ export const UI = {
     statusPortInUse: 'Turned on, but not reachable: another program on this computer is using the connector\'s address. Restart BalanceIQ.',
     statusFailed: 'Turned on, but it could not start. Restart BalanceIQ and try again.',
     access: 'Access: read only',
+    accessAsk: 'Access: reads, and prepares entries for you to review',
+    levelTitle: 'What your assistant may do',
+    levelRead: 'Read only',
+    levelAsk: 'Read, and prepare entries for me',
+    levelAskNote: 'Your assistant can fill in an invoice or a supplier bill. It then waits in BalanceIQ until you open it, check it and save it yourself. Nothing is recorded before that. Online assistants (through the relay) stay read-only for now.',
     keyCreated: (d) => `Key created ${d}`,
     questions: (n) => `Questions available: ${n}`,
     lastUsed: (d, tool) => `Last used: ${d}${tool ? ` - ${tool}` : ''}`,
@@ -98,6 +103,11 @@ export const UI = {
     statusPortInUse: 'Activé, mais inaccessible : un autre programme sur cet ordinateur utilise l\'adresse du connecteur. Redémarrez BalanceIQ.',
     statusFailed: 'Activé, mais le démarrage a échoué. Redémarrez BalanceIQ et réessayez.',
     access: 'Accès : lecture seule',
+    accessAsk: 'Accès : lecture, et préparation de saisies à vérifier',
+    levelTitle: 'Ce que votre assistant peut faire',
+    levelRead: 'Lecture seule',
+    levelAsk: 'Lire et me préparer des saisies',
+    levelAskNote: 'Votre assistant peut remplir une facture ou une facture fournisseur. Elle attend ensuite dans BalanceIQ que vous l\'ouvriez pour la vérifier et l\'enregistrer vous-même. Rien n\'est inscrit avant. Les assistants en ligne (par le relais) restent en lecture seule pour l\'instant.',
     keyCreated: (d) => `Clé créée le ${d}`,
     questions: (n) => `Questions disponibles : ${n}`,
     lastUsed: (d, tool) => `Dernière utilisation : ${d}${tool ? ` - ${tool}` : ''}`,
@@ -211,6 +221,7 @@ export default function AiConnectorSettings({ lang = 'fr', t = {}, allowed = tru
   const enable = () => run(() => window.api.connector.enable(), true);
   const newKey = () => { if (window.confirm(L.confirmNewKey)) run(() => window.api.connector.newKey(), true); };
   const disable = () => { if (window.confirm(L.confirmOff)) run(() => window.api.connector.disable(), false); };
+  const setLevel = (level) => run(() => window.api.connector.setLevel(level), 'keep');
   const setRelay = async (on) => {
     await run(() => window.api.connector.setRelay(on), 'keep');
     try { await relay?.sync(); } catch (_) { /* the state line says what happened */ }
@@ -332,11 +343,22 @@ export default function AiConnectorSettings({ lang = 'fr', t = {}, allowed = tru
               <div style={{ fontSize: 12.5, fontWeight: 600, color: t.text, lineHeight: 1.5 }}>{statusText}</div>
             </div>
             <div style={{ ...small, marginTop: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <div>{L.access}</div>
+              <div>{status?.level === 'ask' ? L.accessAsk : L.access}</div>
               {created && <div>{L.keyCreated(created)}</div>}
               <div>{L.questions(status?.toolCount ?? 0)}</div>
               <div>{last ? L.lastUsed(last, status?.lastTool) : L.notUsed}</div>
             </div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginTop: 12 }}>{L.levelTitle}</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+              {[['read', L.levelRead], ['ask', L.levelAsk]].map(([value, label]) => {
+                const on = (status?.level || 'read') === value;
+                return (
+                  <button key={value} type="button" disabled={busy} aria-pressed={on} onClick={() => { if (!on) setLevel(value); }}
+                    style={{ ...btn(false), border: `1.5px solid ${on ? '#f97316' : t.cardBorder}`, color: on ? '#f97316' : t.textSub, background: on ? 'rgba(249,115,22,0.08)' : t.section }}>{label}</button>
+                );
+              })}
+            </div>
+            <div style={{ ...small, marginTop: 6 }}>{L.levelAskNote}</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
               <button type="button" style={btn(false)} disabled={busy} onClick={newKey}>{L.newKey}</button>
               <button type="button" style={btn(false)} disabled={busy} onClick={disable}>{L.turnOff}</button>

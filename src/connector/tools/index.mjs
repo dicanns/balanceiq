@@ -7,8 +7,14 @@ import { bankTools } from './bank.mjs';
 import { ledgerTools } from './ledger.mjs';
 import { dailyTools } from './daily.mjs';
 import { kitchenTools } from './kitchen.mjs';
+import { actionTools } from './actions.mjs';
 
-export const ALL_TOOLS = [
+// Reading the books.
+export const READ_TOOLS = [
   ...booksTools, ...invoicingTools, ...customerTools, ...payablesTools,
   ...bankTools, ...ledgerTools, ...dailyTools, ...kitchenTools,
 ];
+// Preparing an entry for the owner to review and save (offered only when the owner allows it).
+export const ACTION_TOOLS = actionTools;
+
+export const ALL_TOOLS = [...READ_TOOLS, ...ACTION_TOOLS];

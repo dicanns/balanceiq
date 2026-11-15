@@ -289,7 +289,7 @@ function DocumentView({ lines, pages, positioned, activeField, picked, onPick, C
   );
 }
 
-export default function BillsTab({ lang = 'fr' }) {
+export default function BillsTab({ lang = 'fr', prefillTick = 0 }) {
   const T = UI[lang] || UI.fr;
   const [bills, setBills]       = useState([]);
   const [accounts, setAccounts] = useState([]);
@@ -378,11 +378,15 @@ export default function BillsTab({ lang = 'fr' }) {
         if (!r?.value) return;
         await window.api.storage.set('balanceiq-bill-prefill', '');
         const p = JSON.parse(r.value);
+        setError(''); resetReading();
         setEditing({ ...blank(), supplier_name: p.supplier_name || '', bill_date: p.bill_date || today(),
-          amount: p.amount || '', tps_paid: p.tps_paid || '', tvq_paid: p.tvq_paid || '', note: p.note || '' });
+          amount: p.amount || '', tps_paid: p.tps_paid || '', tvq_paid: p.tvq_paid || '', note: p.note || '',
+          // A bill the AI assistant prepared also carries these; it stays an unsaved form until Save.
+          invoice_number: p.invoice_number || '', due_date: p.due_date || '', coa_account_id: p.coa_account_id || '',
+          ...(p.aiProposalId ? { aiProposalId: p.aiProposalId } : {}) });
       } catch (_) { /* nothing to prefill */ }
     })();
-  }, []);
+  }, [prefillTick]);
 
   // Every value lands in an ordinary editable field, marked with where it came
   // from, and nothing is saved until Save. The expense account comes only from
@@ -542,6 +546,8 @@ export default function BillsTab({ lang = 'fr' }) {
       const saved = f.id ? await window.api.supplierBills.update(f.id, payload)
                          : await window.api.supplierBills.create(payload);
       if (saved?.ok === false) { setError(refusalText(saved)); return; }
+      // Prepared by the AI assistant and now saved by the owner: say so, for its status and the audit log.
+      if (!f.id && f.aiProposalId) window.api?.connector?.markProposal?.(f.aiProposalId, 'saved', payload.invoice_number || payload.supplier_name);
       // The document is the proof an auditor asks for: file it in the Vault
       // under this bill. The bill is saved either way.
       const savedId = saved?.id || f.id;
