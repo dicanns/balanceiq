@@ -48,13 +48,15 @@ export function normalizeConfig(raw) {
       keyHash,
       level: LEVELS.includes(c.level) ? c.level : LEVEL_READ,
       keyCreatedAt: typeof c.keyCreatedAt === 'string' ? c.keyCreatedAt : null,
+      // Online assistants through the relay: its own switch, apart from the key above.
+      relay: c.relay === true,
     };
   }
   return { port: validPort(src.port) ? src.port : DEFAULT_PORT, companies };
 }
 
 export function companyAccess(config, companyId) {
-  return normalizeConfig(config).companies[companyId] || { enabled: false, keyHash: null, level: LEVEL_READ, keyCreatedAt: null };
+  return normalizeConfig(config).companies[companyId] || { enabled: false, keyHash: null, level: LEVEL_READ, keyCreatedAt: null, relay: false };
 }
 
 /** The settings with one company's entry changed. */

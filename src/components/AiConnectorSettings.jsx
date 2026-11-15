@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { RELAY_ADDRESS, RELAY_LISTENING, RELAY_SIGNED_OUT, RELAY_NOT_ON_PLAN, RELAY_UNREACHABLE } from '../connector/relayClient.mjs';
 
 // Settings > AI assistant. Lets the owner's own AI assistant read this company's books
 // through a fixed list of questions. Off until turned on. Read only for now.
@@ -41,13 +42,33 @@ export const UI = {
     otherApps: 'Cursor, VS Code, Gemini CLI and other apps that accept an address',
     address: 'Address',
     header: 'Header',
-    reachNote: 'BalanceIQ must be open, with this company, for the assistant to reach it. The Claude and ChatGPT chat apps cannot reach a program on your computer yet; that is coming.',
+    reachNote: 'BalanceIQ must be open, with this company, for the assistant to reach it. For ChatGPT and other assistants that run on the internet, use the relay further down this page.',
     hideKey: 'Done, hide the key',
     newKey: 'Create a new key',
     turnOff: 'Turn off',
     confirmNewKey: 'Create a new key? The current key stops working at once, and every assistant using it must be given the new one.',
     confirmOff: 'Turn off? Your assistants lose access immediately.',
     failed: 'That did not work. Please try again.',
+    relayTitle: 'ChatGPT and other online assistants',
+    relayIntro: 'Some assistants run on the internet and cannot reach a program on your computer. BalanceIQ\'s relay passes their questions to this computer and sends back the answers. Your books stay here: each question and its answer travel sealed and are erased as soon as the call ends. Read only.',
+    relayNeedsAccount: 'Sign in to your BalanceIQ account first (Settings > Application).',
+    relayTurnOn: 'Turn on the relay',
+    relayTurnOff: 'Turn off the relay',
+    relayAddress: 'Address to give your assistant',
+    relayHow: 'In your assistant, add BalanceIQ as a new connection with this address. It sends you to balanceiq.ca to approve it with your BalanceIQ account.',
+    relayListening: 'On and listening',
+    relayStarting: 'Starting…',
+    relaySignedOut: 'On, but your BalanceIQ account is signed out. Sign in again.',
+    relayNotOnPlan: 'On, but this company\'s plan does not include it.',
+    relayUnreachable: 'On, but the relay cannot be reached right now. BalanceIQ keeps trying.',
+    relayOpenNote: 'BalanceIQ must be open, with this company, for an online assistant to get an answer.',
+    relayAssistants: 'Assistants you approved',
+    relayNone: 'None yet',
+    relayLastUsed: (d) => `last used ${d}`,
+    relayNeverUsed: 'not used yet',
+    relayUnnamed: 'An assistant',
+    relayRevoke: 'Disconnect every assistant',
+    confirmRevoke: 'Disconnect every assistant? Each one will have to be approved again.',
     proOnly: 'Connecting an AI assistant is part of the Pro plan.',
     proPaused: 'It is paused for now. Your access key is kept and works again as soon as Pro is active.',
     upgrade: 'See the Pro plan',
@@ -88,13 +109,33 @@ export const UI = {
     otherApps: 'Cursor, VS Code, Gemini CLI et les autres applications qui acceptent une adresse',
     address: 'Adresse',
     header: 'En-tête',
-    reachNote: 'BalanceIQ doit être ouvert, avec cette entreprise, pour que l\'assistant puisse l\'atteindre. Les applications de clavardage Claude et ChatGPT ne peuvent pas encore joindre un programme sur votre ordinateur; cela s\'en vient.',
+    reachNote: 'BalanceIQ doit être ouvert, avec cette entreprise, pour que l\'assistant puisse l\'atteindre. Pour ChatGPT et les autres assistants qui fonctionnent sur Internet, utilisez le relais plus bas dans cette page.',
     hideKey: 'Terminé, masquer la clé',
     newKey: 'Créer une nouvelle clé',
     turnOff: 'Désactiver',
     confirmNewKey: 'Créer une nouvelle clé ? La clé actuelle cesse de fonctionner immédiatement, et chaque assistant qui l\'utilise devra recevoir la nouvelle.',
     confirmOff: 'Désactiver ? Vos assistants perdent l\'accès immédiatement.',
     failed: 'Cela n\'a pas fonctionné. Veuillez réessayer.',
+    relayTitle: 'ChatGPT et autres assistants en ligne',
+    relayIntro: 'Certains assistants fonctionnent sur Internet et ne peuvent pas joindre un programme sur votre ordinateur. Le relais de BalanceIQ transmet leurs questions à cet ordinateur et renvoie les réponses. Vos livres restent ici : chaque question et sa réponse voyagent scellées et sont effacées dès la fin de l\'appel. Lecture seule.',
+    relayNeedsAccount: 'Connectez-vous d\'abord à votre compte BalanceIQ (Réglages > Application).',
+    relayTurnOn: 'Activer le relais',
+    relayTurnOff: 'Désactiver le relais',
+    relayAddress: 'Adresse à donner à votre assistant',
+    relayHow: 'Dans votre assistant, ajoutez BalanceIQ comme nouvelle connexion avec cette adresse. Il vous envoie sur balanceiq.ca pour l\'approuver avec votre compte BalanceIQ.',
+    relayListening: 'Activé et à l\'écoute',
+    relayStarting: 'Démarrage…',
+    relaySignedOut: 'Activé, mais votre compte BalanceIQ est déconnecté. Reconnectez-vous.',
+    relayNotOnPlan: 'Activé, mais le forfait de cette entreprise ne l\'inclut pas.',
+    relayUnreachable: 'Activé, mais le relais est injoignable pour l\'instant. BalanceIQ continue d\'essayer.',
+    relayOpenNote: 'BalanceIQ doit être ouvert, avec cette entreprise, pour qu\'un assistant en ligne obtienne une réponse.',
+    relayAssistants: 'Assistants que vous avez approuvés',
+    relayNone: 'Aucun pour l\'instant',
+    relayLastUsed: (d) => `dernière utilisation ${d}`,
+    relayNeverUsed: 'pas encore utilisé',
+    relayUnnamed: 'Un assistant',
+    relayRevoke: 'Déconnecter tous les assistants',
+    confirmRevoke: 'Déconnecter tous les assistants ? Chacun devra être approuvé de nouveau.',
     proOnly: 'La connexion d\'un assistant IA fait partie du forfait Pro.',
     proPaused: 'Elle est en pause pour l\'instant. Votre clé d\'accès est conservée et fonctionnera de nouveau dès que Pro sera actif.',
     upgrade: 'Voir le forfait Pro',
@@ -108,7 +149,7 @@ export function connectCommand(url, key) {
 
 const REFRESH_MS = 10000;
 
-export default function AiConnectorSettings({ lang = 'fr', t = {}, allowed = true, onUpgrade }) {
+export default function AiConnectorSettings({ lang = 'fr', t = {}, allowed = true, onUpgrade, signedIn = false, relay = null }) {
   const L = UI[lang] || UI.fr;
   const locale = lang === 'en' ? 'en-CA' : 'fr-CA';
   const api = typeof window !== 'undefined' ? window.api?.connector : null;
@@ -118,6 +159,8 @@ export default function AiConnectorSettings({ lang = 'fr', t = {}, allowed = tru
   const [error, setError] = useState('');
   const [copied, setCopied] = useState('');
   const copyTimer = useRef(null);
+  const [relayState, setRelayState] = useState(() => (relay ? relay.state() : 'off'));
+  const [assistants, setAssistants] = useState(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -136,6 +179,19 @@ export default function AiConnectorSettings({ lang = 'fr', t = {}, allowed = tru
 
   useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
 
+  // The relay: its state as the loop reports it, and who was let in.
+  useEffect(() => {
+    if (!relay) return undefined;
+    setRelayState(relay.state());
+    return relay.onState(setRelayState);
+  }, [relay]);
+  const relayOn = !!status?.relay;
+  const loadAssistants = useCallback(async () => {
+    if (!relay) return;
+    try { const r = await relay.call('status', {}); if (r?.ok) setAssistants(Array.isArray(r.data?.assistants) ? r.data.assistants : []); } catch (_) { /* keep the last list */ }
+  }, [relay]);
+  useEffect(() => { if (relayOn && signedIn) loadAssistants(); }, [relayOn, signedIn, loadAssistants]);
+
   const run = async (fn, withKey) => {
     setBusy(true); setError('');
     try {
@@ -143,7 +199,7 @@ export default function AiConnectorSettings({ lang = 'fr', t = {}, allowed = tru
       if (!r?.ok) { setError(L.failed); }
       else {
         if (r.status) setStatus(r.status);
-        setKey(withKey && r.key ? r.key : null);
+        if (withKey !== 'keep') setKey(withKey && r.key ? r.key : null);
       }
     } catch (_) { setError(L.failed); }
     setBusy(false);
@@ -153,6 +209,17 @@ export default function AiConnectorSettings({ lang = 'fr', t = {}, allowed = tru
   const enable = () => run(() => window.api.connector.enable(), true);
   const newKey = () => { if (window.confirm(L.confirmNewKey)) run(() => window.api.connector.newKey(), true); };
   const disable = () => { if (window.confirm(L.confirmOff)) run(() => window.api.connector.disable(), false); };
+  const setRelay = async (on) => {
+    await run(() => window.api.connector.setRelay(on), 'keep');
+    try { await relay?.sync(); } catch (_) { /* the state line says what happened */ }
+  };
+  const revokeAll = async () => {
+    if (!relay || !window.confirm(L.confirmRevoke)) return;
+    setBusy(true); setError('');
+    try { const r = await relay.call('revoke', {}); if (!r?.ok) setError(L.failed); } catch (_) { setError(L.failed); }
+    setBusy(false);
+    loadAssistants();
+  };
 
   const copy = async (id, text) => {
     try {
@@ -296,6 +363,45 @@ export default function AiConnectorSettings({ lang = 'fr', t = {}, allowed = tru
           <div style={{ marginTop: 10 }}>
             <button type="button" style={btn(true)} onClick={() => setKey(null)}>{L.hideKey}</button>
           </div>
+        </div>
+      )}
+
+      {relay && (
+        <div style={card}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>{L.relayTitle}</div>
+          <div style={{ ...small, marginTop: 4 }}>{L.relayIntro}</div>
+          {!signedIn && <div style={{ fontSize: 12, fontWeight: 600, color: t.text, marginTop: 10 }}>{L.relayNeedsAccount}</div>}
+          {signedIn && !relayOn && (
+            <div style={{ marginTop: 12 }}>
+              <button type="button" style={btn(true)} disabled={busy || !status} onClick={() => setRelay(true)}>{busy ? L.working : L.relayTurnOn}</button>
+            </div>
+          )}
+          {signedIn && relayOn && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                <span style={{ width: 9, height: 9, borderRadius: '50%', background: relayState === RELAY_LISTENING ? '#22c55e' : '#f59e0b', marginTop: 4, flex: '0 0 auto' }} />
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: t.text, lineHeight: 1.5 }}>
+                  {relayState === RELAY_LISTENING ? L.relayListening
+                    : relayState === RELAY_SIGNED_OUT ? L.relaySignedOut
+                    : relayState === RELAY_NOT_ON_PLAN ? L.relayNotOnPlan
+                    : relayState === RELAY_UNREACHABLE ? L.relayUnreachable : L.relayStarting}
+                </div>
+              </div>
+              {copyRow('relay', L.relayAddress, RELAY_ADDRESS)}
+              <div style={{ ...small, marginTop: 8 }}>{L.relayHow}</div>
+              <div style={{ ...small, marginTop: 4 }}>{L.relayOpenNote}</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginTop: 12 }}>{L.relayAssistants}</div>
+              <div style={{ ...small, marginTop: 3 }}>
+                {assistants && assistants.length
+                  ? assistants.map((a, i) => <div key={i}>{a.name || L.relayUnnamed} - {a.last_used ? L.relayLastUsed(fmt(a.last_used)) : L.relayNeverUsed}</div>)
+                  : L.relayNone}
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+                <button type="button" style={btn(false)} disabled={busy} onClick={() => setRelay(false)}>{L.relayTurnOff}</button>
+                {assistants && assistants.length > 0 && <button type="button" style={btn(false)} disabled={busy} onClick={revokeAll}>{L.relayRevoke}</button>}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

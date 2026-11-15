@@ -108,6 +108,12 @@ npm run scan:semgrep           # semgrep security scan (slow -- run before big P
   functions (never its own SQL), returns named fields only (never a raw row or
   a stored object), and cannot reach credential or lock settings. Enabling,
   keys and access level are changed from the Settings page only, never by a tool.
+  The relay (`relayClient.mjs`, `src/services/aiRelay.js`, edge function
+  `ai-relay`) lets online assistants such as ChatGPT ask the same read-only
+  questions: the app fetches each question with the owner's own sign-in and
+  answers it through the connector. The relay issues its own keys (OAuth 2.1,
+  PKCE), good for the relay only; an assistant never holds a BalanceIQ sign-in.
+  Questions and answers are sealed in the queue and erased when the call ends.
 - `supabase/functions/` -- Deno edge functions
 - `supabase/functions/_shared/auth.ts` -- shared `requireOrgMember` helper
 

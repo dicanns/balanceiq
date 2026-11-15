@@ -35,7 +35,7 @@ describe('CONN-001 access keys', () => {
   it('are never written to the settings', () => {
     const { key, config } = issueKey({}, 'co1', new Date('2026-11-14T12:00:00Z'));
     expect(JSON.stringify(config)).not.toContain(key);
-    expect(config.companies.co1).toEqual({ enabled: true, keyHash: hashKey(key), level: LEVEL_READ, keyCreatedAt: '2026-11-14T12:00:00.000Z' });
+    expect(config.companies.co1).toEqual({ enabled: true, keyHash: hashKey(key), level: LEVEL_READ, keyCreatedAt: '2026-11-14T12:00:00.000Z', relay: false });
   });
 });
 
@@ -67,14 +67,14 @@ describe('CONN-002 one key, one company', () => {
 describe('CONN-003 stored settings', () => {
   it('default to off, read only, on the standard port', () => {
     expect(normalizeConfig(null)).toEqual({ port: DEFAULT_PORT, companies: {} });
-    expect(companyAccess({}, 'co1')).toEqual({ enabled: false, keyHash: null, level: LEVEL_READ, keyCreatedAt: null });
+    expect(companyAccess({}, 'co1')).toEqual({ enabled: false, keyHash: null, level: LEVEL_READ, keyCreatedAt: null, relay: false });
     expect(anyEnabled(undefined)).toBe(false);
   });
 
   it('cannot be on without a key, and ignore a bad level or port', () => {
     const cfg = normalizeConfig({ port: 80, companies: { co1: { enabled: true, level: 'root' }, co2: 'x', co3: { enabled: true, keyHash: 'abc' } } });
     expect(cfg.port).toBe(DEFAULT_PORT);
-    expect(cfg.companies.co1).toEqual({ enabled: false, keyHash: null, level: LEVEL_READ, keyCreatedAt: null });
+    expect(cfg.companies.co1).toEqual({ enabled: false, keyHash: null, level: LEVEL_READ, keyCreatedAt: null, relay: false });
     expect(cfg.companies.co2).toBeUndefined();
     expect(cfg.companies.co3.enabled).toBe(false);
   });

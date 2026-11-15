@@ -188,6 +188,10 @@ ipcMain.handle('connector:status', () => { const c = aiConnector(); return c ? c
 ipcMain.handle('connector:enable', async () => { const c = aiConnector(); return c ? c.enable() : CONNECTOR_UNAVAILABLE; });
 ipcMain.handle('connector:newKey', async () => { const c = aiConnector(); return c ? c.newKey() : CONNECTOR_UNAVAILABLE; });
 ipcMain.handle('connector:disable', async () => { const c = aiConnector(); return c ? c.disable() : CONNECTOR_UNAVAILABLE; });
+ipcMain.handle('connector:setRelay', async (_e, on) => { const c = aiConnector(); return c ? c.setRelay(on === true) : CONNECTOR_UNAVAILABLE; });
+// A question an online assistant put to this company through the relay. The screen
+// fetched it with the owner's own sign-in; the answer is read-only, as always.
+ipcMain.handle('connector:relayHandle', async (_e, message, headers) => { const c = aiConnector(); return c ? c.handleRelayed(message, headers) : { status: 403, body: null }; });
 ipcMain.handle('connector:setAllowed', async (_e, allowed) => { const c = aiConnector(); return c ? c.setAllowed(allowed === true) : null; });
 
 const BACKUP_DIR = () => path.join(COMPANY_DATA_DIR, 'Backups');

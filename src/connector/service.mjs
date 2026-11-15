@@ -118,6 +118,7 @@ export function createConnectorService({ dir, company, version, tools, makeCtx, 
       level: access.level,
       url: `http://127.0.0.1:${listeningPort || wantedPort()}${CONNECTOR_PATH}`,
       keyCreatedAt: access.keyCreatedAt,
+      relay: access.relay,
       toolCount: tools.filter((t) => t.readOnly !== false || access.level !== LEVEL_READ).length,
       ...activity,
     };
@@ -138,6 +139,22 @@ export function createConnectorService({ dir, company, version, tools, makeCtx, 
     return { ok: true, status: status() };
   }
 
+  // Online assistants (ChatGPT and others) reach this company through the relay.
+  // The switch is the owner's; the questions arrive by the app's own signed-in
+  // request, never through the local address, and are always read-only.
+  async function setRelay(on) {
+    if (on && !allowed) return { ok: false, error: 'plan', status: status() };
+    write((cfg) => withCompany(cfg, company.id, { relay: on === true }));
+    return { ok: true, status: status() };
+  }
+
+  function handleRelayed(message, headers) {
+    if (!allowed || !mine().relay || !message || typeof message !== 'object' || Array.isArray(message)) return { status: 403, body: null };
+    const heads = {};
+    for (const [k, v] of Object.entries(headers && typeof headers === 'object' ? headers : {})) if (typeof v === 'string') heads[k.toLowerCase()] = v;
+    return handle(message, { level: LEVEL_READ }, heads);
+  }
+
   // The plan decides whether the connector may run. A key made while it was
   // allowed is kept, and works again when the plan includes it again.
   function setAllowed(value) {
@@ -145,5 +162,5 @@ export function createConnectorService({ dir, company, version, tools, makeCtx, 
     return allowed ? start() : stop();
   }
 
-  return { start, stop, status, enable: newKey, newKey, disable, setAllowed };
+  return { start, stop, status, enable: newKey, newKey, disable, setAllowed, setRelay, handleRelayed };
 }
