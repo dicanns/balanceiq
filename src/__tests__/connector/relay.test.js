@@ -113,6 +113,18 @@ describe('RELAY-004 the edge function guards every route', () => {
     expect(src).toContain("update({ request: null, response: null, status })");
     expect(src).not.toMatch(/console\.(log|info|debug)/);
   });
+  it('bounds what a stranger can make it store, and forgets assistants nobody approved', () => {
+    expect(core.NEW_CLIENTS_PER_HOUR).toBeLessThanOrEqual(100);
+    expect(core.OPEN_REQUESTS_PER_CLIENT).toBeLessThanOrEqual(20);
+    expect(core.NEW_REQUESTS_PER_HOUR).toBeLessThanOrEqual(1000);
+    expect(src).toContain('if ((count || 0) >= core.NEW_CLIENTS_PER_HOUR) return json(');
+    expect(src).toContain('(waiting || 0) >= core.OPEN_REQUESTS_PER_CLIENT || (lastHour || 0) >= core.NEW_REQUESTS_PER_HOUR');
+    expect(src).toContain("admin.from('ai_relay_clients').delete().lt('created_at', new Date(Date.now() - core.UNUSED_CLIENT_TTL_MS)");
+    // The page a person sees in a browser has no script and no em dash.
+    expect(core.BROWSER_NOTE).not.toMatch(/<script/i);
+    expect(core.BROWSER_NOTE.includes(String.fromCharCode(0x2014))).toBe(false);
+  });
+
   it('never sends anyone to an address the assistant did not register', () => {
     expect(src).toContain("if (!client || !client.redirect_uris.includes(redirect_uri)) return new Response(");
   });

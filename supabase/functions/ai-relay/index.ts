@@ -84,6 +84,11 @@ async function register(req: Request) {
   // deno-lint-ignore no-explicit-any
   const cleaned = core.cleanRegistration(body as any);
   if (!body || cleaned.error) return json({ error: 'invalid_client_metadata', error_description: cleaned.error || 'invalid body' }, 400);
+  // Registration is open to anyone, so the number of new assistants per hour is bounded.
+  const { count } = await admin.from('ai_relay_clients').select('client_id', { count: 'exact', head: true })
+    .gt('created_at', new Date(Date.now() - 3600_000).toISOString());
+  if ((count || 0) >= core.NEW_CLIENTS_PER_HOUR) return json({ error: 'temporarily_unavailable' }, 429, { 'Retry-After': '600' });
+  if (Math.random() < 0.2) await tidy().catch(() => {});
   const client_id = `biqc_${core.randomToken(16)}`;
   const { error } = await admin.from('ai_relay_clients').insert({ client_id, ...cleaned.client });
   if (error) return json({ error: 'server_error' }, 500);
@@ -103,6 +108,13 @@ async function authorize(url: URL) {
   if (q.get('response_type') !== 'code') return back('unsupported_response_type');
   const challenge = q.get('code_challenge') || '';
   if (!/^[A-Za-z0-9_-]{43}$/.test(challenge) || q.get('code_challenge_method') !== 'S256') return back('invalid_request');
+  // Bounded as well: sign-in requests waiting for one assistant, and new ones per hour for all.
+  const recent = new Date(Date.now() - core.REQUEST_TTL_MS).toISOString();
+  const { count: waiting } = await admin.from('ai_relay_requests').select('id', { count: 'exact', head: true })
+    .eq('client_id', client.client_id).is('used_at', null).gt('created_at', recent);
+  const { count: lastHour } = await admin.from('ai_relay_requests').select('id', { count: 'exact', head: true })
+    .gt('created_at', new Date(Date.now() - 3600_000).toISOString());
+  if ((waiting || 0) >= core.OPEN_REQUESTS_PER_CLIENT || (lastHour || 0) >= core.NEW_REQUESTS_PER_HOUR) return back('temporarily_unavailable');
   const id = core.randomToken(24);
   const { error } = await admin.from('ai_relay_requests').insert({
     id, client_id: client.client_id, redirect_uri, state: (q.get('state') || '').slice(0, 1000), code_challenge: challenge,
@@ -258,6 +270,12 @@ async function tidy() {
   await admin.from('ai_relay_calls').delete().lt('created_at', day);
   await admin.from('ai_relay_requests').delete().lt('created_at', day);
   await admin.from('ai_relay_grants').delete().lt('refresh_expires_at', new Date().toISOString());
+  // An assistant that registered and was never approved by anyone is forgotten.
+  const { data: kept } = await admin.from('ai_relay_grants').select('client_id');
+  const inUse = [...new Set((kept || []).map((g: { client_id: string }) => g.client_id))].filter((id) => /^[A-Za-z0-9_-]+$/.test(id));
+  let unused = admin.from('ai_relay_clients').delete().lt('created_at', new Date(Date.now() - core.UNUSED_CLIENT_TTL_MS).toISOString());
+  if (inUse.length) unused = unused.not('client_id', 'in', `(${inUse.join(',')})`);
+  await unused;
 }
 
 // The app waits here for the next question put to its company.
@@ -344,7 +362,13 @@ Deno.serve(async (req: Request) => {
       case 'POST /status': return await status(req);
       case 'POST /revoke': return await revoke(req);
     }
-    if (route === '/mcp') return json({ error: 'method_not_allowed' }, 405, { Allow: 'POST' });
+    if (route === '/mcp') {
+      // A person opening the address in a browser gets a sentence, not a bare error.
+      if ((req.headers.get('accept') || '').includes('text/html')) {
+        return new Response(core.BROWSER_NOTE, { status: 405, headers: { Allow: 'POST', 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
+      }
+      return json({ error: 'method_not_allowed' }, 405, { Allow: 'POST' });
+    }
     return json({ error: 'not_found' }, 404);
   } catch (_) {
     // Nothing about the failure is passed on.

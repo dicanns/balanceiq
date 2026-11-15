@@ -20,6 +20,22 @@ export const NEXT_HOLD_MS = 25 * 1000;
 export const MAX_BODY_BYTES = 256 * 1024;
 export const CALLS_PER_MINUTE = 120;
 
+// Anyone on the internet can reach the sign-in routes, so what they can make
+// the relay store is bounded: new assistants per hour, sign-in requests per
+// assistant and per hour. An assistant nobody approved is forgotten after two days.
+export const NEW_CLIENTS_PER_HOUR = 60;
+export const OPEN_REQUESTS_PER_CLIENT = 10;
+export const NEW_REQUESTS_PER_HOUR = 300;
+export const UNUSED_CLIENT_TTL_MS = 2 * 24 * 60 * 60 * 1000;
+
+/** What a person sees when they open the relay's address in a browser. */
+export const BROWSER_NOTE = `<!doctype html><meta charset="utf-8"><meta name="robots" content="noindex"><title>BalanceIQ</title>
+<body style="font:16px/1.5 -apple-system,Segoe UI,sans-serif;max-width:34em;margin:12vh auto;padding:0 20px;color:#17160F;background:#F3EFE6">
+<p><strong>BalanceIQ</strong></p>
+<p>Cette adresse est destin\u00e9e aux assistants IA, pas \u00e0 un navigateur. Collez-la dans votre assistant comme nouvelle connexion.</p>
+<p>This address is for AI assistants, not for a web browser. Paste it into your assistant as a new connection.</p>
+<p><a href="https://balanceiq.ca/#assistant" style="color:#E4570F">balanceiq.ca</a></p></body>`;
+
 // Assistants whose sign-in page we recognise. Any other destination is still
 // allowed, and the approval page says plainly that it is not a known one.
 export const KNOWN_HOSTS = ['chatgpt.com', 'chat.openai.com', 'claude.ai', 'claude.com', 'gemini.google.com', 'copilot.microsoft.com', 'chat.mistral.ai'];
