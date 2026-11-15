@@ -1873,13 +1873,26 @@ app.whenReady().then(() => {
       .finally(() => app.exit(0));
     return;
   }
-  // The installed app has no View menu and no developer tools. The menu keeps
-  // the editing shortcuts, window controls and (on macOS) the app menu; role
+  // The installed app has no reload and no developer tools. The menu keeps the
+  // editing shortcuts, zoom, window controls and (on macOS) the app menu; role
   // items take their labels from the operating system's language.
   if (app.isPackaged) {
+    const viewLabel = (companies.getUiLang(USER_DATA_DIR) || 'fr') === 'en' ? 'View' : 'Affichage';
     const tpl = [
       ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
       { role: 'editMenu' },
+      {
+        label: viewLabel,
+        submenu: [
+          { role: 'resetZoom' },
+          { role: 'zoomIn' },
+          // The same with "=" alone, the way the key is usually pressed without Shift.
+          { role: 'zoomIn', accelerator: 'CommandOrControl+=', visible: false },
+          { role: 'zoomOut' },
+          { type: 'separator' },
+          { role: 'togglefullscreen' },
+        ],
+      },
       { role: 'windowMenu' },
     ];
     Menu.setApplicationMenu(Menu.buildFromTemplate(tpl));

@@ -75,6 +75,8 @@ const UI = {
     all: 'Toutes',
     none: 'Aucune facture.',
     overdue: 'En retard',
+    overdueBy: (n) => `En retard de ${n} j`,
+    overdueBanner: (n, total) => `${n} facture${n > 1 ? 's' : ''} en retard, pour ${total}.`,
     dueIn: (n) => `Dans ${n} j`,
     required: 'Fournisseur, montant et compte de dépense sont requis.',
     confirmUnpaid: 'Annuler le paiement de cette facture ? L\'écriture de paiement sera contrepassée.',
@@ -164,6 +166,8 @@ const UI = {
     all: 'All',
     none: 'No bills yet.',
     overdue: 'Overdue',
+    overdueBy: (n) => `Overdue by ${n}d`,
+    overdueBanner: (n, total) => `${n} overdue bill${n > 1 ? 's' : ''}, ${total} in all.`,
     dueIn: (n) => `In ${n}d`,
     required: 'Supplier, amount and expense account are required.',
     confirmUnpaid: 'Undo the payment on this bill? The payment entry will be reversed.',
@@ -215,6 +219,8 @@ const FORM_KEY = Object.fromEntries(PICK_FIELDS.map(([f, k]) => [f, k]));
 const LABEL_KEY = Object.fromEntries(PICK_FIELDS.map(([f, , l]) => [f, l]));
 
 const today = () => new Date().toISOString().slice(0, 10);
+// A bill past its due date: one red, used for its row, its label and the count above the list.
+const OVERDUE_RED = '#ef4444';
 const numOrNull = (v) => (v === '' || v == null || !Number.isFinite(parseFloat(v)) ? null : parseFloat(v));
 
 // The page as the reader saw it: every word where it sits, clickable. Not a
@@ -645,7 +651,7 @@ export default function BillsTab({ lang = 'fr' }) {
   const dueState = (b) => {
     if (b.paid || !b.due_date) return null;
     const days = Math.round((new Date(b.due_date) - new Date(today())) / 86400000);
-    return days < 0 ? { label: T.overdue, tone: '#ef4444' } : { label: T.dueIn(days), tone: days <= 7 ? '#f59e0b' : '#64748b' };
+    return days < 0 ? { label: T.overdueBy(-days), tone: OVERDUE_RED, overdue: true } : { label: T.dueIn(days), tone: days <= 7 ? '#f59e0b' : '#64748b' };
   };
 
   const C = { text: '#e2e8f0', sub: '#94a3b8', muted: '#64748b', border: '#2d3148', card: '#161822', sunk: '#0f1119' };
@@ -902,6 +908,14 @@ export default function BillsTab({ lang = 'fr' }) {
         ) : null;
       })()}
 
+      {(() => {
+        const late = shown.filter(b => dueState(b)?.overdue);
+        return late.length > 0 ? (
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: '#fca5a5', background: 'rgba(239,68,68,0.1)', border: `1px solid ${OVERDUE_RED}`,
+            borderRadius: 8, padding: '9px 12px', marginBottom: 14 }}>{T.overdueBanner(late.length, money(late.reduce((a, b) => a + (Number(b.amount) || 0), 0)))}</div>
+        ) : null;
+      })()}
+
       {shown.length === 0 ? (
         <div style={{ color: C.muted, fontSize: 13, padding: '24px 0' }}>{T.none}</div>
       ) : (
@@ -920,8 +934,8 @@ export default function BillsTab({ lang = 'fr' }) {
                 const acct = accounts.find(a => a.id === b.coa_account_id);
                 const due = dueState(b);
                 return (
-                  <tr key={b.id} style={{ opacity: b.paid ? 0.55 : 1 }}>
-                    <td style={td}>
+                  <tr key={b.id} style={{ opacity: b.paid ? 0.55 : 1, background: due?.overdue ? 'rgba(239,68,68,0.07)' : undefined }}>
+                    <td style={due?.overdue ? { ...td, boxShadow: `inset 3px 0 0 ${OVERDUE_RED}` } : td}>
                       {b.supplier_name}
                       {b.invoice_number && <span style={{ color: C.muted, fontSize: 11, marginLeft: 7 }}>{b.invoice_number}</span>}
                       {b.quantity != null && b.unit_cost != null && (
@@ -935,11 +949,13 @@ export default function BillsTab({ lang = 'fr' }) {
                             {b.paid_account_name && <span style={{ color: C.muted, marginLeft: 4 }}>{T.paidVia(b.paid_account_name)}</span>}
                           </span>
                         : due
-                          ? <span style={{ fontSize: 11.5, color: due.tone }}>{due.label}</span>
+                          ? (due.overdue
+                            ? <span style={{ fontSize: 11, fontWeight: 700, color: '#fff', background: OVERDUE_RED, borderRadius: 10, padding: '2px 9px' }}>{due.label}</span>
+                            : <span style={{ fontSize: 11.5, color: due.tone }}>{due.label}</span>)
                           : <span style={{ color: C.muted }}>-</span>}
                     </td>
                     <td style={{ ...td, color: C.sub, fontSize: 12 }}>{acct ? `${acct.account_number} · ${accName(acct)}` : '-'}</td>
-                    <td style={num}>{money(b.amount)}</td>
+                    <td style={due?.overdue ? { ...num, color: OVERDUE_RED, fontWeight: 700 } : num}>{money(b.amount)}</td>
                     <td style={{ ...num, whiteSpace: 'nowrap' }}>
                       {!b.paid && (
                         <button onClick={() => { setError(''); resetReading(); setEditing({
