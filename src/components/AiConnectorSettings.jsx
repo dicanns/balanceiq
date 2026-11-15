@@ -48,6 +48,9 @@ export const UI = {
     confirmNewKey: 'Create a new key? The current key stops working at once, and every assistant using it must be given the new one.',
     confirmOff: 'Turn off? Your assistants lose access immediately.',
     failed: 'That did not work. Please try again.',
+    proOnly: 'Connecting an AI assistant is part of the Pro plan.',
+    proPaused: 'It is paused for now. Your access key is kept and works again as soon as Pro is active.',
+    upgrade: 'See the Pro plan',
   },
   fr: {
     title: 'Assistant IA',
@@ -92,6 +95,9 @@ export const UI = {
     confirmNewKey: 'Créer une nouvelle clé ? La clé actuelle cesse de fonctionner immédiatement, et chaque assistant qui l\'utilise devra recevoir la nouvelle.',
     confirmOff: 'Désactiver ? Vos assistants perdent l\'accès immédiatement.',
     failed: 'Cela n\'a pas fonctionné. Veuillez réessayer.',
+    proOnly: 'La connexion d\'un assistant IA fait partie du forfait Pro.',
+    proPaused: 'Elle est en pause pour l\'instant. Votre clé d\'accès est conservée et fonctionnera de nouveau dès que Pro sera actif.',
+    upgrade: 'Voir le forfait Pro',
   },
 };
 
@@ -102,7 +108,7 @@ export function connectCommand(url, key) {
 
 const REFRESH_MS = 10000;
 
-export default function AiConnectorSettings({ lang = 'fr', t = {} }) {
+export default function AiConnectorSettings({ lang = 'fr', t = {}, allowed = true, onUpgrade }) {
   const L = UI[lang] || UI.fr;
   const locale = lang === 'en' ? 'en-CA' : 'fr-CA';
   const api = typeof window !== 'undefined' ? window.api?.connector : null;
@@ -199,6 +205,27 @@ export default function AiConnectorSettings({ lang = 'fr', t = {} }) {
       <div style={card}>
         <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>{L.title}</div>
         <div style={{ ...small, marginTop: 4 }}>{L.unsupported}</div>
+      </div>
+    );
+  }
+
+  if (!allowed) {
+    return (
+      <div style={card}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: t.text }}>{L.title}</span>
+          <span style={{ fontSize: 9, fontWeight: 700, color: '#f97316', background: 'rgba(249,115,22,0.1)', padding: '1px 6px', borderRadius: 6 }}>Pro</span>
+        </div>
+        <div style={{ ...small, marginTop: 4 }}>{L.intro}</div>
+        {list(L.canTitle, [L.can1, L.can2, L.can3, L.can4, L.can5, L.can6])}
+        {list(L.neverTitle, [L.never1, L.never2, L.never3, L.never4])}
+        <div style={{ fontSize: 12, fontWeight: 600, color: t.text, marginTop: 14 }}>{L.proOnly}</div>
+        {status?.enabled && <div style={{ ...small, marginTop: 4 }}>{L.proPaused}</div>}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+          {onUpgrade && <button type="button" style={btn(true)} onClick={onUpgrade}>{L.upgrade}</button>}
+          {status?.enabled && <button type="button" style={btn(false)} disabled={busy} onClick={disable}>{L.turnOff}</button>}
+        </div>
+        {error && <div style={{ fontSize: 11.5, color: '#ef4444', marginTop: 8 }}>{error}</div>}
       </div>
     );
   }

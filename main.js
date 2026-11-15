@@ -149,8 +149,9 @@ const { hashPin, verifyPin, enforceRole, createActorRegistry } = require('./src/
 // ── AI CONNECTOR ─────────────────────────────────────────────────────────────
 // Lets the owner's own AI assistant read these books through a fixed list of
 // tools (src/connector). Off until turned on in Settings; this computer only;
-// an access key on every call. Built on first use, and a failure to load it
-// leaves the rest of the app untouched.
+// an access key on every call. Part of the Pro plan: it stays stopped until
+// the screen reports a plan that includes it (connector:setAllowed). Built on
+// first use, and a failure to load it leaves the rest of the app untouched.
 let _connector = null;
 let _connectorFailed = false;
 function aiConnector() {
@@ -174,6 +175,7 @@ function aiConnector() {
       // No handle is passed: each data function opens this company's books itself.
       makeCtx: () => ({ data, kv }),
       getLang: () => companies.getUiLang(USER_DATA_DIR) || 'fr',
+      allowed: false,
     });
   } catch (e) {
     _connectorFailed = true;
@@ -186,6 +188,7 @@ ipcMain.handle('connector:status', () => { const c = aiConnector(); return c ? c
 ipcMain.handle('connector:enable', async () => { const c = aiConnector(); return c ? c.enable() : CONNECTOR_UNAVAILABLE; });
 ipcMain.handle('connector:newKey', async () => { const c = aiConnector(); return c ? c.newKey() : CONNECTOR_UNAVAILABLE; });
 ipcMain.handle('connector:disable', async () => { const c = aiConnector(); return c ? c.disable() : CONNECTOR_UNAVAILABLE; });
+ipcMain.handle('connector:setAllowed', async (_e, allowed) => { const c = aiConnector(); return c ? c.setAllowed(allowed === true) : null; });
 
 const BACKUP_DIR = () => path.join(COMPANY_DATA_DIR, 'Backups');
 const BACKUP_KEEP_DAYS = 30;
@@ -1857,8 +1860,6 @@ if (process.env.NODE_ENV !== 'test' && !process.env.BIQ_PDF_SELFTEST && !app.req
 
 app.on('will-quit', () => { try { if (_connector) _connector.stop(); } catch (_) {} });
 app.whenReady().then(() => {
-  // Starts listening only if the owner turned the connector on for this company.
-  try { const c = aiConnector(); if (c) c.start().catch(() => {}); } catch (_) {}
   // Packaging check: BIQ_PDF_SELFTEST=/path/to.pdf reads the file through the PDF
   // utility process, prints what it found and quits, without opening a window.
   if (process.env.BIQ_PDF_SELFTEST) {

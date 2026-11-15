@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('api', {
     enable: () => ipcRenderer.invoke('connector:enable'),
     newKey: () => ipcRenderer.invoke('connector:newKey'),
     disable: () => ipcRenderer.invoke('connector:disable'),
+    setAllowed: (allowed) => ipcRenderer.invoke('connector:setAllowed', allowed === true),
   },
   books: {
     check: () => ipcRenderer.invoke('books:check'),

@@ -7207,6 +7207,8 @@ function AppInner(){
   const [prevInsightCount,setPrevInsightCount]=useState(0);
   const [dailyInsight,setDailyInsight]=useState(null);
   const [activePlan,setActivePlan]=useState("free");
+  // The AI connector runs only on a plan that includes it.
+  useEffect(()=>{window.api?.connector?.setAllowed?.(canUse('aiConnector'));},[activePlan]);
   const [restoreMsg,setRestoreMsg]=useState('');
   const [backupInfo,setBackupInfo]=useState(null);
   const [configSubTab,setConfigSubTab]=useState("entreprise");
@@ -9203,7 +9205,7 @@ function AppInner(){
               ];
               const scrollCfgTabs=(dir)=>{const el=document.getElementById('biq-cfg-tabs');if(el)el.scrollBy({left:dir*140,behavior:'smooth'});};
               return(<div style={{display:"flex",alignItems:"stretch",borderBottom:`1px solid ${t.dividerMid}`,marginBottom:4,flexShrink:0}}><button onClick={()=>scrollCfgTabs(-1)} style={{flexShrink:0,background:'none',border:'none',borderRight:`1px solid ${t.cardBorder}`,color:t.textMuted,cursor:'pointer',padding:'0 7px',fontSize:16,lineHeight:1,fontFamily:'inherit'}}>‹</button><div id="biq-cfg-tabs" className="no-scrollbar" style={{display:"flex",gap:2,overflowX:"auto",flex:1,paddingBottom:1,scrollbarWidth:'none',msOverflowStyle:'none'}}>{CTABS.map(({id,label})=>(<button key={id} onClick={()=>setConfigSubTab(id)} style={{background:"none",border:"none",color:configSubTab===id?"#f97316":t.textMuted,fontSize:11,fontWeight:configSubTab===id?700:500,padding:"5px 11px",cursor:"pointer",borderBottom:configSubTab===id?"2px solid #f97316":"2px solid transparent",whiteSpace:"nowrap",flexShrink:0,fontFamily:"'Satoshi',-apple-system,BlinkMacSystemFont,sans-serif"}}>{label}</button>))}</div><button onClick={()=>scrollCfgTabs(1)} style={{flexShrink:0,background:'none',border:'none',borderLeft:`1px solid ${t.cardBorder}`,color:t.textMuted,cursor:'pointer',padding:'0 7px',fontSize:16,lineHeight:1,fontFamily:'inherit'}}>›</button></div>);
- })()}<div style={{width:'100%',minWidth:0}}>{/* COMPANIES */}{configSubTab==="companies"&&<CompaniesPanel lang={lang} t={t}/>}{configSubTab==="assistant"&&<AiConnectorSettings lang={lang} t={t}/>}{/* ENTREPRISE */}
+ })()}<div style={{width:'100%',minWidth:0}}>{/* COMPANIES */}{configSubTab==="companies"&&<CompaniesPanel lang={lang} t={t}/>}{configSubTab==="assistant"&&<AiConnectorSettings lang={lang} t={t} allowed={canUse('aiConnector')} onUpgrade={()=>setConfigSubTab("application")}/>}{/* ENTREPRISE */}
  {configSubTab==="entreprise"&&(<div style={{display:"flex",flexDirection:"column",gap:10}}>
               <div style={{background:t.card,border:`1px solid ${t.cardBorder}`,borderRadius:10,padding:"14px 16px"}}>
                 <div style={{fontSize:13,fontWeight:700,color:t.text}}>{lang==="fr"?"Quel type de ventes faites-vous ?":"What kind of sales do you make?"}</div>

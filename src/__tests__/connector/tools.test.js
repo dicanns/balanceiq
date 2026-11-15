@@ -252,6 +252,32 @@ describe('CONN-033 the service', () => {
     expect((await call(st.url, on.key, 'books_check')).status).toBe(200);
   });
 
+  it('CONN-034 stays stopped until the plan allows it, and keeps the key meanwhile', async () => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'biq-conn-'));
+    dirs.push(d);
+    const s = createConnectorService({ dir: d, company: { id: 'co1', name: 'Demo Inc.' }, version: '1', tools: ALL_TOOLS, makeCtx: () => ({ db: {}, data, kv: () => null }), port: 0, allowed: false });
+    services.push(s);
+    // Not on the plan: no key can be made and nothing listens.
+    expect(await s.enable()).toMatchObject({ ok: false, error: 'plan', status: { enabled: false, allowed: false, running: false } });
+    expect(fs.existsSync(path.join(d, CONFIG_FILE))).toBe(false);
+    // The plan includes it: turning on works.
+    expect(await s.setAllowed(true)).toMatchObject({ allowed: true, enabled: false, running: false });
+    const on = await s.enable();
+    expect(on).toMatchObject({ ok: true, status: { enabled: true, running: true } });
+    expect((await call(on.status.url, on.key, 'books_check')).status).toBe(200);
+    // The plan lapses: it stops answering, the key stays on file, no error is shown.
+    expect(await s.setAllowed(false)).toMatchObject({ allowed: false, enabled: true, running: false, error: null });
+    await expect(call(on.status.url, on.key, 'books_check')).rejects.toThrow();
+    expect(await s.start()).toMatchObject({ running: false });
+    // Back on the plan: the same key works again.
+    const back = await s.setAllowed(true);
+    expect(back).toMatchObject({ enabled: true, running: true });
+    expect((await call(back.url, on.key, 'books_check')).status).toBe(200);
+    // Turning off is always possible, on the plan or not.
+    await s.setAllowed(false);
+    expect(await s.disable()).toMatchObject({ ok: true, status: { enabled: false, running: false } });
+  });
+
   it('says so when its address is taken', async () => {
     const a = make();
     const on = await a.s.enable();

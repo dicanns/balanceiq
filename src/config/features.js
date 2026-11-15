@@ -42,6 +42,7 @@ export const PLAN_FEATURES = {
     ocrScanning: false,
     posScanCloud: false,
     aiAnalysis: false,
+    aiConnector: false,
     // Prévisions module (free for all)
     previsionsModule: true,
     // Franchise features (hidden in restaurant mode)
@@ -87,6 +88,7 @@ export const PLAN_FEATURES = {
     ocrScanning: true,
     posScanCloud: true,
     aiAnalysis: true,
+    aiConnector: true,
     yearEndPackage: true,
     franchiseDocs: false,
     royaltyAutoCalc: false,
@@ -131,6 +133,7 @@ export const PLAN_FEATURES = {
     ocrScanning: true,
     posScanCloud: true,
     aiAnalysis: true,
+    aiConnector: true,
     yearEndPackage: true,
     franchiseDocs: false,
     royaltyAutoCalc: false,
@@ -173,6 +176,7 @@ export const PLAN_FEATURES = {
     ocrScanning: true,
     posScanCloud: true,
     aiAnalysis: true,
+    aiConnector: true,
     yearEndPackage: true,
     franchiseDocs: true,
     royaltyAutoCalc: true,

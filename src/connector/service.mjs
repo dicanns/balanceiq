@@ -31,12 +31,15 @@ const localDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart
  * makeCtx   () => { db, data, kv }  : access to the open books, built per call
  * getLang   () => 'en' | 'fr'
  * port      for tests: listen here instead of the configured port (0 = any free port)
+ * allowed   whether the plan includes the connector when the app starts; the
+ *           screen reports the plan later through setAllowed
  */
-export function createConnectorService({ dir, company, version, tools, makeCtx, getLang = () => 'fr', port, now = () => new Date() }) {
+export function createConnectorService({ dir, company, version, tools, makeCtx, getLang = () => 'fr', port, now = () => new Date(), allowed: allowedAtStart = true }) {
   const file = path.join(dir, CONFIG_FILE);
   let server = null;
   let error = null;
   let listeningPort = null;
+  let allowed = !!allowedAtStart;
   const activity = { callCount: 0, lastCallAt: null, lastTool: null };
 
   const read = () => {
@@ -79,7 +82,7 @@ export function createConnectorService({ dir, company, version, tools, makeCtx, 
   };
 
   async function start() {
-    if (server || !mine().enabled) return status();
+    if (server || !allowed || !mine().enabled) return status();
     const s = createConnectorServer({ authorize, handle });
     try {
       await listenLocal(s, wantedPort());
@@ -109,8 +112,9 @@ export function createConnectorService({ dir, company, version, tools, makeCtx, 
     return {
       companyName: company.name || '',
       enabled: access.enabled,
+      allowed,
       running: !!server,
-      error: access.enabled && !server ? error : null,
+      error: access.enabled && allowed && !server ? error : null,
       level: access.level,
       url: `http://127.0.0.1:${listeningPort || wantedPort()}${CONNECTOR_PATH}`,
       keyCreatedAt: access.keyCreatedAt,
@@ -121,6 +125,7 @@ export function createConnectorService({ dir, company, version, tools, makeCtx, 
 
   // A new key: the connector is on from here, and any earlier key stops working.
   async function newKey() {
+    if (!allowed) return { ok: false, error: 'plan', status: status() };
     let key = null;
     write((cfg) => { const issued = issueKey(cfg, company.id, now()); key = issued.key; return issued.config; });
     await start();
@@ -133,5 +138,12 @@ export function createConnectorService({ dir, company, version, tools, makeCtx, 
     return { ok: true, status: status() };
   }
 
-  return { start, stop, status, enable: newKey, newKey, disable };
+  // The plan decides whether the connector may run. A key made while it was
+  // allowed is kept, and works again when the plan includes it again.
+  function setAllowed(value) {
+    allowed = !!value;
+    return allowed ? start() : stop();
+  }
+
+  return { start, stop, status, enable: newKey, newKey, disable, setAllowed };
 }
