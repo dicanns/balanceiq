@@ -5514,7 +5514,8 @@ function _monthsInRange(periodStart, periodEnd) {
 // later clears it posts nothing, so it is never counted twice).
 const SALES_TAX_SOURCES_SQL = "('invoice','credit_note','cheque')";
 
-function taxPeriodCompute(periodStart, periodEnd, _db) {
+// log: false computes without writing the calculation log (a look, not a filing).
+function taxPeriodCompute(periodStart, periodEnd, _db, { log = true } = {}) {
   const db = _db || getDb();
   const months = _monthsInRange(periodStart, periodEnd);
 
@@ -5744,7 +5745,7 @@ function taxPeriodCompute(periodStart, periodEnd, _db) {
     `INSERT INTO tax_calc_log (tax_period_id, calculation_type, formula_version, input_snapshot, result, calculated_at)
      VALUES (NULL, ?, 'v1.0-2026', ?, ?, ?)`
   );
-  db.transaction(() => {
+  if (log) db.transaction(() => {
     logStmt.run('tps_collected', JSON.stringify({ months, method: 'revenue_pct' }), tpsCollected, now);
     logStmt.run('tvq_collected', JSON.stringify({ months, method: 'revenue_pct' }), tvqCollected, now);
     logStmt.run('cti', JSON.stringify({ months, billIds, supplierBillCount, bankTxCount }), tpsCti, now);

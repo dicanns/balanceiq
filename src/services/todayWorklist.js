@@ -273,6 +273,22 @@ export function buildWorklist({
     .map(({ _i, ...it }) => it);
 }
 
+// The whole list from what the books report: one composition for the Today
+// screen and for an AI assistant asking what needs attention.
+export function composeWorklist({
+  needsCategorizing = 0, reconcileStatus = [], blockers = [], registration = null, taxPeriods = [],
+  trialRows = [], subledgerRows = [], factures = [], clients = [], today, lang = 'fr', emailItems = [],
+} = {}) {
+  const overdue = overdueInvoices(factures, clients, today);
+  const deadline = nextFilingDeadline(registration, taxPeriods, today);
+  const variance = (subledgerRows || []).length ? cashVarianceCents(trialRows, subledgerRows) : null;
+  const items = buildWorklist({
+    needsCategorizing, reconcile: Array.isArray(reconcileStatus) ? reconcileStatus : [], overdue,
+    blockers: Array.isArray(blockers) ? blockers : [], registration, deadline, variance, lang, emailItems,
+  });
+  return { items, overdue, counts: worklistCounts({ needsCategorizing, overdue, items }) };
+}
+
 export function worklistCounts({ needsCategorizing = 0, overdue = [], items = [] } = {}) {
   return {
     sales: overdue.length,

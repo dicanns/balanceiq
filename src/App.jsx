@@ -39,7 +39,7 @@ import { applyCreditToInvoice, creditRemaining, invoiceBalance, unapplyCredit, s
 import { commitInvoicePosted, describeNotCreated } from "./utils/invoiceCommit.mjs";
 import { WRITTEN_OFF, CLOSED_INVOICE_STATUSES, isCashPayment, isOverdue } from "./utils/invoiceStatus.mjs";
 import { diffDocuments } from "./utils/documentDiff.mjs";
-import { overdueInvoices, nextFilingDeadline, cashVarianceCents, buildWorklist, worklistCounts } from "./services/todayWorklist.js";
+import { overdueInvoices, composeWorklist } from "./services/todayWorklist.js";
 import TodayWorklist from "./components/TodayWorklist.jsx";
 import { normalizeBusinessTypes, businessTypesChosen, visibleDestinations, landingDestination, firstRunItems, BUSINESS_TYPE_INFO } from "./services/businessProfile.js";
 import { buildFlashReportHTML } from "./services/flashReport.js";
@@ -8744,12 +8744,9 @@ function AppInner(){
         safe(()=>window.api?.bank?.accounts?.subledger?.(today),[]),
         safe(()=>window.api?.onboarding?.facts?.(),null),
       ]);
-      const overdue=overdueInvoices(facFactures,facClients,today);
-      const deadline=nextFilingDeadline(registration,taxPeriods,today);
-      const variance=(subledgerRows||[]).length?cashVarianceCents(trialRows,subledgerRows):null;
-      const items=buildWorklist({needsCategorizing,reconcile:Array.isArray(reconcileStatus)?reconcileStatus:[],overdue,blockers:Array.isArray(blockers)?blockers:[],registration,deadline,variance,lang,emailItems:emailWorklistItems(facFactures,{now:Date.now(),lang})});
+      const {items,counts}=composeWorklist({needsCategorizing,reconcileStatus,blockers,registration,taxPeriods,trialRows,subledgerRows,factures:facFactures,clients:facClients,today,lang,emailItems:emailWorklistItems(facFactures,{now:Date.now(),lang})});
       if(alive)setFirstRunFacts(facts||{});
-      if(alive)setWorklist({items,counts:worklistCounts({needsCategorizing,overdue,items}),loading:false});
+      if(alive)setWorklist({items,counts,loading:false});
     };
     run();
     const id=setInterval(run,60000);

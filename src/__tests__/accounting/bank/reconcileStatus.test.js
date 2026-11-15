@@ -116,6 +116,9 @@ describe('RECST-005 the screen', () => {
     expect(BANQUE).toMatch(/\/\/ Shown, not hidden: a missing button explains nothing\./);
     expect(BANQUE).toMatch(/if \(subTab === 'rapprochements'\) \{ loadStatements\(\); loadRecPreview\(\); loadRecStatus\(\); \}/);
     const APP = fs.readFileSync(path.join(ROOT, 'src/App.jsx'), 'utf8');
-    expect(APP).toMatch(/reconcile:Array\.isArray\(reconcileStatus\)\?reconcileStatus:\[\]/);
+    // The Today list is composed in one place (composeWorklist), which the screen hands the status to.
+    expect(APP).toMatch(/composeWorklist\(\{needsCategorizing,reconcileStatus,/);
+    const LIST = fs.readFileSync(path.join(ROOT, 'src/services/todayWorklist.js'), 'utf8');
+    expect(LIST).toMatch(/reconcile: Array\.isArray\(reconcileStatus\) \? reconcileStatus : \[\]/);
   });
 });

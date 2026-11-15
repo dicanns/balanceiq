@@ -17,7 +17,7 @@ import { createConnectorService, CONFIG_FILE } from '../../connector/service.mjs
 import { expectWellFormed } from './_conformance.js';
 
 // How many questions an assistant can ask (reading). Changing it is a deliberate act: say why in the commit.
-const TOOL_COUNT = 43;
+const TOOL_COUNT = 45;
 
 const TODAY = '2026-06-15';
 const clients = [
@@ -62,7 +62,7 @@ describe('CONN-030 the tool list', () => {
     const names = ALL_TOOLS.map((t) => t.name);
     // The first questions keep their place; every area's tools follow.
     expect(names.slice(0, 8)).toEqual(['company_overview', 'bills_to_pay', 'bank_balances', 'profit_and_loss', 'books_check', 'who_owes_me', 'list_invoices', 'get_invoice']);
-    for (const area of ['list_customers', 'list_bills', 'bank_transactions', 'trial_balance', 'tax_position', 'daily_register', 'list_recipes']) expect(names, area).toContain(area);
+    for (const area of ['list_customers', 'list_bills', 'bank_transactions', 'trial_balance', 'tax_position', 'daily_register', 'list_recipes', 'needs_attention', 'sales_tax_for_period']) expect(names, area).toContain(area);
     expectWellFormed(READ_TOOLS);
     // The tools that prepare an entry for the owner come last, and are few on purpose.
     expectWellFormed(ACTION_TOOLS, { preparing: true });
