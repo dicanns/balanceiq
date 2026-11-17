@@ -70,6 +70,7 @@ import AiProposalsBar from './components/AiProposalsBar.jsx';
 import { lineFromProduct } from './utils/invoiceLines.mjs';
 import { syncAiRelay, aiRelayApi } from './services/aiRelay.js';
 import { inboxApi } from './services/billInbox.js';
+import { BILL_INBOX_LIVE } from './inbox/live.mjs';
 import CompanyPlanGate from './components/CompanyPlanGate.jsx';
 import RemindersTab from './components/RemindersTab.jsx';
 import ProductProfitReport from './components/ProductProfitReport.jsx';
@@ -7293,7 +7294,7 @@ function AppInner(){
   // The AI connector runs only on a plan that includes it; its relay also needs the account signed in.
   useEffect(()=>{Promise.resolve(window.api?.connector?.setAllowed?.(canUse('aiConnector'))).then(()=>syncAiRelay()).catch(()=>{});},[activePlan,cloudUser]);
   // Emails forwarded to this company's address are fetched while the app is open (only if the owner turned the inbox on).
-  useEffect(()=>{if(canUse('billInbox')&&cloudUser)inboxApi.watch();else inboxApi.stopWatch();return()=>inboxApi.stopWatch();},[activePlan,cloudUser]);
+  useEffect(()=>{if(BILL_INBOX_LIVE&&canUse('billInbox')&&cloudUser)inboxApi.watch();else inboxApi.stopWatch();return()=>inboxApi.stopWatch();},[activePlan,cloudUser]);
   const [syncStatus,setSyncStatus]=useState(null); // 'synced'|'syncing'|'offline'|'error'|null
   const [isOnline,setIsOnline]=useState(typeof navigator!=="undefined"?navigator.onLine:true);
   const [lastSyncedAt,setLastSyncedAt]=useState(null); // ISO string of last successful sync
@@ -9192,7 +9193,7 @@ function AppInner(){
             return(<div style={{padding:"0 20px 24px"}}>
               <Suspense fallback={<div style={{padding:24,color:'#475569',fontSize:13}}>{T.loading}</div>}>
                 {activeTab==="bank"&&cur==="comptes"&&<BanqueTabLazy lang={lang} t={t} companyName={companyInfo?.nom||""}/>}
-                {activeTab==="bank"&&cur==="fournisseurs"&&<BillsTabLazy lang={lang} prefillTick={billPrefillTick} inbox={{allowed:canUse('billInbox'),signedIn:!!cloudUser,onUpgrade:()=>{setActiveTab("config");setConfigSubTab("application");}}}/>}
+                {activeTab==="bank"&&cur==="fournisseurs"&&<BillsTabLazy lang={lang} prefillTick={billPrefillTick} inbox={!BILL_INBOX_LIVE?null:{allowed:canUse('billInbox'),signedIn:!!cloudUser,onUpgrade:()=>{setActiveTab("config");setConfigSubTab("application");}}}/>}
                 {activeTab==="books"&&cur==="grandlivre"&&<GrandLivreTabLazy lang={lang} canUse={canUse}/>}
                 {activeTab==="books"&&cur==="comptabilite"&&<ChartOfAccountsTabLazy lang={lang} t={t}/>}
                 {activeTab==="books"&&cur==="bilan"&&<BilanTabLazy lang={lang} canUsePro={canUse("excelExport")} onUpgrade={()=>showUpgradePrompt("excelExport")}/>}

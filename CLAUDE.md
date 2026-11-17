@@ -119,7 +119,8 @@ npm run scan:semgrep           # semgrep security scan (slow -- run before big P
   answers it through the connector. The relay issues its own keys (OAuth 2.1,
   PKCE), good for the relay only; an assistant never holds a BalanceIQ sign-in.
   Questions and answers are sealed in the queue and erased when the call ends.
-- Bill inbox (Pro, opt-in): the owner forwards an email holding a supplier
+- Bill inbox (Pro, opt-in; built but switched off by `BILL_INBOX_LIVE` in
+  `src/inbox/live.mjs` until its mail address is set up): the owner forwards an email holding a supplier
   invoice to the company's private address (`bills+<code>@in.balanceiq.ca`).
   `cloudflare/inbox-worker` hands the raw mail to the edge function `inbox`,
   which keeps it sealed only from listed, verified senders; the app pulls it

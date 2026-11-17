@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { ALL_TOOLS, READ_TOOLS, ACTION_TOOLS } from '../../connector/tools/index.mjs';
+import { BILL_INBOX_LIVE } from '../../inbox/live.mjs';
 import { describeTool, checkArguments } from '../../connector/protocol.mjs';
 import { createConnectorService, CONFIG_FILE } from '../../connector/service.mjs';
 import { expectWellFormed } from './_conformance.js';
@@ -66,7 +67,9 @@ describe('CONN-030 the tool list', () => {
     expectWellFormed(READ_TOOLS);
     // The tools that prepare an entry for the owner come last, and are few on purpose.
     expectWellFormed(ACTION_TOOLS, { preparing: true });
-    expect(ACTION_TOOLS.map((x) => x.name)).toEqual(['propose_invoice', 'propose_bill', 'proposal_status', 'list_inbox', 'read_inbox_document']);
+    expect(ACTION_TOOLS.map((x) => x.name)).toEqual(['propose_invoice', 'propose_bill', 'proposal_status',
+      // The inbox tools are offered only once the bill inbox is switched on.
+      ...(BILL_INBOX_LIVE ? ['list_inbox', 'read_inbox_document'] : [])]);
     expect(READ_TOOLS).toHaveLength(TOOL_COUNT);
     expect(ALL_TOOLS).toHaveLength(TOOL_COUNT + ACTION_TOOLS.length);
     expect(new Set(names).size).toBe(names.length);
