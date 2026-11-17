@@ -115,9 +115,16 @@ const proposeBill = {
       qst_paid: { type: 'number', description: 'QST shown on the bill, in dollars' },
       expense_account: { type: 'string', description: 'Ledger account number for the expense, for example 5000' },
       note: { type: 'string', description: 'A short note kept with the bill' },
+      inbox_item_id: { type: 'string', description: 'The inbox_item_id of the waiting inbox item this bill comes from (see list_inbox); its document is then filed with the bill when the owner saves' },
     },
   },
   run(args, ctx) {
+    // A bill from the inbox: the item must still be waiting. The owner's save files its document.
+    let inboxItem = null;
+    if (args.inbox_item_id != null && String(args.inbox_item_id).trim()) {
+      inboxItem = typeof ctx.data.inboxItemGet === 'function' ? ctx.data.inboxItemGet(String(args.inbox_item_id).trim(), ctx.db) : null;
+      if (!inboxItem || inboxItem.status !== 'waiting') throw new ToolError('No waiting inbox item has this id.');
+    }
     const supplier = String(args.supplier).trim().slice(0, 120);
     if (!supplier) throw new ToolError('Give the supplier name.');
     if (!(args.amount > 0)) throw new ToolError('The amount must be above zero.');
@@ -142,6 +149,7 @@ const proposeBill = {
       coa_account_id: account ? String(account.id) : '', amount: amount(args.amount),
       tps_paid: args.gst_paid != null ? amount(args.gst_paid) : '', tvq_paid: args.qst_paid != null ? amount(args.qst_paid) : '',
       note: String(args.note || '').slice(0, 300),
+      ...(inboxItem ? { inboxItemId: String(inboxItem.id), inboxFile: (list(inboxItem.files)[0] || {}).path || null } : {}),
     };
     const made = leave(ctx, {
       kind: 'bill', tool: 'propose_bill', payload,

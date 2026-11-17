@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { parseBillDocument, parseAmount, findDate, FIELD_KINDS } from '../utils/billParser.js';
 import { BILL_TEMPLATES_KEY, findTemplate, anchorForPick, rememberBill } from '../utils/billTemplates.js';
+import BillsInbox from './BillsInbox.jsx';
 
 // What you owe, before you pay it. Until now the app only knew about money that
 // had already left the bank, which meant a bill sitting on the desk was invisible
@@ -94,6 +95,8 @@ const UI = {
     dropHere: 'Déposez un PDF ou une photo ici',
     errPdfNoText: 'Ce PDF est une image sans texte. Enregistrez-le en PNG ou JPG et réessayez : la reconnaissance de texte prendra le relais.',
     errDropNoPath: "Ce fichier n'a pas pu être ouvert par glisser-déposer. Utilisez le bouton Lire une facture et choisissez-le.",
+    inboxNote: 'Note du courriel',
+    inboxFrom: (who) => `Reçu par courriel de ${who}`,
     errUnsupported: 'Type de fichier non pris en charge. Utilisez un PDF, PNG ou JPG.',
     errRead: 'Le fichier n\'a pas pu être lu.',
     warnTotal: (e, f) => `Le total lu (${f}) ne correspond pas au sous-total plus les taxes (${e}). Vérifiez les montants.`,
@@ -185,6 +188,8 @@ const UI = {
     dropHere: 'Drop a PDF or a photo here',
     errPdfNoText: 'That PDF is an image with no text layer. Save it as PNG or JPG and try again - text recognition will take over.',
     errDropNoPath: 'That file could not be opened from the drop. Use the Read a bill button and pick it instead.',
+    inboxNote: 'Note from the email',
+    inboxFrom: (who) => `Received by email from ${who}`,
     errUnsupported: 'Unsupported file type. Use a PDF, PNG or JPG.',
     errRead: 'The file could not be read.',
     warnTotal: (e, f) => `The total read (${f}) does not match subtotal plus taxes (${e}). Check the amounts.`,
@@ -289,7 +294,8 @@ function DocumentView({ lines, pages, positioned, activeField, picked, onPick, C
   );
 }
 
-export default function BillsTab({ lang = 'fr', prefillTick = 0 }) {
+// `inbox` ({ allowed, signedIn, onUpgrade }) turns on the email inbox card; without it the page is as before.
+export default function BillsTab({ lang = 'fr', prefillTick = 0, inbox = null }) {
   const T = UI[lang] || UI.fr;
   const [bills, setBills]       = useState([]);
   const [accounts, setAccounts] = useState([]);
@@ -384,6 +390,13 @@ export default function BillsTab({ lang = 'fr', prefillTick = 0 }) {
           // A bill the AI assistant prepared also carries these; it stays an unsaved form until Save.
           invoice_number: p.invoice_number || '', due_date: p.due_date || '', coa_account_id: p.coa_account_id || '',
           ...(p.aiProposalId ? { aiProposalId: p.aiProposalId } : {}) });
+        // Prepared from an email in the inbox: the document is filed under the bill on save.
+        if (p.inboxItemId) {
+          const items = await window.api?.inbox?.list?.().catch(() => []);
+          const item = (items || []).find(i => i.id === p.inboxItemId);
+          const file = item?.files?.find(x => x.path === p.inboxFile) || item?.files?.[0] || null;
+          if (item) setEditing(prev => (prev ? { ...prev, ...fromInbox(item, file) } : prev));
+        }
       } catch (_) { /* nothing to prefill */ }
     })();
   }, [prefillTick]);
@@ -420,16 +433,39 @@ export default function BillsTab({ lang = 'fr', prefillTick = 0 }) {
     return filled.length;
   }
 
+  // What a bill form keeps of the email it came from: the item (marked as filed on
+  // save), the note the owner typed, and the document to file under the bill.
+  const fromInbox = (item, file) => ({
+    inboxItemId: item.id, inboxNote: item.note || '', inboxFrom: item.from_address || '',
+    attachPath: file?.fullPath || null, attachName: file?.name || null,
+  });
+
+  // An email in the inbox opened as a bill. The reader fills what it can; when it
+  // cannot read the document the form opens empty, with the document still attached.
+  async function openInboxFile(item, file) {
+    const ok = await readFrom(window.api.supplierBills.readDocumentAt(file.fullPath));
+    const link = fromInbox(item, file);
+    if (ok) setEditing(prev => (prev ? { ...prev, ...link } : prev));
+    else setEditing({ ...blank(), note: file.name || '', ...link });
+  }
+  async function openInboxText(item) {
+    const ok = await readFrom(Promise.resolve({ ok: true, text: String(item.note || ''), fileName: item.subject || '' }));
+    const link = fromInbox(item, null);
+    if (ok) setEditing(prev => (prev ? { ...prev, ...link } : prev));
+    else setEditing({ ...blank(), note: item.subject || '', ...link });
+  }
+
+  // Resolves to true when the reader's result was put in the form.
   async function readFrom(promise) {
     setBusy(true); setError('');
     try {
       const r = await promise;
-      if (r?.cancelled) return;
+      if (r?.cancelled) return false;
       if (!r?.ok) {
         setError(r?.error === 'pdf_has_no_text' ? T.errPdfNoText
                : r?.error === 'unsupported_type' ? T.errUnsupported
                : T.errRead);
-        return;
+        return false;
       }
       const source = Array.isArray(r.items) && r.items.length ? { items: r.items } : String(r.text || '');
       const firstPass = parseBillDocument(source, { ownNames });
@@ -439,7 +475,8 @@ export default function BillsTab({ lang = 'fr', prefillTick = 0 }) {
       if (applyParsed(parsed, r.fileName, template) === 0) setError(T.readNothing);
       // The file itself is kept in hand so it can be filed under the bill on save.
       setRead(prev => (prev ? { ...prev, filePath: r.filePath || null } : prev));
-    } catch (e) { setError(String(e?.message ?? e)); }
+      return true;
+    } catch (e) { setError(String(e?.message ?? e)); return false; }
     finally { setBusy(false); }
   }
 
@@ -551,12 +588,17 @@ export default function BillsTab({ lang = 'fr', prefillTick = 0 }) {
       // The document is the proof an auditor asks for: file it in the Vault
       // under this bill. The bill is saved either way.
       const savedId = saved?.id || f.id;
-      if (savedId && read?.filePath) {
+      // A bill that came from the email inbox files that email's document.
+      const docPath = read?.filePath || f.attachPath || null;
+      let filedDoc = false;
+      if (savedId && docPath) {
         try {
-          const att = await window.api.vault.attach({ entity_type: 'supplier_bill', entity_id: savedId, src_path: read.filePath, file_name: read.fileName });
-          if (att?.ok && att.doc?.id) await window.api.supplierBills.setDocument(savedId, att.doc.id);
+          const att = await window.api.vault.attach({ entity_type: 'supplier_bill', entity_id: savedId, src_path: docPath, file_name: read?.filePath ? read.fileName : f.attachName });
+          if (att?.ok && att.doc?.id) { await window.api.supplierBills.setDocument(savedId, att.doc.id); filedDoc = true; }
         } catch (_) { /* it can be attached later from the Vault */ }
       }
+      // The email is dealt with. Its copy of the document is kept only if filing it failed.
+      if (!f.id && f.inboxItemId) window.api?.inbox?.mark?.(f.inboxItemId, 'filed', savedId, { keepFiles: !!docPath && !filedDoc });
       if (read) {
         try {
           const next = rememberBill(templates, { read: read.fields, saved: payload, picks });
@@ -672,6 +714,18 @@ export default function BillsTab({ lang = 'fr', prefillTick = 0 }) {
 
   const form = editing && (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: '1 1 380px', minWidth: 0 }}>
+      {editing.inboxItemId && (
+        <div style={{ fontSize: 12, color: C.text, background: 'rgba(249,115,22,0.07)', border: '1px solid rgba(249,115,22,0.3)',
+          borderRadius: 6, padding: '8px 11px', lineHeight: 1.5 }}>
+          <div style={{ fontWeight: 700, color: '#fdba74' }}>{T.inboxFrom(editing.inboxFrom || '?')}</div>
+          {editing.inboxNote && (
+            <div style={{ marginTop: 4 }}>
+              <span style={{ color: C.muted }}>{T.inboxNote} : </span>
+              <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{editing.inboxNote.length > 1200 ? `${editing.inboxNote.slice(0, 1200)}...` : editing.inboxNote}</span>
+            </div>
+          )}
+        </div>
+      )}
       {read && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ fontSize: 12, color: '#93c5fd', background: 'rgba(96,165,250,0.08)',
@@ -895,6 +949,11 @@ export default function BillsTab({ lang = 'fr', prefillTick = 0 }) {
           }}>
           {T.dropHere}
         </div>
+      )}
+
+      {!editing && inbox && (
+        <BillsInbox lang={lang} allowed={!!inbox.allowed} signedIn={!!inbox.signedIn} onUpgrade={inbox.onUpgrade}
+          onReadFile={openInboxFile} onReadText={openInboxText} />
       )}
 
       {editing && (

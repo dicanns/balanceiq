@@ -1738,6 +1738,28 @@ const MIGRATIONS = [
       addColumns('recipes', [['sell_price_cents', 'INTEGER']]);
     },
   },
+  {
+    version: 53,
+    // Purely additive: a new table. A backup written before this version restores
+    // straight into it (the table is simply empty).
+    restoreSafe: true,
+    description: 'Bill inbox: messages pulled down from the cloud, waiting to be turned into a bill.',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS inbox_items (
+        id TEXT PRIMARY KEY,
+        received_at TEXT NOT NULL,
+        from_address TEXT NOT NULL DEFAULT '',
+        subject TEXT NOT NULL DEFAULT '',
+        note TEXT NOT NULL DEFAULT '',
+        files TEXT NOT NULL DEFAULT '[]',
+        skipped INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'waiting' CHECK (status IN ('waiting','filed','dismissed')),
+        bill_id INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        handled_at TEXT
+      )`).run();
+    },
+  },
 ];
 
 // The newest schema this build knows. Anything on disk below it has migrations
@@ -7026,6 +7048,54 @@ function assetList({ includeArchived = false } = {}, _db) {
     LEFT JOIN chart_of_accounts c ON c.id=a.coa_account_id ${where} ORDER BY a.acquisition_date ASC`).all();
 }
 
+// Bill inbox: messages pulled down from the cloud and kept here until the owner
+// turns one into a bill or dismisses it. Ids are the cloud message ids.
+function inboxRow(r) {
+  if (!r) return null;
+  let files = [];
+  try { files = JSON.parse(r.files); } catch (_) { files = []; }
+  return { ...r, files: Array.isArray(files) ? files : [] };
+}
+const INBOX_COLUMNS = 'id, received_at, from_address, subject, note, files, skipped, status, bill_id, handled_at';
+
+function inboxItemAdd(item, _db) {
+  const db = _db || getDb();
+  const it = item || {};
+  if (!it.id || !it.received_at) return { ok: false, added: false };
+  const r = db.prepare(`INSERT OR IGNORE INTO inbox_items (id, received_at, from_address, subject, note, files, skipped)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+    String(it.id), String(it.received_at), String(it.from || ''), String(it.subject || ''), String(it.note || ''),
+    JSON.stringify(Array.isArray(it.files) ? it.files : []), Math.max(0, Math.round(Number(it.skipped) || 0)));
+  return { ok: true, added: r.changes > 0 };
+}
+
+function inboxItemsList({ status = 'waiting', limit = 50 } = {}, _db) {
+  const db = _db || getDb();
+  const n = Math.max(1, Math.min(500, Math.round(Number(limit) || 50)));
+  return db.prepare(`SELECT ${INBOX_COLUMNS} FROM inbox_items WHERE status = ? ORDER BY received_at ASC, id ASC LIMIT ?`)
+    .all(status, n).map(inboxRow);
+}
+
+function inboxItemGet(id, _db) {
+  const db = _db || getDb();
+  return inboxRow(db.prepare(`SELECT ${INBOX_COLUMNS} FROM inbox_items WHERE id = ?`).get(String(id)));
+}
+
+function inboxItemMark(id, status, { billId = null } = {}, _db) {
+  const db = _db || getDb();
+  if (!['waiting', 'filed', 'dismissed'].includes(status)) return { ok: false };
+  const r = status === 'waiting'
+    ? db.prepare(`UPDATE inbox_items SET status = 'waiting', handled_at = NULL, bill_id = NULL WHERE id = ?`).run(String(id))
+    : db.prepare(`UPDATE inbox_items SET status = ?, handled_at = datetime('now'), bill_id = ? WHERE id = ?`)
+      .run(status, billId === null || billId === undefined ? null : Number(billId), String(id));
+  return { ok: r.changes > 0 };
+}
+
+function inboxWaitingCount(_db) {
+  const db = _db || getDb();
+  return db.prepare(`SELECT COUNT(*) AS n FROM inbox_items WHERE status = 'waiting'`).get().n;
+}
+
 function assetCreate(data) {
   const db = getDb();
   const { name, coa_account_id, cca_class, acquisition_date, acquisition_cost, personal_use_pct = 0, disposal_date = null, disposal_proceeds = null, notes = null } = data;
@@ -9068,6 +9138,7 @@ function mergeApiConfigSecrets(incoming, current) {
 }
 
 module.exports = {
+  inboxItemAdd, inboxItemsList, inboxItemGet, inboxItemMark, inboxWaitingCount,
   setDataDir, getDataDir, latestSchemaVersion, preMigrationSnapshot, enableForeignKeys,
   incomeStatement, fiscalYearEndGet, fiscalYearEndSet, fiscalYearBounds, fiscalYearList, fiscalYearClose, fiscalYearReopen, openingBalancesPreview, openingBalancesPost, coaSetItcPct, coaRename, bankNeedsCategorizingCount, firstRunFacts,
   supplierBillPost, supplierBillUnpost, supplierBillPostPayment, supplierBillSubledger,

@@ -1672,6 +1672,28 @@ const MIGRATIONS = [
       addColumns('recipes', [['sell_price_cents', 'INTEGER']]);
     },
   },
+  {
+    version: 53,
+    // Purely additive: a new table. A backup written before this version restores
+    // straight into it (the table is simply empty).
+    restoreSafe: true,
+    description: 'Bill inbox: messages pulled down from the cloud, waiting to be turned into a bill.',
+    up: (database) => {
+      database.prepare(`CREATE TABLE IF NOT EXISTS inbox_items (
+        id TEXT PRIMARY KEY,
+        received_at TEXT NOT NULL,
+        from_address TEXT NOT NULL DEFAULT '',
+        subject TEXT NOT NULL DEFAULT '',
+        note TEXT NOT NULL DEFAULT '',
+        files TEXT NOT NULL DEFAULT '[]',
+        skipped INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'waiting' CHECK (status IN ('waiting','filed','dismissed')),
+        bill_id INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        handled_at TEXT
+      )`).run();
+    },
+  },
 ];
 
 // kv_store keys that hold a whole list of documents, and the kind each one is

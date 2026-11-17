@@ -66,7 +66,7 @@ describe('CONN-030 the tool list', () => {
     expectWellFormed(READ_TOOLS);
     // The tools that prepare an entry for the owner come last, and are few on purpose.
     expectWellFormed(ACTION_TOOLS, { preparing: true });
-    expect(ACTION_TOOLS.map((x) => x.name)).toEqual(['propose_invoice', 'propose_bill', 'proposal_status']);
+    expect(ACTION_TOOLS.map((x) => x.name)).toEqual(['propose_invoice', 'propose_bill', 'proposal_status', 'list_inbox', 'read_inbox_document']);
     expect(READ_TOOLS).toHaveLength(TOOL_COUNT);
     expect(ALL_TOOLS).toHaveLength(TOOL_COUNT + ACTION_TOOLS.length);
     expect(new Set(names).size).toBe(names.length);

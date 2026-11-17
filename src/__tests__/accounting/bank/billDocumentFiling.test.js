@@ -19,7 +19,9 @@ const PRELOAD = fs.readFileSync(path.join(ROOT, 'preload.js'), 'utf8');
 describe('BILLDOC-001 filed on save', () => {
   it('keeps the file path from the read and attaches it under the saved bill', () => {
     expect(BILLS).toMatch(/setRead\(prev => \(prev \? \{ \.\.\.prev, filePath: r\.filePath \|\| null \} : prev\)\);/);
-    expect(BILLS).toMatch(/vault\.attach\(\{ entity_type: 'supplier_bill', entity_id: savedId, src_path: read\.filePath/);
+    // The document is the one that was read, or the one that came with an email in the inbox.
+    expect(BILLS).toMatch(/const docPath = read\?\.filePath \|\| f\.attachPath \|\| null;/);
+    expect(BILLS).toMatch(/vault\.attach\(\{ entity_type: 'supplier_bill', entity_id: savedId, src_path: docPath/);
     expect(BILLS).toMatch(/supplierBills\.setDocument\(savedId, att\.doc\.id\)/);
   });
 });

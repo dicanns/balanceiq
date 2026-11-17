@@ -1,0 +1,8 @@
+# Cloudflare Email Worker for the bill inbox (mail to bills+<code>@in.balanceiq.ca).
+# The secret INGEST_SECRET is never written here: set it with `wrangler secret put`.
+name = "biq-inbox"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+INGEST_URL = "https://etiwnesxjypdwhxqnqqq.supabase.co/functions/v1/inbox/receive"

@@ -14,6 +14,14 @@ contextBridge.exposeInMainWorld('api', {
     commitPayment: (opts) => ipcRenderer.invoke('invoices:commitPayment', opts),
     commitPaymentRemoval: (opts) => ipcRenderer.invoke('invoices:commitPaymentRemoval', opts),
   },
+  // Emails forwarded to the company's private address, once brought down to this computer.
+  inbox: {
+    store: (item) => ipcRenderer.invoke('inbox:store', item),
+    list: () => ipcRenderer.invoke('inbox:list'),
+    count: () => ipcRenderer.invoke('inbox:count'),
+    mark: (id, status, billId, opts) => ipcRenderer.invoke('inbox:mark', id, status, billId, opts),
+    onChanged: (cb) => { const h = () => cb(); ipcRenderer.on('inbox:changed', h); return () => ipcRenderer.removeListener('inbox:changed', h); },
+  },
   connector: {
     status: () => ipcRenderer.invoke('connector:status'),
     enable: () => ipcRenderer.invoke('connector:enable'),

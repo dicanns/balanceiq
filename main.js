@@ -177,7 +177,11 @@ function aiConnector() {
       version: app.getVersion(),
       tools: ALL_TOOLS,
       // No handle is passed: each data function opens this company's books itself.
-      makeCtx: () => ({ data, kv, propose: (p) => _proposals.add(p), proposal: (id) => _proposals.get(id) }),
+      // The last two let an assistant read a document waiting in the bill inbox, with
+      // the same reader the bill screen uses; a path outside the inbox folder is refused.
+      makeCtx: () => ({ data, kv, propose: (p) => _proposals.add(p), proposal: (id) => _proposals.get(id),
+        inboxFile: (rel) => require('./src/inbox/files.mjs').inboxFilePath(COMPANY_DATA_DIR, rel),
+        readDocument: (absPath) => readBillDocument(absPath) }),
       getLang: () => companies.getUiLang(USER_DATA_DIR) || 'fr',
       allowed: false,
     });
@@ -219,6 +223,62 @@ ipcMain.handle('connector:markProposal', (_e, id, status, reference) => {
 // fetched it with the owner's own sign-in; the answer is read-only, as always.
 ipcMain.handle('connector:relayHandle', async (_e, message, headers) => { const c = aiConnector(); return c ? c.handleRelayed(message, headers) : { status: 403, body: null }; });
 ipcMain.handle('connector:setAllowed', async (_e, allowed) => { const c = aiConnector(); return c ? c.setAllowed(allowed === true) : null; });
+
+// ── Bill inbox ────────────────────────────────────────────────────────────────
+// An email the owner forwarded to this company's private address. The screen
+// fetched it from the cloud with the owner's own sign-in; here it is put on this
+// computer (the note in the books file, the documents in the company folder) so
+// the cloud copy can be erased. It is only ever a waiting item: it becomes a bill
+// when the owner opens it in Supplier bills and saves.
+const inboxChanged = () => { try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('inbox:changed'); } catch (_) {} };
+const inboxText = (v, max) => String(v == null ? '' : v).slice(0, max);
+ipcMain.handle('inbox:store', (_e, item) => {
+  try {
+    if (!item || typeof item.id !== 'string') return { ok: false, error: 'bad_item' };
+    const data = require('./src/db/database.js');
+    // Already here (the cloud copy was not erased last time): nothing to do, let it go.
+    if (data.inboxItemGet(item.id)) return { ok: true, added: false };
+    const { saveInboxFiles } = require('./src/inbox/files.mjs');
+    const { files, rejected } = saveInboxFiles(COMPANY_DATA_DIR, item.id, Array.isArray(item.attachments) ? item.attachments : []);
+    const r = data.inboxItemAdd({
+      id: item.id,
+      received_at: inboxText(item.received_at, 40) || new Date().toISOString(),
+      from: inboxText(item.from, 320),
+      subject: inboxText(item.subject, 300),
+      note: inboxText(item.note, 8000),
+      skipped: (Number(item.skipped) || 0) + (Number(rejected) || 0),
+      files,
+    });
+    if (r && r.ok) inboxChanged();
+    return { ok: !!(r && r.ok), added: !!(r && r.added) };
+  } catch (e) {
+    try { Sentry.captureException(e); } catch (_) {}
+    return { ok: false, error: 'store_failed' };
+  }
+});
+ipcMain.handle('inbox:list', () => {
+  try {
+    const { inboxFilePath } = require('./src/inbox/files.mjs');
+    return require('./src/db/database.js').inboxItemsList({ status: 'waiting', limit: 50 }).map((it) => ({
+      ...it,
+      // A document that is no longer on the disk (a backup restored elsewhere) is left out; the note stays.
+      files: (it.files || []).map((f) => ({ ...f, fullPath: inboxFilePath(COMPANY_DATA_DIR, f.path) }))
+        .filter((f) => f.fullPath && fs.existsSync(f.fullPath)),
+    }));
+  } catch (_) { return []; }
+});
+ipcMain.handle('inbox:count', () => { try { return require('./src/db/database.js').inboxWaitingCount(); } catch (_) { return 0; } });
+ipcMain.handle('inbox:mark', (_e, id, status, billId, opts) => {
+  try {
+    if (!['filed', 'dismissed'].includes(status)) return { ok: false };
+    const r = require('./src/db/database.js').inboxItemMark(String(id), status, { billId: billId == null ? null : Number(billId) });
+    // Once filed, the document lives in the Vault under the bill; the inbox copy goes,
+    // unless the screen says filing it failed.
+    if (r && r.ok && !(opts && opts.keepFiles === true)) require('./src/inbox/files.mjs').removeInboxFiles(COMPANY_DATA_DIR, String(id));
+    if (r && r.ok) inboxChanged();
+    return { ok: !!(r && r.ok) };
+  } catch (_) { return { ok: false }; }
+});
 
 const BACKUP_DIR = () => path.join(COMPANY_DATA_DIR, 'Backups');
 const BACKUP_KEEP_DAYS = 30;

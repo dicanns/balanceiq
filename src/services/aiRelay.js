@@ -1,28 +1,14 @@
 // Runs the AI relay loop for the open company: on only when the owner switched
 // it on in Settings > AI assistant, the plan includes it and a BalanceIQ account
 // is signed in. See src/connector/relayClient.mjs.
-import { supabase, SUPABASE_URL } from './supabase.js';
+import { signedEdgeCall } from './edgeCall.js';
 import { createRelayClient } from '../connector/relayClient.mjs';
 
 const listeners = new Set();
 let client = null;
 
 /** A signed-in request to the relay. Never throws for an HTTP error. */
-export async function aiRelayCall(path, body) {
-  if (!supabase || !SUPABASE_URL) return { ok: false, status: 0, data: null };
-  const { data } = await supabase.auth.getSession();
-  const token = data?.session?.access_token;
-  if (!token) return { ok: false, status: 401, data: null };
-  const res = await window.api.supabaseFetch({
-    url: `${SUPABASE_URL}/functions/v1/ai-relay/${path}`,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body || {}),
-  });
-  let parsed = null;
-  try { parsed = res.body ? JSON.parse(res.body) : null; } catch (_) { parsed = null; }
-  return { ok: !!res.ok, status: res.status, data: parsed };
-}
+export const aiRelayCall = (path, body) => signedEdgeCall('ai-relay', path, body);
 
 function relayClient() {
   if (!client) {

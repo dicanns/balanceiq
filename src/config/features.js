@@ -43,6 +43,7 @@ export const PLAN_FEATURES = {
     posScanCloud: false,
     aiAnalysis: false,
     aiConnector: false,
+    billInbox: false,
     // Prévisions module (free for all)
     previsionsModule: true,
     // Franchise features (hidden in restaurant mode)
@@ -89,6 +90,7 @@ export const PLAN_FEATURES = {
     posScanCloud: true,
     aiAnalysis: true,
     aiConnector: true,
+    billInbox: true,
     yearEndPackage: true,
     franchiseDocs: false,
     royaltyAutoCalc: false,
@@ -134,6 +136,7 @@ export const PLAN_FEATURES = {
     posScanCloud: true,
     aiAnalysis: true,
     aiConnector: true,
+    billInbox: true,
     yearEndPackage: true,
     franchiseDocs: false,
     royaltyAutoCalc: false,
@@ -177,6 +180,7 @@ export const PLAN_FEATURES = {
     posScanCloud: true,
     aiAnalysis: true,
     aiConnector: true,
+    billInbox: true,
     yearEndPackage: true,
     franchiseDocs: true,
     royaltyAutoCalc: true,

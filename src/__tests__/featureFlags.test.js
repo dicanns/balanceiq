@@ -62,7 +62,7 @@ describe('Free plan - paid features locked', () => {
     'bulkEncaissement', 'autoApplyPayments', 'detailedAging', 'bulkEmailStatements',
     'recurringInvoices', 'directEmailSend', 'excelExport', 'depositTracking',
     'customTemplates', 'cloudBackup', 'posIntegration', 'ocrScanning', 'aiAnalysis',
-    'yearEndPackage', 'aiConnector',
+    'yearEndPackage', 'aiConnector', 'billInbox',
   ];
   PRO_FEATURES.forEach((f) => {
     it(`canUse('${f}') → false on free`, () => {
@@ -89,7 +89,7 @@ describe('Pro plan - all Pro features unlocked', () => {
     'bulkEncaissement', 'autoApplyPayments', 'detailedAging', 'bulkEmailStatements',
     'recurringInvoices', 'directEmailSend', 'excelExport', 'depositTracking',
     'customTemplates', 'cloudBackup', 'posIntegration', 'ocrScanning', 'aiAnalysis',
-    'yearEndPackage', 'aiConnector',
+    'yearEndPackage', 'aiConnector', 'billInbox',
   ];
   PRO_FEATURES.forEach((f) => {
     it(`canUse('${f}') → true on pro`, () => {
