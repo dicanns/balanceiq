@@ -71,6 +71,7 @@ import { lineFromProduct } from './utils/invoiceLines.mjs';
 import { syncAiRelay, aiRelayApi } from './services/aiRelay.js';
 import { inboxApi } from './services/billInbox.js';
 import { BILL_INBOX_LIVE } from './inbox/live.mjs';
+import { CREDIT_NOTE_REASONS, OTHER_REASON, canonicalCreditNoteReason, creditNoteReasonLabel, isRemittanceDeductionReason } from './utils/creditNoteReasons.mjs';
 import CompanyPlanGate from './components/CompanyPlanGate.jsx';
 import RemindersTab from './components/RemindersTab.jsx';
 import ProductProfitReport from './components/ProductProfitReport.jsx';
@@ -4072,24 +4073,15 @@ function EncaissementEditor({showBack,clientId,factureId,initialDeposit=false,cl
 }
 
 // ── NOTE DE CRÉDIT ──
-// A chain's remittance deduction (promotions, unsaleables, listing fees) is not a
-// return of a product line: it is booked against Sales returns and allowances.
-const REMITTANCE_DEDUCTION_REASON="Déduction sur remise (chaîne)";
-const RAISONS_NC=["Article brisé / endommagé","Erreur de facturation","Retour de marchandise","Ajustement de prix",REMITTANCE_DEDUCTION_REASON,"Autre"];
-const NC_REASON_EN={
- "Article brisé / endommagé":"Damaged item",
- "Erreur de facturation":"Billing error",
- "Retour de marchandise":"Goods returned",
- "Ajustement de prix":"Price adjustment",
- [REMITTANCE_DEDUCTION_REASON]:"Remittance deduction (chain)",
- "Autre":"Other",
-};
+// The reasons and what depends on them live in utils/creditNoteReasons.mjs: the
+// stored text is in the language of the screen that saved it.
+const RAISONS_NC=CREDIT_NOTE_REASONS;
 // Reasons the operator adds themselves, so recurring deductions (loyalty
 // contribution, unloading, unsellables, early-payment discount) stop being
 // retyped under "Other" every time.
 const NC_REASONS_KEY="dicann-nc-raisons";
 const NC_DESCS_KEY="dicann-nc-descriptions";
-const ncReasonLabel=(r,isEn)=>isEn?(NC_REASON_EN[r]||r):r;
+const ncReasonLabel=creditNoteReasonLabel;
 const STATUTS_NC=["Brouillon","Émise","Appliquée","Annulée"];
 const STATUT_NC_C={"Brouillon":"#6b7280","Émise":"#3b82f6","Appliquée":"#22c55e","Annulée":"#9ca3af"};
 function buildNoteDeCreditHTML({numero,date,clientId,factureNumero,raison,raisonDetail,lignes,notes,companyInfo,clients,invoiceTemplate={},tpsOverride=null,tvqOverride=null,statut=null,totauxCents=null}){
@@ -4106,7 +4098,7 @@ function buildNoteDeCreditHTML({numero,date,clientId,factureNumero,raison,raison
  const fallbackName=tpl.whiteLabelEnabled&&tpl.whiteLabelName?tpl.whiteLabelName:(companyInfo?.nom||"BalanceIQ");
  const biqCredit=poweredByHtml(tpl,(clients||[]).find(c=>c.id===clientId)?.langue==="English"?"en":"fr");
  const logo=companyInfo.logo?`<div style="text-align:${logoAlign}"><img src="${safeImgSrc(companyInfo.logo)}"style="height:48px;object-fit:contain;"/></div>`:`<div style="font-size:${fallbackName==="BIQ"?24:16}px;font-weight:900;color:#ef4444;letter-spacing:${fallbackName==="BIQ"?2:0}px">${escapeHtml(fallbackName)}</div>`;
- return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${D.cnWord} ${escapeHtml(numero)}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}table{width:100%;border-collapse:collapse}th{background:#ef4444;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.tot{margin-left:auto;width:280px;margin-top:12px}.tr{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}.tf{font-weight:900;font-size:15px;border-top:2px solid #1a1a1a;margin-top:4px;padding-top:4px;color:#ef4444}.notes{background:#f9f9f9;border-left:3px solid #ef4444;padding:10px 12px;margin-top:16px;font-size:12px}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}th{background:${ac}}th{background:${ac}}.notes{border-left-color:${ac}}.title{color:${ac}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${escapeHtml(companyInfo.nom||"")}</div><div style="font-size:11px;color:#555">${[companyInfo.adresse,companyInfo.ville,companyInfo.province].filter(Boolean).map(escapeHtml).join(", ")}</div>${companyInfo.telephone?`<div style="font-size:11px;color:#555">${escapeHtml(companyInfo.telephone)}</div>`:""}${companyInfo.courriel?`<div style="font-size:11px;color:#555">${escapeHtml(companyInfo.courriel)}</div>`:""}</div><div style="text-align:right"><div style="font-size:26px;font-weight:900;color:#ef4444;letter-spacing:2px">${D.cnTitle}</div><div style="font-size:18px;font-weight:700;margin-top:4px"># ${escapeHtml(numero)}</div><div style="font-size:11px;color:#555;margin-top:3px">${D.date}: ${fd(date)}</div>${factureNumero?`<div style="font-size:11px;color:#555;margin-top:3px">${D.origInvoice}:<strong>${escapeHtml(factureNumero)}</strong></div>`:""}<div style="font-size:11px;color:#555;margin-top:3px">${D.reason}: ${escapeHtml(raison==="Autre"?raisonDetail:raison)}</div></div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${D.client}</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>${D.desc}</th><th style="width:55px;text-align:center">${D.qty}</th><th style="width:100px;text-align:right">${D.unit}</th><th style="width:65px;text-align:center">${D.discount}</th><th style="width:100px;text-align:right">${D.credit}</th></tr></thead><tbody>${rows}</tbody></table><div class="tot">${totals.remiseGlobaleMontant>0?`<div class="tr"><span>${D.subtotal}</span><span style="color:#ef4444">${fc(-totals.sousTotalBrut)}</span></div><div class="tr"><span>${D.discount}${totals.remiseGlobaleTaux!=null?` (${escapeHtml(totals.remiseGlobaleTaux)}%)`:""}</span><span>${fc(totals.remiseGlobaleMontant)}</span></div>`:""}<div class="tr"><span>${totals.remiseGlobaleMontant>0?D.subtotalAfter:D.subtotal}</span><span style="color:#ef4444">${fc(-totals.sousTotal)}</span></div><div class="tr"><span>${D.tps}</span><span style="color:#ef4444">${fc(-totals.tpsTotal)}</span></div><div class="tr"><span>${D.tvq}</span><span style="color:#ef4444">${fc(-totals.tvqTotal)}</span></div><div class="tr tf"><span>${D.creditTotal}</span><span>${fc(-totals.total)}</span></div></div>${notes?`<div class="notes"><strong>${D.notes}</strong><br/>${escapeHtml(notes)}</div>`:""}<div class="ftr">${tpl.showTaxNumbers&&companyInfo.numeroTPS?`N° TPS: ${escapeHtml(companyInfo.numeroTPS)}`:""}${tpl.showTaxNumbers&&companyInfo.numeroTVQ?` &nbsp;|&nbsp; N° TVQ: ${escapeHtml(companyInfo.numeroTVQ)}`:""}${tpl.footerText?`<div style="margin-top:3px">${escapeHtml(tpl.footerText)}</div>`:""}${biqCredit}</div></body></html>`;
+ return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${D.cnWord} ${escapeHtml(numero)}</title><style>body{font-family:Arial,sans-serif;color:#1a1a1a;margin:0;padding:24px;font-size:13px}table{width:100%;border-collapse:collapse}th{background:#ef4444;color:#fff;padding:6px 8px;text-align:left;font-size:11px}.tot{margin-left:auto;width:280px;margin-top:12px}.tr{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}.tf{font-weight:900;font-size:15px;border-top:2px solid #1a1a1a;margin-top:4px;padding-top:4px;color:#ef4444}.notes{background:#f9f9f9;border-left:3px solid #ef4444;padding:10px 12px;margin-top:16px;font-size:12px}.ftr{margin-top:24px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center}@media print{body{padding:10px}}th{background:${ac}}th{background:${ac}}.notes{border-left-color:${ac}}.title{color:${ac}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px"><div>${logo}<div style="margin-top:4px;font-weight:700;font-size:14px">${escapeHtml(companyInfo.nom||"")}</div><div style="font-size:11px;color:#555">${[companyInfo.adresse,companyInfo.ville,companyInfo.province].filter(Boolean).map(escapeHtml).join(", ")}</div>${companyInfo.telephone?`<div style="font-size:11px;color:#555">${escapeHtml(companyInfo.telephone)}</div>`:""}${companyInfo.courriel?`<div style="font-size:11px;color:#555">${escapeHtml(companyInfo.courriel)}</div>`:""}</div><div style="text-align:right"><div style="font-size:26px;font-weight:900;color:#ef4444;letter-spacing:2px">${D.cnTitle}</div><div style="font-size:18px;font-weight:700;margin-top:4px"># ${escapeHtml(numero)}</div><div style="font-size:11px;color:#555;margin-top:3px">${D.date}: ${fd(date)}</div>${factureNumero?`<div style="font-size:11px;color:#555;margin-top:3px">${D.origInvoice}:<strong>${escapeHtml(factureNumero)}</strong></div>`:""}<div style="font-size:11px;color:#555;margin-top:3px">${D.reason}: ${escapeHtml(canonicalCreditNoteReason(raison)===OTHER_REASON?raisonDetail:creditNoteReasonLabel(raison,docLang==="en"))}</div></div></div><div style="margin-bottom:16px"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${D.client}</div><div style="line-height:1.6">${cli}</div></div><table><thead><tr><th>${D.desc}</th><th style="width:55px;text-align:center">${D.qty}</th><th style="width:100px;text-align:right">${D.unit}</th><th style="width:65px;text-align:center">${D.discount}</th><th style="width:100px;text-align:right">${D.credit}</th></tr></thead><tbody>${rows}</tbody></table><div class="tot">${totals.remiseGlobaleMontant>0?`<div class="tr"><span>${D.subtotal}</span><span style="color:#ef4444">${fc(-totals.sousTotalBrut)}</span></div><div class="tr"><span>${D.discount}${totals.remiseGlobaleTaux!=null?` (${escapeHtml(totals.remiseGlobaleTaux)}%)`:""}</span><span>${fc(totals.remiseGlobaleMontant)}</span></div>`:""}<div class="tr"><span>${totals.remiseGlobaleMontant>0?D.subtotalAfter:D.subtotal}</span><span style="color:#ef4444">${fc(-totals.sousTotal)}</span></div><div class="tr"><span>${D.tps}</span><span style="color:#ef4444">${fc(-totals.tpsTotal)}</span></div><div class="tr"><span>${D.tvq}</span><span style="color:#ef4444">${fc(-totals.tvqTotal)}</span></div><div class="tr tf"><span>${D.creditTotal}</span><span>${fc(-totals.total)}</span></div></div>${notes?`<div class="notes"><strong>${D.notes}</strong><br/>${escapeHtml(notes)}</div>`:""}<div class="ftr">${tpl.showTaxNumbers&&companyInfo.numeroTPS?`N° TPS: ${escapeHtml(companyInfo.numeroTPS)}`:""}${tpl.showTaxNumbers&&companyInfo.numeroTVQ?` &nbsp;|&nbsp; N° TVQ: ${escapeHtml(companyInfo.numeroTVQ)}`:""}${tpl.footerText?`<div style="margin-top:3px">${escapeHtml(tpl.footerText)}</div>`:""}${biqCredit}</div></body></html>`;
 }
 
 // A text field with a list of past answers behind it. Anything typed that is not
@@ -4183,7 +4175,7 @@ function NoteDeCreditEditor({showBack,creditNote,clients,factures,companyInfo,do
   try{window.api?.storage?.set(key,next);}catch{/* stays for this session */}
  };
  const raisonOptions=useMemo(()=>{
-  const builtin=RAISONS_NC.filter(r=>r!=="Autre").map(r=>ncReasonLabel(r,T===EN));
+  const builtin=RAISONS_NC.filter(r=>r!==OTHER_REASON).map(r=>ncReasonLabel(r,T===EN));
   return [...builtin,...savedRaisons.filter(r=>!builtin.some(b=>b.toLowerCase()===r.toLowerCase()))];
  },[savedRaisons,T]);
  const [savedId,setSavedId]=useState(creditNote?.id||null);
@@ -4296,7 +4288,7 @@ function NoteDeCreditEditor({showBack,creditNote,clients,factures,companyInfo,do
  const _cnExempt=!!(clients?.find(c=>c.id===_cnClientId)?.taxExempt);
  window.api.ledger.creditNotePost({
  creditNoteId:id,creditNoteDate:form.date,
- ...revenueSource(activeLignes,null),deduction:form.raison===REMITTANCE_DEDUCTION_REASON,openingBalance:!!linkedFac?.openingBalance,
+ ...revenueSource(activeLignes,null),deduction:isRemittanceDeductionReason(form.raison),openingBalance:!!linkedFac?.openingBalance,
  subtotalCents:Math.round((totals.sousTotal||0)*100),
  tpsCents:Math.round((totals.tpsTotal||0)*100),
  tvqCents:Math.round((totals.tvqTotal||0)*100),
@@ -4332,7 +4324,7 @@ function NoteDeCreditEditor({showBack,creditNote,clients,factures,companyInfo,do
  if(!rev?.ok){alert(T===EN?"The ledger entry could not be reversed, so the correction was not posted. The credit note was saved.":"L'écriture n'a pas pu être annulée, la correction n'a donc pas été comptabilisée. La note de crédit est enregistrée.");return;}
  const res=await window.api.ledger.creditNotePost({
  creditNoteId:id,creditNoteDate:form.date,
- ...revenueSource(activeLignes,null),deduction:form.raison===REMITTANCE_DEDUCTION_REASON,openingBalance:!!linkedFac?.openingBalance,
+ ...revenueSource(activeLignes,null),deduction:isRemittanceDeductionReason(form.raison),openingBalance:!!linkedFac?.openingBalance,
  subtotalCents:Math.round((totals.sousTotal||0)*100),
  tpsCents:Math.round((totals.tpsTotal||0)*100),
  tvqCents:Math.round((totals.tvqTotal||0)*100),
